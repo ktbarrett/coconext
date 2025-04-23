@@ -30,6 +30,7 @@ repos:
   - id: mypy
     additional_dependencies:
     - git+https://github.com/cocotb/cocotb.git
+    - nox
 
 ci:
   autofix_prs: false

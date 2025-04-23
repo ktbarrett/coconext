@@ -1,3 +1,4 @@
 # `coconext`
 
-Includes features for cocotb that might make it into the next release that you can't just wait for.
+A staging area for new [cocotb](https://github.com/cocotb/cocotb) features.
+This project will move faster and include more experimental features than may end up in the main repo.
