@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Deque, Generic, Sized, TypeVar
 
 from cocotb.queue import QueueEmpty
+from cocotb.triggers import Trigger
 
 from coconext.triggers import Notify
 
@@ -41,3 +42,7 @@ class Mailbox(Sized, Generic[T]):
         while not self._queue:
             await self._put_notify.wait()
         return self._queue.popleft()
+
+    def available(self) -> Trigger:
+        """Return Trigger which blocks until data is available in the mailbox."""
+        return self._put_notify.wait()
