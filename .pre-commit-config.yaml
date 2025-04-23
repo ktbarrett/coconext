@@ -22,6 +22,12 @@ repos:
   rev: "2025.04.07"
   hooks:
     - id: validate-pyproject
+- repo: https://github.com/pre-commit/mirrors-mypy
+  rev: v1.15.0
+  hooks:
+  - id: mypy
+    additional_dependencies:
+    - git+https://github.com/cocotb/cocotb.git
 
 ci:
   autofix_prs: false
