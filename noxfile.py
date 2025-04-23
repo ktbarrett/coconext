@@ -5,8 +5,7 @@ import nox
 
 @nox.session(reuse_venv=True)
 def docs(session: nox.Session) -> None:
-    session.install("sphinx", "sphinx_rtd_theme", "sphinxcontrib-prettyspecialmethods")
-    session.install("git+https://github.com/cocotb/cocotb.git")
+    session.install("-r", "docs/requirements.txt")
     session.install(".")
 
     outdir = session.cache_dir / "docs_out"
