@@ -35,6 +35,7 @@ html_static_path = ["_static"]
 
 # Options for RTD Theme
 ################################################################################
+
 github_url = "https://github.com/ktbarrett/coconext/"
 
 # Options for autodoc
@@ -46,3 +47,11 @@ autodoc_default_options = {
     "members": True,
 }
 autodoc_typehints = "signature"
+
+# Options for intersphinx
+################################################################################
+
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "cocotb": ("https://docs.cocotb.org/en/development/", None),
+}

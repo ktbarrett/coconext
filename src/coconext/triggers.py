@@ -1,4 +1,4 @@
-"""Collection of types that would end up in ``cocotb.triggers``."""
+"""Collection of types that would end up in :mod:`cocotb.triggers`."""
 
 from __future__ import annotations
 
