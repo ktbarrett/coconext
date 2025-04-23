@@ -16,7 +16,9 @@ repos:
   - id: mixed-line-ending
     args:
       - --fix=lf
+  - id: fix-byte-order-marker
   - id: check-yaml
+  - id: check-toml
   - id: check-added-large-files
 - repo: https://github.com/henryiii/validate-pyproject-schema-store
   rev: "2025.04.07"
