@@ -30,6 +30,7 @@ repos:
   - id: mypy
     additional_dependencies:
     - git+https://github.com/cocotb/cocotb.git
+    - pytest
     - nox
 
 ci:
