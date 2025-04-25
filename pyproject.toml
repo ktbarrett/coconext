@@ -16,7 +16,7 @@ maintainers = [
 ]
 description = "Features for future versions of cocotb"
 readme = "README.md"
-dynamic = ["version"]
+dynamic = ["version", "license"]
 
 [project.urls]
 Repository = "https://github.com/ktbarrett/coconext.git"
