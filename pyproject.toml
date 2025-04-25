@@ -7,7 +7,7 @@ name = "coconext"
 dependencies = [
     "cocotb >= 2.0.dev0",
 ]
-requires-python = ">= 3.8"
+requires-python = ">=3.8"
 authors = [
     {name="Kaleb Barrett", email="dev.ktbarrett@gmail.com"},
 ]
