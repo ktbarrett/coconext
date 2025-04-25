@@ -24,15 +24,6 @@ dynamic = ["version"]
 Repository = "https://github.com/ktbarrett/coconext.git"
 "Bug Tracker" = "https://github.com/ktbarrett/coconext/issues"
 
-[project.optional-dependencies]
-dev = [
-    "nox",
-    "pre-commit",
-    "ruff",
-    "mypy",
-    "pytest",
-]
-
 [tool.setuptools.packages.find]
 where = ["src"]
 

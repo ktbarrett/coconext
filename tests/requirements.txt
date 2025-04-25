@@ -1,0 +1,3 @@
+pytest
+coverage
+git+https://github.com/cocotb/cocotb.git

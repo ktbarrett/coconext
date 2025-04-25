@@ -1,0 +1,63 @@
+on:
+  push:
+    branches:
+    - dev
+  pull_request:
+    branches:
+    - dev
+
+jobs:
+  tests:
+    name: Tests (Python ${{matrix.python-version}} | ${{matrix.simulator}})
+    runs-on: ubuntu-24.04
+
+    env:
+      COCOTB_USER_COVERAGE: "1"
+      SIM: ${{matrix.simulator}}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+        simulator: [nvc]
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        # GitHub PR's create a merge commit, and Actions are run on that commit.
+        # Codecov's uploader needs the previous commit (tip of PR branch) to associate coverage correctly.
+        # A fetch depth of 2 provides enough information without fetching the entire history.
+        fetch-depth: 2
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{matrix.python-version}}
+        allow-prereleases: true
+
+    - name: Build NVC
+      if: matrix.simulator == 'nvc'
+      run: |
+        sudo apt-get install -y --no-install-recommends llvm-dev libdw-dev flex
+        git clone --depth=1 --no-single-branch https://github.com/nickg/nvc.git
+        cd nvc
+        git reset --hard r1.16.0
+        ./autogen.sh
+        mkdir build
+        cd build
+        ../configure
+        make -j $(nproc)
+        sudo make install
+
+    - name: Install Testing Dependencies
+      # Must install cocotb from github until 2.0 is released
+      run: |
+        pip install nox
+
+    - name: Run tests
+      run: |
+        nox -s tests
+
+    # - name: Upload coverage reports to Codecov
+    #   uses: codecov/codecov-action@v5
+    #   with:
+    #     token: ${{ secrets.CODECOV_TOKEN }}
