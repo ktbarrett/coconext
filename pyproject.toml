@@ -16,8 +16,6 @@ maintainers = [
 ]
 description = "Features for future versions of cocotb"
 readme = "README.md"
-license = "BSD-3-Clause"
-license-files = ["LICENSE"]
 dynamic = ["version"]
 
 [project.urls]
