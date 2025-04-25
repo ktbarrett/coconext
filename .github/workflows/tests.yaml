@@ -51,7 +51,7 @@ jobs:
     - name: Install Testing Dependencies
       # Must install cocotb from github until 2.0 is released
       run: |
-        pip install nox
+        pip install nox coverage
 
     - name: Run tests
       run: |
