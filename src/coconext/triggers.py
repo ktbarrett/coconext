@@ -6,7 +6,10 @@ from cocotb.triggers import Event, Trigger
 
 
 class Notify:
-    """Object which wakes up all waiters when notify() is called."""
+    """Object which wakes up all waiters when notify() is called.
+
+    .. versionadded:: 0.1
+    """
 
     def __init__(self) -> None:  # noqa: D107
         self._event = Event()

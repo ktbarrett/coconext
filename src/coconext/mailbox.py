@@ -13,7 +13,10 @@ T = TypeVar("T")
 
 
 class Mailbox(Sized, Generic[T]):
-    """Unbounded UVM-esque mailbox."""
+    """Unbounded UVM-esque mailbox.
+
+    .. versionadded:: 0.1
+    """
 
     def __init__(self) -> None:  # noqa: D107
         self._queue = Deque[T]()
