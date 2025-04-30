@@ -16,6 +16,10 @@ repos:
   rev: "2025.04.28"
   hooks:
     - id: validate-pyproject
+- repo: https://github.com/codespell-project/codespell
+  rev: v2.4.1
+  hooks:
+  - id: codespell
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: "v0.11.7"
   hooks:
