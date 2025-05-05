@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import sys
+from functools import cached_property
 from typing import Literal
 
 from cocotb.triggers import Timer
 from cocotb.utils import get_sim_steps, get_time_from_sim_steps
-
-from coconext._utils import cached_method
 
 if sys.version_info >= (3, 11):
     from typing import TypeAlias
@@ -109,8 +108,11 @@ class SimTime:
             return NotImplemented
         return self._steps >= other._steps
 
-    @cached_method
     def __repr__(self) -> str:  # noqa: D105
+        return self._repr
+
+    @cached_property
+    def _repr(self) -> str:
         for unit in _UNITS:
             time = self.in_unit(unit)
             if abs(time) < 1000:
