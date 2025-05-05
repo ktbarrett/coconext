@@ -14,7 +14,6 @@ jobs:
     runs-on: ubuntu-24.04
 
     env:
-      COCOTB_USER_COVERAGE: "1"
       SIM: ${{matrix.simulator}}
 
     strategy:
