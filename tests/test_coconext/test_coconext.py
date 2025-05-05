@@ -27,3 +27,10 @@ def test_triggers(runner: Runner) -> None:
         test_module="trigger_tests",
         hdl_toplevel="top",
     )
+
+
+def test_simtime(runner: Runner) -> None:
+    runner.test(
+        test_module="simtime_tests",
+        hdl_toplevel="top",
+    )

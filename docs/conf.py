@@ -20,6 +20,7 @@ release = __version__
 
 extensions = [
     "sphinx.ext.autodoc",
+    "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
     "sphinxcontrib.prettyspecialmethods",
     "sphinx_rtd_theme",
@@ -45,6 +46,7 @@ autoclass_content = "both"
 autodoc_member_order = "bysource"
 autodoc_default_options = {
     "members": True,
+    # "special-members": True,
 }
 autodoc_typehints = "signature"
 
