@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from typing import Any, Literal
+from typing import Literal
 
 from cocotb.triggers import Timer
 from cocotb.utils import get_sim_steps, get_time_from_sim_steps
@@ -84,7 +84,7 @@ class SimTime:
         """Time in simulator steps."""
         return self.in_unit("step")
 
-    def __eq__(self, other: Any) -> bool:  # noqa: D105
+    def __eq__(self, other: object) -> bool:  # noqa: D105
         if not isinstance(other, SimTime):
             return NotImplemented
         return self._steps == other._steps

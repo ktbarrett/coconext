@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from functools import update_wrapper, wraps
-from typing import TYPE_CHECKING, Any, Callable, TypeVar
+from typing import TYPE_CHECKING, Callable, TypeVar
 
 if TYPE_CHECKING:
-    T = TypeVar("T", bound=Callable[..., Any])
+    T = TypeVar("T", bound=Callable[..., object])
 
     def cached_method(func: T) -> T: ...
 
