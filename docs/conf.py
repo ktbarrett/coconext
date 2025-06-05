@@ -22,7 +22,7 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
-    # "sphinxcontrib.prettyspecialmethods",
+    "sphinxcontrib.prettyspecialmethods",
     "sphinx_rtd_theme",
 ]
 
