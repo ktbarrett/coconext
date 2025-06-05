@@ -108,6 +108,9 @@ class SimTime:
             return NotImplemented
         return self._steps >= other._steps
 
+    def __hash__(self) -> int:  # noqa: D105
+        return hash(self._steps)
+
     def __repr__(self) -> str:  # noqa: D105
         return self._repr
 
