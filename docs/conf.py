@@ -47,6 +47,7 @@ autodoc_member_order = "bysource"
 autodoc_default_options = {
     "members": True,
     "special-members": True,
+    "exclude-members": "__weakref__",
 }
 autodoc_typehints = "signature"
 
