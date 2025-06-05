@@ -29,6 +29,7 @@ dev = [
     "pytest",       # For typing test files (use nox to run tests)
     "nox",          # For running tests, building docs, and type checking noxfile.py
     "pre-commit",   # For pre-commit hooks
+    "coverage",     # For inspecting coverage reports
 ]
 
 [tool.ruff.lint]
