@@ -83,35 +83,35 @@ class SimTime:
         """Time in simulator steps."""
         return self.in_unit("step")
 
-    def __eq__(self, other: object) -> bool:  # noqa: D105
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, SimTime):
             return NotImplemented
         return self._steps == other._steps
 
-    def __lt__(self, other: SimTime) -> bool:  # noqa: D105
+    def __lt__(self, other: SimTime) -> bool:
         if not isinstance(other, SimTime):
             return NotImplemented
         return self._steps < other._steps
 
-    def __le__(self, other: SimTime) -> bool:  # noqa: D105
+    def __le__(self, other: SimTime) -> bool:
         if not isinstance(other, SimTime):
             return NotImplemented
         return self._steps <= other._steps
 
-    def __gt__(self, other: SimTime) -> bool:  # noqa: D105
+    def __gt__(self, other: SimTime) -> bool:
         if not isinstance(other, SimTime):
             return NotImplemented
         return self._steps > other._steps
 
-    def __ge__(self, other: SimTime) -> bool:  # noqa: D105
+    def __ge__(self, other: SimTime) -> bool:
         if not isinstance(other, SimTime):
             return NotImplemented
         return self._steps >= other._steps
 
-    def __hash__(self) -> int:  # noqa: D105
+    def __hash__(self) -> int:
         return hash(self._steps)
 
-    def __repr__(self) -> str:  # noqa: D105
+    def __repr__(self) -> str:
         return self._repr
 
     @cached_property
@@ -127,33 +127,33 @@ class SimTime:
             prefix = ""
         return f"{prefix}{type(self).__qualname__}({time}, {unit!r})"
 
-    def __neg__(self) -> SimTime:  # noqa: D105
+    def __neg__(self) -> SimTime:
         return SimTime(-self._steps, "step")
 
-    def __add__(self, other: SimTime) -> SimTime:  # noqa: D105
+    def __add__(self, other: SimTime) -> SimTime:
         if not isinstance(other, SimTime):
             return NotImplemented
         return SimTime(self._steps + other._steps, "step")
 
-    def __sub__(self, other: SimTime) -> SimTime:  # noqa: D105
+    def __sub__(self, other: SimTime) -> SimTime:
         if not isinstance(other, SimTime):
             return NotImplemented
         return SimTime(self._steps - other._steps, "step")
 
-    def __mul__(self, other: float) -> SimTime:  # noqa: D105
+    def __mul__(self, other: float) -> SimTime:
         if not isinstance(other, (float, int)):
             return NotImplemented
         return SimTime(self._steps * other, "step")
 
-    def __rmul__(self, other: float) -> SimTime:  # noqa: D105
+    def __rmul__(self, other: float) -> SimTime:
         return self * other
 
-    def __truediv__(self, other: float) -> SimTime:  # noqa: D105
+    def __truediv__(self, other: float) -> SimTime:
         if not isinstance(other, (float, int)):
             return NotImplemented
         return SimTime(self._steps / other, "step")
 
-    def __floordiv__(self, other: float) -> SimTime:  # noqa: D105
+    def __floordiv__(self, other: float) -> SimTime:
         if not isinstance(other, (float, int)):
             return NotImplemented
         return SimTime(self._steps // other, "step")

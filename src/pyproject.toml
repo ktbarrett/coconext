@@ -2,8 +2,12 @@
 extend = "../pyproject.toml"
 
 [tool.ruff.lint]
-extend-select = ["D"]
+extend-select = [
+    "D",    # pydoctyle
+]
 ignore = [
+    "D105",  # missing docstring in magic method (preference)
+    "D107",  # missing docstring in __init__ (preference)
     "D203",  # missing blank line before docstring (incompatible with D211)
     "D213",  # missing newline before first line of docstring (incompatible with D212)
 ]

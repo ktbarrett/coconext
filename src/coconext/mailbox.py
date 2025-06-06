@@ -18,7 +18,7 @@ class Mailbox(Sized, Generic[T]):
     .. versionadded:: 0.1
     """
 
-    def __init__(self) -> None:  # noqa: D107
+    def __init__(self) -> None:
         self._queue = Deque[T]()
         self._put_notify = Notify()
 

@@ -11,7 +11,7 @@ class Notify:
     .. versionadded:: 0.1
     """
 
-    def __init__(self) -> None:  # noqa: D107
+    def __init__(self) -> None:
         self._event = Event()
 
     def notify(self) -> None:
