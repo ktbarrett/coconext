@@ -9,10 +9,13 @@ class Notify:
     """Notify all waiters of an event.
 
     :class:`cocotb.triggers.Event` has state.
-    It can be in a state where :meth:`.Event.is_set` is ``True`` and calling
+    It can be in the state where :meth:`.Event.is_set` is ``False`` and calling
+    :meth:`.Event.wait` will return a Trigger that only fires after :meth:`.Event.set` is called.
+    Or it can be in a state where :meth:`.Event.is_set` is ``True`` and calling
     :meth:`.Event.wait` will return a Trigger that fires immediately.
 
-    This object odes not have a "set" state.
+    This object does not have state.
+    It behaves like :class:`.Event` if it were only ever in the :meth:`.Event.is_set` is ``False`` state.
     All calls to :meth:`wait` will block until the next call to :meth:`notify` occurs.
 
     .. versionadded:: 0.1
