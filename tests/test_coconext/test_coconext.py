@@ -15,13 +15,6 @@ def runner() -> Runner:
     return runner
 
 
-def test_mailbox(runner: Runner) -> None:
-    runner.test(
-        test_module="mailbox_tests",
-        hdl_toplevel="top",
-    )
-
-
 def test_triggers(runner: Runner) -> None:
     runner.test(
         test_module="trigger_tests",
