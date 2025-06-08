@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from cocotb.triggers import Event, Trigger
+from cocotb.triggers import Event
 
 
 class Notify:
@@ -29,6 +29,6 @@ class Notify:
         self._event.set()
         self._event.clear()
 
-    def wait(self) -> Trigger:
-        """Return Trigger that blocks until the notify() method is called."""
-        return self._event.wait()
+    async def wait(self) -> None:
+        """Wait until the notify() method is called."""
+        await self._event.wait()
