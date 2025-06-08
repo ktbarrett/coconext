@@ -13,17 +13,16 @@ if sys.version_info >= (3, 11):
     from typing import TypeAlias
 
 TimeUnit: TypeAlias = Literal["fs", "ps", "ns", "us", "ms", "sec", "step"]
-FreqUnit: TypeAlias = Literal["Hz", "kHz", "MHz", "GHz"]
 RoundMode: TypeAlias = Literal["error", "round", "ceil", "floor"]
 
 _UNITS: list[TimeUnit] = ["fs", "ps", "ns", "us", "ms", "sec"]
 
 
 class SimTime:
-    """Rich type for dealing with simulator time.
+    """Type for dealing with simulated time.
 
-    SimTime is time quantized to simulator steps.
-    If you can create a SimTime, you have a time that can be represented by the simulator.
+    :class:`!SimTime` is time quantized to simulator steps.
+    If you can create a :class:`!SimTime`, you have a time that can be represented by the simulator.
     The type also includes a collection of functionality commonly needed when dealing with time,
     such as comparison, scaling, and arithmetic.
     """

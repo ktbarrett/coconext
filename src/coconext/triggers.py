@@ -6,7 +6,14 @@ from cocotb.triggers import Event, Trigger
 
 
 class Notify:
-    """Object which wakes up all waiters when notify() is called.
+    """Notify all waiters of an event.
+
+    :class:`cocotb.triggers.Event` has state.
+    It can be in a state where :meth:`.Event.is_set` is ``True`` and calling
+    :meth:`.Event.wait` will return a Trigger that fires immediately.
+
+    This object odes not have a "set" state.
+    All calls to :meth:`wait` will block until the next call to :meth:`notify` occurs.
 
     .. versionadded:: 0.1
     """
