@@ -11,7 +11,7 @@ on:
 jobs:
   tests:
     name: Tests (Python ${{matrix.python-version}} | ${{matrix.simulator}})
-    runs-on: ubuntu-24.04
+    runs-on: ${{matrix.os}}
 
     env:
       SIM: ${{matrix.simulator}}
@@ -21,6 +21,8 @@ jobs:
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
         simulator: [nvc]
+        os: [ubuntu-24.04]
+        nvc_version: ["1.16.1"]
 
     steps:
     - uses: actions/checkout@v4
@@ -35,19 +37,16 @@ jobs:
         python-version: ${{matrix.python-version}}
         allow-prereleases: true
 
-    - name: Build NVC
-      if: matrix.simulator == 'nvc'
+    - name: Download NVC
+      uses: robinraju/release-downloader@v1
+      with:
+        repository: nickg/nvc
+        tag: r${{ matrix.nvc_version }}
+        filename: nvc_${{ matrix.nvc_version }}-1_amd64_${{ matrix.os }}.deb
+
+    - name: Install NVC
       run: |
-        sudo apt-get install -y --no-install-recommends llvm-dev libdw-dev flex
-        git clone --depth=1 --no-single-branch https://github.com/nickg/nvc.git
-        cd nvc
-        git reset --hard r1.16.0
-        ./autogen.sh
-        mkdir build
-        cd build
-        ../configure
-        make -j $(nproc)
-        sudo make install
+        sudo dpkg -i nvc_${{ matrix.nvc_version }}-1_amd64_${{ matrix.os }}.deb
 
     - name: Install Testing Dependencies
       # Must install cocotb from github until 2.0 is released
