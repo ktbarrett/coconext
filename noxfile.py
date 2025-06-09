@@ -26,4 +26,4 @@ def docs(session: nox.Session) -> None:
 def tests(session: nox.Session) -> None:
     session.install("-r", "tests/requirements.txt")
     session.install("-e", ".")
-    session.run("pytest", env={"COCOTB_USER_COVERAGE": "1"})
+    session.run("pytest", *session.posargs, env={"COCOTB_USER_COVERAGE": "1"})
