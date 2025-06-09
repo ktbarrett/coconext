@@ -11,3 +11,6 @@ ignore = [
     "D203",  # missing blank line before docstring (incompatible with D211)
     "D213",  # missing newline before first line of docstring (incompatible with D212)
 ]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
