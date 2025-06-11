@@ -1,4 +1,4 @@
 sphinx
 sphinx_rtd_theme
 git+https://github.com/ktbarrett/prettyspecialmethods
-git+https://github.com/cocotb/cocotb.git
+git+https://github.com/cocotb/cocotb.git@af7f0ed955bd871fc3ce1008ec3a15792b96e0de
