@@ -10,3 +10,4 @@ wheels/
 .mypy_cache/
 .ruff_cache/
 sim_build/
+.coverage
