@@ -5,10 +5,8 @@ from __future__ import annotations
 from collections import deque
 from typing import TYPE_CHECKING
 
-from cocotb.task import Task
+from cocotb.task import Task, current_task
 from cocotb.triggers import Event
-
-from coconext.task import current_task
 
 if TYPE_CHECKING:
     from typing import Self
