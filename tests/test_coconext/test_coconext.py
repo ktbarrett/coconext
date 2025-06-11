@@ -19,6 +19,7 @@ def test_triggers(runner: Runner) -> None:
     runner.test(
         test_module="trigger_tests",
         hdl_toplevel="top",
+        test_dir=runner.build_dir / "trigger_tests",
     )
 
 
@@ -26,4 +27,5 @@ def test_simtime(runner: Runner) -> None:
     runner.test(
         test_module="simtime_tests",
         hdl_toplevel="top",
+        test_dir=runner.build_dir / "simtime_tests",
     )
