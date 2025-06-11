@@ -35,7 +35,7 @@ repos:
   hooks:
   - id: mypy
     additional_dependencies:
-    - git+https://github.com/cocotb/cocotb.git
+    - git+https://github.com/cocotb/cocotb.git@af7f0ed955bd871fc3ce1008ec3a15792b96e0de
     - pytest
     - nox
 
