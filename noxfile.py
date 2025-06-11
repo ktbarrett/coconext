@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import glob
+
 import nox
 
 
@@ -27,3 +29,6 @@ def tests(session: nox.Session) -> None:
     session.install("-r", "tests/requirements.txt")
     session.install("-e", ".")
     session.run("pytest", *session.posargs, env={"COCOTB_USER_COVERAGE": "1"})
+    coverage_files = glob.glob("**/.coverage", recursive=True)
+    session.run("coverage", "combine", *coverage_files)
+    session.run("coverage", "report")
