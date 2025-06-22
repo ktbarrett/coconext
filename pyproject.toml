@@ -16,7 +16,11 @@ maintainers = [
 ]
 description = "Features for future versions of cocotb"
 readme = "README.md"
-dynamic = ["version", "license"]
+license = "BSD-3-Clause"
+license-files = [
+    "LICENSE",
+]
+dynamic = ["version"]
 
 [project.urls]
 Repository = "https://github.com/ktbarrett/coconext.git"
@@ -31,6 +35,9 @@ dev = [
     "pre-commit",   # For pre-commit hooks
     "coverage",     # For inspecting coverage reports
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "coconext.__version__"}
 
 [tool.ruff.lint]
 select = [
