@@ -37,3 +37,11 @@ def test_queues(runner: Runner) -> None:
         hdl_toplevel="top",
         test_dir=runner.build_dir / "queue_tests",
     )
+
+
+def test_task_manager(runner: Runner) -> None:
+    runner.test(
+        test_module="task_manager_tests",
+        hdl_toplevel="top",
+        test_dir=runner.build_dir / "task_manager_tests",
+    )
