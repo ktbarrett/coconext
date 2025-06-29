@@ -22,7 +22,7 @@ jobs:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
         simulator: [nvc]
         os: [ubuntu-24.04]
-        nvc_version: ["1.16.1"]
+        nvc-version: ["1.16.2"]
 
     steps:
     - uses: actions/checkout@v4
@@ -37,16 +37,10 @@ jobs:
         python-version: ${{matrix.python-version}}
         allow-prereleases: true
 
-    - name: Download NVC
-      uses: robinraju/release-downloader@v1
+    - name: Set up NVC
+      uses: nickg/setup-nvc@v1
       with:
-        repository: nickg/nvc
-        tag: r${{ matrix.nvc_version }}
-        filename: nvc_${{ matrix.nvc_version }}-1_amd64_${{ matrix.os }}.deb
-
-    - name: Install NVC
-      run: |
-        sudo dpkg -i nvc_${{ matrix.nvc_version }}-1_amd64_${{ matrix.os }}.deb
+        version: ${{matrix.nvc_version-version}}
 
     - name: Install uv
       uses: astral-sh/setup-uv@v5
