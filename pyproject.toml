@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "coconext"
 dependencies = [
-    "cocotb >= 2.0.dev0",
+    "cocotb >= 2.0",
 ]
 requires-python = ">=3.9"
 authors = [
@@ -25,16 +25,6 @@ dynamic = ["version"]
 [project.urls]
 Repository = "https://github.com/ktbarrett/coconext.git"
 "Bug Tracker" = "https://github.com/ktbarrett/coconext/issues"
-
-[project.optional-dependencies]
-dev = [
-    "ruff",         # For formatting and linting
-    "mypy",         # For type checking
-    "pytest",       # For typing test files (use nox to run tests)
-    "nox",          # For running tests, building docs, and type checking noxfile.py
-    "pre-commit",   # For pre-commit hooks
-    "coverage",     # For inspecting coverage reports
-]
 
 [tool.setuptools.dynamic]
 version = {attr = "coconext.__version__"}
@@ -78,4 +68,26 @@ exclude_lines = [
     "\\.\\.\\.",
     # excluding type checking blocks
     "if (typing\\.)?TYPE_CHECKING:"
+]
+
+[tool.uv.sources]
+sphinxcontrib-prettyspecialmethods = { git = "https://github.com/ktbarrett/prettyspecialmethods.git" }
+cocotb = { git = "https://github.com/cocotb/cocotb.git" }
+
+[dependency-groups]
+dev = [
+    "mypy>=1.16.1",
+    "nox[uv]>=2025.5.1",
+    "pre-commit>=4.2.0",
+    "pytest>=8.4.1",
+    "ruff>=0.12.1",
+]
+docs = [
+    "sphinx>=7.4.7",
+    "sphinx-rtd-theme>=3.0.2",
+    "sphinxcontrib-prettyspecialmethods",
+]
+tests = [
+    "coverage>=7.9.1",
+    "pytest>=8.4.1",
 ]

@@ -4,10 +4,12 @@ import glob
 
 import nox
 
+nox.options.default_venv_backend = "uv|virtualenv"
 
-@nox.session(reuse_venv=True)
+
+@nox.session
 def docs(session: nox.Session) -> None:
-    session.install("-r", "docs/requirements.txt")
+    session.install("--group", "docs")
     session.install(".")
 
     outdir = session.cache_dir / "docs_out"
@@ -24,9 +26,9 @@ def docs(session: nox.Session) -> None:
     session.log(f"Documentation is available at {index}")
 
 
-@nox.session(reuse_venv=True)
+@nox.session
 def tests(session: nox.Session) -> None:
-    session.install("-r", "tests/requirements.txt")
+    session.install("--group", "tests")
     session.install("-e", ".")
     session.run("pytest", *session.posargs, env={"COCOTB_USER_COVERAGE": "1"})
     coverage_files = glob.glob("**/.coverage", recursive=True)
