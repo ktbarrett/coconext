@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 import cocotb
 from cocotb.task import Task
 from cocotb.triggers import Timer
@@ -10,7 +8,7 @@ from coconext.triggers import Notify
 
 
 @cocotb.test
-async def test_notify(_: Any) -> None:
+async def test_notify(_: object) -> None:
     n = Notify()
 
     # start up a bunch of waiters on the notify

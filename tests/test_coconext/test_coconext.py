@@ -29,3 +29,11 @@ def test_simtime(runner: Runner) -> None:
         hdl_toplevel="top",
         test_dir=runner.build_dir / "simtime_tests",
     )
+
+
+def test_queues(runner: Runner) -> None:
+    runner.test(
+        test_module="queue_tests",
+        hdl_toplevel="top",
+        test_dir=runner.build_dir / "queue_tests",
+    )
