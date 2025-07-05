@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 import cocotb
 import pytest
 from cocotb.triggers import with_timeout
@@ -10,7 +8,7 @@ from coconext.simtime import SimTime
 
 
 @cocotb.test
-async def test_simtime(_: Any) -> None:
+async def test_simtime(_: object) -> None:
     # constructing SimTime
     assert SimTime(1, "fs").fs == 1
     assert SimTime(5, "ps").ps == 5
