@@ -6,7 +6,7 @@
 coconext documentation
 ======================
 
-A staging area for new `cocotb <https://github.com/cocotb/cocotb>` features.
+A staging area for new `cocotb <https://github.com/cocotb/cocotb>`_ features.
 This project will move faster and include more experimental features than may end up in the main repo.
 
 .. toctree::
