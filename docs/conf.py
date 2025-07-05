@@ -42,7 +42,7 @@ github_url = "https://github.com/ktbarrett/coconext/"
 # Options for autodoc
 ################################################################################
 
-autoclass_content = "both"
+autoclass_content = "class"
 autodoc_member_order = "bysource"
 autodoc_default_options = {
     "members": True,
