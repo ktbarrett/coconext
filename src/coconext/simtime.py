@@ -9,7 +9,7 @@ from typing import Literal
 from cocotb.triggers import Timer
 from cocotb.utils import get_sim_steps, get_time_from_sim_steps
 
-if sys.version_info >= (3, 11):
+if sys.version_info >= (3, 10):
     from typing import TypeAlias
 
 TimeUnit: TypeAlias = Literal["fs", "ps", "ns", "us", "ms", "sec", "step"]
