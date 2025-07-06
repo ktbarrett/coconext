@@ -141,16 +141,28 @@ async def wait(
     # order of cancellation may matter, so we use dict(), which is ordered unlike set()
     remaining = dict.fromkeys(tasks)
 
+    # Cancel all remaining tasks.
+    # Use a flag to prevent multiple cancellation.
+    cancelled: bool = False
+
+    def cancel() -> None:
+        nonlocal cancelled
+        if cancelled:
+            return
+
+        cancelled = True
+        for t in remaining:
+            t.cancel()
+
     # Define done_callbacks which set the "done" Event when the return condition is met.
     if return_when == "FIRST_COMPLETED":
 
         def done_callback(task: Task[Any]) -> None:
             del remaining[task]
-            done.set()
-
+            if not remaining:
+                done.set()
             # Cancel remaining before they have a chance to resume.
-            for t in remaining:
-                t.cancel()
+            cancel()
 
     elif return_when == "FIRST_EXCEPTION":
 
@@ -161,8 +173,7 @@ async def wait(
             elif not task.cancelled() and task.exception() is not None:
                 done.set()
                 # Cancel remaining before they have a chance to resume.
-                for t in remaining:
-                    t.cancel()
+                cancel()
 
     else:
 
