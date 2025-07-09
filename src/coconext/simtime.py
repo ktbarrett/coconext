@@ -1,4 +1,4 @@
-"""Types for dealing with simulation time."""
+"""Collections of tools for dealing with simulation time in cocotb."""
 
 from __future__ import annotations
 

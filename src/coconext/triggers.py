@@ -1,4 +1,4 @@
-"""Collection of tools for concurrency and synchronization in cocotb simulations."""
+"""Collection of tools for concurrency and synchronization in cocotb."""
 
 from __future__ import annotations
 

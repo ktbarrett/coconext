@@ -2,7 +2,7 @@
 # Licensed under the Revised BSD License, see LICENSE for details.
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Collection of asynchronous queues."""
+"""Collection of asynchronous queues for cocotb."""
 
 from __future__ import annotations
 
