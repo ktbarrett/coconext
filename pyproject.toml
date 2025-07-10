@@ -72,9 +72,6 @@ exclude_lines = [
     "if (typing\\.)?TYPE_CHECKING:"
 ]
 
-[tool.uv.sources]
-sphinxcontrib-prettyspecialmethods = { git = "https://github.com/ktbarrett/prettyspecialmethods.git" }
-
 [dependency-groups]
 dev = [
     "mypy>=1.16.1",
@@ -87,7 +84,7 @@ dev = [
 docs = [
     "sphinx>=7.4.7",
     "sphinx-rtd-theme>=3.0.2",
-    "sphinxcontrib-prettyspecialmethods",
+    "sphinxcontrib-prettyspecialmethods@https://github.com/sphinx-contrib/prettyspecialmethods.git",
 ]
 tests = [
     "coverage>=7.9.1",
