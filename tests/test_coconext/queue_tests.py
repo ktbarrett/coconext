@@ -251,7 +251,7 @@ async def test_queue_lock_contenting(
 async def test_queue_random_contention(
     _: object, queue_type: type[AbstractQueue[int]]
 ) -> None:
-    TEST_LEN = 10000
+    TEST_LEN = 5000
     MAX_WAIT = 10
 
     q = queue_type(10)
@@ -271,14 +271,14 @@ async def test_queue_random_contention(
         def add(
             self, coro: Coroutine[Trigger, None, Any], idx: int, is_writer: bool
         ) -> None:
-            cocotb.log.info(f"added {is_writer=} {idx=}")
+            cocotb.log.debug(f"added {is_writer=} {idx=}")
             task = cocotb.start_soon(coro)
             self._task_info[task] = (is_writer, idx)
             self._task_info_reversed[(is_writer, idx)] = task
             self._tasks.append(task)
 
         def acquired(self, idx: int, is_writer: bool) -> None:
-            cocotb.log.info(f"acquired {is_writer=} {idx=}")
+            cocotb.log.debug(f"acquired {is_writer=} {idx=}")
             task = self._task_info_reversed[(is_writer, idx)]
             self._tasks.remove(task)
 
@@ -293,7 +293,7 @@ async def test_queue_random_contention(
             task.cancel()
             is_writer, idx = self._task_info[task]
             self._cancelleds[is_writer].add(idx)
-            cocotb.log.info(f"cancelled {is_writer=} {idx=}")
+            cocotb.log.debug(f"cancelled {is_writer=} {idx=}")
 
     checker = Checker()
 

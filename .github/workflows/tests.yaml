@@ -52,7 +52,7 @@ jobs:
 
     - name: Run tests
       run: |
-        nox -s tests
+        nox -s tests -- -s
 
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v5
