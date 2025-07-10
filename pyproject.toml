@@ -63,15 +63,6 @@ warn_unused_ignores = true
 implicit_reexport = false
 show_error_codes = true
 
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    # for excluding typing stubs
-    "\\.\\.\\.",
-    # excluding type checking blocks
-    "if (typing\\.)?TYPE_CHECKING:"
-]
-
 [dependency-groups]
 dev = [
     "mypy>=1.16.1",
