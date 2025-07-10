@@ -33,4 +33,5 @@ def tests(session: nox.Session) -> None:
     session.run("pytest", *session.posargs, env={"COCOTB_USER_COVERAGE": "1"})
     coverage_files = glob.glob("**/.coverage", recursive=True)
     session.run("coverage", "combine", *coverage_files)
+    session.run("coverage", "xml")
     session.run("coverage", "report")

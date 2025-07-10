@@ -11,3 +11,4 @@ wheels/
 .ruff_cache/
 sim_build/
 .coverage
+coverage.xml
