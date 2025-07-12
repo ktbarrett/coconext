@@ -35,7 +35,7 @@ repos:
   hooks:
   - id: mypy
     additional_dependencies:
-    - cocotb@git+https://github.com/cocotb/cocotb.git
+    - cocotb>=2.0b
     - pytest
     - nox
 
