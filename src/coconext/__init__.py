@@ -6,4 +6,4 @@ This project will move faster and include more experimental features than may en
 
 from __future__ import annotations
 
-__version__ = "0.3.dev"
+__version__ = "0.2.2"
