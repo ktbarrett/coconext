@@ -5,7 +5,7 @@ from asyncio import CancelledError
 from collections.abc import Generator
 
 import cocotb
-from cocotb.triggers import Timer, Trigger
+from cocotb.triggers import Event, Timer, Trigger
 
 from coconext.triggers import TaskManager
 
@@ -148,3 +148,33 @@ async def test_TaskManager_start_soon_after_cancel(_: object) -> None:
         assert my_exc is not None
         assert len(my_exc.exceptions) == 1
         assert rest is None
+
+
+@cocotb.test
+async def test_cancel_in_aexit_with_nested(_: object) -> None:
+    cancelled = False
+    e = Event()
+
+    async with TaskManager() as a:
+
+        @a.fork
+        async def do_stuff() -> None:
+            async with TaskManager() as b:
+
+                @b.fork
+                async def gets_cancelled() -> None:
+                    try:
+                        await e.wait()
+                    finally:
+                        nonlocal cancelled
+                        cancelled = True
+
+        # wait until do_stuff's TaskManager is in __aexit__
+        await Timer(1)
+
+        # cancel do_stuff to see what happens when a TaskManager is cancelled when
+        # waiting for finish in __aexit__
+        do_stuff.cancel()
+
+    # ensure do_stuff's children are also cancelled
+    assert cancelled

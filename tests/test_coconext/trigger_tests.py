@@ -157,6 +157,8 @@ async def test_gather(_: object) -> None:
     assert b2 == 56
     assert c2 == timer2
 
+    assert await gather() == ()
+
 
 @cocotb.test
 async def test_select(_: object) -> None:
@@ -194,3 +196,17 @@ async def test_select(_: object) -> None:
     )
     assert idx == 0
     assert isinstance(res3, MyException)
+
+    with pytest.raises(ValueError):
+        await select()
+
+
+@cocotb.test
+async def test_cancel_while_waiting(_: object) -> None:
+    async def waiter() -> None:
+        await wait(Timer(2), return_when="ALL_COMPLETED")
+
+    task = cocotb.start_soon(waiter())
+    await Timer(1)
+    task.cancel()
+    await Timer(1)
