@@ -84,5 +84,6 @@ tests = [
 
 [tool.coverage.report]
 exclude_also = [
+    "@(abc\\.)?abstractmethod",
     "@(typing\\.)?overload",
 ]
