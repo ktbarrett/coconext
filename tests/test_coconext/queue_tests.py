@@ -54,7 +54,7 @@ async def test_queue_basic(_: object, queue_type: type[AbstractQueue[int]]) -> N
         q.put_nowait(3)
 
     # Save outputs in unordered collection since each queue type has different behavior.
-    outputs = set[int]()
+    outputs: set[int] = set()
 
     outputs.add(q.get_nowait())
     assert q.qsize() == 1
@@ -89,7 +89,7 @@ async def test_queue_async(_: object, queue_type: type[AbstractQueue[int]]) -> N
     with pytest.raises(SimTimeoutError):
         await with_timeout(q.put(3), 1, "step")
 
-    outputs = set[int]()
+    outputs: set[int] = set()
     outputs.add(await q.get())
     outputs.add(await q.get())
     with pytest.raises(SimTimeoutError):
@@ -190,7 +190,7 @@ async def test_queue_lock_multi_op(
         for i in range(10):
             q.put_nowait(i)
 
-    outputs = set[int]()
+    outputs: set[int] = set()
     async with q.read_lock:
         for _ in range(10):
             outputs.add(q.get_nowait())
@@ -259,7 +259,7 @@ async def test_queue_random_contention(
     class Checker:
         def __init__(self) -> None:
             self._last_seen = [0, 0]
-            self._cancelleds = (set[int](), set[int]())
+            self._cancelleds: tuple[set[int], set[int]] = (set(), set())
             self._tasks: list[Task[Any]] = []
             self._task_info: dict[Task[Any], tuple[bool, int]] = {}
             self._task_info_reversed: dict[tuple[bool, int], Task[Any]] = {}

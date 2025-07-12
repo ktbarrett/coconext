@@ -51,7 +51,7 @@ class AbstractQueue(Generic[T]):
 
         def __init__(self) -> None:
             self._current_acquirer: Task[object] | None = None
-            self._acquirers = deque[tuple[Event, Task]]()
+            self._acquirers: deque[tuple[Event, Task]] = deque()
 
         def locked(self) -> bool:
             """Return ``True`` if the lock is *locked*."""
@@ -272,7 +272,7 @@ class Queue(AbstractQueue[T]):
 
     def __init__(self, maxsize: int = 0) -> None:
         super().__init__(maxsize)
-        self._queue = deque[T]()
+        self._queue: deque[T] = deque()
 
     def _put(self, item: T) -> None:
         self._queue.append(item)
@@ -320,7 +320,7 @@ class LifoQueue(AbstractQueue[T]):
 
     def __init__(self, maxsize: int = 0) -> None:
         super().__init__(maxsize)
-        self._queue = deque[T]()
+        self._queue: deque[T] = deque()
 
     def _put(self, item: T) -> None:
         self._queue.append(item)
