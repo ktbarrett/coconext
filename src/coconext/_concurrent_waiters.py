@@ -192,15 +192,23 @@ async def select(
             If ``False`` (default), re-raises the exception when an *awaitable* results in an exception.
             If ``True``, returns the exception rather than re-raising when an *awaitable* results in an exception.
 
+    Raises:
+        ValueError: if missing at least one awaitable.
+
     Returns:
         A tuple of the index into the argument list (0-based) of the first *awaitable* to complete and its result.
     """
+    if len(awaitables) == 0:
+        raise ValueError("At least one awaitable required")
+
     tasks = await wait(*awaitables, return_when="FIRST_COMPLETED")
 
     # Find which awaitable completed.
     for idx, task in enumerate(tasks):
         if task.done() and not task.cancelled():
             break
+    else:  # pragma: no cover
+        raise RuntimeError("Reached unreachable code section")
 
     if return_exception and (exc := task.exception()) is not None:
         return idx, exc
@@ -282,6 +290,9 @@ async def gather(
         A tuple of the results of awaiting each *awaitable* in the same order they were given.
         The order of the return tuple corresponds to the order of the input.
     """
+    if len(awaitables) == 0:
+        return ()
+
     tasks = await wait(
         *awaitables,
         return_when="ALL_COMPLETED" if return_exceptions else "FIRST_EXCEPTION",
