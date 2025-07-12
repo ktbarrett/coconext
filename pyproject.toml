@@ -69,14 +69,17 @@ dev = [
     "ruff",
 ]
 docs = [
-    "sphinx>=8.2 ; python_version >= '3.11'",  # Require 8.2+ for :deco: directive
-    "sphinx-rtd-theme ; python_version >= '3.11'",
-    "sphinxcontrib-prettyspecialmethods @ https://github.com/sphinx-contrib/prettyspecialmethods.git ; python_version >= '3.11'",
+    "sphinx>=8.2",  # Require 8.2+ for :deco: directive
+    "sphinx-rtd-theme",
+    "sphinxcontrib-prettyspecialmethods@https://github.com/sphinx-contrib/prettyspecialmethods.git",
 ]
 tests = [
     "coverage[toml]>=7.2",  # Require 7.2+ for builtin coverage excludes and "exclude_also"
     "pytest",
 ]
+
+[tool.uv.dependency-groups]
+docs = {requires-python = ">=3.11"}
 
 [tool.coverage.report]
 exclude_also = [
