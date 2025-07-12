@@ -8,7 +8,7 @@ dependencies = [
     "cocotb~=2.0b",
     'exceptiongroup; python_version < "3.11"',
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.8"
 authors = [
     {name="Kaleb Barrett", email="dev.ktbarrett@gmail.com"},
 ]
@@ -17,11 +17,7 @@ maintainers = [
 ]
 description = "Features for future versions of cocotb"
 readme = "README.md"
-license = "BSD-3-Clause"
-license-files = [
-    "LICENSE",
-]
-dynamic = ["version"]
+dynamic = ["version", "license"]
 
 [project.urls]
 Repository = "https://github.com/ktbarrett/coconext.git"
