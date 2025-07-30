@@ -1,13 +1,17 @@
 from __future__ import annotations
 
-from collections.abc import Generator
+from typing import TYPE_CHECKING
 
 import cocotb
 import pytest
-from cocotb.task import Task
 from cocotb.triggers import NullTrigger, Timer, Trigger
 
 from coconext.triggers import Notify, gather, select, wait
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
+    from cocotb.task import Task
 
 
 @cocotb.test

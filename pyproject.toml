@@ -33,7 +33,8 @@ select = [
     "F",    # pyflakes
     "I",    # isort
     "UP",   # pyupgrade
-    "RUF"   # ruff
+    "RUF",  # ruff
+    "TC",   # flake8-typechecking
 ]
 ignore = [
     "E501",  # line too long

@@ -3,12 +3,10 @@ from __future__ import annotations
 import heapq
 import random
 from asyncio import QueueEmpty, QueueFull
-from collections.abc import Coroutine
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import cocotb
 import pytest
-from cocotb.task import Task
 from cocotb.triggers import (
     Combine,
     NullTrigger,
@@ -19,6 +17,11 @@ from cocotb.triggers import (
 )
 
 from coconext.queue import AbstractQueue, LifoQueue, PriorityQueue, Queue
+
+if TYPE_CHECKING:
+    from collections.abc import Coroutine
+
+    from cocotb.task import Task
 
 
 @cocotb.test(timeout_time=10, timeout_unit="ns")

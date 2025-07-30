@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import sys
 from asyncio import CancelledError
-from collections.abc import Awaitable
-from typing import Any, Literal, TypeVar, overload
+from typing import TYPE_CHECKING, Any, Literal, TypeVar, overload
 
 import cocotb
 from cocotb.task import Task
 from cocotb.triggers import Event
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable
 
 if sys.version_info >= (3, 10):
     from typing import TypeAlias

@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import sys
 from asyncio import CancelledError
-from collections.abc import Generator
+from typing import TYPE_CHECKING
 
 import cocotb
 from cocotb.triggers import Event, Timer, Trigger
 
 from coconext.triggers import TaskManager
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 if sys.version_info < (3, 11):
     from exceptiongroup import BaseExceptionGroup

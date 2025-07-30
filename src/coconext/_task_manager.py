@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import sys
 from asyncio import CancelledError
-from collections.abc import Awaitable, Callable, Coroutine
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import cocotb
 from cocotb.task import Task, current_task
 from cocotb.triggers import Event, Trigger
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable, Coroutine
 
 if sys.version_info >= (3, 11):
     from typing import Self
