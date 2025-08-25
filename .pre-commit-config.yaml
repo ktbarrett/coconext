@@ -13,7 +13,7 @@ repos:
   - id: check-toml
   - id: check-added-large-files
 - repo: https://github.com/henryiii/validate-pyproject-schema-store
-  rev: "2025.08.15"
+  rev: "2025.08.21"
   hooks:
     - id: validate-pyproject
 - repo: https://github.com/codespell-project/codespell
@@ -23,7 +23,7 @@ repos:
     additional_dependencies:
     - tomli
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: "v0.12.9"
+  rev: "v0.12.10"
   hooks:
     - id: "ruff"
       args:
