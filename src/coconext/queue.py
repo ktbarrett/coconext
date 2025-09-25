@@ -11,7 +11,7 @@ import sys
 from abc import abstractmethod
 from asyncio import QueueEmpty, QueueFull
 from collections import deque
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, Protocol, TypeVar
 
 from cocotb.task import Task, current_task
 from cocotb.triggers import Event
@@ -287,7 +287,20 @@ class Queue(AbstractQueue[T]):
         return len(self._queue)
 
 
-class PriorityQueue(AbstractQueue[T]):
+class _SupportsRichComparison(Protocol):
+    def __eq__(self, other: object) -> bool: ...
+    def __lt__(self, other: Self) -> bool: ...
+    def __le__(self, other: Self) -> bool: ...
+    def __gt__(self, other: Self) -> bool: ...
+    def __ge__(self, other: Self) -> bool: ...
+
+
+SupportsRichComparisonT = TypeVar(
+    "SupportsRichComparisonT", bound=_SupportsRichComparison
+)
+
+
+class PriorityQueue(AbstractQueue[SupportsRichComparisonT]):
     r"""A subclass of :class:`AbstractQueue`; retrieves entries in priority order (smallest item first).
 
     Entries are typically tuples of the form ``(priority number, data)``.
@@ -297,15 +310,15 @@ class PriorityQueue(AbstractQueue[T]):
 
     def __init__(self, maxsize: int = 0) -> None:
         super().__init__(maxsize)
-        self._queue: list[T] = []
+        self._queue: list[SupportsRichComparisonT] = []
 
-    def _put(self, item: T) -> None:
+    def _put(self, item: SupportsRichComparisonT) -> None:
         heapq.heappush(self._queue, item)
 
-    def _get(self) -> T:
+    def _get(self) -> SupportsRichComparisonT:
         return heapq.heappop(self._queue)
 
-    def _peek(self) -> T:
+    def _peek(self) -> SupportsRichComparisonT:
         return self._queue[0]
 
     def _size(self) -> int:
