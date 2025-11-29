@@ -10,6 +10,11 @@ ignore = [
     "D107",  # missing docstring in __init__ (preference)
     "D203",  # missing blank line before docstring (incompatible with D211)
     "D213",  # missing newline before first line of docstring (incompatible with D212)
+    # We don't want to use TYPE_CHECKING blocks so autodoc can resolve symbols
+    # since it doesn't set TYPE_CHECKING.
+    "TC001", # typing-only first-party import
+    "TC002", # typing-only third-party import
+    "TC003", # typing-only standard library import
 ]
 
 [tool.ruff.lint.pydocstyle]
