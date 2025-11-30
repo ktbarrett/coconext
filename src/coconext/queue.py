@@ -145,7 +145,7 @@ class AbstractQueue(Generic[T]):
         self._read_lock = self._ReadLock(self)
 
     @property
-    def write_lock(self) -> Lock:
+    def write_lock(self) -> AbstractQueue.Lock:
         """Lock for exclusive write access.
 
         After acquiring this lock, the user has exclusive access to the write-side of the queue until the lock is released.
@@ -154,7 +154,7 @@ class AbstractQueue(Generic[T]):
         return self._write_lock
 
     @property
-    def read_lock(self) -> Lock:
+    def read_lock(self) -> AbstractQueue.Lock:
         """Lock for exclusive read access.
 
         After acquiring this lock, the user has exclusive access to the read-side of the queue until the lock is released.

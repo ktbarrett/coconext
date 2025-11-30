@@ -71,6 +71,7 @@ dev = [
 ]
 docs = [
     "sphinx>=8.2",  # Require 8.2+ for :deco: directive
+    "sphinx-autodoc-typehints",
     "sphinx-rtd-theme",
     "sphinxcontrib-prettyspecialmethods@https://github.com/sphinx-contrib/prettyspecialmethods.git",
 ]

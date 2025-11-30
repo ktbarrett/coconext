@@ -22,6 +22,7 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
+    "sphinx_autodoc_typehints",
     "sphinxcontrib.prettyspecialmethods",
     "sphinx_rtd_theme",
 ]
@@ -48,8 +49,10 @@ autodoc_default_options = {
     "members": True,
     "special-members": True,
     "exclude-members": "__weakref__",
+    "show-inheritance": True,
 }
 autodoc_typehints = "signature"
+autodoc_class_signature = "separated"
 
 # Options for intersphinx
 ################################################################################
