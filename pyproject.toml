@@ -76,6 +76,7 @@ docs = [
 ]
 tests = [
     "coverage[toml]>=7.2",  # Require 7.2+ for builtin coverage excludes and "exclude_also"
+    "pytest-cov",
     "pytest",
 ]
 
