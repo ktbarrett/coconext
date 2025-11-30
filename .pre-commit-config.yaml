@@ -35,9 +35,10 @@ repos:
   hooks:
   - id: mypy
     additional_dependencies:
-    - cocotb>=2.0b
+    - cocotb>=2.0
     - pytest
     - nox
+    - sphinx
 
 ci:
   autofix_prs: false

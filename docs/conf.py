@@ -4,7 +4,13 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 from __future__ import annotations
 
+import pathlib
+import sys
+
 from coconext import __version__
+
+# Add current directory to path to pick up local extensions
+sys.path.insert(0, pathlib.Path.cwd().as_posix())
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
@@ -25,6 +31,7 @@ extensions = [
     "sphinx_autodoc_typehints",
     "sphinxcontrib.prettyspecialmethods",
     "sphinx_rtd_theme",
+    "ignore_undoc_special_methods",
 ]
 
 templates_path = ["_templates"]
