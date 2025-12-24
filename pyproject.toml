@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "coconext"
 dependencies = [
-    "cocotb~=2.0",
+    "cocotb@https://github.com/cocotb/cocotb.git",
     'exceptiongroup; python_version < "3.11"',
 ]
 requires-python = ">=3.9,<3.15"
