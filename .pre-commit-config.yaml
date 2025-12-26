@@ -39,6 +39,12 @@ repos:
     - pytest
     - nox
     - sphinx
+- repo: "https://github.com/pre-commit/mirrors-clang-format"
+  rev: "v21.1.8"
+  hooks:
+  - id: "clang-format"
+    exclude: "^src/cocotb/share/include/(sv_vpi|vhpi|vpi)_user(_ext)?.h"
+    types_or: [c, c++]
 
 ci:
   autofix_prs: false
