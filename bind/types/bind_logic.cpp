@@ -120,7 +120,7 @@ void register_logic(nb::module_& m) {
              nb::is_operator())
         .def("__invert__", nb::overload_cast<const Logic&>(&operator~),
              nb::is_operator())
-        .def_prop_ro("is_resolvable", &is_resolvable)
+        .def_prop_ro("is_resolvable", &is_01)
         .def("resolve",
              [](const Logic& value, std::string_view method) {
                  return resolve(value, string_to_resolve_method(method));
