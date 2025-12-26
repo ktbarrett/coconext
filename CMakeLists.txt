@@ -25,6 +25,7 @@ nanobind_add_module(
     LTO
     bind/types/bind.cpp
     bind/types/bind_logic.cpp
+    bind/types/bind_range.cpp
 )
 target_link_libraries(types PRIVATE coconext)
 

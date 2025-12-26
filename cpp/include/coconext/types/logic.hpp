@@ -1,11 +1,10 @@
 #ifndef COCONEXT_LOGIC_HPP
 #define COCONEXT_LOGIC_HPP
 
+#include <coconext/types/concepts.hpp>
 #include <cstdint>
 #include <stdexcept>
 #include <string_view>
-
-#include "./concepts.hpp"
 
 namespace coconext::types {
 
