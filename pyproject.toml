@@ -29,7 +29,7 @@ Repository = "https://github.com/ktbarrett/coconext.git"
 
 [tool.scikit-build.metadata.version]
 provider = "scikit_build_core.metadata.regex"
-input = "src/coconext/__init__.py"
+input = "python/coconext/__init__.py"
 
 [tool.ruff.lint]
 select = [
@@ -43,6 +43,7 @@ select = [
 ]
 ignore = [
     "E501",  # line too long
+    "E741",  # ambiguous variable name
 ]
 
 [tool.ruff.lint.isort]
