@@ -259,7 +259,7 @@ constexpr Bit operator~(const Bit& value) noexcept {
     return to_bit(~Logic(value));
 }
 
-constexpr bool is_resolvable(const Logic& value) noexcept {
+constexpr bool is_01(const Logic& value) noexcept {
     return value == '0'_l || value == '1'_l || value == 'L'_l || value == 'H'_l;
 }
 
