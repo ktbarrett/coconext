@@ -28,13 +28,12 @@ nanobind_add_module(
 )
 target_link_libraries(types PRIVATE coconext)
 
+install(TARGETS types DESTINATION coconext)
+
 nanobind_add_stub(
   types_stub
-  MODULE types
-  OUTPUT types.pyi
-  PYTHON_PATH $<TARGET_FILE_DIR:types>
-  DEPENDS types
+  INSTALL_TIME
+  MODULE coconext.types
+  OUTPUT coconext/types.pyi
+  PYTHON_PATH "."
 )
-
-install(TARGETS types DESTINATION coconext)
-install(FILES $<TARGET_FILE_DIR:types>/types.pyi DESTINATION coconext)
