@@ -10,7 +10,7 @@ namespace coconext::types {
 
 class Logic {
 public:
-    enum value_type : uint8_t {
+    enum class value_type : uint8_t {
         U,
         X,
         _0,
@@ -21,9 +21,16 @@ public:
         H,
         DC,
     };
+    using enum value_type;
 
 public:
-    constexpr Logic() noexcept : value_(U) {}
+    // ensures that these are constexpr since enum classes are not literal types
+    constexpr Logic() noexcept = default;
+    constexpr Logic(const Logic&) noexcept = default;
+    constexpr Logic& operator=(const Logic&) noexcept = default;
+    constexpr Logic(Logic&&) noexcept = default;
+    constexpr Logic& operator=(Logic&&) noexcept = default;
+
     constexpr Logic(value_type value) noexcept : value_(value) {}
     template <typename T>
         requires requires { to_logic(std::declval<T>()); }
@@ -34,11 +41,17 @@ public:
     constexpr value_type value() const noexcept { return value_; }
 
 private:
-    value_type value_;
+    value_type value_ = U;
 };
 
 class Bit : public Logic {
 public:
+    // ensures that these are constexpr since enum classes are not literal types
+    constexpr Bit(const Bit&) noexcept = default;
+    constexpr Bit& operator=(const Bit&) noexcept = default;
+    constexpr Bit(Bit&&) noexcept = default;
+    constexpr Bit& operator=(Bit&&) noexcept = default;
+
     constexpr Bit() noexcept : Logic(_0) {}
     constexpr Bit(value_type value) noexcept : Logic(value) {}
     template <typename T>
@@ -50,51 +63,16 @@ constexpr bool operator==(const Logic& lhs, const Logic& rhs) noexcept {
     return lhs.value() == rhs.value();
 }
 
-constexpr Logic operator""_l(char c) {
-    switch (c) {
-    case 'U':
-        return Logic::U;
-    case 'X':
-        return Logic::X;
-    case '0':
-        return Logic::_0;
-    case '1':
-        return Logic::_1;
-    case 'Z':
-        return Logic::Z;
-    case 'W':
-        return Logic::W;
-    case 'L':
-        return Logic::L;
-    case 'H':
-        return Logic::H;
-    case '-':
-        return Logic::DC;
-    default:
-        throw std::invalid_argument("Invalid logic value");
-    }
-}
-
-constexpr Bit operator""_b(char c) {
-    switch (c) {
-    case '0':
-        return Logic::_0;
-    case '1':
-        return Logic::_1;
-    default:
-        throw std::invalid_argument("Invalid bit value");
-    }
-}
-
 template <Character CharType>
 constexpr Logic to_logic(CharType value) {
+    using enum Logic::value_type;
     constexpr struct {
         CharType chr;
         Logic val;
     } chr_map[] = {
-        {'U', 'U'_l}, {'u', 'U'_l}, {'X', 'X'_l}, {'x', 'X'_l}, {'0', '0'_l},
-        {'1', '1'_l}, {'Z', 'Z'_l}, {'z', 'Z'_l}, {'W', 'W'_l}, {'w', 'W'_l},
-        {'L', 'L'_l}, {'l', 'L'_l}, {'H', 'H'_l}, {'h', 'H'_l}, {'-', '-'_l},
+        {'U', U},  {'u', U}, {'X', X}, {'x', X}, {'0', _0},
+        {'1', _1}, {'Z', Z}, {'z', Z}, {'W', W}, {'w', W},
+        {'L', L},  {'l', L}, {'H', H}, {'h', H}, {'-', DC},
     };
     for (const auto& [chr, val] : chr_map) {
         if (value == chr) {
@@ -114,9 +92,9 @@ constexpr Logic to_logic(std::string_view value) {
 template <Integer IntType>
 constexpr Logic to_logic(IntType value) {
     if (value == 0) {
-        return '0'_l;
+        return Logic::_0;
     } else if (value == 1) {
-        return '1'_l;
+        return Logic::_1;
     } else {
         throw std::invalid_argument("Invalid logic value");
     }
@@ -127,9 +105,9 @@ constexpr Logic to_logic(const Bit& value) { return value; }
 template <Character CharType>
 constexpr Bit to_bit(CharType value) {
     if (value == '0') {
-        return '0'_b;
+        return Logic::_0;
     } else if (value == '1') {
-        return '1'_b;
+        return Logic::_1;
     } else {
         throw std::invalid_argument("Invalid bit value");
     }
@@ -145,16 +123,16 @@ constexpr Bit to_bit(std::string_view value) {
 template <Integer IntType>
 constexpr Bit to_bit(IntType value) {
     if (value == 0) {
-        return '0'_b;
+        return Logic::_0;
     } else if (value == 1) {
-        return '1'_b;
+        return Logic::_1;
     } else {
         throw std::invalid_argument("Invalid bit value");
     }
 }
 
 constexpr Bit to_bit(const Logic& value) {
-    if (value == '0'_l || value == '1'_l) {
+    if (value == Logic::_0 || value == Logic::_1) {
         return Bit(value.value());
     } else {
         throw std::invalid_argument("Invalid bit value");
@@ -183,19 +161,20 @@ constexpr long long to_int(const Logic& value) {
 }
 
 constexpr Logic operator|(const Logic& lhs, const Logic& rhs) noexcept {
+    using enum Logic::value_type;
     constexpr Logic const table[9][9] = {
         // ---------------------
         //  U X 0 1 Z W L H -
         // ---------------------
-        /* U */ {'U'_l, 'U'_l, 'U'_l, '1'_l, 'U'_l, 'U'_l, 'U'_l, '1'_l, 'U'_l},
-        /* X */ {'U'_l, 'X'_l, 'X'_l, '1'_l, 'X'_l, 'X'_l, 'X'_l, '1'_l, 'X'_l},
-        /* 0 */ {'U'_l, 'X'_l, '0'_l, '1'_l, 'X'_l, 'X'_l, '0'_l, '1'_l, 'X'_l},
-        /* 1 */ {'1'_l, '1'_l, '1'_l, '1'_l, '1'_l, '1'_l, '1'_l, '1'_l, '1'_l},
-        /* Z */ {'U'_l, 'X'_l, 'X'_l, '1'_l, 'X'_l, 'X'_l, 'X'_l, '1'_l, 'X'_l},
-        /* W */ {'U'_l, 'X'_l, 'X'_l, '1'_l, 'X'_l, 'X'_l, 'X'_l, '1'_l, 'X'_l},
-        /* L */ {'U'_l, 'X'_l, '0'_l, '1'_l, 'X'_l, 'X'_l, '0'_l, '1'_l, 'X'_l},
-        /* H */ {'1'_l, '1'_l, '1'_l, '1'_l, '1'_l, '1'_l, '1'_l, '1'_l, '1'_l},
-        /* - */ {'U'_l, 'X'_l, 'X'_l, '1'_l, 'X'_l, 'X'_l, 'X'_l, '1'_l, 'X'_l},
+        /* U */ {U, U, U, _1, U, U, U, _1, U},
+        /* X */ {U, X, X, _1, X, X, X, _1, X},
+        /* 0 */ {U, X, _0, _1, X, X, _0, _1, X},
+        /* 1 */ {_1, _1, _1, _1, _1, _1, _1, _1, _1},
+        /* Z */ {U, X, X, _1, X, X, X, _1, X},
+        /* W */ {U, X, X, _1, X, X, X, _1, X},
+        /* L */ {U, X, _0, _1, X, X, _0, _1, X},
+        /* H */ {_1, _1, _1, _1, _1, _1, _1, _1, _1},
+        /* - */ {U, X, X, _1, X, X, X, _1, X},
     };
     return table[static_cast<size_t>(lhs.value())]
                 [static_cast<size_t>(rhs.value())];
@@ -206,19 +185,20 @@ constexpr Bit operator|(const Bit& lhs, const Bit& rhs) noexcept {
 }
 
 constexpr Logic operator&(const Logic& lhs, const Logic& rhs) noexcept {
+    using enum Logic::value_type;
     constexpr Logic const table[9][9] = {
         // ---------------------
         //  U X 0 1 Z W L H -
         // ---------------------
-        /* U */ {'U'_l, 'U'_l, '0'_l, 'U'_l, 'U'_l, 'U'_l, '0'_l, 'U'_l, 'U'_l},
-        /* X */ {'U'_l, 'X'_l, '0'_l, 'X'_l, 'X'_l, 'X'_l, '0'_l, 'X'_l, 'X'_l},
-        /* 0 */ {'0'_l, '0'_l, '0'_l, '0'_l, '0'_l, '0'_l, '0'_l, '0'_l, '0'_l},
-        /* 1 */ {'U'_l, 'X'_l, '0'_l, '1'_l, 'X'_l, 'X'_l, '0'_l, '1'_l, 'X'_l},
-        /* Z */ {'U'_l, 'X'_l, '0'_l, 'X'_l, 'X'_l, 'X'_l, '0'_l, 'X'_l, 'X'_l},
-        /* W */ {'U'_l, 'X'_l, '0'_l, 'X'_l, 'X'_l, 'X'_l, '0'_l, 'X'_l, 'X'_l},
-        /* L */ {'0'_l, '0'_l, '0'_l, '0'_l, '0'_l, '0'_l, '0'_l, '0'_l, '0'_l},
-        /* H */ {'U'_l, 'X'_l, '0'_l, '1'_l, 'X'_l, 'X'_l, '0'_l, '1'_l, 'X'_l},
-        /* - */ {'U'_l, 'X'_l, '0'_l, 'X'_l, 'X'_l, 'X'_l, '0'_l, 'X'_l, 'X'_l},
+        /* U */ {U, U, _0, U, U, U, _0, U, U},
+        /* X */ {U, X, _0, X, X, X, _0, X, X},
+        /* 0 */ {_0, _0, _0, _0, _0, _0, _0, _0, _0},
+        /* 1 */ {U, X, _0, _1, X, X, _0, _1, X},
+        /* Z */ {U, X, _0, X, X, X, _0, X, X},
+        /* W */ {U, X, _0, X, X, X, _0, X, X},
+        /* L */ {_0, _0, _0, _0, _0, _0, _0, _0, _0},
+        /* H */ {U, X, _0, _1, X, X, _0, _1, X},
+        /* - */ {U, X, _0, X, X, X, _0, X, X},
     };
     return table[static_cast<size_t>(lhs.value())]
                 [static_cast<size_t>(rhs.value())];
@@ -229,19 +209,20 @@ constexpr Bit operator&(const Bit& lhs, const Bit& rhs) noexcept {
 }
 
 constexpr Logic operator^(const Logic& lhs, const Logic& rhs) noexcept {
+    using enum Logic::value_type;
     constexpr Logic const table[9][9] = {
         // ---------------------
         //  U X 0 1 Z W L H -
         // ---------------------
-        /* U */ {'U'_l, 'U'_l, 'U'_l, 'U'_l, 'U'_l, 'U'_l, 'U'_l, 'U'_l, 'U'_l},
-        /* X */ {'U'_l, 'X'_l, 'X'_l, 'X'_l, 'X'_l, 'X'_l, 'X'_l, 'X'_l, 'X'_l},
-        /* 0 */ {'U'_l, 'X'_l, '0'_l, '1'_l, 'X'_l, 'X'_l, '0'_l, '1'_l, 'X'_l},
-        /* 1 */ {'U'_l, 'X'_l, '1'_l, '0'_l, 'X'_l, 'X'_l, '1'_l, '0'_l, 'X'_l},
-        /* Z */ {'U'_l, 'X'_l, 'X'_l, 'X'_l, 'X'_l, 'X'_l, 'X'_l, 'X'_l, 'X'_l},
-        /* W */ {'U'_l, 'X'_l, 'X'_l, 'X'_l, 'X'_l, 'X'_l, 'X'_l, 'X'_l, 'X'_l},
-        /* L */ {'U'_l, 'X'_l, '0'_l, '1'_l, 'X'_l, 'X'_l, '0'_l, '1'_l, 'X'_l},
-        /* H */ {'U'_l, 'X'_l, '1'_l, '0'_l, 'X'_l, 'X'_l, '1'_l, '0'_l, 'X'_l},
-        /* - */ {'U'_l, 'X'_l, 'X'_l, 'X'_l, 'X'_l, 'X'_l, 'X'_l, 'X'_l, 'X'_l},
+        /* U */ {U, U, U, U, U, U, U, U, U},
+        /* X */ {U, X, X, X, X, X, X, X, X},
+        /* 0 */ {U, X, _0, _1, X, X, _0, _1, X},
+        /* 1 */ {U, X, _1, _0, X, X, _1, _0, X},
+        /* Z */ {U, X, X, X, X, X, X, X, X},
+        /* W */ {U, X, X, X, X, X, X, X, X},
+        /* L */ {U, X, _0, _1, X, X, _0, _1, X},
+        /* H */ {U, X, _1, _0, X, X, _1, _0, X},
+        /* - */ {U, X, X, X, X, X, X, X, X},
     };
     return table[static_cast<size_t>(lhs.value())]
                 [static_cast<size_t>(rhs.value())];
@@ -252,11 +233,12 @@ constexpr Bit operator^(const Bit& lhs, const Bit& rhs) noexcept {
 }
 
 constexpr Logic operator~(const Logic& value) noexcept {
+    using enum Logic::value_type;
     constexpr Logic const table[9] = {
         // ----------------
         //  U  X  0  1  Z  W  L  H  -
         // ----------------
-        'U'_l, 'X'_l, '1'_l, '0'_l, 'X'_l, 'X'_l, '1'_l, '0'_l, 'X'_l,
+        U, X, _1, _0, X, X, _1, _0, X,
     };
     return table[static_cast<size_t>(value.value())];
 }
@@ -266,7 +248,8 @@ constexpr Bit operator~(const Bit& value) noexcept {
 }
 
 constexpr bool is_01(const Logic& value) noexcept {
-    return value == '0'_l || value == '1'_l || value == 'L'_l || value == 'H'_l;
+    return value == Logic::_0 || value == Logic::_1 || value == Logic::L ||
+           value == Logic::H;
 }
 
 enum class ResolveMethod {

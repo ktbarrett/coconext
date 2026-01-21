@@ -21,8 +21,14 @@ public:
 
     public:
         constexpr iterator() noexcept = default;
+        constexpr iterator(const iterator&) noexcept = default;
+        constexpr iterator& operator=(const iterator&) noexcept = default;
+        constexpr iterator(iterator&&) noexcept = default;
+        constexpr iterator& operator=(iterator&&) noexcept = default;
         constexpr iterator(value_type current, Direction direction) noexcept
             : current_(current), direction_(direction) {}
+
+    public:
         constexpr value_type operator*() const noexcept { return current_; }
         constexpr iterator& operator++() noexcept {
             if (direction_ == Direction::TO) {
@@ -57,6 +63,15 @@ public:
     };
 
 public:
+    // not default constructible
+    constexpr Range() noexcept = delete;
+
+    // ensures that these are constexpr since enum classes are not literal types
+    constexpr Range(const Range&) noexcept = default;
+    constexpr Range& operator=(const Range&) noexcept = default;
+    constexpr Range(Range&&) noexcept = default;
+    constexpr Range& operator=(Range&&) noexcept = default;
+
     explicit constexpr Range(value_type left, Direction direction,
                              value_type right) noexcept
         : left_(left), right_(right), direction_(direction) {}
