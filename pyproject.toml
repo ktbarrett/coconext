@@ -74,6 +74,8 @@ dev = [
     "pre-commit",
     "pytest",
     "ruff",
+    "cmake",
+    "scikit-build-core",
 ]
 docs = [
     "sphinx>=8.2",  # Require 8.2+ for :deco: directive
