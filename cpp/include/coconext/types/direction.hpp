@@ -22,6 +22,10 @@ public:
             throw std::invalid_argument("Invalid direction value");
         }
     }
+    template <typename T>
+        requires requires { to_direction(std::declval<T>()); }
+    explicit constexpr Direction(T&& value)
+        : value_(to_direction(std::forward<T>(value)).value()) {}
     constexpr value_type value() const noexcept { return value_; }
 
 private:
