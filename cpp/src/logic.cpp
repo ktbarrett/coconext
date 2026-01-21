@@ -16,9 +16,9 @@ Logic resolve(const Logic& value, ResolveMethod method) {
         case Logic::_1:
             return value;
         case Logic::L:
-            return '0'_l;
+            return Logic::_0;
         case Logic::H:
-            return '1'_l;
+            return Logic::_1;
         default:
             throw std::invalid_argument("Logic value is not resolvable");
         }
@@ -28,11 +28,11 @@ Logic resolve(const Logic& value, ResolveMethod method) {
         case Logic::_1:
             return value;
         case Logic::L:
-            return '0'_l;
+            return Logic::_0;
         case Logic::H:
-            return '1'_l;
+            return Logic::_1;
         case Logic::W:
-            return 'X'_l;
+            return Logic::X;
         default:
             return value;
         }
@@ -42,11 +42,11 @@ Logic resolve(const Logic& value, ResolveMethod method) {
         case Logic::_1:
             return value;
         case Logic::L:
-            return '0'_l;
+            return Logic::_0;
         case Logic::H:
-            return '1'_l;
+            return Logic::_1;
         default:
-            return '0'_l;
+            return Logic::_0;
         }
     case ResolveMethod::ONES:
         switch (value.value()) {
@@ -54,11 +54,11 @@ Logic resolve(const Logic& value, ResolveMethod method) {
         case Logic::_1:
             return value;
         case Logic::L:
-            return '0'_l;
+            return Logic::_0;
         case Logic::H:
-            return '1'_l;
+            return Logic::_1;
         default:
-            return '1'_l;
+            return Logic::_1;
         }
     case ResolveMethod::RANDOM: {
         switch (value.value()) {
@@ -66,11 +66,12 @@ Logic resolve(const Logic& value, ResolveMethod method) {
         case Logic::_1:
             return value;
         case Logic::L:
-            return '0'_l;
+            return Logic::_0;
         case Logic::H:
-            return '1'_l;
+            return Logic::_1;
         default:
-            return (get_rng()() % 2 == 0) ? '0'_l : '1'_l;
+            auto& rng = get_rng();
+            return (rng() % 2 == 0) ? Logic::_0 : Logic::_1;
         }
     }
     default:

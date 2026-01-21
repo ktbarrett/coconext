@@ -11,11 +11,11 @@ namespace coconext::types {
 class Logic {
 public:
     enum class value_type : uint8_t {
-        U,
-        X,
         _0,
         _1,
+        X,
         Z,
+        U,
         W,
         L,
         H,
@@ -41,7 +41,7 @@ public:
     constexpr value_type value() const noexcept { return value_; }
 
 private:
-    value_type value_ = U;
+    value_type value_ = _0;
 };
 
 class Bit : public Logic {
@@ -141,7 +141,7 @@ constexpr Bit to_bit(const Logic& value) {
 
 constexpr std::string_view to_string(const Logic& value) noexcept {
     constexpr char const* const str_map[] = {
-        "U", "X", "0", "1", "Z", "W", "L", "H", "-",
+        "0", "1", "X", "Z", "U", "W", "L", "H", "-",
     };
     return str_map[static_cast<size_t>(value.value())];
 }
@@ -163,88 +163,95 @@ constexpr long long to_int(const Logic& value) {
 constexpr Logic operator|(const Logic& lhs, const Logic& rhs) noexcept {
     using enum Logic::value_type;
     constexpr Logic const table[9][9] = {
-        // ---------------------
-        //  U X 0 1 Z W L H -
-        // ---------------------
-        /* U */ {U, U, U, _1, U, U, U, _1, U},
-        /* X */ {U, X, X, _1, X, X, X, _1, X},
-        /* 0 */ {U, X, _0, _1, X, X, _0, _1, X},
+        // clang-format off
+        // ------------------------------------------
+        // ---|   0   1   X   Z   U   W   L   H   -
+        // ------------------------------------------
+        /* 0 */ {_0, _1,  X,  X,  U,  X, _0, _1,  X},
         /* 1 */ {_1, _1, _1, _1, _1, _1, _1, _1, _1},
-        /* Z */ {U, X, X, _1, X, X, X, _1, X},
-        /* W */ {U, X, X, _1, X, X, X, _1, X},
-        /* L */ {U, X, _0, _1, X, X, _0, _1, X},
+        /* X */ { X, _1,  X,  X,  U,  X,  X, _1,  X},
+        /* Z */ { X, _1,  X,  X,  U,  X,  X, _1,  X},
+        /* U */ { U, _1,  U,  U,  U,  U,  U, _1,  U},
+        /* W */ { X, _1,  X,  X,  U,  X,  X, _1,  X},
+        /* L */ {_0, _1,  X,  X,  U,  X, _0, _1,  X},
         /* H */ {_1, _1, _1, _1, _1, _1, _1, _1, _1},
-        /* - */ {U, X, X, _1, X, X, X, _1, X},
+        /* - */ { X, _1,  X,  X,  U,  X,  X, _1,  X},
+        // clang-format on
     };
     return table[static_cast<size_t>(lhs.value())]
                 [static_cast<size_t>(rhs.value())];
 }
 
 constexpr Bit operator|(const Bit& lhs, const Bit& rhs) noexcept {
-    return to_bit(Logic(lhs) | Logic(rhs));
+    return Bit::value_type(int(lhs.value()) | int(rhs.value()));
 }
 
 constexpr Logic operator&(const Logic& lhs, const Logic& rhs) noexcept {
     using enum Logic::value_type;
     constexpr Logic const table[9][9] = {
-        // ---------------------
-        //  U X 0 1 Z W L H -
-        // ---------------------
-        /* U */ {U, U, _0, U, U, U, _0, U, U},
-        /* X */ {U, X, _0, X, X, X, _0, X, X},
+        // clang-format off
+        // ------------------------------------------
+        // ---|   0   1   X   Z   U   W   L   H   -
+        // ------------------------------------------
         /* 0 */ {_0, _0, _0, _0, _0, _0, _0, _0, _0},
-        /* 1 */ {U, X, _0, _1, X, X, _0, _1, X},
-        /* Z */ {U, X, _0, X, X, X, _0, X, X},
-        /* W */ {U, X, _0, X, X, X, _0, X, X},
+        /* 1 */ {_0, _1,  X,  X,  U,  X, _0, _1,  X},
+        /* X */ {_0,  X,  X,  X,  U,  X, _0,  X,  X},
+        /* Z */ {_0,  X,  X,  X,  U,  X, _0,  X,  X},
+        /* U */ {_0,  U,  U,  U,  U,  U, _0,  U,  U},
+        /* W */ {_0,  X,  X,  X,  U,  X, _0,  X,  X},
         /* L */ {_0, _0, _0, _0, _0, _0, _0, _0, _0},
-        /* H */ {U, X, _0, _1, X, X, _0, _1, X},
-        /* - */ {U, X, _0, X, X, X, _0, X, X},
+        /* H */ {_0, _1,  X,  X,  U,  X, _0, _1,  X},
+        /* - */ {_0,  X,  X,  X,  U,  X, _0,  X,  X},
+        // clang-format on
     };
     return table[static_cast<size_t>(lhs.value())]
                 [static_cast<size_t>(rhs.value())];
 }
 
 constexpr Bit operator&(const Bit& lhs, const Bit& rhs) noexcept {
-    return to_bit(Logic(lhs) & Logic(rhs));
+    return Bit::value_type(int(lhs.value()) & int(rhs.value()));
 }
 
 constexpr Logic operator^(const Logic& lhs, const Logic& rhs) noexcept {
     using enum Logic::value_type;
     constexpr Logic const table[9][9] = {
-        // ---------------------
-        //  U X 0 1 Z W L H -
-        // ---------------------
-        /* U */ {U, U, U, U, U, U, U, U, U},
-        /* X */ {U, X, X, X, X, X, X, X, X},
-        /* 0 */ {U, X, _0, _1, X, X, _0, _1, X},
-        /* 1 */ {U, X, _1, _0, X, X, _1, _0, X},
-        /* Z */ {U, X, X, X, X, X, X, X, X},
-        /* W */ {U, X, X, X, X, X, X, X, X},
-        /* L */ {U, X, _0, _1, X, X, _0, _1, X},
-        /* H */ {U, X, _1, _0, X, X, _1, _0, X},
-        /* - */ {U, X, X, X, X, X, X, X, X},
+        // clang-format off
+        // ------------------------------------------
+        // ---|   0   1   X   Z   U   W   L   H   -
+        // ------------------------------------------
+        /* 0 */ {_0, _1,  X,  X,  U,  X, _0, _1,  X},
+        /* 1 */ {_1, _0,  X,  X,  U,  X, _1, _0,  X},
+        /* X */ { X,  X,  X,  X,  U,  X,  X,  X,  X},
+        /* Z */ { X,  X,  X,  X,  U,  X,  X,  X,  X},
+        /* U */ { U,  U,  U,  U,  U,  U,  U,  U,  U},
+        /* W */ { X,  X,  X,  X,  U,  X,  X,  X,  X},
+        /* L */ {_0, _1,  X,  X,  U,  X, _0, _1,  X},
+        /* H */ {_1, _0,  X,  X,  U,  X, _1, _0,  X},
+        /* - */ { X,  X,  X,  X,  U,  X,  X,  X,  X},
+        // clang-format on
     };
     return table[static_cast<size_t>(lhs.value())]
                 [static_cast<size_t>(rhs.value())];
 }
 
 constexpr Bit operator^(const Bit& lhs, const Bit& rhs) noexcept {
-    return to_bit(Logic(lhs) ^ Logic(rhs));
+    return Bit::value_type(int(lhs.value()) ^ int(rhs.value()));
 }
 
 constexpr Logic operator~(const Logic& value) noexcept {
     using enum Logic::value_type;
     constexpr Logic const table[9] = {
-        // ----------------
-        //  U  X  0  1  Z  W  L  H  -
-        // ----------------
-        U, X, _1, _0, X, X, _1, _0, X,
+        // clang-format off
+        /*
+         0   1   X   Z   U   W   L   H   - */
+        _1, _0,  X,  X,  U,  X, _1, _0,  X,
+        // clang-format on
     };
     return table[static_cast<size_t>(value.value())];
 }
 
 constexpr Bit operator~(const Bit& value) noexcept {
-    return to_bit(~Logic(value));
+    return value == Bit::_0 ? Bit::_1 : Bit::_0;
 }
 
 constexpr bool is_01(const Logic& value) noexcept {
