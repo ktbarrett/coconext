@@ -68,6 +68,10 @@ public:
         : left_(left),
           right_(right),
           direction_(left >= right ? Direction::DOWNTO : Direction::TO) {}
+    template <typename T>
+        requires requires { to_range(std::declval<T>()); }
+    explicit constexpr Range(T&& value)
+        : Range(to_range(std::forward<T>(value))) {}
 
 public:
     constexpr value_type left() const noexcept { return left_; }

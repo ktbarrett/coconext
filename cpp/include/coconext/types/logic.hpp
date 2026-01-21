@@ -25,6 +25,10 @@ public:
 public:
     constexpr Logic() noexcept : value_(U) {}
     constexpr Logic(value_type value) noexcept : value_(value) {}
+    template <typename T>
+        requires requires { to_logic(std::declval<T>()); }
+    explicit constexpr Logic(T&& value)
+        : value_(to_logic(std::forward<T>(value)).value()) {}
 
 public:
     constexpr value_type value() const noexcept { return value_; }
@@ -36,7 +40,10 @@ private:
 class Bit : public Logic {
 public:
     constexpr Bit() noexcept : Logic(_0) {}
-    using Logic::Logic;
+    constexpr Bit(value_type value) noexcept : Logic(value) {}
+    template <typename T>
+        requires requires { to_bit(std::declval<T>()); }
+    explicit constexpr Bit(T&& value) : Logic(to_bit(std::forward<T>(value))) {}
 };
 
 constexpr bool operator==(const Logic& lhs, const Logic& rhs) noexcept {
