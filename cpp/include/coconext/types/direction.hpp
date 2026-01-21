@@ -69,4 +69,18 @@ constexpr Direction operator""_dir(const char* str, size_t len) {
 
 }  // namespace coconext::types
 
+namespace std {
+
+template <>
+class hash<coconext::types::Direction> {
+public:
+    size_t operator()(
+        const coconext::types::Direction& direction) const noexcept {
+        return std::hash<coconext::types::Direction::value_type>()(
+            direction.value());
+    }
+};
+
+}  // namespace std
+
 #endif  // COCONEXT_DIRECTION_HPP
