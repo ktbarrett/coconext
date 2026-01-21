@@ -282,5 +282,24 @@ Logic resolve(const Logic& value, ResolveMethod method);
 inline Bit resolve(const Bit& value, ResolveMethod method) { return value; }
 
 }  // namespace coconext::types
+namespace std {
+
+template <>
+class hash<coconext::types::Logic> {
+public:
+    size_t operator()(const coconext::types::Logic& logic) const noexcept {
+        return std::hash<coconext::types::Logic::value_type>()(logic.value());
+    }
+};
+
+template <>
+class hash<coconext::types::Bit> {
+public:
+    size_t operator()(const coconext::types::Bit& bit) const noexcept {
+        return std::hash<coconext::types::Bit::value_type>()(bit.value());
+    }
+};
+
+}  // namespace std
 
 #endif  // COCONEXT_LOGIC_HPP

@@ -173,4 +173,18 @@ static_assert(std::ranges::bidirectional_range<Range>);
 
 }  // namespace coconext::types
 
+namespace std {
+
+template <>
+class hash<coconext::types::Range> {
+public:
+    size_t operator()(const coconext::types::Range& range) const noexcept {
+        return std::hash<coconext::types::Range::value_type>()(range.left()) ^
+               std::hash<coconext::types::Range::value_type>()(range.right()) ^
+               std::hash<coconext::types::Direction>()(range.direction());
+    }
+};
+
+}  // namespace std
+
 #endif  // COCONEXT_RANGE_HPP
