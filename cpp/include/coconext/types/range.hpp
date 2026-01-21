@@ -56,10 +56,6 @@ public:
         Direction direction_;
     };
 
-    using const_iterator = iterator;
-    using reverse_iterator = iterator;
-    using const_reverse_iterator = iterator;
-
 public:
     explicit constexpr Range(value_type left, Direction direction,
                              value_type right) noexcept
@@ -83,29 +79,23 @@ public:
     }
 
 public:
-    constexpr iterator begin() const noexcept {
+    constexpr auto begin() const noexcept {
         return iterator(left_, direction_);
     };
-    constexpr iterator end() const noexcept {
+    constexpr auto end() const noexcept {
         return iterator(
             direction_ == Direction::TO ? left_ + length() : left_ - length(),
             direction_);
     };
-    constexpr const_iterator cbegin() const noexcept { return begin(); }
-    constexpr const_iterator cend() const noexcept { return end(); }
-    constexpr reverse_iterator rbegin() const noexcept {
+    constexpr auto rbegin() const noexcept {
         return iterator(right_, direction_ == Direction::TO ? Direction::DOWNTO
                                                             : Direction::TO);
     };
-    constexpr reverse_iterator rend() const noexcept {
+    constexpr auto rend() const noexcept {
         return iterator(
             direction_ == Direction::TO ? right_ - length() : right_ + length(),
             direction_ == Direction::TO ? Direction::DOWNTO : Direction::TO);
     };
-    constexpr const_reverse_iterator crbegin() const noexcept {
-        return rbegin();
-    }
-    constexpr const_reverse_iterator crend() const noexcept { return rend(); }
 
 public:
     constexpr value_type operator[](size_t index) const {
