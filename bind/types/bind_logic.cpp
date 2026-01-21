@@ -16,9 +16,9 @@ static Logic to_logic(const nb::int_& value) {
     static nb::int_ zero = nb::int_(0);
     static nb::int_ one = nb::int_(1);
     if (value.equal(zero)) {
-        return '0'_l;
+        return Logic::_0;
     } else if (value.equal(one)) {
-        return '1'_l;
+        return Logic::_1;
     } else {
         throw std::invalid_argument("Invalid logic string");
     }
@@ -28,9 +28,9 @@ static Bit to_bit(const nb::int_& value) {
     static nb::int_ zero = nb::int_(0);
     static nb::int_ one = nb::int_(1);
     if (value.equal(zero)) {
-        return '0'_b;
+        return Logic::_0;
     } else if (value.equal(one)) {
-        return '1'_b;
+        return Logic::_1;
     } else {
         throw std::invalid_argument("Invalid bit string");
     }
