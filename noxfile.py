@@ -9,8 +9,7 @@ nox.options.default_venv_backend = "uv|virtualenv"
 
 @nox.session
 def docs(session: nox.Session) -> None:
-    session.install("--group", "docs")
-    session.install(".")
+    session.run("uv", "sync", "--active", "--group", "docs")
 
     outdir = session.cache_dir / "docs_out"
     session.run(
@@ -28,8 +27,7 @@ def docs(session: nox.Session) -> None:
 
 @nox.session
 def tests(session: nox.Session) -> None:
-    session.install("--group", "tests")
-    session.install("-e", ".")
+    session.run("uv", "sync", "--active", "--group", "tests")
     session.run(
         "pytest", "--cov=coconext", *session.posargs, env={"COCOTB_USER_COVERAGE": "1"}
     )
