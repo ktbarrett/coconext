@@ -115,7 +115,16 @@ void register_range(nb::module_& m) {
                  res += ")";
                  return res;
              })
-        .def("index", &Range::indexof, ""_a.noconvert())
+        .def(
+            "index",
+            [](const Range& self, int32_t value) {
+                auto it = find(self, value);
+                if (it == self.end()) {
+                    throw nb::value_error("Value not found in range");
+                }
+                return std::distance(self.begin(), it);
+            },
+            ""_a.noconvert())
         .def(
             "count",
             [](const Range& self, int32_t value) noexcept {

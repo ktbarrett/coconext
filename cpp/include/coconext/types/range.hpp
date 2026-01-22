@@ -190,19 +190,8 @@ public:
     }
 #endif
 
-    constexpr size_t indexof(value_type value) const {
-        if (direction_ == Direction::TO) {
-            if (value < left_ || value > right_) {
-                throw std::domain_error("Value out of range");
-            }
-            return static_cast<size_t>(value - left_);
-        } else {
-            if (value > left_ || value < right_) {
-                throw std::domain_error("Value out of range");
-            }
-            return static_cast<size_t>(left_ - value);
-        }
-    }
+    friend constexpr Range::iterator find(const Range& range,
+                                          Range::value_type value);
 
 private:
     value_type left_;
@@ -264,6 +253,20 @@ inline size_t hash(const Range& range) noexcept {
     return std::hash<Range::value_type>()(range.left()) ^
            std::hash<Range::value_type>()(range.right()) ^
            std::hash<Direction::value_type>()(range.direction().value());
+}
+
+// more optimal implementation of std::ranges::find for Range
+constexpr Range::iterator find(const Range& range, Range::value_type value) {
+    if (range.direction_ == Direction::TO) {
+        if (value < range.left_ || value > range.right_) {
+            return range.end();
+        }
+    } else {
+        if (value > range.left_ || value < range.right_) {
+            return range.end();
+        }
+    }
+    return Range::iterator(value, range.direction_);
 }
 
 static_assert(std::ranges::random_access_range<Range>);
