@@ -25,7 +25,7 @@ jobs:
         nvc-version: ["1.16.2"]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         # GitHub PR's create a merge commit, and Actions are run on that commit.
         # Codecov's uploader needs the previous commit (tip of PR branch) to associate coverage correctly.
