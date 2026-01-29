@@ -32,7 +32,7 @@ jobs:
         # A fetch depth of 2 provides enough information without fetching the entire history.
         fetch-depth: 2
 
-    - uses: actions/setup-python@v5
+    - uses: actions/setup-python@v6
       with:
         python-version: ${{matrix.python-version}}
         allow-prereleases: true
