@@ -103,7 +103,8 @@ void register_range(nb::module_& m) {
         .def("__eq__",
              nb::overload_cast<const Range&, const Range&>(&operator==),
              nb::is_operator(), ""_a.noconvert())
-        .def("__hash__", nb::overload_cast<const Range&>(&hash))
+        .def("__hash__",
+             [](const Range& self) { return std::hash<Range>()(self); })
         .def("__repr__",
              [](const Range& self) {
                  auto res = std::string("Range(");

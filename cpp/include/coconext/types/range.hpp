@@ -249,12 +249,6 @@ constexpr bool operator==(const Range& lhs, const Range& rhs) noexcept {
            lhs.direction() == rhs.direction();
 }
 
-inline size_t hash(const Range& range) noexcept {
-    return std::hash<Range::value_type>()(range.left()) ^
-           std::hash<Range::value_type>()(range.right()) ^
-           std::hash<Direction::value_type>()(range.direction().value());
-}
-
 // more optimal implementation of std::ranges::find for Range
 constexpr Range::iterator find(const Range& range, Range::value_type value) {
     if (range.direction_ == Direction::TO) {
