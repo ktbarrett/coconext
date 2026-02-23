@@ -56,6 +56,51 @@ public:
             --(*this);
             return temp;
         }
+        constexpr iterator operator+(difference_type n) const noexcept {
+            if (direction_ == Direction::TO) {
+                return iterator(current_ + n, direction_);
+            } else {
+                return iterator(current_ - n, direction_);
+            }
+        }
+        constexpr iterator operator-(difference_type n) const noexcept {
+            if (direction_ == Direction::TO) {
+                return iterator(current_ - n, direction_);
+            } else {
+                return iterator(current_ + n, direction_);
+            }
+        }
+        constexpr difference_type operator-(
+            const iterator& other) const noexcept {
+            if (direction_ == Direction::TO) {
+                return current_ - other.current_;
+            } else {
+                return other.current_ - current_;
+            }
+        }
+        constexpr iterator& operator+=(difference_type n) noexcept {
+            if (direction_ == Direction::TO) {
+                current_ += n;
+            } else {
+                current_ -= n;
+            }
+            return *this;
+        }
+        constexpr iterator& operator-=(difference_type n) noexcept {
+            if (direction_ == Direction::TO) {
+                current_ -= n;
+            } else {
+                current_ += n;
+            }
+            return *this;
+        }
+        constexpr value_type operator[](difference_type n) const noexcept {
+            return *(*this + n);
+        }
+        friend constexpr iterator operator+(difference_type n,
+                                            const iterator& it) noexcept;
+        friend constexpr bool operator<(const iterator& lhs,
+                                        const iterator& rhs) noexcept;
 
     private:
         value_type current_;
@@ -170,6 +215,43 @@ constexpr bool operator==(const Range::iterator& lhs,
     return *lhs == *rhs;
 }
 
+constexpr bool operator!=(const Range::iterator& lhs,
+                          const Range::iterator& rhs) noexcept {
+    return !(lhs == rhs);
+}
+
+constexpr bool operator<(const Range::iterator& lhs,
+                         const Range::iterator& rhs) noexcept {
+    // We are assuming that the iterators are from the same range, so we don't
+    // need to check if the directions are the same. If they are from different
+    // Ranges, the behavior is undefined.
+    if (lhs.direction_ == Direction::TO) {
+        return *lhs < *rhs;
+    } else {
+        return *lhs > *rhs;
+    }
+}
+
+constexpr bool operator<=(const Range::iterator& lhs,
+                          const Range::iterator& rhs) noexcept {
+    return (lhs < rhs) || (lhs == rhs);
+}
+
+constexpr bool operator>(const Range::iterator& lhs,
+                         const Range::iterator& rhs) noexcept {
+    return !(lhs <= rhs);
+}
+
+constexpr bool operator>=(const Range::iterator& lhs,
+                          const Range::iterator& rhs) noexcept {
+    return !(lhs < rhs);
+}
+
+constexpr Range::iterator operator+(Range::iterator::difference_type n,
+                                    const Range::iterator& it) noexcept {
+    return it + n;
+}
+
 constexpr bool operator==(const Range& lhs, const Range& rhs) noexcept {
     if ((lhs.length() == 0) && (rhs.length() == 0)) {
         return true;
@@ -184,7 +266,7 @@ inline size_t hash(const Range& range) noexcept {
            std::hash<Direction::value_type>()(range.direction().value());
 }
 
-static_assert(std::ranges::bidirectional_range<Range>);
+static_assert(std::ranges::random_access_range<Range>);
 
 }  // namespace coconext::types
 
