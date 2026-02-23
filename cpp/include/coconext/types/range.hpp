@@ -193,6 +193,11 @@ public:
     friend constexpr Range::iterator find(const Range& range,
                                           Range::value_type value);
 
+    friend constexpr bool operator==(const Range& lhs,
+                                     const Range& rhs) noexcept;
+
+    friend class std::hash<coconext::types::Range>;
+
 private:
     value_type left_;
     value_type right_;
@@ -245,8 +250,8 @@ constexpr bool operator==(const Range& lhs, const Range& rhs) noexcept {
     if ((lhs.length() == 0) && (rhs.length() == 0)) {
         return true;
     }
-    return lhs.left() == rhs.left() && lhs.right() == rhs.right() &&
-           lhs.direction() == rhs.direction();
+    return lhs.left_ == rhs.left_ && lhs.right_ == rhs.right_ &&
+           lhs.direction_ == rhs.direction_;
 }
 
 // more optimal implementation of std::ranges::find for Range
@@ -273,9 +278,9 @@ template <>
 class hash<coconext::types::Range> {
 public:
     size_t operator()(const coconext::types::Range& range) const noexcept {
-        return std::hash<coconext::types::Range::value_type>()(range.left()) ^
-               std::hash<coconext::types::Range::value_type>()(range.right()) ^
-               std::hash<coconext::types::Direction>()(range.direction());
+        return std::hash<coconext::types::Range::value_type>()(range.left_) ^
+               std::hash<coconext::types::Range::value_type>()(range.right_) ^
+               std::hash<coconext::types::Direction>()(range.direction_);
     }
 };
 
