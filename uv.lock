@@ -1289,7 +1289,7 @@ wheels = [
 
 [[package]]
 name = "scikit-build-core"
-version = "0.12.0"
+version = "0.12.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "exceptiongroup", marker = "python_full_version < '3.11'" },
@@ -1298,9 +1298,9 @@ dependencies = [
     { name = "tomli", marker = "python_full_version < '3.11'" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/98/1f/15176e98ff3f88797bd289179ee77dc2cf462d9b21b8bc1b10c099eb7811/scikit_build_core-0.12.0.tar.gz", hash = "sha256:1314e683adc6f6b7186f154f120f85f113544c4f7c0bffcd7be3afe6377a3e26", size = 302652, upload-time = "2026-02-24T20:52:00.195Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ed/15/9045d60554e2efe07baf66974f96862e3aa237ecd6bf6ce5ef4c71f883cb/scikit_build_core-0.12.1.tar.gz", hash = "sha256:bb663e71116bcd23d208ef30e5b94aa14f225f3704794d9429017ea9b461b0da", size = 302856, upload-time = "2026-02-26T23:54:23.661Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/66/fe/dddda3cf88b19c20fe449817fb571615289260fbd8c3537b0dc20decfa59/scikit_build_core-0.12.0-py3-none-any.whl", hash = "sha256:710bbc9483f09503a7aeaeff3f3871be210698a09dd9ce8a09df484edbfa60a6", size = 192595, upload-time = "2026-02-24T20:51:58.067Z" },
+    { url = "https://files.pythonhosted.org/packages/7f/cf/821507c2785e4c52ccddf10f6bf70336577558ddb3e783c0dd2a85636843/scikit_build_core-0.12.1-py3-none-any.whl", hash = "sha256:21377eacbafa1ecad6110de3d9929b60c6ce95c05d43c954a131b412b941ea56", size = 192613, upload-time = "2026-02-26T23:54:22.287Z" },
 ]
 
 [[package]]
