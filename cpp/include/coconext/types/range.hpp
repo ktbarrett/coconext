@@ -97,8 +97,6 @@ public:
         constexpr value_type operator[](difference_type n) const noexcept {
             return *(*this + n);
         }
-        friend constexpr iterator operator+(difference_type n,
-                                            const iterator& it) noexcept;
         friend constexpr bool operator<(const iterator& lhs,
                                         const iterator& rhs) noexcept;
 
