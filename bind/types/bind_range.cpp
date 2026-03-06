@@ -61,14 +61,9 @@ void register_range(nb::module_& m) {
             "range"_a)
         .def_prop_ro("left", &Range::left)
         .def_prop_ro("right", &Range::right)
-        .def_prop_ro("direction",
-                     [](const Range& self) {
-                         if (self.direction() == Direction::TO) {
-                             return "to";
-                         } else {
-                             return "downto";
-                         }
-                     })
+        .def_prop_ro(
+            "direction",
+            [](const Range& self) { return to_string(self.direction()); })
         .def("__len__", [](const Range& self) { return self.length(); })
         .def(
             "__contains__",
