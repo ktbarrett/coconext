@@ -14,6 +14,8 @@ using namespace nb::literals;
 using namespace coconext::types;
 
 void register_range(nb::module_& m) {
+    nb::object range_func = nb::module_::import_("builtins").attr("range");
+
     nb::enum_<Direction::value_type>(m, "Direction")
         .value("TO", Direction::TO)
         .value("DOWNTO", Direction::DOWNTO);
@@ -74,14 +76,20 @@ void register_range(nb::module_& m) {
             },
             ""_a.noconvert())
         .def("__iter__",
-             [](const Range& self) {
-                 return nb::make_iterator(nb::type<Range>(), "iterator",
-                                          self.begin(), self.end());
+             [range_func](const Range& self) {
+                 return nb::iter(range_func(
+                     self.left(),
+                     self.right() +
+                         ((self.direction() == Direction::TO) ? 1 : -1),
+                     (self.direction() == Direction::TO) ? 1 : -1));
              })
         .def("__reversed__",
-             [](const Range& self) {
-                 return nb::make_iterator(nb::type<Range>(), "reverse_iterator",
-                                          self.rbegin(), self.rend());
+             [range_func](const Range& self) {
+                 return nb::iter(range_func(
+                     self.right(),
+                     self.left() -
+                         ((self.direction() == Direction::TO) ? 1 : -1),
+                     (self.direction() == Direction::TO) ? -1 : 1));
              })
         .def("__getitem__", &Range::operator[], ""_a.noconvert())
         .def(
