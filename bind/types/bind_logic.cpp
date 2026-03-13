@@ -12,30 +12,6 @@ using namespace nb::literals;
 
 using namespace coconext::types;
 
-static Logic to_logic(const nb::int_& value) {
-    static nb::int_ zero = nb::int_(0);
-    static nb::int_ one = nb::int_(1);
-    if (value.equal(zero)) {
-        return Logic::_0;
-    } else if (value.equal(one)) {
-        return Logic::_1;
-    } else {
-        throw std::invalid_argument("Invalid logic string");
-    }
-}
-
-static Bit to_bit(const nb::int_& value) {
-    static nb::int_ zero = nb::int_(0);
-    static nb::int_ one = nb::int_(1);
-    if (value.equal(zero)) {
-        return Logic::_0;
-    } else if (value.equal(one)) {
-        return Logic::_1;
-    } else {
-        throw std::invalid_argument("Invalid bit string");
-    }
-}
-
 static ResolveMethod string_to_resolve_method(std::string_view method) {
     if (method == "error") {
         return ResolveMethod::ERROR;
@@ -65,16 +41,19 @@ void register_logic(nb::module_& m) {
         .value("RANDOM", ResolveMethod::RANDOM);
 
     nb::class_<Logic>(m, "Logic")
+        .def(nb::init<const Logic&>())
+        .def("__init__",
+             [](Logic* self, const Bit& value) {
+                 new (self) Logic(to_logic(value));
+             })
         .def("__init__",
              [](Logic* self, std::string_view value) {
                  new (self) Logic(to_logic(value));
              })
         .def("__init__",
-             [](Logic* self, nb::int_ value) {
+             [](Logic* self, long long value) {
                  new (self) Logic(to_logic(value));
              })
-        .def(nb::init<const Logic&>())
-        .def(nb::init<const Bit&>())
         .def("__str__", &to_string)
         .def("__index__", &to_int)
         .def("__bool__", [](const Logic& self) { return to_int(self) != 0; })
@@ -86,12 +65,17 @@ void register_logic(nb::module_& m) {
                  return res;
              })
         .def("__len__", [](const Logic&) { return 1; })
-        .def("__eq__",
-             nb::overload_cast<const Logic&, const Logic&>(&operator==),
-             nb::is_operator())
         .def(
             "__eq__",
-            [](const Logic& self, nb::int_ other) {
+            [](const Logic& lhs, const Logic& rhs) { return lhs == rhs; },
+            nb::is_operator())
+        .def(
+            "__eq__",
+            [](const Logic& lhs, const Bit& rhs) { return lhs == rhs; },
+            nb::is_operator())
+        .def(
+            "__eq__",
+            [](const Logic& self, long long other) {
                 try {
                     return self == to_logic(other);
                 } catch (const std::invalid_argument&) {
@@ -109,18 +93,30 @@ void register_logic(nb::module_& m) {
                 }
             },
             nb::is_operator())
-        .def("__or__",
-             nb::overload_cast<const Logic&, const Logic&>(&operator|),
-             nb::is_operator())
-        .def("__and__",
-             nb::overload_cast<const Logic&, const Logic&>(&operator&),
-             nb::is_operator())
-        .def("__xor__",
-             nb::overload_cast<const Logic&, const Logic&>(&operator^),
-             nb::is_operator())
+        .def(
+            "__or__",
+            [](const Logic& lhs, const Logic& rhs) { return lhs | rhs; },
+            nb::is_operator())
+        .def(
+            "__or__", [](const Logic& a, const Bit& b) { return a | b; },
+            nb::is_operator())
+        .def(
+            "__and__",
+            [](const Logic& lhs, const Logic& rhs) { return lhs & rhs; },
+            nb::is_operator())
+        .def(
+            "__and__", [](const Logic& a, const Bit& b) { return a & b; },
+            nb::is_operator())
+        .def(
+            "__xor__",
+            [](const Logic& lhs, const Logic& rhs) { return lhs ^ rhs; },
+            nb::is_operator())
+        .def(
+            "__xor__", [](const Logic& a, const Bit& b) { return a ^ b; },
+            nb::is_operator())
         .def("__invert__", nb::overload_cast<const Logic&>(&operator~),
              nb::is_operator())
-        .def_prop_ro("is_resolvable", &is_01)
+        .def_prop_ro("is_resolvable", nb::overload_cast<const Logic&>(&is_01))
         .def("resolve",
              [](const Logic& value, std::string_view method) {
                  return resolve(value, string_to_resolve_method(method));
@@ -134,18 +130,21 @@ void register_logic(nb::module_& m) {
             return Logic(self);
         });
 
-    nb::class_<Bit, Logic>(m, "Bit")
+    nb::class_<Bit>(m, "Bit")
+        .def(nb::init<const Bit&>())
+        .def("__init__",
+             [](Bit* self, const Logic& value) {
+                 new (self) Bit(to_bit(value));
+             })
         .def("__init__",
              [](Bit* self, std::string_view value) {
                  new (self) Bit(to_bit(value));
              })
         .def("__init__",
-             [](Bit* self, nb::int_ value) { new (self) Bit(to_bit(value)); })
-        .def("__init__",
-             [](Bit* self, const Logic& value) {
-                 new (self) Bit(to_bit(value));
-             })
-        .def(nb::init<const Bit&>())
+             [](Bit* self, long long value) { new (self) Bit(to_bit(value)); })
+        .def("__str__", &to_string)
+        .def("__index__", &to_int)
+        .def("__bool__", [](const Bit& self) { return to_int(self) != 0; })
         .def("__repr__",
              [](const Bit& self) {
                  auto res = std::string("Bit('");
@@ -153,27 +152,58 @@ void register_logic(nb::module_& m) {
                  res += "')";
                  return res;
              })
-        .def("__or__", nb::overload_cast<const Bit&, const Bit&>(&operator|),
-             nb::is_operator())
-        .def("__or__",
-             nb::overload_cast<const Logic&, const Logic&>(&operator|),
-             nb::is_operator())
-        .def("__and__", nb::overload_cast<const Bit&, const Bit&>(&operator&),
-             nb::is_operator())
-        .def("__and__",
-             nb::overload_cast<const Logic&, const Logic&>(&operator&),
-             nb::is_operator())
+        .def("__len__", [](const Logic&) { return 1; })
         .def(
-            // not sure why overload_cast won't work here.
-            "__and__", [](const Bit& a, const Logic& b) { return a & b; },
+            "__eq__", [](const Bit& lhs, const Bit& rhs) { return lhs == rhs; },
             nb::is_operator())
-        .def("__xor__", nb::overload_cast<const Bit&, const Bit&>(&operator^),
-             nb::is_operator())
-        .def("__xor__",
-             nb::overload_cast<const Logic&, const Logic&>(&operator^),
-             nb::is_operator())
-        .def("__invert__", nb::overload_cast<const Bit&>(&operator~),
-             nb::is_operator())
+        .def(
+            "__eq__",
+            [](const Bit& lhs, const Logic& rhs) { return lhs == rhs; },
+            nb::is_operator())
+        .def(
+            "__eq__",
+            [](const Bit& self, long long other) {
+                try {
+                    return self == to_bit(other);
+                } catch (const std::invalid_argument&) {
+                    return false;
+                }
+            },
+            nb::is_operator())
+        .def(
+            "__eq__",
+            [](const Bit& self, std::string_view other) {
+                try {
+                    return self == to_bit(other);
+                } catch (const std::invalid_argument&) {
+                    return false;
+                }
+            },
+            nb::is_operator())
+        .def(
+            "__or__", [](const Bit& lhs, const Bit& rhs) { return lhs | rhs; },
+            nb::is_operator())
+        .def(
+            "__or__", [](const Bit& a, const Logic& b) { return a | b; },
+            nb::is_operator())
+        .def(
+            "__and__", [](const Bit& lhs, const Bit& rhs) { return lhs & rhs; },
+            nb::is_operator())
+        .def(
+            "__and__",
+            [](const Bit& lhs, const Logic& rhs) { return lhs & rhs; },
+            nb::is_operator())
+        .def(
+            "__xor__", [](const Bit& lhs, const Bit& rhs) { return lhs ^ rhs; },
+            nb::is_operator())
+        .def(
+            "__xor__",
+            [](const Bit& lhs, const Logic& rhs) { return lhs ^ rhs; },
+            nb::is_operator())
+        .def(
+            "__invert__", [](const Bit& self) { return ~self; },
+            nb::is_operator())
+        .def_prop_ro("is_resolvable", [](const Bit&) { return true; })
         .def("resolve",
              [](const Bit& value, std::string_view method) {
                  return resolve(value, string_to_resolve_method(method));
