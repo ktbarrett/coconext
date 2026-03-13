@@ -32,32 +32,80 @@ public:
     constexpr Logic& operator=(Logic&&) noexcept = default;
 
     constexpr Logic(value_type value) noexcept : value_(value) {}
-    template <typename T>
-        requires requires { to_logic(std::declval<T>()); }
-    explicit constexpr Logic(T&& value)
-        : value_(to_logic(std::forward<T>(value)).value()) {}
-
-public:
     constexpr value_type value() const noexcept { return value_; }
 
 private:
     value_type value_ = _0;
 };
 
-class Bit : public Logic {
+class Bit {
+public:
+    enum class value_type : uint8_t {
+        _0,
+        _1,
+    };
+    using enum value_type;
+
 public:
     // ensures that these are constexpr since enum classes are not literal types
+    constexpr Bit() noexcept = default;
     constexpr Bit(const Bit&) noexcept = default;
     constexpr Bit& operator=(const Bit&) noexcept = default;
     constexpr Bit(Bit&&) noexcept = default;
     constexpr Bit& operator=(Bit&&) noexcept = default;
 
-    constexpr Bit() noexcept : Logic(_0) {}
-    constexpr Bit(value_type value) noexcept : Logic(value) {}
-    template <typename T>
-        requires requires { to_bit(std::declval<T>()); }
-    explicit constexpr Bit(T&& value) : Logic(to_bit(std::forward<T>(value))) {}
+    constexpr Bit(value_type value) noexcept : value_(value) {}
+    constexpr value_type value() const noexcept { return value_; }
+
+    // Implicit conversion from Bit to Logic mimics subtype upcasting.
+    constexpr operator Logic() const noexcept {
+        return value_ == _0 ? Logic::_0 : Logic::_1;
+    }
+
+private:
+    value_type value_ = _0;
 };
+
+constexpr Logic operator""_l(char c) {
+    switch (c) {
+    case '0':
+        return Logic::_0;
+    case '1':
+        return Logic::_1;
+    case 'X':
+    case 'x':
+        return Logic::X;
+    case 'Z':
+    case 'z':
+        return Logic::Z;
+    case 'U':
+    case 'u':
+        return Logic::U;
+    case 'W':
+    case 'w':
+        return Logic::W;
+    case 'L':
+    case 'l':
+        return Logic::L;
+    case 'H':
+    case 'h':
+        return Logic::H;
+    case '-':
+        return Logic::DC;
+    default:
+        throw std::invalid_argument("Invalid logic literal");
+    }
+}
+
+constexpr Bit operator""_b(char c) {
+    if (c == '0') {
+        return Bit::_0;
+    } else if (c == '1') {
+        return Bit::_1;
+    } else {
+        throw std::invalid_argument("Invalid bit literal");
+    }
+}
 
 constexpr bool operator==(const Logic& lhs, const Logic& rhs) noexcept {
     return lhs.value() == rhs.value();
@@ -65,28 +113,14 @@ constexpr bool operator==(const Logic& lhs, const Logic& rhs) noexcept {
 
 template <Character CharType>
 constexpr Logic to_logic(CharType value) {
-    using enum Logic::value_type;
-    constexpr struct {
-        CharType chr;
-        Logic val;
-    } chr_map[] = {
-        {'U', U},  {'u', U}, {'X', X}, {'x', X}, {'0', _0},
-        {'1', _1}, {'Z', Z}, {'z', Z}, {'W', W}, {'w', W},
-        {'L', L},  {'l', L}, {'H', H}, {'h', H}, {'-', DC},
-    };
-    for (const auto& [chr, val] : chr_map) {
-        if (value == chr) {
-            return val;
-        }
-    }
-    throw std::invalid_argument("Invalid logic value");
+    return operator""_l(value);
 }
 
 constexpr Logic to_logic(std::string_view value) {
     if (value.size() != 1) {
         throw std::invalid_argument("Invalid logic value");
     }
-    return to_logic(value[0]);
+    return operator""_l(value[0]);
 }
 
 template <Integer IntType>
@@ -105,9 +139,9 @@ constexpr Logic to_logic(const Bit& value) { return value; }
 template <Character CharType>
 constexpr Bit to_bit(CharType value) {
     if (value == '0') {
-        return Logic::_0;
+        return Bit::_0;
     } else if (value == '1') {
-        return Logic::_1;
+        return Bit::_1;
     } else {
         throw std::invalid_argument("Invalid bit value");
     }
@@ -123,17 +157,19 @@ constexpr Bit to_bit(std::string_view value) {
 template <Integer IntType>
 constexpr Bit to_bit(IntType value) {
     if (value == 0) {
-        return Logic::_0;
+        return Bit::_0;
     } else if (value == 1) {
-        return Logic::_1;
+        return Bit::_1;
     } else {
         throw std::invalid_argument("Invalid bit value");
     }
 }
 
 constexpr Bit to_bit(const Logic& value) {
-    if (value == Logic::_0 || value == Logic::_1) {
-        return Bit(value.value());
+    if (value == Logic::_0) {
+        return Bit::_0;
+    } else if (value == Logic::_1) {
+        return Bit::_1;
     } else {
         throw std::invalid_argument("Invalid bit value");
     }
@@ -147,14 +183,11 @@ constexpr std::string_view to_string(const Logic& value) noexcept {
 }
 
 constexpr long long to_int(const Logic& value) {
-    switch (value.value()) {
-    case Logic::_0:
-    case Logic::L:
+    if (value.value() == Logic::_0 || value.value() == Logic::L) {
         return 0;
-    case Logic::_1:
-    case Logic::H:
+    } else if (value.value() == Logic::_1 || value.value() == Logic::H) {
         return 1;
-    default:
+    } else {
         throw std::invalid_argument(
             "Cannot convert Logic with non-binary value to integer");
     }
@@ -251,13 +284,15 @@ constexpr Logic operator~(const Logic& value) noexcept {
 }
 
 constexpr Bit operator~(const Bit& value) noexcept {
-    return value == Bit::_0 ? Bit::_1 : Bit::_0;
+    return value.value() == Bit::_0 ? Bit::_1 : Bit::_0;
 }
 
 constexpr bool is_01(const Logic& value) noexcept {
     return value == Logic::_0 || value == Logic::_1 || value == Logic::L ||
            value == Logic::H;
 }
+
+constexpr bool is_01(const Bit& value) noexcept { return true; }
 
 enum class ResolveMethod {
     ERROR,
