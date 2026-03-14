@@ -10,10 +10,12 @@ Generating Compilation DB
 First install all build requirements manually:
 
 ```sh
-> pip install scikit-build-core cmake nanobind
+> uv pip install scikit-build-core cmake nanobind setuptools
 ```
 
 Next build the project with additional config options.
 ```sh
-> pip install . --no-build-isolation --config-settings=cmake.define.CMAKE_EXPORT_COMPILE_COMMANDS=ON
+> uv pip install . --no-build-isolation --config-settings=cmake.define.CMAKE_EXPORT_COMPILE_COMMANDS=ON
 ```
+
+The compilation DB should now be under `build/{your python version triplet}/compile_commands.json`.
