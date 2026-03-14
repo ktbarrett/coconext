@@ -18,16 +18,21 @@ find_package(Python 3.9
 
 find_package(nanobind CONFIG REQUIRED)
 
+add_library(coconext_nb INTERFACE)
+target_include_directories(coconext_nb INTERFACE nanobind/include)
+target_compile_features(coconext PUBLIC cxx_std_20)
+target_link_libraries(coconext_nb INTERFACE coconext)
+
 nanobind_add_module(
     types
     STABLE_ABI
     NB_STATIC
     LTO
-    bind/types/bind.cpp
-    bind/types/bind_logic.cpp
-    bind/types/bind_range.cpp
+    nanobind/src/types/bind.cpp
+    nanobind/src/types/bind_logic.cpp
+    nanobind/src/types/bind_range.cpp
 )
-target_link_libraries(types PRIVATE coconext)
+target_link_libraries(types PRIVATE coconext_nb)
 
 install(TARGETS types DESTINATION coconext)
 
