@@ -100,3 +100,6 @@ exclude_also = [
 
 [tool.scikit-build]
 build-dir = "build/{wheel_tag}"
+
+[tool.codespell]
+ignore-words-list = "sting"

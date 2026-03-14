@@ -2,6 +2,7 @@
 #define COCONEXT_TYPES_HPP
 
 // NOLINTBEGIN(unused-includes)
+#include "./types/array.hpp"
 #include "./types/concepts.hpp"
 #include "./types/direction.hpp"
 #include "./types/logic.hpp"

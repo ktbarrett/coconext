@@ -8,8 +8,10 @@ using namespace coconext::types;
 
 void register_logic(nb::module_& m);
 void register_range(nb::module_& m);
+void register_array(nb::module_& m);
 
 NB_MODULE(types, m) {
     register_logic(m);
     register_range(m);
+    register_array(m);
 }
