@@ -108,17 +108,7 @@ void register_range(nb::module_& m) {
              nb::is_operator(), ""_a.noconvert())
         .def("__hash__",
              [](const Range& self) { return std::hash<Range>()(self); })
-        .def("__repr__",
-             [](const Range& self) {
-                 auto res = std::string("Range(");
-                 res += std::to_string(self.left());
-                 res += ", '";
-                 res += to_string(self.direction());
-                 res += "', ";
-                 res += std::to_string(self.right());
-                 res += ")";
-                 return res;
-             })
+        .def("__repr__", [](const Range& self) { return to_string(self); })
         .def(
             "index",
             [](const Range& self, int32_t value) {

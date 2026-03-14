@@ -106,10 +106,8 @@ public:
     };
 
 public:
-    // not default constructible
-    constexpr Range() noexcept = delete;
-
     // ensures that these are constexpr since enum classes are not literal types
+    constexpr Range() noexcept = default;
     constexpr Range(const Range&) noexcept = default;
     constexpr Range& operator=(const Range&) noexcept = default;
     constexpr Range(Range&&) noexcept = default;
@@ -197,9 +195,9 @@ public:
     friend class std::hash<coconext::types::Range>;
 
 private:
-    value_type left_;
-    value_type right_;
-    Direction direction_;
+    value_type left_ = 0;
+    value_type right_ = -1;
+    Direction direction_ = Direction::TO;
 };
 
 constexpr bool operator==(const Range::iterator& lhs,
@@ -264,6 +262,17 @@ constexpr Range::iterator find(const Range& range, Range::value_type value) {
         }
     }
     return Range::iterator(value, range.direction_);
+}
+
+inline std::string to_string(const Range& range) {
+    auto res = std::string("Range(");
+    res += std::to_string(range.left());
+    res += ", '";
+    res += to_string(range.direction());
+    res += "', ";
+    res += std::to_string(range.right());
+    res += ")";
+    return res;
 }
 
 static_assert(std::ranges::random_access_range<Range>);
