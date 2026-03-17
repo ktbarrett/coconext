@@ -15,7 +15,7 @@ First install all build requirements manually:
 
 Next build the project with additional config options.
 ```sh
-> uv pip install . --no-build-isolation --config-settings=cmake.define.CMAKE_EXPORT_COMPILE_COMMANDS=ON
+> uv pip install -e . --no-build-isolation --config-settings=cmake.define.CMAKE_EXPORT_COMPILE_COMMANDS=ON
 ```
 
 The compilation DB should now be under `build/{your python version triplet}/compile_commands.json`.
