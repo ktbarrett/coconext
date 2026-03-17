@@ -70,12 +70,13 @@ show_error_codes = true
 dev = [
     "mypy",
     "nanobind",
-    "nox[uv]",
+    "nox",
+    "nox-uv",
     "prek",
-    "pytest",
     "ruff",
     "cmake",
     "scikit-build-core",
+    {include-group = "tests"}
 ]
 docs = [
     "sphinx>=8.2",  # Require 8.2+ for :deco: directive
