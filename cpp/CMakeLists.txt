@@ -7,3 +7,10 @@ add_library(coconext STATIC
 target_include_directories(coconext PUBLIC include)
 target_compile_features(coconext PUBLIC cxx_std_20)
 set_target_properties(coconext PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+
+
+add_executable(coconext_tests
+    tests/test_logic.cpp)
+target_link_libraries(coconext_tests PRIVATE coconext GTest::gtest_main)
+
+gtest_discover_tests(coconext_tests)

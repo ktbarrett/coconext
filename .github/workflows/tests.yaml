@@ -44,7 +44,7 @@ jobs:
 
     - name: Install Testing Dependencies
       run: |
-        sudo apt install -y make
+        sudo apt install -y make libgtest-dev
 
     - name: Run tests
       run: |
