@@ -1,16 +1,23 @@
 
+.PHONY: build_dev
+build_dev:
+	uv sync --dev --no-install-project
+
+	# Build the package with debugging and coverage flags
+	CXXFLAGS="$$CXXFLAGS --coverage -g -Og" \
+	CFLAGS="$$CFLAGS --coverage -g -Og" \
+	LDFLAGS="$$LDFLAGS --coverage" \
+	uv pip install --no-build-isolation --force-reinstall -e .
+
 TESTS_OUTPUT_HTML := 0
 
 .PHONY: tests
-tests:
-	uv sync --dev --no-install-project
-	uv pip install --no-build-isolation --force-reinstall .
-
+tests: build_dev
 	# Clean up old coverage data
 	find . -name ".coverage" -delete
 
 	# Run Python tests
-	COCOTB_USER_COVERAGE=1 pytest --cov=coconext --cov-report= tests/
+	COCOTB_USER_COVERAGE=1 pytest --cov=coconext --cov-report=
 
 	# Run C++ tests
 	WHEEL_TAG=$$(python -c "from scikit_build_core.builder.wheel_tag import WheelTag; print(WheelTag.compute_best([], ''))"); \
@@ -18,11 +25,11 @@ tests:
 
 	# Combine coverage data and generate reports
 	find . -name ".coverage" | xargs coverage combine
-	coverage xml
+	coverage xml -o .python-coverage.xml
+	WHEEL_TAG=$$(python -c "from scikit_build_core.builder.wheel_tag import WheelTag; print(WheelTag.compute_best([], ''))"); \
+	gcovr build/$$WHEEL_TAG/ --cobertura -o .cpp-coverage.xml
 	coverage report
-ifeq ($(TESTS_OUTPUT_HTML),1)
-	coverage html -d .htmlcov
-endif
+	gcovr --print-summary
 
 
 DOCS_OUTDIR := .docs_out
