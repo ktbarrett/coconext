@@ -74,7 +74,7 @@ void register_range(nb::module_& m) {
                            ? (index >= self.left() && index <= self.right())
                            : (index <= self.left() && index >= self.right());
             },
-            ""_a.noconvert())
+            nb::arg().noconvert())
         .def("__iter__",
              [range_func](const Range& self) {
                  return nb::iter(range_func(
@@ -91,7 +91,7 @@ void register_range(nb::module_& m) {
                          ((self.direction() == Direction::TO) ? 1 : -1),
                      (self.direction() == Direction::TO) ? -1 : 1));
              })
-        .def("__getitem__", &Range::operator[], ""_a.noconvert())
+        .def("__getitem__", &Range::operator[], nb::arg().noconvert())
         .def(
             "__getitem__",
             [](const Range& self, nb::slice slice) {
@@ -102,10 +102,10 @@ void register_range(nb::module_& m) {
                 }
                 return self(start, stop);
             },
-            ""_a.noconvert())
+            nb::arg().noconvert())
         .def("__eq__",
              nb::overload_cast<const Range&, const Range&>(&operator==),
-             nb::is_operator(), ""_a.noconvert())
+             nb::is_operator(), nb::arg().noconvert())
         .def("__hash__",
              [](const Range& self) { return std::hash<Range>()(self); })
         .def("__repr__", [](const Range& self) { return to_string(self); })
@@ -118,7 +118,7 @@ void register_range(nb::module_& m) {
                 }
                 return std::distance(self.begin(), it);
             },
-            ""_a.noconvert())
+            nb::arg().noconvert())
         .def(
             "count",
             [](const Range& self, int32_t value) noexcept {
@@ -131,7 +131,7 @@ void register_range(nb::module_& m) {
                                   ? 1
                                   : 0);
             },
-            ""_a.noconvert())
+            nb::arg().noconvert())
         .def("__copy__", [](const Range& self) { return Range(self); })
         .def("__deepcopy__",
              [](const Range& self, const nb::object&) { return Range(self); });
