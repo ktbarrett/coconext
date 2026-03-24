@@ -57,14 +57,14 @@ void register_array(nb::module_& m) {
             [](const Array<nb::object>& self, const Array<nb::object>& other) {
                 return self == other;
             },
-            ""_a.noconvert(), nb::is_operator())
+            nb::arg().noconvert(), nb::is_operator())
         .def(
             "__eq__",
             [](const Array<nb::object>& self, const nb::sequence& other) {
                 Array<nb::object> other_array(other);
                 return self == other_array;
             },
-            ""_a.noconvert(), nb::is_operator())
+            nb::arg().noconvert(), nb::is_operator())
         .def(
             "__iter__",
             [](const Array<nb::object>& self) {
@@ -90,13 +90,13 @@ void register_array(nb::module_& m) {
                 }
                 return false;
             },
-            ""_a.noconvert())
+            nb::arg().noconvert())
         .def(
             "__getitem__",
             [](const Array<nb::object>& self, index_type index) {
                 return self[index];
             },
-            ""_a.noconvert())
+            nb::arg().noconvert())
         .def("__getitem__",
              [](const Array<nb::object>& self, nb::slice slice) {
                  auto maybe_start = nb::object(slice.attr("start"));
@@ -118,7 +118,7 @@ void register_array(nb::module_& m) {
             "__setitem__",
             [](Array<nb::object>& self, index_type index,
                const nb::object& value) { self[index] = value; },
-            ""_a.noconvert(), ""_a.noconvert())
+            nb::arg().noconvert(), nb::arg().noconvert())
         .def("__setitem__",
              [](Array<nb::object>& self, nb::slice slice, nb::iterable values) {
                  auto maybe_start = slice.attr("start");
@@ -161,7 +161,8 @@ void register_array(nb::module_& m) {
                 }
                 return std::distance(self.begin(), it);
             },
-            ""_a.noconvert(), ""_a = nb::none(), ""_a = nb::none())
+            nb::arg().noconvert(), nb::arg() = nb::none(),
+            nb::arg() = nb::none())
         .def("count",
              [](const Array<nb::object>& self, nb::object value) {
                  size_t count = 0;
