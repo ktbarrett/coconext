@@ -16,3 +16,5 @@ coverage.xml
 compile_commands.json
 .docs_out/
 .htmlcov/
+.python-coverage.xml
+.cpp-coverage.xml
