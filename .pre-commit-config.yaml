@@ -46,6 +46,10 @@ repos:
   - id: "clang-format"
     exclude: "^src/cocotb/share/include/(sv_vpi|vhpi|vpi)_user(_ext)?.h"
     types_or: [c, c++]
+- repo: https://github.com/astral-sh/uv-pre-commit
+  rev: 0.11.0
+  hooks:
+    - id: uv-lock
 
 ci:
   autofix_prs: false
