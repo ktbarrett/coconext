@@ -14,3 +14,5 @@ sim_build/
 coverage.xml
 .cache/
 compile_commands.json
+.docs_out/
+.htmlcov/
