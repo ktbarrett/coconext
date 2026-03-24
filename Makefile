@@ -1,6 +1,6 @@
 
-.PHONY: build_dev
-build_dev:
+.PHONY: dev_build
+dev_build:
 	uv sync --dev --no-install-project
 
 	# Build the package with debugging and coverage flags
@@ -12,7 +12,7 @@ build_dev:
 TESTS_OUTPUT_HTML := 0
 
 .PHONY: tests
-tests: build_dev
+tests: dev_build
 	# Clean up old coverage data
 	find . -name ".coverage" -delete
 
