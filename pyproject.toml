@@ -103,5 +103,8 @@ exclude_also = [
 build-dir = "build/{wheel_tag}"
 cmake.version = ">=3.20"
 
+[tool.scikit-build.cmake.define]
+CMAKE_EXPORT_COMPILE_COMMANDS = true
+
 [tool.codespell]
 ignore-words-list = "sting"
