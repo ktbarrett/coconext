@@ -244,7 +244,7 @@ public:  // nb::iterable constructors
     }
 
 public:  // attributes
-    const Range& range() const noexcept { return range_; }
+    constexpr const Range& range() const noexcept { return range_; }
     constexpr void set_range(const Range& range) {
         if (range.length() != this->range().length()) {
             throw std::invalid_argument(
