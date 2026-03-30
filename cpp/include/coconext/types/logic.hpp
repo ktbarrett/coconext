@@ -123,6 +123,13 @@ constexpr Logic to_logic(std::string_view value) {
     return operator""_l(value[0]);
 }
 
+constexpr Logic to_logic(char const* value) {
+    // Without this, string literals will choose the bool overload since const
+    // char* can decay to bool which is defined by the language and the
+    // string_view overload is defined in a library.
+    return to_logic(std::string_view(value));
+}
+
 template <Integer IntType>
 constexpr Logic to_logic(IntType value) {
     if (value == 0) {
@@ -133,6 +140,8 @@ constexpr Logic to_logic(IntType value) {
         throw std::invalid_argument("Invalid logic value");
     }
 }
+
+constexpr Logic to_logic(bool value) { return value ? Logic::_1 : Logic::_0; }
 
 constexpr Logic to_logic(const Bit& value) { return value; }
 
@@ -154,6 +163,13 @@ constexpr Bit to_bit(std::string_view value) {
     return to_bit(value[0]);
 }
 
+constexpr Bit to_bit(char const* value) {
+    // Without this, string literals will choose the bool overload since const
+    // char* can decay to bool which is defined by the language and the
+    // string_view overload is defined in a library.
+    return to_bit(std::string_view(value));
+}
+
 template <Integer IntType>
 constexpr Bit to_bit(IntType value) {
     if (value == 0) {
@@ -164,6 +180,8 @@ constexpr Bit to_bit(IntType value) {
         throw std::invalid_argument("Invalid bit value");
     }
 }
+
+constexpr Bit to_bit(bool value) { return value ? Bit::_1 : Bit::_0; }
 
 constexpr Bit to_bit(const Logic& value) {
     if (value == Logic::_0) {
@@ -182,7 +200,14 @@ constexpr std::string_view to_string(const Logic& value) noexcept {
     return str_map[static_cast<size_t>(value.value())];
 }
 
-constexpr long long to_int(const Logic& value) {
+constexpr char to_char(const Logic& value) noexcept {
+    constexpr char char_map[] = {
+        '0', '1', 'X', 'Z', 'U', 'W', 'L', 'H', '-',
+    };
+    return char_map[static_cast<size_t>(value.value())];
+}
+
+constexpr bool to_int(const Logic& value) {
     if (value.value() == Logic::_0 || value.value() == Logic::L) {
         return 0;
     } else if (value.value() == Logic::_1 || value.value() == Logic::H) {

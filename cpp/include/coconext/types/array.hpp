@@ -251,14 +251,13 @@ private:
     Range range_;
 };
 
-template <typename ArrayT>
-    requires requires {
-        {
-            std::declval<typename ArrayT::value_type>() ==
-                std::declval<typename ArrayT::value_type>()
-        } -> std::convertible_to<bool>;
+template <typename ValueT>
+    requires requires(ValueT value) {
+        !std::is_reference_v<ValueT>;
+        value == value;
     }
-constexpr bool operator==(const ArrayT& lhs, const ArrayT& rhs) noexcept {
+constexpr bool operator==(const Array<ValueT>& lhs,
+                          const Array<ValueT>& rhs) noexcept {
     if ((lhs.range().length() == 0) && (rhs.range().length() == 0)) {
         return true;
     }

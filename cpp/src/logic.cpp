@@ -15,10 +15,6 @@ Logic resolve(const Logic& value, ResolveMethod method) {
         case Logic::_0:
         case Logic::_1:
             return value;
-        case Logic::L:
-            return Logic::_0;
-        case Logic::H:
-            return Logic::_1;
         default:
             throw std::invalid_argument("Logic value is not resolvable");
         }
