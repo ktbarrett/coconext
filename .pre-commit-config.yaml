@@ -13,7 +13,7 @@ repos:
   - id: check-toml
   - id: check-added-large-files
 - repo: https://github.com/henryiii/validate-pyproject-schema-store
-  rev: "2026.03.15"
+  rev: "2026.03.29"
   hooks:
     - id: validate-pyproject
 - repo: https://github.com/codespell-project/codespell
@@ -23,7 +23,7 @@ repos:
     additional_dependencies:
     - tomli
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: "v0.15.7"
+  rev: "v0.15.8"
   hooks:
     - id: "ruff"
       args:
@@ -41,13 +41,13 @@ repos:
     - sphinx
     - nox-uv
 - repo: "https://github.com/pre-commit/mirrors-clang-format"
-  rev: "v22.1.1"
+  rev: "v22.1.2"
   hooks:
   - id: "clang-format"
     exclude: "^src/cocotb/share/include/(sv_vpi|vhpi|vpi)_user(_ext)?.h"
     types_or: [c, c++]
 - repo: https://github.com/astral-sh/uv-pre-commit
-  rev: 0.11.0
+  rev: 0.11.2
   hooks:
     - id: uv-lock
 
