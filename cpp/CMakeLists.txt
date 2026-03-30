@@ -10,7 +10,8 @@ set_target_properties(coconext PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
 
 
 add_executable(coconext_tests
-    tests/test_logic.cpp)
+    tests/test_logic.cpp
+    tests/test_range.cpp)
 target_link_libraries(coconext_tests PRIVATE coconext GTest::gtest_main)
 
 gtest_discover_tests(coconext_tests)
