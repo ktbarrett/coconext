@@ -84,16 +84,6 @@ TEST(TestRange, OtherConstructors) {
     EXPECT_EQ(Range(3, -4), Range(3, Direction::DOWNTO, -4));
 }
 
-TEST(TestRange, UseInSet) {
-    const std::unordered_set<Range> same{Range(1, Direction::TO, 8),
-                                         Range(1, Direction::TO, 8)};
-    EXPECT_EQ(same.size(), 1U);
-
-    const std::unordered_set<Range> different{Range(1, Direction::TO, 8),
-                                              Range(8, Direction::DOWNTO, 1)};
-    EXPECT_EQ(different.size(), 2U);
-}
-
 TEST(TestRange, ReprEquivalent) {
     const Range r(5, Direction::TO, 9);
     EXPECT_EQ(to_string(r), "Range(5, 'to', 9)");
@@ -116,4 +106,19 @@ TEST(TestRange, Copy) {
 
     EXPECT_EQ(r, copy_constructed);
     EXPECT_EQ(r, copied_assigned);
+}
+
+TEST(TestRange, RangeIsHashable) {
+    std::hash<Range> h;
+    const Range r1(1, Direction::TO, 8);
+    const Range r2(4, Direction::DOWNTO, -3);
+    EXPECT_EQ(h(r1), h(r1));
+    EXPECT_EQ(h(r2), h(r2));
+    const std::unordered_set<Range> same{Range(1, Direction::TO, 8),
+                                         Range(1, Direction::TO, 8)};
+    EXPECT_EQ(same.size(), 1U);
+
+    const std::unordered_set<Range> different{Range(1, Direction::TO, 8),
+                                              Range(8, Direction::DOWNTO, 1)};
+    EXPECT_EQ(different.size(), 2U);
 }

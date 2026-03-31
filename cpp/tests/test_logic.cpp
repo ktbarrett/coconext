@@ -2,6 +2,7 @@
 
 #include <coconext/types.hpp>
 #include <stdexcept>
+#include <unordered_set>
 
 using namespace coconext::types;
 
@@ -297,4 +298,34 @@ TEST(TestLogic, LogicIsResolvable) {
 TEST(TestBit, BitIsResolvable) {
     EXPECT_TRUE(is_01('0'_b));
     EXPECT_TRUE(is_01('1'_b));
+}
+
+TEST(TestLogic, LogicIsHashable) {
+    std::hash<Logic> h;
+    EXPECT_EQ(h('0'_l), h('0'_l));
+    EXPECT_EQ(h('1'_l), h('1'_l));
+    EXPECT_EQ(h('U'_l), h('U'_l));
+    EXPECT_EQ(h('X'_l), h('X'_l));
+    EXPECT_EQ(h('Z'_l), h('Z'_l));
+    EXPECT_EQ(h('W'_l), h('W'_l));
+    EXPECT_EQ(h('L'_l), h('L'_l));
+    EXPECT_EQ(h('H'_l), h('H'_l));
+    EXPECT_EQ(h('-'_l), h('-'_l));
+    const std::unordered_set<Logic> same{'0'_l, '0'_l};
+    EXPECT_EQ(same.size(), 1U);
+
+    const std::unordered_set<Logic> different{'0'_l, '1'_l, 'X'_l, 'Z'_l, 'W'_l,
+                                              'L'_l, 'H'_l, '-'_l, 'U'_l};
+    EXPECT_EQ(different.size(), 9U);
+}
+
+TEST(TestBit, BitIsHashable) {
+    std::hash<Bit> h;
+    EXPECT_EQ(h('0'_b), h('0'_b));
+    EXPECT_EQ(h('1'_b), h('1'_b));
+    const std::unordered_set<Bit> same{'0'_b, '0'_b};
+    EXPECT_EQ(same.size(), 1U);
+
+    const std::unordered_set<Bit> different{'0'_b, '1'_b};
+    EXPECT_EQ(different.size(), 2U);
 }
