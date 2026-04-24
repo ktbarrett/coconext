@@ -1,0 +1,43 @@
+name: Prek autoupdate
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  autoupdate:
+    name: prek autoupdate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: j178/prek-action@v2
+        with:
+          install-only: true
+      - name: Update hook revisions
+        id: do_update
+        run: |
+          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          {
+            echo "updates<<$EOF"
+            prek auto-update --no-progress
+            echo "$EOF"
+          } >> $GITHUB_OUTPUT
+      - name: Create pull request
+        if: steps.do_update.outputs.updates
+        uses: peter-evans/create-pull-request@v8
+        with:
+          author: "prek auto-updater <lol>"
+          commit-message: |
+            prek auto-updates
+
+            ${{ steps.do_update.outputs.updates }}
+          branch: prek-auto-update
+          base: dev
+          title: prek auto-updates
+          body: ${{ steps.do_update.outputs.updates }}
