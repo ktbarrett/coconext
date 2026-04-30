@@ -22,6 +22,17 @@ concept sized_input_range =
 
 }  // namespace
 
+// Opt-in trait. Specialize to true_type for types that are guaranteed
+// array-like at every depth of slicing (i.e. T(idx, idx) returns something
+// also satisfying ArrayLike, recursively). When true, ArrayLike skips the
+// one-level structural check on the slice result.
+template <typename T>
+struct is_array_like : std::false_type {};
+
+template <typename T>
+inline constexpr bool is_array_like_v =
+    is_array_like<std::remove_cvref_t<T>>::value;
+
 template <typename ArrayT>
 class ArraySlice {
 public:
@@ -116,10 +127,10 @@ private:
 };
 
 template <typename ValueT>
-    requires requires { !std::is_reference_v<ValueT>; }
 class Array {
 public:
     using value_type = ValueT;
+    static_assert(!std::is_reference_v<value_type>);
     using index_type = Range::value_type;
 
 public:
@@ -252,10 +263,7 @@ private:
 };
 
 template <typename ValueT>
-    requires requires(ValueT value) {
-        !std::is_reference_v<ValueT>;
-        value == value;
-    }
+    requires std::equality_comparable<ValueT>
 constexpr bool operator==(const Array<ValueT>& lhs,
                           const Array<ValueT>& rhs) noexcept {
     if ((lhs.range().length() == 0) && (rhs.range().length() == 0)) {
@@ -302,21 +310,18 @@ auto slice(ArrayT& arr, typename ArrayT::index_type start,
 }
 
 template <typename ValueT>
-    requires requires { !std::is_reference_v<ValueT>; }
 constexpr auto Array<ValueT>::operator[](
     typename Array<ValueT>::index_type idx) {
     return index(*this, idx);
 }
 
 template <typename ValueT>
-    requires requires { !std::is_reference_v<ValueT>; }
 constexpr auto Array<ValueT>::operator[](
     typename Array<ValueT>::index_type idx) const {
     return index(*this, idx);
 }
 
 template <typename ValueT>
-    requires requires { !std::is_reference_v<ValueT>; }
 constexpr auto Array<ValueT>::operator()(
     typename Array<ValueT>::index_type start,
     typename Array<ValueT>::index_type end) {
@@ -324,7 +329,6 @@ constexpr auto Array<ValueT>::operator()(
 }
 
 template <typename ValueT>
-    requires requires { !std::is_reference_v<ValueT>; }
 constexpr auto Array<ValueT>::operator()(
     typename Array<ValueT>::index_type start,
     typename Array<ValueT>::index_type end) const {
@@ -333,7 +337,6 @@ constexpr auto Array<ValueT>::operator()(
 
 #if __cplusplus >= 202302L
 template <typename ValueT>
-    requires requires { !std::is_reference_v<ValueT>; }
 constexpr auto Array<ValueT>::operator[](
     typename Array<ValueT>::index_type start,
     typename Array<ValueT>::index_type stop) {
@@ -341,7 +344,6 @@ constexpr auto Array<ValueT>::operator[](
 }
 
 template <typename ValueT>
-    requires requires { !std::is_reference_v<ValueT>; }
 constexpr auto Array<ValueT>::operator[](
     typename Array<ValueT>::index_type start,
     typename Array<ValueT>::index_type stop) const {
@@ -371,6 +373,33 @@ static_assert(std::ranges::random_access_range<Array<int>>);
 static_assert(std::ranges::random_access_range<const Array<int>>);
 static_assert(std::ranges::random_access_range<ArraySlice<Array<int>>>);
 static_assert(std::ranges::random_access_range<ArraySlice<const Array<int>>>);
+
+template <typename T>
+concept ArrayLikeBase = std::ranges::random_access_range<T> && requires {
+    typename T::value_type;
+    typename T::index_type;
+} && requires(T& t, typename T::index_type idx) {
+    { t.range() } -> std::convertible_to<const Range&>;
+    { t[idx] } -> std::convertible_to<typename T::value_type>;
+};
+
+template <typename T>
+concept ArrayLike =
+    ArrayLikeBase<T> &&
+    (is_array_like_v<T> || requires(T& t, typename T::index_type idx) {
+        { t(idx, idx) } -> ArrayLikeBase;
+    });
+
+template <typename V>
+struct is_array_like<Array<V>> : std::true_type {};
+
+template <typename A>
+struct is_array_like<ArraySlice<A>> : std::true_type {};
+
+static_assert(ArrayLike<Array<int>>);
+static_assert(ArrayLike<const Array<int>>);
+static_assert(ArrayLike<ArraySlice<Array<int>>>);
+static_assert(ArrayLike<ArraySlice<const Array<int>>>);
 
 }  // namespace coconext::types
 
