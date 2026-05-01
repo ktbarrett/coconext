@@ -22,16 +22,12 @@ concept sized_input_range =
 
 }  // namespace
 
-// Opt-in trait. Specialize to true_type for types that are guaranteed
-// array-like at every depth of slicing (i.e. T(idx, idx) returns something
-// also satisfying ArrayLike, recursively). When true, ArrayLike skips the
-// one-level structural check on the slice result.
+// The minimum a type must expose so that index() and slice() can be
+// implemented for it externally.
 template <typename T>
-struct is_array_like : std::false_type {};
-
-template <typename T>
-inline constexpr bool is_array_like_v =
-    is_array_like<std::remove_cvref_t<T>>::value;
+concept RangedSequence = std::ranges::random_access_range<T> && requires(T& t) {
+    { t.range() } -> std::convertible_to<Range>;
+};
 
 template <typename ArrayT>
 class ArraySlice {
@@ -281,8 +277,8 @@ constexpr bool operator==(const Array<ValueT>& lhs,
     return true;
 }
 
-template <typename ArrayT>
-auto index(ArrayT& arr, typename ArrayT::index_type idx) {
+template <RangedSequence ArrayT>
+auto index(ArrayT& arr, Range::value_type idx) {
     auto find_idx = find(arr.range(), idx);
     if (find_idx == arr.range().end()) {
         throw std::out_of_range("Index out of bounds");
@@ -291,9 +287,8 @@ auto index(ArrayT& arr, typename ArrayT::index_type idx) {
     return *(arr.begin() + offset);
 }
 
-template <typename ArrayT>
-auto slice(ArrayT& arr, typename ArrayT::index_type start,
-           typename ArrayT::index_type end) {
+template <RangedSequence ArrayT>
+auto slice(ArrayT& arr, Range::value_type start, Range::value_type end) {
     auto left_offset = *find(arr.range(), start);
     if (left_offset < 0 || left_offset >= arr.range().length()) {
         throw std::out_of_range("slice start out of bounds");
@@ -351,11 +346,11 @@ constexpr auto Array<ValueT>::operator[](
 }
 #endif
 
-template <typename ValueT>
-    requires requires(ValueT val) {
+template <RangedSequence ArrayT>
+    requires requires(std::ranges::range_value_t<ArrayT> val) {
         { std::to_string(val) } -> std::convertible_to<std::string>;
     }
-std::string to_string(const Array<ValueT>& arr) {
+std::string to_string(const ArrayT& arr) {
     std::string result = "Array([";
     for (auto it = arr.begin(); it != arr.end(); ++it) {
         result += std::to_string(*it);
@@ -369,37 +364,10 @@ std::string to_string(const Array<ValueT>& arr) {
     return result;
 }
 
-static_assert(std::ranges::random_access_range<Array<int>>);
-static_assert(std::ranges::random_access_range<const Array<int>>);
-static_assert(std::ranges::random_access_range<ArraySlice<Array<int>>>);
-static_assert(std::ranges::random_access_range<ArraySlice<const Array<int>>>);
-
-template <typename T>
-concept ArrayLikeBase = std::ranges::random_access_range<T> && requires {
-    typename T::value_type;
-    typename T::index_type;
-} && requires(T& t, typename T::index_type idx) {
-    { t.range() } -> std::convertible_to<const Range&>;
-    { t[idx] } -> std::convertible_to<typename T::value_type>;
-};
-
-template <typename T>
-concept ArrayLike =
-    ArrayLikeBase<T> &&
-    (is_array_like_v<T> || requires(T& t, typename T::index_type idx) {
-        { t(idx, idx) } -> ArrayLikeBase;
-    });
-
-template <typename V>
-struct is_array_like<Array<V>> : std::true_type {};
-
-template <typename A>
-struct is_array_like<ArraySlice<A>> : std::true_type {};
-
-static_assert(ArrayLike<Array<int>>);
-static_assert(ArrayLike<const Array<int>>);
-static_assert(ArrayLike<ArraySlice<Array<int>>>);
-static_assert(ArrayLike<ArraySlice<const Array<int>>>);
+static_assert(RangedSequence<Array<int>>);
+static_assert(RangedSequence<const Array<int>>);
+static_assert(RangedSequence<ArraySlice<Array<int>>>);
+static_assert(RangedSequence<ArraySlice<const Array<int>>>);
 
 }  // namespace coconext::types
 
