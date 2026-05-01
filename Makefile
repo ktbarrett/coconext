@@ -4,12 +4,13 @@ dev_build:
 	uv sync --dev --no-install-project
 
 	# Build the package with debugging and coverage flags
+	CCACHE_DISABLE=1 \
 	CXXFLAGS="$$CXXFLAGS --coverage -g -Og" \
 	CFLAGS="$$CFLAGS --coverage -g -Og" \
 	LDFLAGS="$$LDFLAGS --coverage" \
 	uv pip install --no-build-isolation --force-reinstall -e .
 
-TESTS_OUTPUT_HTML := 0
+GCOV_EXECUTABLE ?= $(subst gcc,gcov,$(or $(CC),gcc))
 
 .PHONY: tests
 tests: dev_build
@@ -27,12 +28,12 @@ tests: dev_build
 	find . -name ".coverage" | xargs coverage combine
 	coverage xml -o .python-coverage.xml
 	WHEEL_TAG=$$(python -c "from scikit_build_core.builder.wheel_tag import WheelTag; print(WheelTag.compute_best([], ''))"); \
-	gcovr build/$$WHEEL_TAG/ --cobertura -o .cpp-coverage.xml
+	gcovr build/$$WHEEL_TAG/ --gcov-executable=$(GCOV_EXECUTABLE) --cobertura -o .cpp-coverage.xml
 	coverage report
-	gcovr --print-summary
+	gcovr --gcov-executable=$(GCOV_EXECUTABLE) --print-summary
 
 
-DOCS_OUTDIR := .docs_out
+DOCS_OUTDIR ?= .docs_out
 
 .PHONY: docs
 docs:
