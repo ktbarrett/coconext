@@ -28,9 +28,9 @@ tests: dev_build
 	find . -name ".coverage" | xargs coverage combine
 	coverage xml -o .python-coverage.xml
 	WHEEL_TAG=$$(python -c "from scikit_build_core.builder.wheel_tag import WheelTag; print(WheelTag.compute_best([], ''))"); \
-	gcovr build/$$WHEEL_TAG/ --gcov-executable=$(GCOV_EXECUTABLE) --cobertura -o .cpp-coverage.xml
+	gcovr build/$$WHEEL_TAG/ --gcov-executable='$(GCOV_EXECUTABLE)' --cobertura -o .cpp-coverage.xml
 	coverage report
-	gcovr --gcov-executable=$(GCOV_EXECUTABLE) --print-summary
+	gcovr --gcov-executable='$(GCOV_EXECUTABLE)' --print-summary
 
 
 DOCS_OUTDIR ?= .docs_out
@@ -38,5 +38,5 @@ DOCS_OUTDIR ?= .docs_out
 .PHONY: docs
 docs:
 	uv sync --no-default-groups --group=docs
-	sphinx-build docs/ $(DOCS_OUTDIR)/ --color -b html
+	sphinx-build docs/ '$(DOCS_OUTDIR)/' --color -b html
 	@echo "Documentation built at $(DOCS_OUTDIR)/index.html"

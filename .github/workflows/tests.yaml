@@ -10,7 +10,7 @@ on:
 
 jobs:
   tests:
-    name: Tests (Python ${{matrix.python-version}} | ${{matrix.simulator}})
+    name: Tests (Python ${{matrix.python-version}} | ${{matrix.simulator}}${{ matrix.cc != 'gcc' && format(' | {0}', matrix.cc) || '' }})
     runs-on: ${{matrix.os}}
 
     env:
@@ -22,7 +22,18 @@ jobs:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
         simulator: [nvc]
         os: [ubuntu-24.04]
-        nvc-version: ["1.16.2"]
+        nvc-version: ["1.20.0"]
+        cc: [gcc]
+        cxx: [g++]
+        gcov: [gcov]
+        include:
+          - python-version: "3.13"
+            nvc-version: "1.20.0"
+            os: "ubuntu-24.04"
+            simulator: "nvc"
+            cc: "clang"
+            cxx: "clang++"
+            gcov: "llvm-cov gcov"
 
     steps:
     - uses: actions/checkout@v6
@@ -40,7 +51,7 @@ jobs:
     - name: Set up NVC
       uses: nickg/setup-nvc@v1
       with:
-        version: ${{matrix.nvc_version-version}}
+        version: ${{matrix.nvc-version}}
 
     - name: Install uv
       uses: astral-sh/setup-uv@v7
@@ -49,13 +60,13 @@ jobs:
 
     - name: Install Testing Dependencies
       run: |
-        sudo apt install -y make libgtest-dev
+        sudo apt install -y make libgtest-dev llvm
 
     - name: Run tests
       env:
-        CC: gcc
-        CXX: g++
-        GCOV_EXECUTABLE: gcov
+        CC: ${{matrix.cc}}
+        CXX: ${{matrix.cxx}}
+        GCOV_EXECUTABLE: ${{matrix.gcov}}
       run: |
         make tests
 
