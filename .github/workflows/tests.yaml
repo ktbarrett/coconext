@@ -10,7 +10,7 @@ on:
 
 jobs:
   tests:
-    name: Tests (Python ${{matrix.python-version}} | ${{matrix.simulator}}${{ matrix.cc != 'gcc' && format(' | {0}', matrix.cc) || '' }})
+    name: Tests (Python ${{matrix.python-version}} | ${{matrix.simulator}}${{ matrix.cc != '' && format(' | {0}', matrix.cc) || '' }}${{ !startsWith(matrix.os, 'ubuntu') && format(' | {0}', matrix.os) || '' }})
     runs-on: ${{matrix.os}}
 
     env:
@@ -22,18 +22,20 @@ jobs:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
         simulator: [nvc]
         os: [ubuntu-24.04]
-        nvc-version: ["1.20.0"]
-        cc: [gcc]
-        cxx: [g++]
-        gcov: [gcov]
+        nvc-version: ["1.20.1"]
         include:
+          # Ubuntu with Clang
           - python-version: "3.13"
-            nvc-version: "1.20.0"
+            nvc-version: "1.20.1"
             os: "ubuntu-24.04"
             simulator: "nvc"
             cc: "clang"
             cxx: "clang++"
             gcov: "llvm-cov gcov"
+          # MacOS with Clang
+          - python-version: "3.13"
+            simulator: "nvc"
+            os: "macos-26"
 
     steps:
     - uses: actions/checkout@v6
@@ -48,10 +50,17 @@ jobs:
         python-version: ${{matrix.python-version}}
         allow-prereleases: true
 
-    - name: Set up NVC
+    - name: Set up NVC (Ubuntu)
+      if: matrix.simulator == 'nvc' && startsWith(matrix.os, 'ubuntu')
       uses: nickg/setup-nvc@v1
       with:
         version: ${{matrix.nvc-version}}
+
+    - name: Set up NVC (MacOS)
+      if: matrix.simulator == 'nvc' && startsWith(matrix.os, 'macos')
+      run: |
+        brew update
+        brew install nvc
 
     - name: Install uv
       uses: astral-sh/setup-uv@v7
@@ -59,14 +68,15 @@ jobs:
         activate-environment: "true"
 
     - name: Install Testing Dependencies
+      if: startsWith(matrix.os, 'ubuntu')
       run: |
         sudo apt install -y make libgtest-dev llvm
 
     - name: Run tests
       env:
-        CC: ${{matrix.cc}}
-        CXX: ${{matrix.cxx}}
-        GCOV_EXECUTABLE: ${{matrix.gcov}}
+        CC: ${{ matrix.cc || 'gcc' }}
+        CXX: ${{matrix.cxx || 'g++'}}
+        GCOV_EXECUTABLE: ${{matrix.gcov || 'gcov'}}
       run: |
         make tests
 
