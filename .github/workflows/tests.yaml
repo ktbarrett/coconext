@@ -32,10 +32,13 @@ jobs:
             cc: "clang"
             cxx: "clang++"
             gcov: "llvm-cov gcov"
-          # MacOS with Clang
+          # MacOS ARM and Intel
           - python-version: "3.13"
             simulator: "nvc"
             os: "macos-26"
+          - python-version: "3.13"
+            simulator: "nvc"
+            os: "macos-15-intel"
 
     steps:
     - uses: actions/checkout@v6
