@@ -11,7 +11,6 @@ nanobind_add_module(
     src/types/bind.cpp
     src/types/bind_logic.cpp
     src/types/bind_range.cpp
-    src/types/bind_array.cpp
 )
 target_link_libraries(types PRIVATE coconext_nb)
 
