@@ -1,6 +1,7 @@
 #ifndef COCONEXT_TYPES_UTIL_HPP
 #define COCONEXT_TYPES_UTIL_HPP
 
+#include <string>
 #include <type_traits>
 
 namespace coconext::types {
@@ -48,6 +49,19 @@ template <>
 struct is_int<long long> : public std::true_type {};
 template <>
 struct is_int<unsigned long long> : public std::true_type {};
+
+namespace detail {
+
+// For use in other to_string methods. We can't overload std::to_string for
+// custom types, so we have to use ADL. This checks for both std and ADL
+// lookups. It also widens the result type requirements to anything that can be
+// used to build a string.
+template <typename T>
+concept Stringifiable = requires(T val, std::string s) {
+    s += std::to_string(val);
+} || requires(T val, std::string s) { s += to_string(val); };
+
+}  // namespace detail
 
 }  // namespace coconext::types
 

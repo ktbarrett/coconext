@@ -2,25 +2,28 @@
 #define COCONEXT_ARRAY_HPP
 
 #include <algorithm>
+#include <coconext/types/concepts.hpp>
 #include <coconext/types/range.hpp>
 #include <concepts>
 #include <cstddef>
 #include <initializer_list>
 #include <iterator>
+#include <limits>
 #include <ranges>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
 #include <vector>
 
 namespace coconext::types {
 
-namespace {
+namespace detail {
 
 template <typename R>
 concept sized_input_range =
     std::ranges::sized_range<R> && std::ranges::input_range<R>;
 
-}  // namespace
+}  // namespace detail
 
 // The minimum a type must expose so that index() and slice() can be
 // implemented for it externally.
@@ -30,14 +33,55 @@ concept RangedSequence = std::ranges::random_access_range<T> && requires(T& t) {
 };
 
 template <typename ArrayT>
+class ArraySlice;
+
+template <RangedSequence ArrayT>
+constexpr std::ranges::range_reference_t<ArrayT> index(ArrayT& arr,
+                                                       Range::value_type idx) {
+    auto find_idx = find(arr.range(), idx);
+    if (find_idx == arr.range().end()) {
+        throw std::out_of_range("Index out of bounds");
+    }
+    auto offset = std::distance(arr.range().begin(), find_idx);
+    return *(arr.begin() + offset);
+}
+
+template <RangedSequence ArrayT>
+constexpr auto slice(ArrayT& arr, Range::value_type start,
+                     Range::value_type end) {
+    auto left_it = find(arr.range(), start);
+    if (left_it == arr.range().end()) {
+        throw std::out_of_range("slice start out of bounds");
+    }
+    auto right_it = find(arr.range(), end);
+    if (right_it == arr.range().end()) {
+        throw std::out_of_range("slice end out of bounds");
+    }
+    if (std::distance(arr.range().begin(), left_it) >
+        std::distance(arr.range().begin(), right_it)) {
+        throw std::invalid_argument(
+            "Slice direction does not match array range direction");
+    }
+    return ArraySlice(&arr, Range(start, arr.range().direction(), end));
+}
+
+template <typename ArrayT>
 class ArraySlice {
 public:
-    using value_type = typename ArrayT::value_type;
-    static_assert(!std::is_reference_v<value_type>);
+    // ArraySlice is a non-owning view (like std::span). Element mutability is
+    // determined by ArrayT's constness:
+    // - ArraySlice<Array<T>>          -- mutable view, can write elements.
+    // - ArraySlice<const Array<T>>    -- read-only view.
+    // - const ArraySlice<X>           -- pointer/range fixed; element access
+    //                                    follows X's mutability rules.
+    using value_type = std::ranges::range_value_t<ArrayT>;
+    using reference = std::ranges::range_reference_t<ArrayT>;
     using index_type = Range::value_type;
+    using iterator = std::ranges::iterator_t<ArrayT>;
+    static_assert(!std::is_reference_v<value_type>);
 
-public:                               // constructor
-    constexpr ArraySlice() = delete;  // no default constructor
+public:  // constructor
+    constexpr ArraySlice() = delete;
     constexpr ArraySlice(const ArraySlice&) = default;
     constexpr ArraySlice(ArraySlice&&) = default;
 
@@ -48,31 +92,39 @@ public:  // attributes
     constexpr const Range& range() const noexcept { return range_; }
 
 public:  // indexing and slicing
-    constexpr const value_type& operator[](index_type index) const {
-        return index(*this, index);
+    constexpr reference operator[](index_type idx) const {
+        return index(*arr_, idx);
     }
-    constexpr value_type& operator[](index_type index) {
-        return index(*this, index);
-    }
-    constexpr auto operator()(index_type start, index_type end) const {
-        return slice(*this, start, end);
-    }
-    constexpr auto operator()(index_type start, index_type end) {
-        return slice(*this, start, end);
+
+    constexpr ArraySlice operator()(index_type start, index_type end) const {
+        // This is different than slice() since we want to flatten nested slices
+        // to prevent a bunch of chained accesses and lifetime issues.
+        auto left_it = find(range_, start);
+        if (left_it == range_.end()) {
+            throw std::out_of_range("slice start out of bounds");
+        }
+        auto right_it = find(range_, end);
+        if (right_it == range_.end()) {
+            throw std::out_of_range("slice end out of bounds");
+        }
+        if (std::distance(range_.begin(), left_it) >
+            std::distance(range_.begin(), right_it)) {
+            throw std::invalid_argument(
+                "Slice direction does not match array range direction");
+        }
+        return ArraySlice(arr_, Range(start, range_.direction(), end));
     }
 #if __cplusplus >= 202302L
-    constexpr auto operator[](index_type start, index_type stop) const {
-        return slice(*this, start, stop);
-    }
-    constexpr auto operator[](index_type start, index_type stop) {
-        return slice(*this, start, stop);
+    constexpr ArraySlice operator[](index_type start, index_type end) const {
+        return this->operator()(start, end);
     }
 #endif
 
 public:  // assignment
-    template <sized_input_range R>
-        requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
-    constexpr auto& operator=(const R& obj) {
+    template <detail::sized_input_range R>
+        requires(!std::is_const_v<ArrayT>) &&
+                std::convertible_to<std::ranges::range_value_t<R>, value_type>
+    constexpr const ArraySlice& operator=(const R& obj) const {
         if (std::ranges::size(obj) != range_.length()) {
             throw std::invalid_argument(
                 "Value of length " + std::to_string(std::ranges::size(obj)) +
@@ -84,8 +136,8 @@ public:  // assignment
     }
 
     template <typename T>
-        requires std::convertible_to<T, value_type>
-    constexpr auto& operator=(std::initializer_list<T> init) {
+        requires(!std::is_const_v<ArrayT>) && std::convertible_to<T, value_type>
+    constexpr const ArraySlice& operator=(std::initializer_list<T> init) const {
         if (init.size() != static_cast<size_t>(range_.length())) {
             throw std::invalid_argument(
                 "Initializer list of size " + std::to_string(init.size()) +
@@ -97,25 +149,21 @@ public:  // assignment
     }
 
 public:  // iterators
-    constexpr auto begin() const noexcept {
-        // we can make the assumption that find will always return a valid
-        // offset since the slice range is guaranteed to be a subrange of the
-        // array range by construction.
-        return arr_->begin() + *find(range_, range_.left());
+    constexpr iterator begin() const noexcept {
+        auto start = find(arr_->range(), range_.left());
+        assert(start != arr_->range().end() &&
+               "slice range not a sub-range of the owner's range");
+        return arr_->begin() + std::distance(arr_->range().begin(), start);
     }
-    constexpr auto begin() noexcept {
-        return arr_->begin() + *find(range_, range_.left());
+    constexpr iterator end() const noexcept {
+        return begin() + range_.length();
     }
-    constexpr auto end() const noexcept { return begin() + range_.length(); }
-    constexpr auto end() noexcept { return begin() + range_.length(); }
     constexpr auto rbegin() const noexcept {
         return std::reverse_iterator(end());
     }
-    constexpr auto rbegin() noexcept { return std::reverse_iterator(end()); }
     constexpr auto rend() const noexcept {
         return std::reverse_iterator(begin());
     }
-    constexpr auto rend() noexcept { return std::reverse_iterator(begin()); }
 
 private:
     ArrayT* arr_;
@@ -127,6 +175,9 @@ class Array {
 public:
     using value_type = ValueT;
     static_assert(!std::is_reference_v<value_type>);
+    static_assert(!std::is_const_v<value_type>,
+                  "Array<const T> is not supported (std::vector forbids const "
+                  "elements). Use `const Array<T>` for an immutable array.");
     using index_type = Range::value_type;
 
 public:
@@ -147,22 +198,23 @@ public:  // construct with just range
 
     explicit constexpr Array(size_t length)
         requires std::default_initializable<value_type>
-        : data_(),
-          range_(0, Direction::TO, static_cast<index_type>(length) - 1) {
+        : data_(), range_(0, Direction::TO, length_to_right_(length)) {
         data_.resize(length);
     }
 
 public:  // constructor from initializer list
     template <typename T>
         requires std::convertible_to<T, value_type>
-    constexpr Array(std::initializer_list<T> init)
-        : data_(init), range_(0, Direction::TO, data_.size() - 1) {}
+    explicit constexpr Array(std::initializer_list<T> init)
+        : data_(init),
+          range_(0, Direction::TO, length_to_right_(data_.size())) {}
 
 public:  // move from vector
     template <typename T>
         requires std::convertible_to<T, value_type>
     explicit constexpr Array(std::vector<T>&& vec)
-        : data_(vec), range_(0, Direction::TO, data_.size() - 1) {}
+        : data_(std::move(vec)),
+          range_(0, Direction::TO, length_to_right_(data_.size())) {}
 
 public:  // construct from range
     template <std::ranges::input_range T>
@@ -181,7 +233,7 @@ public:  // construct from range
     template <std::ranges::input_range T>
         requires std::convertible_to<std::ranges::range_value_t<T>, value_type>
     explicit constexpr Array(const T& obj, size_t length)
-        : data_(), range_(0, Direction::TO, length - 1) {
+        : data_(), range_(0, Direction::TO, length_to_right_(length)) {
         data_.reserve(length);
         data_.assign(std::ranges::begin(obj), std::ranges::end(obj));
         if (data_.size() != length) {
@@ -210,8 +262,7 @@ public:  // construct from iterator
         requires std::convertible_to<
                      typename std::iterator_traits<It>::value_type, value_type>
     explicit constexpr Array(It begin, It end, size_t length)
-        : data_(),
-          range_(0, Direction::TO, static_cast<index_type>(length) - 1) {
+        : data_(), range_(0, Direction::TO, length_to_right_(length)) {
         data_.reserve(length);
         data_.assign(begin, end);
         if (data_.size() != length) {
@@ -234,26 +285,48 @@ public:  // attributes
     }
 
 public:  // indexing and slicing
-    constexpr auto operator[](index_type idx);
-    constexpr auto operator[](index_type idx) const;
-    constexpr auto operator()(index_type start, index_type end);
-    constexpr auto operator()(index_type start, index_type end) const;
+    constexpr value_type& operator[](index_type idx) {
+        return index(*this, idx);
+    }
+    constexpr const value_type& operator[](index_type idx) const {
+        return index(*this, idx);
+    }
+    constexpr auto operator()(index_type start, index_type end) {
+        return slice(*this, start, end);
+    }
+    constexpr auto operator()(index_type start, index_type end) const {
+        return slice(*this, start, end);
+    }
 #if __cplusplus >= 202302L
-    constexpr auto operator[](index_type start, index_type stop);
-    constexpr auto operator[](index_type start, index_type stop);
+    constexpr auto operator[](index_type start, index_type stop) {
+        return slice(*this, start, stop);
+    }
+    constexpr auto operator[](index_type start, index_type stop) const {
+        return slice(*this, start, stop);
+    }
 #endif
 
 public:  // iterators
+    constexpr auto begin() noexcept { return data_.begin(); }
     constexpr auto begin() const noexcept { return data_.begin(); }
+    constexpr auto end() noexcept { return data_.end(); }
     constexpr auto end() const noexcept { return data_.end(); }
+    constexpr auto rbegin() noexcept { return data_.rbegin(); }
     constexpr auto rbegin() const noexcept { return data_.rbegin(); }
+    constexpr auto rend() noexcept { return data_.rend(); }
     constexpr auto rend() const noexcept { return data_.rend(); }
 
 private:
-    // Consider using std::unique_ptr<value_type[]> instead. We don't need to
-    // store the size of the array separately since it's determined by the
-    // range. This is only possible if the type is default initializable. This
-    // might be best implemented as a specialization.
+    static constexpr index_type length_to_right_(size_t length) {
+        // helper for common length to right computation used by a bunch of
+        // constructors; with bounds checking.
+        if (length >
+            static_cast<size_t>(std::numeric_limits<index_type>::max())) {
+            throw std::length_error("Array length overflows index_type");
+        }
+        return static_cast<index_type>(length) - 1;
+    }
+
     std::vector<value_type> data_;
     Range range_;
 };
@@ -277,83 +350,30 @@ constexpr bool operator==(const Array<ValueT>& lhs,
     return true;
 }
 
-template <RangedSequence ArrayT>
-auto index(ArrayT& arr, Range::value_type idx) {
-    auto find_idx = find(arr.range(), idx);
-    if (find_idx == arr.range().end()) {
-        throw std::out_of_range("Index out of bounds");
-    }
-    auto offset = std::distance(arr.range().begin(), find_idx);
-    return *(arr.begin() + offset);
+// Specialization to use the slice flattening logic in operator(). The logic was
+// put in the class instead of here to prevent duplicating the code. We need the
+// non-const overload to prevent it from dispatching non-const versions to the
+// generic slice impl.
+template <typename ArrayT>
+constexpr ArraySlice<ArrayT> slice(ArraySlice<ArrayT>& arr,
+                                   Range::value_type start,
+                                   Range::value_type end) {
+    return arr(start, end);
+}
+template <typename ArrayT>
+constexpr ArraySlice<ArrayT> slice(const ArraySlice<ArrayT>& arr,
+                                   Range::value_type start,
+                                   Range::value_type end) {
+    return arr(start, end);
 }
 
 template <RangedSequence ArrayT>
-auto slice(ArrayT& arr, Range::value_type start, Range::value_type end) {
-    auto left_offset = *find(arr.range(), start);
-    if (left_offset < 0 || left_offset >= arr.range().length()) {
-        throw std::out_of_range("slice start out of bounds");
-    }
-    auto right_offset = *find(arr.range(), end);
-    if (right_offset < 0 || right_offset >= arr.range().length()) {
-        throw std::out_of_range("slice end out of bounds");
-    }
-    if (left_offset > right_offset) {
-        throw std::invalid_argument(
-            "Slice direction does not match array range direction");
-    }
-    return ArraySlice(&arr, Range(start, arr.range().direction(), end));
-}
-
-template <typename ValueT>
-constexpr auto Array<ValueT>::operator[](
-    typename Array<ValueT>::index_type idx) {
-    return index(*this, idx);
-}
-
-template <typename ValueT>
-constexpr auto Array<ValueT>::operator[](
-    typename Array<ValueT>::index_type idx) const {
-    return index(*this, idx);
-}
-
-template <typename ValueT>
-constexpr auto Array<ValueT>::operator()(
-    typename Array<ValueT>::index_type start,
-    typename Array<ValueT>::index_type end) {
-    return slice(*this, start, end);
-}
-
-template <typename ValueT>
-constexpr auto Array<ValueT>::operator()(
-    typename Array<ValueT>::index_type start,
-    typename Array<ValueT>::index_type end) const {
-    return slice(*this, start, end);
-}
-
-#if __cplusplus >= 202302L
-template <typename ValueT>
-constexpr auto Array<ValueT>::operator[](
-    typename Array<ValueT>::index_type start,
-    typename Array<ValueT>::index_type stop) {
-    return slice(*this, start, stop);
-}
-
-template <typename ValueT>
-constexpr auto Array<ValueT>::operator[](
-    typename Array<ValueT>::index_type start,
-    typename Array<ValueT>::index_type stop) const {
-    return slice(*this, start, stop);
-}
-#endif
-
-template <RangedSequence ArrayT>
-    requires requires(std::ranges::range_value_t<ArrayT> val) {
-        { std::to_string(val) } -> std::convertible_to<std::string>;
-    }
+    requires detail::Stringifiable<std::ranges::range_value_t<ArrayT>>
 std::string to_string(const ArrayT& arr) {
+    using std::to_string;  // make std::to_string and ADL candidates co-visible
     std::string result = "Array([";
     for (auto it = arr.begin(); it != arr.end(); ++it) {
-        result += std::to_string(*it);
+        result += to_string(*it);
         if (std::next(it) != arr.end()) {
             result += ", ";
         }
