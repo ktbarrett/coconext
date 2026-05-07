@@ -152,7 +152,7 @@ void register_logic(nb::module_& m) {
                  res += "')";
                  return res;
              })
-        .def("__len__", [](const Logic&) { return 1; })
+        .def("__len__", [](const Bit&) { return 1; })
         .def(
             "__eq__", [](const Bit& lhs, const Bit& rhs) { return lhs == rhs; },
             nb::is_operator())

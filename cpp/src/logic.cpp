@@ -65,9 +65,10 @@ Logic resolve(const Logic& value, ResolveMethod method) {
             return Logic::_0;
         case Logic::H:
             return Logic::_1;
-        default:
+        default: {
             auto& rng = get_rng();
             return (rng() % 2 == 0) ? Logic::_0 : Logic::_1;
+        }
         }
     }
     default:
