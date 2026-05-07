@@ -3,6 +3,7 @@
 #include <coconext/types.hpp>
 #include <stdexcept>
 #include <unordered_set>
+#include <vector>
 
 using namespace coconext::types;
 
@@ -265,6 +266,28 @@ TEST(TestLogic, LogicResolve) {
 
     auto resolved_dc = resolve('-'_l, ResolveMethod::RANDOM);
     EXPECT_TRUE(resolved_dc == '0'_l || resolved_dc == '1'_l);
+
+    // Test ERROR resolution
+    EXPECT_EQ(resolve('0'_l, ResolveMethod::ERROR), '0'_l);
+    EXPECT_EQ(resolve('1'_l, ResolveMethod::ERROR), '1'_l);
+    EXPECT_THROW((void)resolve('U'_l, ResolveMethod::ERROR),
+                 std::invalid_argument);
+    EXPECT_THROW((void)resolve('X'_l, ResolveMethod::ERROR),
+                 std::invalid_argument);
+    EXPECT_THROW((void)resolve('Z'_l, ResolveMethod::ERROR),
+                 std::invalid_argument);
+    EXPECT_THROW((void)resolve('W'_l, ResolveMethod::ERROR),
+                 std::invalid_argument);
+    EXPECT_THROW((void)resolve('L'_l, ResolveMethod::ERROR),
+                 std::invalid_argument);
+    EXPECT_THROW((void)resolve('H'_l, ResolveMethod::ERROR),
+                 std::invalid_argument);
+    EXPECT_THROW((void)resolve('-'_l, ResolveMethod::ERROR),
+                 std::invalid_argument);
+
+    // Out-of-range ResolveMethod hits the outer `default:` arm.
+    EXPECT_THROW((void)resolve('0'_l, static_cast<ResolveMethod>(99)),
+                 std::invalid_argument);
 }
 
 TEST(TestBit, BitResolve) {
@@ -279,6 +302,24 @@ TEST(TestBit, BitResolve) {
 
     EXPECT_EQ(resolve('0'_b, ResolveMethod::RANDOM), '0'_b);
     EXPECT_EQ(resolve('1'_b, ResolveMethod::RANDOM), '1'_b);
+}
+
+// Stores values in std::vector to force runtime evaluation of conversions.
+// These can be evaluated at compile time and reduce observed coverage.
+TEST(TestLogic, RuntimeIntAndBitConversions) {
+    const std::vector<int> ints{0, 1, 2};
+    EXPECT_EQ(to_logic(ints[0]), '0'_l);
+    EXPECT_EQ(to_logic(ints[1]), '1'_l);
+    EXPECT_THROW((void)to_logic(ints[2]), std::invalid_argument);
+    EXPECT_EQ(to_bit(ints[0]), '0'_b);
+    EXPECT_EQ(to_bit(ints[1]), '1'_b);
+    EXPECT_THROW((void)to_bit(ints[2]), std::invalid_argument);
+
+    const std::vector<Bit> bits{'0'_b, '1'_b};
+    EXPECT_EQ(to_logic(bits[0]), '0'_l);
+    EXPECT_EQ(to_logic(bits[1]), '1'_l);
+    EXPECT_EQ(resolve(bits[0], ResolveMethod::WEAK), '0'_b);
+    EXPECT_EQ(resolve(bits[1], ResolveMethod::ZEROS), '1'_b);
 }
 
 // Test Logic is_resolvable (checked via is_01)

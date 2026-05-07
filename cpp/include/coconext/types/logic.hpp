@@ -24,13 +24,7 @@ public:
     using enum value_type;
 
 public:
-    // ensures that these are constexpr since enum classes are not literal types
     constexpr Logic() noexcept = default;
-    constexpr Logic(const Logic&) noexcept = default;
-    constexpr Logic& operator=(const Logic&) noexcept = default;
-    constexpr Logic(Logic&&) noexcept = default;
-    constexpr Logic& operator=(Logic&&) noexcept = default;
-
     constexpr Logic(value_type value) noexcept : value_(value) {}
     constexpr value_type value() const noexcept { return value_; }
 
@@ -47,13 +41,7 @@ public:
     using enum value_type;
 
 public:
-    // ensures that these are constexpr since enum classes are not literal types
     constexpr Bit() noexcept = default;
-    constexpr Bit(const Bit&) noexcept = default;
-    constexpr Bit& operator=(const Bit&) noexcept = default;
-    constexpr Bit(Bit&&) noexcept = default;
-    constexpr Bit& operator=(Bit&&) noexcept = default;
-
     constexpr Bit(value_type value) noexcept : value_(value) {}
     constexpr value_type value() const noexcept { return value_; }
 
@@ -66,7 +54,16 @@ private:
     value_type value_ = _0;
 };
 
-constexpr Logic operator""_l(char c) {
+constexpr bool operator==(const Logic& lhs, const Logic& rhs) noexcept {
+    return lhs.value() == rhs.value();
+}
+
+constexpr bool operator==(const Bit& lhs, const Bit& rhs) noexcept {
+    return lhs.value() == rhs.value();
+}
+
+template <Character CharType>
+constexpr Logic to_logic(CharType c) {
     switch (c) {
     case '0':
         return Logic::_0;
@@ -97,30 +94,26 @@ constexpr Logic operator""_l(char c) {
     }
 }
 
-constexpr Bit operator""_b(char c) {
-    if (c == '0') {
+template <Character CharType>
+constexpr Bit to_bit(CharType value) {
+    if (value == '0') {
         return Bit::_0;
-    } else if (c == '1') {
+    } else if (value == '1') {
         return Bit::_1;
     } else {
-        throw std::invalid_argument("Invalid bit literal");
+        throw std::invalid_argument("Invalid bit value");
     }
 }
 
-constexpr bool operator==(const Logic& lhs, const Logic& rhs) noexcept {
-    return lhs.value() == rhs.value();
-}
+constexpr Logic operator""_l(char c) { return to_logic(c); }
 
-template <Character CharType>
-constexpr Logic to_logic(CharType value) {
-    return operator""_l(value);
-}
+constexpr Bit operator""_b(char c) { return to_bit(c); }
 
 constexpr Logic to_logic(std::string_view value) {
     if (value.size() != 1) {
         throw std::invalid_argument("Invalid logic value");
     }
-    return operator""_l(value[0]);
+    return to_logic(value[0]);
 }
 
 constexpr Logic to_logic(char const* value) {
@@ -144,17 +137,6 @@ constexpr Logic to_logic(IntType value) {
 constexpr Logic to_logic(bool value) { return value ? Logic::_1 : Logic::_0; }
 
 constexpr Logic to_logic(const Bit& value) { return value; }
-
-template <Character CharType>
-constexpr Bit to_bit(CharType value) {
-    if (value == '0') {
-        return Bit::_0;
-    } else if (value == '1') {
-        return Bit::_1;
-    } else {
-        throw std::invalid_argument("Invalid bit value");
-    }
-}
 
 constexpr Bit to_bit(std::string_view value) {
     if (value.size() != 1) {
@@ -207,7 +189,7 @@ constexpr char to_char(const Logic& value) noexcept {
     return char_map[static_cast<size_t>(value.value())];
 }
 
-constexpr bool to_int(const Logic& value) {
+constexpr int to_int(const Logic& value) {
     if (value.value() == Logic::_0 || value.value() == Logic::L) {
         return 0;
     } else if (value.value() == Logic::_1 || value.value() == Logic::H) {
@@ -317,7 +299,7 @@ constexpr bool is_01(const Logic& value) noexcept {
            value == Logic::H;
 }
 
-constexpr bool is_01(const Bit& value) noexcept { return true; }
+constexpr bool is_01(const Bit&) noexcept { return true; }
 
 enum class ResolveMethod {
     ERROR,
@@ -332,19 +314,18 @@ Logic resolve(const Logic& value, ResolveMethod method);
 inline Bit resolve(const Bit& value, ResolveMethod method) { return value; }
 
 }  // namespace coconext::types
+
 namespace std {
 
 template <>
-class hash<coconext::types::Logic> {
-public:
+struct hash<coconext::types::Logic> {
     size_t operator()(const coconext::types::Logic& logic) const noexcept {
         return std::hash<coconext::types::Logic::value_type>()(logic.value());
     }
 };
 
 template <>
-class hash<coconext::types::Bit> {
-public:
+struct hash<coconext::types::Bit> {
     size_t operator()(const coconext::types::Bit& bit) const noexcept {
         return std::hash<coconext::types::Bit::value_type>()(bit.value());
     }
