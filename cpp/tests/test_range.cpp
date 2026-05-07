@@ -101,6 +101,11 @@ TEST(TestRange, BadGetitemEquivalent) {
     EXPECT_THROW((void)r(8, 4), std::invalid_argument);
 }
 
+TEST(TestRange, SliceStopOutOfRange) {
+    const Range r(1, Direction::TO, 5);
+    EXPECT_THROW((void)r(0, 100), std::out_of_range);
+}
+
 TEST(TestRange, Copy) {
     const Range r(-2, Direction::TO, 1);
     const Range copy_constructed(r);

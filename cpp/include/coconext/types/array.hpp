@@ -1,6 +1,7 @@
 #ifndef COCONEXT_ARRAY_HPP
 #define COCONEXT_ARRAY_HPP
 
+#include <algorithm>
 #include <coconext/types/range.hpp>
 #include <concepts>
 #include <cstddef>
@@ -9,7 +10,6 @@
 #include <ranges>
 #include <stdexcept>
 #include <type_traits>
-#include <utility>
 #include <vector>
 
 namespace coconext::types {
