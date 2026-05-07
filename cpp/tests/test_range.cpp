@@ -71,6 +71,8 @@ TEST(TestRange, NullRange) {
 TEST(TestRange, BadArgumentsEquivalent) {
     EXPECT_THROW((void)to_direction("BAD DIRECTION"), std::invalid_argument);
     EXPECT_THROW((void)to_direction("nope"), std::invalid_argument);
+    EXPECT_THROW((void)to_direction("xx"), std::invalid_argument);
+    EXPECT_THROW((void)to_direction("nottto"), std::invalid_argument);
 }
 
 TEST(TestRange, Equality) {
