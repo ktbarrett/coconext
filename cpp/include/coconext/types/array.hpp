@@ -320,10 +320,7 @@ template <typename ValueT>
     requires std::equality_comparable<ValueT>
 constexpr bool operator==(const Array<ValueT>& lhs,
                           const Array<ValueT>& rhs) noexcept {
-    if ((lhs.range().length() == 0) && (rhs.range().length() == 0)) {
-        return true;
-    }
-    if (lhs.range().length() != rhs.range().length()) {
+    if (lhs.range() != rhs.range()) {
         return false;
     }
     for (auto it1 = lhs.begin(), it2 = rhs.begin(); it1 != lhs.end();
@@ -375,5 +372,18 @@ static_assert(RangedSequence<ArraySlice<Array<int>>>);
 static_assert(RangedSequence<ArraySlice<const Array<int>>>);
 
 }  // namespace coconext::types
+
+namespace std {
+template <typename T>
+struct hash<coconext::types::Array<T>> {
+    size_t operator()(const coconext::types::Array<T>& arr) const noexcept {
+        size_t seed = hash<coconext::types::Range>{}(arr.range());
+        for (const auto& elem : arr) {
+            seed = coconext::types::detail::hash_combine(seed, elem);
+        }
+        return seed;
+    }
+};
+}  // namespace std
 
 #endif  // COCONEXT_ARRAY_HPP

@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 
 #include <coconext/types.hpp>
+#include <functional>
 #include <numeric>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 using namespace coconext::types;
@@ -391,11 +393,13 @@ TEST(TestArray, EqualityValuesAndRange) {
     EXPECT_EQ(Array<int>({1, 2, 3, 4}), Array<int>({1, 2, 3, 4}));
 }
 
-TEST(TestArray, EqualityIgnoresRange) {
+TEST(TestArray, InequalityDifferentRange) {
+    // Arrays with different ranges have different indexing semantics, so they
+    // are not substitutable and must not compare equal.
     Array<int> a({1, 2, 3});
     Array<int> b({1, 2, 3});
     b.set_range(Range(10, Direction::DOWNTO, 8));
-    EXPECT_EQ(a, b);
+    EXPECT_NE(a, b);
 }
 
 TEST(TestArray, InequalityDifferentValues) {
@@ -410,6 +414,72 @@ TEST(TestArray, EqualityEmptyArrays) {
     Array<int> a({});
     Array<int> b({});
     EXPECT_EQ(a, b);
+}
+
+// -- Hash -------------------------------------------------------------------
+//
+// std::hash<Array> must agree with operator==, which considers both the
+// elements and the range (since arrays with different ranges have different
+// indexing semantics and are not substitutable). The exception is when the
+// ranges themselves compare equal under Range's own equality (length 0 always,
+// length 1 with same left regardless of direction).
+
+TEST(TestArray, HashEqualArraysSameRange) {
+    std::hash<Array<int>> h;
+    Array<int> a({1, 2, 3, 4});
+    Array<int> b({1, 2, 3, 4});
+    EXPECT_EQ(h(a), h(b));
+}
+
+TEST(TestArray, HashEmptyArraysWithDifferentBounds) {
+    // All length-0 ranges are equal (Range length-0 special case), so empty
+    // arrays with any range bounds compare equal and must hash equal.
+    std::hash<Array<int>> h;
+    Array<int> a({});
+    Array<int> b({});
+    b.set_range(Range(5, Direction::DOWNTO, 8));  // length 0, different bounds
+    EXPECT_EQ(a, b);
+    EXPECT_EQ(h(a), h(b));
+}
+
+TEST(TestArray, HashSingleElementSameLeftDifferentDirection) {
+    // Length-1 ranges with the same left compare equal regardless of
+    // direction (Range length-1 special case), so the arrays compare equal
+    // and must hash equal.
+    std::hash<Array<int>> h;
+    Array<int> a({42});  // range: 0 TO 0
+    Array<int> b({42});
+    b.set_range(Range(0, Direction::DOWNTO, 0));
+    EXPECT_EQ(a, b);
+    EXPECT_EQ(h(a), h(b));
+}
+
+TEST(TestArray, MultiElementDifferentRangeNotEqual) {
+    // For length >= 2, range direction and bounds matter for indexing.
+    Array<int> a({1, 2, 3});
+    Array<int> b({1, 2, 3});
+    b.set_range(Range(10, Direction::DOWNTO, 8));
+    EXPECT_NE(a, b);
+}
+
+TEST(TestArray, UnorderedSetDistinguishesByRange) {
+    Array<int> a({1, 2, 3});
+    Array<int> b({1, 2, 3});
+    b.set_range(Range(10, Direction::DOWNTO, 8));
+    std::unordered_set<Array<int>> s;
+    s.insert(a);
+    s.insert(b);
+    EXPECT_EQ(s.size(), 2U);
+}
+
+TEST(TestArray, UnorderedSetDeduplicatesEmptyArrays) {
+    Array<int> a({});
+    Array<int> b({});
+    b.set_range(Range(5, Direction::DOWNTO, 8));
+    std::unordered_set<Array<int>> s;
+    s.insert(a);
+    s.insert(b);
+    EXPECT_EQ(s.size(), 1U);
 }
 
 // -- Copy semantics ---------------------------------------------------------
