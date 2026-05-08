@@ -109,11 +109,25 @@ public:
 
     friend constexpr bool operator==(const Range& lhs,
                                      const Range& rhs) noexcept {
-        if ((lhs.length() == 0) && (rhs.length() == 0)) {
+        auto left_len = lhs.length();
+        if (left_len != rhs.length()) {
+            return false;
+        }
+        if (left_len == 0) {
+            // lengths are equal and all zero-length ranges are equal
             return true;
         }
-        return lhs.left_ == rhs.left_ && lhs.right_ == rhs.right_ &&
-               lhs.direction_ == rhs.direction_;
+        if (lhs.left_ != rhs.left_) {
+            // lengths are equal and >= 1, so if left endpoints differ the
+            // ranges cannot be equal
+            return false;
+        }
+        // If left endpoints are equal and lengths are equal, then right
+        // endpoint and direction must be the same for length >= 2 cases. If
+        // length is 1, then the direction and right endpoint do not matter,
+        // since the range only contains one value and that's the left endpoint
+        // we already checked.
+        return true;
     }
 
 private:
@@ -161,8 +175,17 @@ namespace std {
 template <>
 struct hash<coconext::types::Range> {
     size_t operator()(const coconext::types::Range& range) const noexcept {
-        return coconext::types::detail::hash_combine(
-            range.left(), range.right(), range.direction());
+        // if a == a then hash(a) == hash(a), so we have to force all 0 and 1
+        // length ranges to have repeatable hashes.
+        const auto len = range.length();
+        if (len == 0) {
+            return hash<size_t>{}(0);
+        } else if (len == 1) {
+            return hash<coconext::types::Range::value_type>{}(range.left());
+        } else {
+            return coconext::types::detail::hash_combine(
+                range.left(), range.right(), range.direction());
+        }
     }
 };
 
