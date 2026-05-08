@@ -269,15 +269,6 @@ public:  // construct from iterator
 
 public:  // attributes
     constexpr const Range& range() const noexcept { return range_; }
-    constexpr void set_range(const Range& range) {
-        if (range.length() != this->range().length()) {
-            throw std::invalid_argument(
-                "New range length " + std::to_string(range.length()) +
-                " does not match current range length " +
-                std::to_string(this->range().length()));
-        }
-        range_ = range;
-    }
 
 public:  // indexing and slicing
     constexpr value_type& operator[](index_type idx) {

@@ -104,23 +104,11 @@ TEST(TestArray, ConstructFromIteratorPairLengthMismatch) {
                  std::invalid_argument);
 }
 
-// -- range() / set_range() --------------------------------------------------
+// -- range() ----------------------------------------------------------------
 
 TEST(TestArray, RangeAccessor) {
     Array<int> a({1, 2, 3});
     EXPECT_EQ(a.range(), Range(0, Direction::TO, 2));
-}
-
-TEST(TestArray, SetRangeMatchingLength) {
-    Array<int> a({1, 2, 3, 4});
-    a.set_range(Range(3, Direction::DOWNTO, 0));
-    EXPECT_EQ(a.range(), Range(3, Direction::DOWNTO, 0));
-}
-
-TEST(TestArray, SetRangeMismatchedLength) {
-    Array<int> a({1, 2, 3, 4});
-    EXPECT_THROW(a.set_range(Range(0, Direction::TO, 7)),
-                 std::invalid_argument);
 }
 
 // -- Iteration --------------------------------------------------------------
@@ -146,15 +134,14 @@ TEST(TestArray, IterationConst) {
 // -- Indexing ---------------------------------------------------------------
 
 TEST(TestArray, IndexingTO) {
-    Array<int> a({10, 20, 30, 40});
-    a.set_range(Range(8, Direction::TO, 11));
+    Array<int> a(std::vector<int>{10, 20, 30, 40}, Range(8, Direction::TO, 11));
     EXPECT_EQ(a[8], 10);
     EXPECT_EQ(a[11], 40);
 }
 
 TEST(TestArray, IndexingDOWNTO) {
-    Array<int> a({10, 20, 30, 40});
-    a.set_range(Range(10, Direction::DOWNTO, 7));
+    Array<int> a(std::vector<int>{10, 20, 30, 40},
+                 Range(10, Direction::DOWNTO, 7));
     EXPECT_EQ(a[10], 10);
     EXPECT_EQ(a[7], 40);
 }
@@ -166,8 +153,7 @@ TEST(TestArray, IndexingMutates) {
 }
 
 TEST(TestArray, IndexingOutOfRange) {
-    Array<int> a({1, 2, 3});
-    a.set_range(Range(8, Direction::TO, 10));
+    Array<int> a(std::vector<int>{1, 2, 3}, Range(8, Direction::TO, 10));
     EXPECT_THROW((void)a[0], std::out_of_range);
     EXPECT_THROW((void)a[100], std::out_of_range);
 }
@@ -191,8 +177,8 @@ TEST(TestArray, SliceTO) {
 }
 
 TEST(TestArray, SliceDOWNTO) {
-    Array<int> a({10, 20, 30, 40});
-    a.set_range(Range(3, Direction::DOWNTO, 0));
+    Array<int> a(std::vector<int>{10, 20, 30, 40},
+                 Range(3, Direction::DOWNTO, 0));
     auto s = a(2, 1);
     EXPECT_EQ(s.range().length(), 2U);
     EXPECT_EQ(s[2], 20);
@@ -239,8 +225,8 @@ TEST(TestArray, SliceEndOutOfRange) {
 }
 
 TEST(TestArray, SliceDirectionMismatch) {
-    Array<int> a({1, 2, 3, 4, 5});
-    a.set_range(Range(4, Direction::DOWNTO, 0));
+    Array<int> a(std::vector<int>{1, 2, 3, 4, 5},
+                 Range(4, Direction::DOWNTO, 0));
     // start=0, end=4 walks against the array's DOWNTO direction.
     EXPECT_THROW((void)a(0, 4), std::invalid_argument);
 }
@@ -270,8 +256,8 @@ TEST(TestArray, SliceOfSliceEndOutOfRange) {
 }
 
 TEST(TestArray, SliceOfSliceDirectionMismatch) {
-    Array<int> a({1, 2, 3, 4, 5});
-    a.set_range(Range(4, Direction::DOWNTO, 0));
+    Array<int> a(std::vector<int>{1, 2, 3, 4, 5},
+                 Range(4, Direction::DOWNTO, 0));
     auto s1 = a(4, 1);  // DOWNTO slice over coords 4..1
     // Asking for start=1, end=4 walks against s1's DOWNTO direction.
     EXPECT_THROW((void)s1(1, 4), std::invalid_argument);
@@ -296,8 +282,8 @@ TEST(TestArray, SliceConstEndOutOfRange) {
 }
 
 TEST(TestArray, SliceConstDirectionMismatch) {
-    Array<int> mut({1, 2, 3, 4, 5});
-    mut.set_range(Range(4, Direction::DOWNTO, 0));
+    Array<int> mut(std::vector<int>{1, 2, 3, 4, 5},
+                   Range(4, Direction::DOWNTO, 0));
     const Array<int>& a = mut;
     EXPECT_THROW((void)a(0, 4), std::invalid_argument);
 }
@@ -310,8 +296,8 @@ TEST(TestArray, ConstSliceErrors) {
 }
 
 TEST(TestArray, ConstSliceDirectionMismatch) {
-    Array<int> mut({1, 2, 3, 4, 5});
-    mut.set_range(Range(4, Direction::DOWNTO, 0));
+    Array<int> mut(std::vector<int>{1, 2, 3, 4, 5},
+                   Range(4, Direction::DOWNTO, 0));
     const Array<int>& a = mut;
     auto s = a(4, 0);
     EXPECT_THROW((void)s(0, 4), std::invalid_argument);
@@ -397,8 +383,7 @@ TEST(TestArray, InequalityDifferentRange) {
     // Arrays with different ranges have different indexing semantics, so they
     // are not substitutable and must not compare equal.
     Array<int> a({1, 2, 3});
-    Array<int> b({1, 2, 3});
-    b.set_range(Range(10, Direction::DOWNTO, 8));
+    Array<int> b(std::vector<int>{1, 2, 3}, Range(10, Direction::DOWNTO, 8));
     EXPECT_NE(a, b);
 }
 
@@ -436,8 +421,7 @@ TEST(TestArray, HashEmptyArraysWithDifferentBounds) {
     // arrays with any range bounds compare equal and must hash equal.
     std::hash<Array<int>> h;
     Array<int> a({});
-    Array<int> b({});
-    b.set_range(Range(5, Direction::DOWNTO, 8));  // length 0, different bounds
+    Array<int> b(std::vector<int>{}, Range(5, Direction::DOWNTO, 8));
     EXPECT_EQ(a, b);
     EXPECT_EQ(h(a), h(b));
 }
@@ -448,8 +432,7 @@ TEST(TestArray, HashSingleElementSameLeftDifferentDirection) {
     // and must hash equal.
     std::hash<Array<int>> h;
     Array<int> a({42});  // range: 0 TO 0
-    Array<int> b({42});
-    b.set_range(Range(0, Direction::DOWNTO, 0));
+    Array<int> b(std::vector<int>{42}, Range(0, Direction::DOWNTO, 0));
     EXPECT_EQ(a, b);
     EXPECT_EQ(h(a), h(b));
 }
@@ -457,15 +440,13 @@ TEST(TestArray, HashSingleElementSameLeftDifferentDirection) {
 TEST(TestArray, MultiElementDifferentRangeNotEqual) {
     // For length >= 2, range direction and bounds matter for indexing.
     Array<int> a({1, 2, 3});
-    Array<int> b({1, 2, 3});
-    b.set_range(Range(10, Direction::DOWNTO, 8));
+    Array<int> b(std::vector<int>{1, 2, 3}, Range(10, Direction::DOWNTO, 8));
     EXPECT_NE(a, b);
 }
 
 TEST(TestArray, UnorderedSetDistinguishesByRange) {
     Array<int> a({1, 2, 3});
-    Array<int> b({1, 2, 3});
-    b.set_range(Range(10, Direction::DOWNTO, 8));
+    Array<int> b(std::vector<int>{1, 2, 3}, Range(10, Direction::DOWNTO, 8));
     std::unordered_set<Array<int>> s;
     s.insert(a);
     s.insert(b);
@@ -474,8 +455,7 @@ TEST(TestArray, UnorderedSetDistinguishesByRange) {
 
 TEST(TestArray, UnorderedSetDeduplicatesEmptyArrays) {
     Array<int> a({});
-    Array<int> b({});
-    b.set_range(Range(5, Direction::DOWNTO, 8));
+    Array<int> b(std::vector<int>{}, Range(5, Direction::DOWNTO, 8));
     std::unordered_set<Array<int>> s;
     s.insert(a);
     s.insert(b);
@@ -485,8 +465,7 @@ TEST(TestArray, UnorderedSetDeduplicatesEmptyArrays) {
 // -- Copy semantics ---------------------------------------------------------
 
 TEST(TestArray, Copy) {
-    Array<int> a({1, 2, 3, 4});
-    a.set_range(Range(-2, Direction::TO, 1));
+    Array<int> a(std::vector<int>{1, 2, 3, 4}, Range(-2, Direction::TO, 1));
     Array<int> b = a;
     EXPECT_EQ(a, b);
     EXPECT_EQ(a.range(), b.range());
