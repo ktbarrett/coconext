@@ -81,6 +81,19 @@ TEST(TestRange, Equality) {
     EXPECT_EQ(Range(1, Direction::TO, 0), Range(8, Direction::TO, -8));
 }
 
+TEST(TestRange, EqualitySingleElementIgnoresDirection) {
+    // A single-element range contains the same numbers regardless of
+    // direction, so 3 TO 3 and 3 DOWNTO 3 must compare equal.
+    EXPECT_EQ(Range(3, Direction::TO, 3), Range(3, Direction::DOWNTO, 3));
+
+    std::hash<Range> h;
+    EXPECT_EQ(h(Range(3, Direction::TO, 3)), h(Range(3, Direction::DOWNTO, 3)));
+
+    const std::unordered_set<Range> single{Range(3, Direction::TO, 3),
+                                           Range(3, Direction::DOWNTO, 3)};
+    EXPECT_EQ(single.size(), 1U);
+}
+
 TEST(TestRange, OtherConstructors) {
     EXPECT_EQ(Range(1, 8), Range(1, Direction::TO, 8));
     EXPECT_EQ(Range(3, -4), Range(3, Direction::DOWNTO, -4));
