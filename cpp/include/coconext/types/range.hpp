@@ -7,6 +7,7 @@
 #include <coconext/types/direction.hpp>
 #include <coconext/types/hash.hpp>
 #include <cstdint>
+#include <limits>
 #include <ranges>
 #include <stdexcept>
 
@@ -26,6 +27,15 @@ public:
         : left_(left),
           right_(right),
           direction_(left >= right ? Direction::DOWNTO : Direction::TO) {}
+    explicit constexpr Range(size_t length)
+        : left_(0),
+          right_(static_cast<value_type>(length) - 1),
+          direction_(Direction::TO) {
+        if (length >
+            static_cast<size_t>(std::numeric_limits<value_type>::max())) {
+            throw std::length_error("Range length overflows value_type");
+        }
+    }
 
 public:
     constexpr value_type left() const noexcept { return left_; }
@@ -98,7 +108,13 @@ public:
 #endif
 
     friend constexpr bool operator==(const Range& lhs,
-                                     const Range& rhs) noexcept;
+                                     const Range& rhs) noexcept {
+        if ((lhs.length() == 0) && (rhs.length() == 0)) {
+            return true;
+        }
+        return lhs.left_ == rhs.left_ && lhs.right_ == rhs.right_ &&
+               lhs.direction_ == rhs.direction_;
+    }
 
 private:
     constexpr Direction reversed_() const noexcept {
@@ -109,14 +125,6 @@ private:
     value_type right_ = -1;
     Direction direction_ = Direction::TO;
 };
-
-constexpr bool operator==(const Range& lhs, const Range& rhs) noexcept {
-    if ((lhs.length() == 0) && (rhs.length() == 0)) {
-        return true;
-    }
-    return lhs.left_ == rhs.left_ && lhs.right_ == rhs.right_ &&
-           lhs.direction_ == rhs.direction_;
-}
 
 // more optimal implementation of std::ranges::find for Range
 constexpr Range::iterator find(const Range& range, Range::value_type value) {

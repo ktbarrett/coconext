@@ -8,7 +8,6 @@
 #include <cstddef>
 #include <initializer_list>
 #include <iterator>
-#include <limits>
 #include <ranges>
 #include <stdexcept>
 #include <string>
@@ -198,23 +197,19 @@ public:  // construct with just range
 
     explicit constexpr Array(size_t length)
         requires std::default_initializable<value_type>
-        : data_(), range_(0, Direction::TO, length_to_right_(length)) {
-        data_.resize(length);
-    }
+        : Array(Range(length)) {}
 
 public:  // constructor from initializer list
     template <typename T>
         requires std::convertible_to<T, value_type>
     explicit constexpr Array(std::initializer_list<T> init)
-        : data_(init),
-          range_(0, Direction::TO, length_to_right_(data_.size())) {}
+        : data_(init), range_(data_.size()) {}
 
 public:  // move from vector
     template <typename T>
         requires std::convertible_to<T, value_type>
     explicit constexpr Array(std::vector<T>&& vec)
-        : data_(std::move(vec)),
-          range_(0, Direction::TO, length_to_right_(data_.size())) {}
+        : data_(std::move(vec)), range_(data_.size()) {}
 
 public:  // construct from range
     template <std::ranges::input_range T>
@@ -233,7 +228,7 @@ public:  // construct from range
     template <std::ranges::input_range T>
         requires std::convertible_to<std::ranges::range_value_t<T>, value_type>
     explicit constexpr Array(const T& obj, size_t length)
-        : data_(), range_(0, Direction::TO, length_to_right_(length)) {
+        : data_(), range_(length) {
         data_.reserve(length);
         data_.assign(std::ranges::begin(obj), std::ranges::end(obj));
         if (data_.size() != length) {
@@ -262,7 +257,7 @@ public:  // construct from iterator
         requires std::convertible_to<
                      typename std::iterator_traits<It>::value_type, value_type>
     explicit constexpr Array(It begin, It end, size_t length)
-        : data_(), range_(0, Direction::TO, length_to_right_(length)) {
+        : data_(), range_(length) {
         data_.reserve(length);
         data_.assign(begin, end);
         if (data_.size() != length) {
@@ -317,16 +312,6 @@ public:  // iterators
     constexpr auto rend() const noexcept { return data_.rend(); }
 
 private:
-    static constexpr index_type length_to_right_(size_t length) {
-        // helper for common length to right computation used by a bunch of
-        // constructors; with bounds checking.
-        if (length >
-            static_cast<size_t>(std::numeric_limits<index_type>::max())) {
-            throw std::length_error("Array length overflows index_type");
-        }
-        return static_cast<index_type>(length) - 1;
-    }
-
     std::vector<value_type> data_;
     Range range_;
 };
