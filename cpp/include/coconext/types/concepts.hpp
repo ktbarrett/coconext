@@ -61,6 +61,11 @@ concept Stringifiable = requires(T val, std::string s) {
     s += std::to_string(val);
 } || requires(T val, std::string s) { s += to_string(val); };
 
+template <typename T>
+concept Hashable = requires(T a) {
+    { std::hash<T>{}(a) } -> std::convertible_to<std::size_t>;
+};
+
 }  // namespace detail
 
 }  // namespace coconext::types
