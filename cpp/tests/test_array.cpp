@@ -51,8 +51,7 @@ TEST(TestArray, ConstructFromLengthZero) {
 }
 
 TEST(TestArray, ConstructFromLengthOverflow) {
-    constexpr size_t too_big =
-        static_cast<size_t>(std::numeric_limits<int32_t>::max()) + 1;
+    constexpr size_t too_big = static_cast<size_t>(std::numeric_limits<int32_t>::max()) + 1;
     EXPECT_THROW(Array<int> a(too_big), std::length_error);
 }
 
@@ -77,10 +76,8 @@ TEST(TestArray, ConstructFromInputRangeWithLength) {
 
 TEST(TestArray, ConstructFromInputRangeLengthMismatch) {
     std::vector<int> src{1, 2, 3};
-    EXPECT_THROW(Array<int> a(src, Range(0, Direction::TO, 7)),
-                 std::invalid_argument);
-    EXPECT_THROW(Array<int> a(src, static_cast<size_t>(7)),
-                 std::invalid_argument);
+    EXPECT_THROW(Array<int> a(src, Range(0, Direction::TO, 7)), std::invalid_argument);
+    EXPECT_THROW(Array<int> a(src, static_cast<size_t>(7)), std::invalid_argument);
 }
 
 TEST(TestArray, ConstructFromIteratorPairWithRange) {
@@ -99,9 +96,11 @@ TEST(TestArray, ConstructFromIteratorPairLengthMismatch) {
     std::vector<int> src{1, 2, 3};
     EXPECT_THROW(
         Array<int> a(src.begin(), src.end(), Range(0, Direction::TO, 7)),
-        std::invalid_argument);
-    EXPECT_THROW(Array<int> a(src.begin(), src.end(), static_cast<size_t>(7)),
-                 std::invalid_argument);
+        std::invalid_argument
+    );
+    EXPECT_THROW(
+        Array<int> a(src.begin(), src.end(), static_cast<size_t>(7)), std::invalid_argument
+    );
 }
 
 // -- range() ----------------------------------------------------------------
@@ -126,7 +125,7 @@ TEST(TestArray, ReverseIteration) {
 }
 
 TEST(TestArray, IterationConst) {
-    const Array<int> a({1, 2, 3});
+    Array<int> const a({1, 2, 3});
     int sum = std::accumulate(a.begin(), a.end(), 0);
     EXPECT_EQ(sum, 6);
 }
@@ -140,8 +139,7 @@ TEST(TestArray, IndexingTO) {
 }
 
 TEST(TestArray, IndexingDOWNTO) {
-    Array<int> a(std::vector<int>{10, 20, 30, 40},
-                 Range(10, Direction::DOWNTO, 7));
+    Array<int> a(std::vector<int>{10, 20, 30, 40}, Range(10, Direction::DOWNTO, 7));
     EXPECT_EQ(a[10], 10);
     EXPECT_EQ(a[7], 40);
 }
@@ -159,10 +157,10 @@ TEST(TestArray, IndexingOutOfRange) {
 }
 
 TEST(TestArray, IndexingConst) {
-    const Array<int> a({1, 2, 3});
+    Array<int> const a({1, 2, 3});
     EXPECT_EQ(a[0], 1);
     EXPECT_EQ(a[2], 3);
-    static_assert(std::is_same_v<decltype(a[0]), const int&>);
+    static_assert(std::is_same_v<decltype(a[0]), int const&>);
 }
 
 // -- Slicing ----------------------------------------------------------------
@@ -177,8 +175,7 @@ TEST(TestArray, SliceTO) {
 }
 
 TEST(TestArray, SliceDOWNTO) {
-    Array<int> a(std::vector<int>{10, 20, 30, 40},
-                 Range(3, Direction::DOWNTO, 0));
+    Array<int> a(std::vector<int>{10, 20, 30, 40}, Range(3, Direction::DOWNTO, 0));
     auto s = a(2, 1);
     EXPECT_EQ(s.range().length(), 2U);
     EXPECT_EQ(s[2], 20);
@@ -225,8 +222,7 @@ TEST(TestArray, SliceEndOutOfRange) {
 }
 
 TEST(TestArray, SliceDirectionMismatch) {
-    Array<int> a(std::vector<int>{1, 2, 3, 4, 5},
-                 Range(4, Direction::DOWNTO, 0));
+    Array<int> a(std::vector<int>{1, 2, 3, 4, 5}, Range(4, Direction::DOWNTO, 0));
     // start=0, end=4 walks against the array's DOWNTO direction.
     EXPECT_THROW((void)a(0, 4), std::invalid_argument);
 }
@@ -235,8 +231,9 @@ TEST(TestArray, SliceOfSliceFlattens) {
     Array<int> a({1, 2, 3, 4, 5, 6, 7, 8});
     auto s1 = a(1, 6);
     auto s2 = s1(2, 4);
-    static_assert(std::is_same_v<decltype(s2), ArraySlice<Array<int>>>,
-                  "slice-of-slice must flatten");
+    static_assert(
+        std::is_same_v<decltype(s2), ArraySlice<Array<int>>>, "slice-of-slice must flatten"
+    );
     EXPECT_EQ(s2[2], 3);
     EXPECT_EQ(s2[4], 5);
 }
@@ -256,8 +253,7 @@ TEST(TestArray, SliceOfSliceEndOutOfRange) {
 }
 
 TEST(TestArray, SliceOfSliceDirectionMismatch) {
-    Array<int> a(std::vector<int>{1, 2, 3, 4, 5},
-                 Range(4, Direction::DOWNTO, 0));
+    Array<int> a(std::vector<int>{1, 2, 3, 4, 5}, Range(4, Direction::DOWNTO, 0));
     auto s1 = a(4, 1);  // DOWNTO slice over coords 4..1
     // Asking for start=1, end=4 walks against s1's DOWNTO direction.
     EXPECT_THROW((void)s1(1, 4), std::invalid_argument);
@@ -267,38 +263,36 @@ TEST(TestArray, SliceOfSliceDirectionMismatch) {
 // are templates, so const and non-const callers instantiate separate
 // specializations and each throw needs to be exercised independently.
 TEST(TestArray, IndexingConstOutOfRange) {
-    const Array<int> a({1, 2, 3});
+    Array<int> const a({1, 2, 3});
     EXPECT_THROW((void)a[100], std::out_of_range);
 }
 
 TEST(TestArray, SliceConstStartOutOfRange) {
-    const Array<int> a({1, 2, 3});
+    Array<int> const a({1, 2, 3});
     EXPECT_THROW((void)a(99, 100), std::out_of_range);
 }
 
 TEST(TestArray, SliceConstEndOutOfRange) {
-    const Array<int> a({1, 2, 3});
+    Array<int> const a({1, 2, 3});
     EXPECT_THROW((void)a(0, 99), std::out_of_range);
 }
 
 TEST(TestArray, SliceConstDirectionMismatch) {
-    Array<int> mut(std::vector<int>{1, 2, 3, 4, 5},
-                   Range(4, Direction::DOWNTO, 0));
-    const Array<int>& a = mut;
+    Array<int> mut(std::vector<int>{1, 2, 3, 4, 5}, Range(4, Direction::DOWNTO, 0));
+    Array<int> const& a = mut;
     EXPECT_THROW((void)a(0, 4), std::invalid_argument);
 }
 
 TEST(TestArray, ConstSliceErrors) {
-    const Array<int> a({1, 2, 3, 4, 5});
+    Array<int> const a({1, 2, 3, 4, 5});
     auto s = a(0, 4);
     EXPECT_THROW((void)s(99, 100), std::out_of_range);
     EXPECT_THROW((void)s(0, 99), std::out_of_range);
 }
 
 TEST(TestArray, ConstSliceDirectionMismatch) {
-    Array<int> mut(std::vector<int>{1, 2, 3, 4, 5},
-                   Range(4, Direction::DOWNTO, 0));
-    const Array<int>& a = mut;
+    Array<int> mut(std::vector<int>{1, 2, 3, 4, 5}, Range(4, Direction::DOWNTO, 0));
+    Array<int> const& a = mut;
     auto s = a(4, 0);
     EXPECT_THROW((void)s(0, 4), std::invalid_argument);
 }
@@ -306,7 +300,7 @@ TEST(TestArray, ConstSliceDirectionMismatch) {
 TEST(TestArray, ConstSliceOfConstSlice) {
     // Success path of ArraySlice<const Array<int>>::operator() — its own
     // template instantiation, separate from the non-const slice case.
-    const Array<int> a({1, 2, 3, 4, 5});
+    Array<int> const a({1, 2, 3, 4, 5});
     auto outer = a(0, 4);
     auto inner = outer(1, 3);
     EXPECT_EQ(inner.range().length(), 3U);
@@ -317,8 +311,7 @@ TEST(TestArray, ConstSliceOfConstSlice) {
 TEST(TestArray, ConstructLogicLengthOverflow) {
     // length_to_right_ is a static member of each Array<T> instantiation;
     // Array<Logic>'s copy needs its own overflow exercise.
-    constexpr size_t too_big =
-        static_cast<size_t>(std::numeric_limits<int32_t>::max()) + 1;
+    constexpr size_t too_big = static_cast<size_t>(std::numeric_limits<int32_t>::max()) + 1;
     EXPECT_THROW(Array<Logic> a(too_big), std::length_error);
 }
 
@@ -332,30 +325,27 @@ TEST(TestArray, ConstructLogicFromLength) {
 // Cover length_to_right_'s overflow throw via the other constructor paths
 // that route through it.
 TEST(TestArray, ConstructFromInputRangeWithLengthOverflow) {
-    constexpr size_t too_big =
-        static_cast<size_t>(std::numeric_limits<int32_t>::max()) + 1;
+    constexpr size_t too_big = static_cast<size_t>(std::numeric_limits<int32_t>::max()) + 1;
     std::vector<int> empty;
     EXPECT_THROW(Array<int> a(empty, too_big), std::length_error);
 }
 
 TEST(TestArray, ConstructFromIteratorPairWithLengthOverflow) {
-    constexpr size_t too_big =
-        static_cast<size_t>(std::numeric_limits<int32_t>::max()) + 1;
+    constexpr size_t too_big = static_cast<size_t>(std::numeric_limits<int32_t>::max()) + 1;
     std::vector<int> empty;
-    EXPECT_THROW(Array<int> a(empty.begin(), empty.end(), too_big),
-                 std::length_error);
+    EXPECT_THROW(Array<int> a(empty.begin(), empty.end(), too_big), std::length_error);
 }
 
 TEST(TestArray, ConstSliceOverConstArray) {
-    const Array<int> a({10, 20, 30, 40});
+    Array<int> const a({10, 20, 30, 40});
     auto s = a(1, 2);
-    static_assert(std::is_same_v<decltype(s), ArraySlice<const Array<int>>>);
+    static_assert(std::is_same_v<decltype(s), ArraySlice<Array<int> const>>);
     EXPECT_EQ(s[1], 20);
-    static_assert(std::is_same_v<decltype(s[1]), const int&>);
+    static_assert(std::is_same_v<decltype(s[1]), int const&>);
 }
 
 TEST(TestArray, ConstSliceIteration) {
-    const Array<int> a({1, 2, 3, 4, 5});
+    Array<int> const a({1, 2, 3, 4, 5});
     auto s = a(1, 3);
     int sum = std::accumulate(s.begin(), s.end(), 0);
     EXPECT_EQ(sum, 2 + 3 + 4);
@@ -366,7 +356,7 @@ TEST(TestArray, ConstSliceOverMutableArrayMutates) {
     // not restrict element access. The slice's own const-ness only fixes the
     // pointer/range; the underlying ArrayT determines element mutability.
     Array<int> a({1, 2, 3, 4});
-    const auto cs = a(0, 3);  // const ArraySlice<Array<int>>
+    auto const cs = a(0, 3);  // const ArraySlice<Array<int>>
     cs[0] = 99;               // mutation through const slice
     cs = std::vector<int>{10, 20, 30, 40};
     EXPECT_EQ(a[0], 10);
@@ -484,8 +474,7 @@ TEST(TestArray, CopyAssignReplacesRange) {
     // range_ is const, so assignment goes through the custom operator= which
     // reconstructs range_ in place. Verify both data and range get replaced.
     Array<int> a({1, 2, 3});  // range: 0 TO 2
-    Array<int> b(std::vector<int>{10, 20, 30, 40},
-                 Range(7, Direction::DOWNTO, 4));
+    Array<int> b(std::vector<int>{10, 20, 30, 40}, Range(7, Direction::DOWNTO, 4));
     a = b;
     EXPECT_EQ(a, b);
     EXPECT_EQ(a.range(), Range(7, Direction::DOWNTO, 4));
@@ -495,8 +484,7 @@ TEST(TestArray, CopyAssignReplacesRange) {
 
 TEST(TestArray, MoveAssignReplacesRange) {
     Array<int> a({1, 2, 3});
-    Array<int> b(std::vector<int>{10, 20, 30, 40},
-                 Range(7, Direction::DOWNTO, 4));
+    Array<int> b(std::vector<int>{10, 20, 30, 40}, Range(7, Direction::DOWNTO, 4));
     a = std::move(b);
     EXPECT_EQ(a.range(), Range(7, Direction::DOWNTO, 4));
     EXPECT_EQ(a[7], 10);

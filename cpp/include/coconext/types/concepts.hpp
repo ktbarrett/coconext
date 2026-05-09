@@ -57,9 +57,8 @@ namespace detail {
 // lookups. It also widens the result type requirements to anything that can be
 // used to build a string.
 template <typename T>
-concept Stringifiable = requires(T val, std::string s) {
-    s += std::to_string(val);
-} || requires(T val, std::string s) { s += to_string(val); };
+concept Stringifiable = requires(T val, std::string s) { s += std::to_string(val); }
+                     || requires(T val, std::string s) { s += to_string(val); };
 
 template <typename T>
 concept Hashable = requires(T a) {

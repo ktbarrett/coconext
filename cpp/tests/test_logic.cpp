@@ -270,24 +270,18 @@ TEST(TestLogic, LogicResolve) {
     // Test ERROR resolution
     EXPECT_EQ(resolve('0'_l, ResolveMethod::ERROR), '0'_l);
     EXPECT_EQ(resolve('1'_l, ResolveMethod::ERROR), '1'_l);
-    EXPECT_THROW((void)resolve('U'_l, ResolveMethod::ERROR),
-                 std::invalid_argument);
-    EXPECT_THROW((void)resolve('X'_l, ResolveMethod::ERROR),
-                 std::invalid_argument);
-    EXPECT_THROW((void)resolve('Z'_l, ResolveMethod::ERROR),
-                 std::invalid_argument);
-    EXPECT_THROW((void)resolve('W'_l, ResolveMethod::ERROR),
-                 std::invalid_argument);
-    EXPECT_THROW((void)resolve('L'_l, ResolveMethod::ERROR),
-                 std::invalid_argument);
-    EXPECT_THROW((void)resolve('H'_l, ResolveMethod::ERROR),
-                 std::invalid_argument);
-    EXPECT_THROW((void)resolve('-'_l, ResolveMethod::ERROR),
-                 std::invalid_argument);
+    EXPECT_THROW((void)resolve('U'_l, ResolveMethod::ERROR), std::invalid_argument);
+    EXPECT_THROW((void)resolve('X'_l, ResolveMethod::ERROR), std::invalid_argument);
+    EXPECT_THROW((void)resolve('Z'_l, ResolveMethod::ERROR), std::invalid_argument);
+    EXPECT_THROW((void)resolve('W'_l, ResolveMethod::ERROR), std::invalid_argument);
+    EXPECT_THROW((void)resolve('L'_l, ResolveMethod::ERROR), std::invalid_argument);
+    EXPECT_THROW((void)resolve('H'_l, ResolveMethod::ERROR), std::invalid_argument);
+    EXPECT_THROW((void)resolve('-'_l, ResolveMethod::ERROR), std::invalid_argument);
 
     // Out-of-range ResolveMethod hits the outer `default:` arm.
-    EXPECT_THROW((void)resolve('0'_l, static_cast<ResolveMethod>(99)),
-                 std::invalid_argument);
+    EXPECT_THROW(
+        (void)resolve('0'_l, static_cast<ResolveMethod>(99)), std::invalid_argument
+    );
 }
 
 TEST(TestBit, BitResolve) {
@@ -307,7 +301,7 @@ TEST(TestBit, BitResolve) {
 // Stores values in std::vector to force runtime evaluation of conversions.
 // These can be evaluated at compile time and reduce observed coverage.
 TEST(TestLogic, RuntimeIntAndBitConversions) {
-    const std::vector<int> ints{0, 1, 2};
+    std::vector<int> const ints{0, 1, 2};
     EXPECT_EQ(to_logic(ints[0]), '0'_l);
     EXPECT_EQ(to_logic(ints[1]), '1'_l);
     EXPECT_THROW((void)to_logic(ints[2]), std::invalid_argument);
@@ -315,7 +309,7 @@ TEST(TestLogic, RuntimeIntAndBitConversions) {
     EXPECT_EQ(to_bit(ints[1]), '1'_b);
     EXPECT_THROW((void)to_bit(ints[2]), std::invalid_argument);
 
-    const std::vector<Bit> bits{'0'_b, '1'_b};
+    std::vector<Bit> const bits{'0'_b, '1'_b};
     EXPECT_EQ(to_logic(bits[0]), '0'_l);
     EXPECT_EQ(to_logic(bits[1]), '1'_l);
     EXPECT_EQ(resolve(bits[0], ResolveMethod::WEAK), '0'_b);
@@ -352,11 +346,12 @@ TEST(TestLogic, LogicIsHashable) {
     EXPECT_EQ(h('L'_l), h('L'_l));
     EXPECT_EQ(h('H'_l), h('H'_l));
     EXPECT_EQ(h('-'_l), h('-'_l));
-    const std::unordered_set<Logic> same{'0'_l, '0'_l};
+    std::unordered_set<Logic> const same{'0'_l, '0'_l};
     EXPECT_EQ(same.size(), 1U);
 
-    const std::unordered_set<Logic> different{'0'_l, '1'_l, 'X'_l, 'Z'_l, 'W'_l,
-                                              'L'_l, 'H'_l, '-'_l, 'U'_l};
+    std::unordered_set<Logic> const different{
+        '0'_l, '1'_l, 'X'_l, 'Z'_l, 'W'_l, 'L'_l, 'H'_l, '-'_l, 'U'_l
+    };
     EXPECT_EQ(different.size(), 9U);
 }
 
@@ -364,9 +359,9 @@ TEST(TestBit, BitIsHashable) {
     std::hash<Bit> h;
     EXPECT_EQ(h('0'_b), h('0'_b));
     EXPECT_EQ(h('1'_b), h('1'_b));
-    const std::unordered_set<Bit> same{'0'_b, '0'_b};
+    std::unordered_set<Bit> const same{'0'_b, '0'_b};
     EXPECT_EQ(same.size(), 1U);
 
-    const std::unordered_set<Bit> different{'0'_b, '1'_b};
+    std::unordered_set<Bit> const different{'0'_b, '1'_b};
     EXPECT_EQ(different.size(), 2U);
 }

@@ -41,178 +41,204 @@ void register_logic(nb::module_& m) {
         .value("RANDOM", ResolveMethod::RANDOM);
 
     nb::class_<Logic>(m, "Logic")
-        .def(nb::init<const Logic&>())
-        .def("__init__",
-             [](Logic* self, const Bit& value) {
-                 new (self) Logic(to_logic(value));
-             })
-        .def("__init__",
-             [](Logic* self, std::string_view value) {
-                 new (self) Logic(to_logic(value));
-             })
-        .def("__init__",
-             [](Logic* self, long long value) {
-                 new (self) Logic(to_logic(value));
-             })
+        .def(nb::init<Logic const&>())
+        .def(
+            "__init__",
+            [](Logic* self, Bit const& value) { new (self) Logic(to_logic(value)); }
+        )
+        .def(
+            "__init__",
+            [](Logic* self, std::string_view value) { new (self) Logic(to_logic(value)); }
+        )
+        .def(
+            "__init__",
+            [](Logic* self, long long value) { new (self) Logic(to_logic(value)); }
+        )
         .def("__str__", &to_string)
         .def("__index__", &to_int)
-        .def("__bool__", [](const Logic& self) { return to_int(self) != 0; })
-        .def("__repr__",
-             [](const Logic& self) {
-                 auto res = std::string("Logic('");
-                 res += to_string(self);
-                 res += "')";
-                 return res;
-             })
-        .def("__len__", [](const Logic&) { return 1; })
+        .def("__bool__", [](Logic const& self) { return to_int(self) != 0; })
+        .def(
+            "__repr__",
+            [](Logic const& self) {
+                auto res = std::string("Logic('");
+                res += to_string(self);
+                res += "')";
+                return res;
+            }
+        )
+        .def("__len__", [](Logic const&) { return 1; })
         .def(
             "__eq__",
-            [](const Logic& lhs, const Logic& rhs) { return lhs == rhs; },
-            nb::is_operator())
+            [](Logic const& lhs, Logic const& rhs) { return lhs == rhs; },
+            nb::is_operator()
+        )
         .def(
             "__eq__",
-            [](const Logic& lhs, const Bit& rhs) { return lhs == rhs; },
-            nb::is_operator())
+            [](Logic const& lhs, Bit const& rhs) { return lhs == rhs; },
+            nb::is_operator()
+        )
         .def(
             "__eq__",
-            [](const Logic& self, long long other) {
+            [](Logic const& self, long long other) {
                 try {
                     return self == to_logic(other);
-                } catch (const std::invalid_argument&) {
+                } catch (std::invalid_argument const&) {
                     return false;
                 }
             },
-            nb::is_operator())
+            nb::is_operator()
+        )
         .def(
             "__eq__",
-            [](const Logic& self, std::string_view other) {
+            [](Logic const& self, std::string_view other) {
                 try {
                     return self == to_logic(other);
-                } catch (const std::invalid_argument&) {
+                } catch (std::invalid_argument const&) {
                     return false;
                 }
             },
-            nb::is_operator())
+            nb::is_operator()
+        )
         .def(
             "__or__",
-            [](const Logic& lhs, const Logic& rhs) { return lhs | rhs; },
-            nb::is_operator())
+            [](Logic const& lhs, Logic const& rhs) { return lhs | rhs; },
+            nb::is_operator()
+        )
         .def(
-            "__or__", [](const Logic& a, const Bit& b) { return a | b; },
-            nb::is_operator())
+            "__or__", [](Logic const& a, Bit const& b) { return a | b; }, nb::is_operator()
+        )
         .def(
             "__and__",
-            [](const Logic& lhs, const Logic& rhs) { return lhs & rhs; },
-            nb::is_operator())
+            [](Logic const& lhs, Logic const& rhs) { return lhs & rhs; },
+            nb::is_operator()
+        )
         .def(
-            "__and__", [](const Logic& a, const Bit& b) { return a & b; },
-            nb::is_operator())
+            "__and__", [](Logic const& a, Bit const& b) { return a & b; }, nb::is_operator()
+        )
         .def(
             "__xor__",
-            [](const Logic& lhs, const Logic& rhs) { return lhs ^ rhs; },
-            nb::is_operator())
+            [](Logic const& lhs, Logic const& rhs) { return lhs ^ rhs; },
+            nb::is_operator()
+        )
         .def(
-            "__xor__", [](const Logic& a, const Bit& b) { return a ^ b; },
-            nb::is_operator())
-        .def("__invert__", nb::overload_cast<const Logic&>(&operator~),
-             nb::is_operator())
-        .def_prop_ro("is_resolvable", nb::overload_cast<const Logic&>(&is_01))
-        .def("resolve",
-             [](const Logic& value, std::string_view method) {
-                 return resolve(value, string_to_resolve_method(method));
-             })
-        .def("resolve",
-             [](const Logic& self, ResolveMethod method) {
-                 return resolve(self, method);
-             })
-        .def("__copy__", [](const Logic& self) { return Logic(self); })
-        .def("__deepcopy__", [](const Logic& self, nb::dict /* memo */) {
+            "__xor__", [](Logic const& a, Bit const& b) { return a ^ b; }, nb::is_operator()
+        )
+        .def("__invert__", nb::overload_cast<Logic const&>(&operator~), nb::is_operator())
+        .def_prop_ro("is_resolvable", nb::overload_cast<Logic const&>(&is_01))
+        .def(
+            "resolve",
+            [](Logic const& value, std::string_view method) {
+                return resolve(value, string_to_resolve_method(method));
+            }
+        )
+        .def(
+            "resolve",
+            [](Logic const& self, ResolveMethod method) { return resolve(self, method); }
+        )
+        .def("__copy__", [](Logic const& self) { return Logic(self); })
+        .def("__deepcopy__", [](Logic const& self, nb::dict /* memo */) {
             return Logic(self);
         });
 
     nb::class_<Bit>(m, "Bit")
-        .def(nb::init<const Bit&>())
-        .def("__init__",
-             [](Bit* self, const Logic& value) {
-                 new (self) Bit(to_bit(value));
-             })
-        .def("__init__",
-             [](Bit* self, std::string_view value) {
-                 new (self) Bit(to_bit(value));
-             })
-        .def("__init__",
-             [](Bit* self, long long value) { new (self) Bit(to_bit(value)); })
+        .def(nb::init<Bit const&>())
+        .def(
+            "__init__", [](Bit* self, Logic const& value) { new (self) Bit(to_bit(value)); }
+        )
+        .def(
+            "__init__",
+            [](Bit* self, std::string_view value) { new (self) Bit(to_bit(value)); }
+        )
+        .def("__init__", [](Bit* self, long long value) { new (self) Bit(to_bit(value)); })
         .def("__str__", &to_string)
         .def("__index__", &to_int)
-        .def("__bool__", [](const Bit& self) { return to_int(self) != 0; })
-        .def("__repr__",
-             [](const Bit& self) {
-                 auto res = std::string("Bit('");
-                 res += to_string(self);
-                 res += "')";
-                 return res;
-             })
-        .def("__len__", [](const Bit&) { return 1; })
+        .def("__bool__", [](Bit const& self) { return to_int(self) != 0; })
         .def(
-            "__eq__", [](const Bit& lhs, const Bit& rhs) { return lhs == rhs; },
-            nb::is_operator())
-        .def(
-            "__eq__",
-            [](const Bit& lhs, const Logic& rhs) { return lhs == rhs; },
-            nb::is_operator())
+            "__repr__",
+            [](Bit const& self) {
+                auto res = std::string("Bit('");
+                res += to_string(self);
+                res += "')";
+                return res;
+            }
+        )
+        .def("__len__", [](Bit const&) { return 1; })
         .def(
             "__eq__",
-            [](const Bit& self, long long other) {
+            [](Bit const& lhs, Bit const& rhs) { return lhs == rhs; },
+            nb::is_operator()
+        )
+        .def(
+            "__eq__",
+            [](Bit const& lhs, Logic const& rhs) { return lhs == rhs; },
+            nb::is_operator()
+        )
+        .def(
+            "__eq__",
+            [](Bit const& self, long long other) {
                 try {
                     return self == to_bit(other);
-                } catch (const std::invalid_argument&) {
+                } catch (std::invalid_argument const&) {
                     return false;
                 }
             },
-            nb::is_operator())
+            nb::is_operator()
+        )
         .def(
             "__eq__",
-            [](const Bit& self, std::string_view other) {
+            [](Bit const& self, std::string_view other) {
                 try {
                     return self == to_bit(other);
-                } catch (const std::invalid_argument&) {
+                } catch (std::invalid_argument const&) {
                     return false;
                 }
             },
-            nb::is_operator())
+            nb::is_operator()
+        )
         .def(
-            "__or__", [](const Bit& lhs, const Bit& rhs) { return lhs | rhs; },
-            nb::is_operator())
+            "__or__",
+            [](Bit const& lhs, Bit const& rhs) { return lhs | rhs; },
+            nb::is_operator()
+        )
         .def(
-            "__or__", [](const Bit& a, const Logic& b) { return a | b; },
-            nb::is_operator())
-        .def(
-            "__and__", [](const Bit& lhs, const Bit& rhs) { return lhs & rhs; },
-            nb::is_operator())
+            "__or__", [](Bit const& a, Logic const& b) { return a | b; }, nb::is_operator()
+        )
         .def(
             "__and__",
-            [](const Bit& lhs, const Logic& rhs) { return lhs & rhs; },
-            nb::is_operator())
+            [](Bit const& lhs, Bit const& rhs) { return lhs & rhs; },
+            nb::is_operator()
+        )
         .def(
-            "__xor__", [](const Bit& lhs, const Bit& rhs) { return lhs ^ rhs; },
-            nb::is_operator())
+            "__and__",
+            [](Bit const& lhs, Logic const& rhs) { return lhs & rhs; },
+            nb::is_operator()
+        )
         .def(
             "__xor__",
-            [](const Bit& lhs, const Logic& rhs) { return lhs ^ rhs; },
-            nb::is_operator())
+            [](Bit const& lhs, Bit const& rhs) { return lhs ^ rhs; },
+            nb::is_operator()
+        )
         .def(
-            "__invert__", [](const Bit& self) { return ~self; },
-            nb::is_operator())
-        .def_prop_ro("is_resolvable", [](const Bit&) { return true; })
-        .def("resolve",
-             [](const Bit& value, std::string_view method) {
-                 return resolve(value, string_to_resolve_method(method));
-             })
-        .def("resolve",
-             [](const Bit& self, ResolveMethod method) {
-                 return resolve(self, method);
-             })
-        .def("__copy__", [](const Bit& self) { return Bit(self); })
-        .def("__deepcopy__",
-             [](const Bit& self, nb::dict /* memo */) { return Bit(self); });
+            "__xor__",
+            [](Bit const& lhs, Logic const& rhs) { return lhs ^ rhs; },
+            nb::is_operator()
+        )
+        .def(
+            "__invert__", [](Bit const& self) { return ~self; }, nb::is_operator()
+        )
+        .def_prop_ro("is_resolvable", [](Bit const&) { return true; })
+        .def(
+            "resolve",
+            [](Bit const& value, std::string_view method) {
+                return resolve(value, string_to_resolve_method(method));
+            }
+        )
+        .def(
+            "resolve",
+            [](Bit const& self, ResolveMethod method) { return resolve(self, method); }
+        )
+        .def("__copy__", [](Bit const& self) { return Bit(self); })
+        .def("__deepcopy__", [](Bit const& self, nb::dict /* memo */) {
+            return Bit(self);
+        });
 }

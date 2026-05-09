@@ -11,7 +11,7 @@ constexpr size_t hash_mix(size_t seed, size_t value) noexcept {
 }
 
 template <typename... Args>
-constexpr size_t hash_combine(const Args&... args) noexcept {
+constexpr size_t hash_combine(Args const&... args) noexcept {
     size_t seed = 0;
     ((seed = hash_mix(seed, std::hash<Args>{}(args))), ...);
     return seed;

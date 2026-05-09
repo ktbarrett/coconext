@@ -8,7 +8,7 @@ using namespace coconext::types;
 
 namespace coconext::types {
 
-Logic resolve(const Logic& value, ResolveMethod method) {
+Logic resolve(Logic const& value, ResolveMethod method) {
     switch (method) {
     case ResolveMethod::ERROR:
         switch (value.value()) {

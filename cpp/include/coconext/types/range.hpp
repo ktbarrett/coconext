@@ -18,18 +18,16 @@ struct Range {
     using iterator = CountIterator<value_type>;
 
     constexpr Range() noexcept = default;
+
     explicit constexpr Range(value_type l, Direction d, value_type r) noexcept
         : left(l), direction(d), right(r) {}
+
     explicit constexpr Range(value_type l, value_type r) noexcept
-        : left(l),
-          direction(l >= r ? Direction::DOWNTO : Direction::TO),
-          right(r) {}
+        : left(l), direction(l >= r ? Direction::DOWNTO : Direction::TO), right(r) {}
+
     explicit constexpr Range(size_t length)
-        : left(0),
-          direction(Direction::TO),
-          right(static_cast<value_type>(length) - 1) {
-        if (length >
-            static_cast<size_t>(std::numeric_limits<value_type>::max())) {
+        : left(0), direction(Direction::TO), right(static_cast<value_type>(length) - 1) {
+        if (length > static_cast<size_t>(std::numeric_limits<value_type>::max())) {
             throw std::length_error("Range length overflows value_type");
         }
     }
@@ -39,35 +37,34 @@ struct Range {
     value_type right = -1;
 
     constexpr size_t length() const noexcept {
-        int64_t len = direction == Direction::TO
-                          ? static_cast<int64_t>(right) - left + 1
-                          : static_cast<int64_t>(left) - right + 1;
+        int64_t len = direction == Direction::TO ? static_cast<int64_t>(right) - left + 1
+                                                 : static_cast<int64_t>(left) - right + 1;
         if (len < 0) {
             return 0;
         }
         return static_cast<size_t>(len);
     }
 
-    constexpr iterator begin() const noexcept {
-        return iterator(left, direction);
-    }
+    constexpr iterator begin() const noexcept { return iterator(left, direction); }
+
     constexpr iterator end() const noexcept {
-        const auto len = static_cast<value_type>(length());
-        const auto end_value =
-            direction == Direction::TO ? left + len : left - len;
+        auto const len = static_cast<value_type>(length());
+        auto const end_value = direction == Direction::TO ? left + len : left - len;
         return iterator(end_value, direction);
     }
+
     constexpr iterator rbegin() const noexcept {
-        return iterator(right, direction == Direction::TO ? Direction::DOWNTO
-                                                          : Direction::TO);
+        return iterator(
+            right, direction == Direction::TO ? Direction::DOWNTO : Direction::TO
+        );
     }
+
     constexpr iterator rend() const noexcept {
-        const auto len = static_cast<value_type>(length());
-        const auto rend_value =
-            direction == Direction::TO ? right - len : right + len;
-        return iterator(rend_value, direction == Direction::TO
-                                        ? Direction::DOWNTO
-                                        : Direction::TO);
+        auto const len = static_cast<value_type>(length());
+        auto const rend_value = direction == Direction::TO ? right - len : right + len;
+        return iterator(
+            rend_value, direction == Direction::TO ? Direction::DOWNTO : Direction::TO
+        );
     }
 
     constexpr value_type operator[](size_t index) const {
@@ -86,14 +83,17 @@ struct Range {
         }
         if (start > stop) {
             throw std::invalid_argument(
-                "Start index must be less than or equal to stop index");
+                "Start index must be less than or equal to stop index"
+            );
         }
-        const auto from_start = static_cast<int64_t>(start);
-        const auto from_last = static_cast<int64_t>(stop) - 1;
-        const auto new_left = static_cast<value_type>(
-            direction == Direction::TO ? left + from_start : left - from_start);
-        const auto new_right = static_cast<value_type>(
-            direction == Direction::TO ? left + from_last : left - from_last);
+        auto const from_start = static_cast<int64_t>(start);
+        auto const from_last = static_cast<int64_t>(stop) - 1;
+        auto const new_left = static_cast<value_type>(
+            direction == Direction::TO ? left + from_start : left - from_start
+        );
+        auto const new_right = static_cast<value_type>(
+            direction == Direction::TO ? left + from_last : left - from_last
+        );
         return Range(new_left, direction, new_right);
     }
 
@@ -103,8 +103,7 @@ struct Range {
     }
 #endif
 
-    friend constexpr bool operator==(const Range& lhs,
-                                     const Range& rhs) noexcept {
+    friend constexpr bool operator==(Range const& lhs, Range const& rhs) noexcept {
         auto left_len = lhs.length();
         if (left_len != rhs.length()) {
             return false;
@@ -128,7 +127,7 @@ struct Range {
 };
 
 // more optimal implementation of std::ranges::find for Range
-constexpr Range::iterator find(const Range& range, Range::value_type value) {
+constexpr Range::iterator find(Range const& range, Range::value_type value) {
     if (range.direction == Direction::TO) {
         if (value < range.left || value > range.right) {
             return range.end();
@@ -142,7 +141,7 @@ constexpr Range::iterator find(const Range& range, Range::value_type value) {
     }
 }
 
-inline std::string to_string(const Range& range) {
+inline std::string to_string(Range const& range) {
     auto res = std::string("Range(");
     res += std::to_string(range.left);
     res += ", '";
@@ -161,17 +160,18 @@ namespace std {
 
 template <>
 struct hash<coconext::types::Range> {
-    size_t operator()(const coconext::types::Range& range) const noexcept {
+    size_t operator()(coconext::types::Range const& range) const noexcept {
         // if a == a then hash(a) == hash(a), so we have to force all 0 and 1
         // length ranges to have repeatable hashes.
-        const auto len = range.length();
+        auto const len = range.length();
         if (len == 0) {
             return hash<size_t>{}(0);
         } else if (len == 1) {
             return hash<coconext::types::Range::value_type>{}(range.left);
         } else {
             return coconext::types::detail::hash_combine(
-                range.left, range.right, range.direction);
+                range.left, range.right, range.direction
+            );
         }
     }
 };

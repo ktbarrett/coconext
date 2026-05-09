@@ -8,16 +8,16 @@
 using namespace coconext::types;
 
 TEST(TestRange, ToRange) {
-    const Range r(1, Direction::TO, 8);
+    Range const r(1, Direction::TO, 8);
     EXPECT_EQ(r.left, 1);
     EXPECT_EQ(r.direction, Direction::TO);
     EXPECT_EQ(r.right, 8);
     EXPECT_EQ(r.length(), 8U);
 
-    const std::vector<int32_t> forward(r.begin(), r.end());
+    std::vector<int32_t> const forward(r.begin(), r.end());
     EXPECT_EQ(forward, (std::vector<int32_t>{1, 2, 3, 4, 5, 6, 7, 8}));
 
-    const std::vector<int32_t> reverse(r.rbegin(), r.rend());
+    std::vector<int32_t> const reverse(r.rbegin(), r.rend());
     EXPECT_EQ(reverse, (std::vector<int32_t>{8, 7, 6, 5, 4, 3, 2, 1}));
 
     EXPECT_EQ(r[0], 1);
@@ -30,16 +30,16 @@ TEST(TestRange, ToRange) {
 }
 
 TEST(TestRange, DowntoRange) {
-    const Range r(4, Direction::DOWNTO, -3);
+    Range const r(4, Direction::DOWNTO, -3);
     EXPECT_EQ(r.left, 4);
     EXPECT_EQ(r.direction, Direction::DOWNTO);
     EXPECT_EQ(r.right, -3);
     EXPECT_EQ(r.length(), 8U);
 
-    const std::vector<int32_t> forward(r.begin(), r.end());
+    std::vector<int32_t> const forward(r.begin(), r.end());
     EXPECT_EQ(forward, (std::vector<int32_t>{4, 3, 2, 1, 0, -1, -2, -3}));
 
-    const std::vector<int32_t> reverse(r.rbegin(), r.rend());
+    std::vector<int32_t> const reverse(r.rbegin(), r.rend());
     EXPECT_EQ(reverse, (std::vector<int32_t>{-3, -2, -1, 0, 1, 2, 3, 4}));
 
     EXPECT_EQ(r[0], 4);
@@ -52,16 +52,16 @@ TEST(TestRange, DowntoRange) {
 }
 
 TEST(TestRange, NullRange) {
-    const Range r(1, Direction::DOWNTO, 4);
+    Range const r(1, Direction::DOWNTO, 4);
     EXPECT_EQ(r.left, 1);
     EXPECT_EQ(r.direction, Direction::DOWNTO);
     EXPECT_EQ(r.right, 4);
     EXPECT_EQ(r.length(), 0U);
 
-    const std::vector<int32_t> forward(r.begin(), r.end());
+    std::vector<int32_t> const forward(r.begin(), r.end());
     EXPECT_TRUE(forward.empty());
 
-    const std::vector<int32_t> reverse(r.rbegin(), r.rend());
+    std::vector<int32_t> const reverse(r.rbegin(), r.rend());
     EXPECT_TRUE(reverse.empty());
 
     EXPECT_THROW((void)r[0], std::out_of_range);
@@ -89,8 +89,9 @@ TEST(TestRange, EqualitySingleElementIgnoresDirection) {
     std::hash<Range> h;
     EXPECT_EQ(h(Range(3, Direction::TO, 3)), h(Range(3, Direction::DOWNTO, 3)));
 
-    const std::unordered_set<Range> single{Range(3, Direction::TO, 3),
-                                           Range(3, Direction::DOWNTO, 3)};
+    std::unordered_set<Range> const single{
+        Range(3, Direction::TO, 3), Range(3, Direction::DOWNTO, 3)
+    };
     EXPECT_EQ(single.size(), 1U);
 }
 
@@ -100,29 +101,29 @@ TEST(TestRange, OtherConstructors) {
 }
 
 TEST(TestRange, ReprEquivalent) {
-    const Range r(5, Direction::TO, 9);
+    Range const r(5, Direction::TO, 9);
     EXPECT_EQ(to_string(r), "Range(5, 'to', 9)");
 }
 
 TEST(TestRange, UppercaseDirection) {
-    const Range r(1, to_direction("TO"), 8);
+    Range const r(1, to_direction("TO"), 8);
     EXPECT_EQ(r.direction, Direction::TO);
 }
 
 TEST(TestRange, BadGetitemEquivalent) {
-    const Range r(10, Direction::DOWNTO, 4);
+    Range const r(10, Direction::DOWNTO, 4);
     EXPECT_THROW((void)r(8, 4), std::invalid_argument);
 }
 
 TEST(TestRange, SliceStopOutOfRange) {
-    const Range r(1, Direction::TO, 5);
+    Range const r(1, Direction::TO, 5);
     EXPECT_THROW((void)r(0, 100), std::out_of_range);
 }
 
 TEST(TestRange, Copy) {
-    const Range r(-2, Direction::TO, 1);
-    const Range copy_constructed(r);
-    const Range copied_assigned = r;
+    Range const r(-2, Direction::TO, 1);
+    Range const copy_constructed(r);
+    Range const copied_assigned = r;
 
     EXPECT_EQ(r, copy_constructed);
     EXPECT_EQ(r, copied_assigned);
@@ -130,15 +131,17 @@ TEST(TestRange, Copy) {
 
 TEST(TestRange, RangeIsHashable) {
     std::hash<Range> h;
-    const Range r1(1, Direction::TO, 8);
-    const Range r2(4, Direction::DOWNTO, -3);
+    Range const r1(1, Direction::TO, 8);
+    Range const r2(4, Direction::DOWNTO, -3);
     EXPECT_EQ(h(r1), h(r1));
     EXPECT_EQ(h(r2), h(r2));
-    const std::unordered_set<Range> same{Range(1, Direction::TO, 8),
-                                         Range(1, Direction::TO, 8)};
+    std::unordered_set<Range> const same{
+        Range(1, Direction::TO, 8), Range(1, Direction::TO, 8)
+    };
     EXPECT_EQ(same.size(), 1U);
 
-    const std::unordered_set<Range> different{Range(1, Direction::TO, 8),
-                                              Range(8, Direction::DOWNTO, 1)};
+    std::unordered_set<Range> const different{
+        Range(1, Direction::TO, 8), Range(8, Direction::DOWNTO, 1)
+    };
     EXPECT_EQ(different.size(), 2U);
 }
