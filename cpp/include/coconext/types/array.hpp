@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <initializer_list>
 #include <iterator>
+#include <memory>
 #include <ranges>
 #include <stdexcept>
 #include <string>
@@ -61,7 +62,7 @@ constexpr auto slice(ArrayT& arr, Range::value_type start,
         throw std::invalid_argument(
             "Slice direction does not match array range direction");
     }
-    return ArraySlice(&arr, Range(start, arr.range().direction(), end));
+    return ArraySlice(&arr, Range(start, arr.range().direction, end));
 }
 
 template <typename ArrayT>
@@ -111,7 +112,7 @@ public:  // indexing and slicing
             throw std::invalid_argument(
                 "Slice direction does not match array range direction");
         }
-        return ArraySlice(arr_, Range(start, range_.direction(), end));
+        return ArraySlice(arr_, Range(start, range_.direction, end));
     }
 #if __cplusplus >= 202302L
     constexpr ArraySlice operator[](index_type start, index_type end) const {
@@ -149,7 +150,7 @@ public:  // assignment
 
 public:  // iterators
     constexpr iterator begin() const noexcept {
-        auto start = find(arr_->range(), range_.left());
+        auto start = find(arr_->range(), range_.left);
         assert(start != arr_->range().end() &&
                "slice range not a sub-range of the owner's range");
         return arr_->begin() + std::distance(arr_->range().begin(), start);
@@ -182,11 +183,33 @@ public:
 public:
     constexpr Array() = delete;  // no default constructor
 
-public:  // ensure these are constexpr
+public:
     constexpr Array(Array&& other) = default;
     constexpr Array(const Array& other) = default;
-    constexpr Array& operator=(const Array& other) = default;
-    constexpr Array& operator=(Array&& other) = default;
+
+    // Weird but valid. const on members is semantically different than const on
+    // the whole object. Assignment is not valid on const variables (storage),
+    // but const on members (not storage, semantics) really just describes the
+    // behavioral intent and derived constness when operating on those fields,
+    // so assignment is still sound and the language lets us do this. The
+    // const_cast is required because libc++ insists on a non-const pointer
+    // for std::destroy_at / std::construct_at.
+    constexpr Array& operator=(const Array& other) {
+        if (this != &other) {
+            data_ = other.data_;
+            std::destroy_at(const_cast<Range*>(&range_));
+            std::construct_at(const_cast<Range*>(&range_), other.range_);
+        }
+        return *this;
+    }
+    constexpr Array& operator=(Array&& other) noexcept {
+        if (this != &other) {
+            data_ = std::move(other.data_);
+            std::destroy_at(const_cast<Range*>(&range_));
+            std::construct_at(const_cast<Range*>(&range_), other.range_);
+        }
+        return *this;
+    }
 
 public:  // construct with just range
     explicit constexpr Array(Range range)
@@ -304,7 +327,7 @@ public:  // iterators
 
 private:
     std::vector<value_type> data_;
-    Range range_;
+    const Range range_;
 };
 
 template <typename ValueT>

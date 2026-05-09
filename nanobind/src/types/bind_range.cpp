@@ -35,9 +35,9 @@ void register_range(nb::module_& m) {
              "right"_a.noconvert())
         .def("to_range",
              [](const Range& self) {
-                 auto step_c = (self.direction() == Direction::TO) ? 1 : -1;
-                 auto start = nb::cast(self.left());
-                 auto stop = nb::cast(self.right() + step_c);
+                 auto step_c = (self.direction == Direction::TO) ? 1 : -1;
+                 auto start = nb::cast(self.left);
+                 auto stop = nb::cast(self.right + step_c);
                  auto step = nb::cast(step_c);
                  auto range_type =
                      nb::module_::import_("builtins").attr("range");
@@ -61,35 +61,33 @@ void register_range(nb::module_& m) {
                 return Range(start, direction, right);
             },
             "range"_a)
-        .def_prop_ro("left", &Range::left)
-        .def_prop_ro("right", &Range::right)
+        .def_ro("left", &Range::left)
+        .def_ro("right", &Range::right)
         .def_prop_ro(
             "direction",
-            [](const Range& self) { return to_string(self.direction()); })
+            [](const Range& self) { return to_string(self.direction); })
         .def("__len__", [](const Range& self) { return self.length(); })
         .def(
             "__contains__",
             [](const Range& self, int32_t index) {
-                return (self.direction() == Direction::TO)
-                           ? (index >= self.left() && index <= self.right())
-                           : (index <= self.left() && index >= self.right());
+                return (self.direction == Direction::TO)
+                           ? (index >= self.left && index <= self.right)
+                           : (index <= self.left && index >= self.right);
             },
             nb::arg().noconvert())
         .def("__iter__",
              [range_func](const Range& self) {
                  return nb::iter(range_func(
-                     self.left(),
-                     self.right() +
-                         ((self.direction() == Direction::TO) ? 1 : -1),
-                     (self.direction() == Direction::TO) ? 1 : -1));
+                     self.left,
+                     self.right + ((self.direction == Direction::TO) ? 1 : -1),
+                     (self.direction == Direction::TO) ? 1 : -1));
              })
         .def("__reversed__",
              [range_func](const Range& self) {
                  return nb::iter(range_func(
-                     self.right(),
-                     self.left() -
-                         ((self.direction() == Direction::TO) ? 1 : -1),
-                     (self.direction() == Direction::TO) ? -1 : 1));
+                     self.right,
+                     self.left - ((self.direction == Direction::TO) ? 1 : -1),
+                     (self.direction == Direction::TO) ? -1 : 1));
              })
         .def("__getitem__", &Range::operator[], nb::arg().noconvert())
         .def(
@@ -122,12 +120,10 @@ void register_range(nb::module_& m) {
             [](const Range& self, int32_t value) noexcept {
                 // TODO Handle the fact that non-integer values should return 0
                 // rather than throwing
-                return (self.direction() == Direction::TO)
-                           ? (value >= self.left() && value <= self.right() ? 1
-                                                                            : 0)
-                           : (value <= self.left() && value >= self.right()
-                                  ? 1
-                                  : 0);
+                return (self.direction == Direction::TO)
+                           ? (value >= self.left && value <= self.right ? 1 : 0)
+                           : (value <= self.left && value >= self.right ? 1
+                                                                        : 0);
             },
             nb::arg().noconvert())
         .def("__copy__", [](const Range& self) { return Range(self); })
