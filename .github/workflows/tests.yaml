@@ -61,17 +61,10 @@ jobs:
         echo "/usr/lib/ccache" >> $GITHUB_PATH
         echo "/usr/local/opt/ccache/libexec" >> $GITHUB_PATH
 
-    - name: Set up NVC (Ubuntu)
-      if: matrix.simulator == 'nvc' && startsWith(matrix.os, 'ubuntu')
+    - name: Set up NVC
       uses: nickg/setup-nvc@v1
       with:
         version: ${{matrix.nvc-version}}
-
-    - name: Set up NVC (MacOS)
-      if: matrix.simulator == 'nvc' && startsWith(matrix.os, 'macos')
-      run: |
-        brew update
-        brew install nvc
 
     - name: Install uv
       uses: astral-sh/setup-uv@v7
