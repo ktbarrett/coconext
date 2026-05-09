@@ -9,9 +9,9 @@ using namespace coconext::types;
 
 TEST(TestRange, ToRange) {
     const Range r(1, Direction::TO, 8);
-    EXPECT_EQ(r.left(), 1);
-    EXPECT_EQ(r.direction(), Direction::TO);
-    EXPECT_EQ(r.right(), 8);
+    EXPECT_EQ(r.left, 1);
+    EXPECT_EQ(r.direction, Direction::TO);
+    EXPECT_EQ(r.right, 8);
     EXPECT_EQ(r.length(), 8U);
 
     const std::vector<int32_t> forward(r.begin(), r.end());
@@ -31,9 +31,9 @@ TEST(TestRange, ToRange) {
 
 TEST(TestRange, DowntoRange) {
     const Range r(4, Direction::DOWNTO, -3);
-    EXPECT_EQ(r.left(), 4);
-    EXPECT_EQ(r.direction(), Direction::DOWNTO);
-    EXPECT_EQ(r.right(), -3);
+    EXPECT_EQ(r.left, 4);
+    EXPECT_EQ(r.direction, Direction::DOWNTO);
+    EXPECT_EQ(r.right, -3);
     EXPECT_EQ(r.length(), 8U);
 
     const std::vector<int32_t> forward(r.begin(), r.end());
@@ -53,9 +53,9 @@ TEST(TestRange, DowntoRange) {
 
 TEST(TestRange, NullRange) {
     const Range r(1, Direction::DOWNTO, 4);
-    EXPECT_EQ(r.left(), 1);
-    EXPECT_EQ(r.direction(), Direction::DOWNTO);
-    EXPECT_EQ(r.right(), 4);
+    EXPECT_EQ(r.left, 1);
+    EXPECT_EQ(r.direction, Direction::DOWNTO);
+    EXPECT_EQ(r.right, 4);
     EXPECT_EQ(r.length(), 0U);
 
     const std::vector<int32_t> forward(r.begin(), r.end());
@@ -106,7 +106,7 @@ TEST(TestRange, ReprEquivalent) {
 
 TEST(TestRange, UppercaseDirection) {
     const Range r(1, to_direction("TO"), 8);
-    EXPECT_EQ(r.direction(), Direction::TO);
+    EXPECT_EQ(r.direction, Direction::TO);
 }
 
 TEST(TestRange, BadGetitemEquivalent) {

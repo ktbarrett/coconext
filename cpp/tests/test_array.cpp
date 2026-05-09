@@ -14,9 +14,9 @@ using namespace coconext::types;
 
 TEST(TestArray, ConstructFromInitializerList) {
     Array<int> a({1, 2, 3, 4});
-    EXPECT_EQ(a.range().left(), 0);
-    EXPECT_EQ(a.range().right(), 3);
-    EXPECT_EQ(a.range().direction(), Direction::TO);
+    EXPECT_EQ(a.range().left, 0);
+    EXPECT_EQ(a.range().right, 3);
+    EXPECT_EQ(a.range().direction, Direction::TO);
 }
 
 TEST(TestArray, ConstructFromInitializerListEmpty) {
@@ -478,6 +478,29 @@ TEST(TestArray, Move) {
     Array<int> b = std::move(a);
     EXPECT_EQ(b.range().length(), 4U);
     EXPECT_EQ(b[0], 1);
+}
+
+TEST(TestArray, CopyAssignReplacesRange) {
+    // range_ is const, so assignment goes through the custom operator= which
+    // reconstructs range_ in place. Verify both data and range get replaced.
+    Array<int> a({1, 2, 3});  // range: 0 TO 2
+    Array<int> b(std::vector<int>{10, 20, 30, 40},
+                 Range(7, Direction::DOWNTO, 4));
+    a = b;
+    EXPECT_EQ(a, b);
+    EXPECT_EQ(a.range(), Range(7, Direction::DOWNTO, 4));
+    EXPECT_EQ(a[7], 10);
+    EXPECT_EQ(a[4], 40);
+}
+
+TEST(TestArray, MoveAssignReplacesRange) {
+    Array<int> a({1, 2, 3});
+    Array<int> b(std::vector<int>{10, 20, 30, 40},
+                 Range(7, Direction::DOWNTO, 4));
+    a = std::move(b);
+    EXPECT_EQ(a.range(), Range(7, Direction::DOWNTO, 4));
+    EXPECT_EQ(a[7], 10);
+    EXPECT_EQ(a[4], 40);
 }
 
 // -- to_string --------------------------------------------------------------
