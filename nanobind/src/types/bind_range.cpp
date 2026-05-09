@@ -16,13 +16,13 @@ using namespace coconext::types;
 void register_range(nb::module_& m) {
     nb::object range_func = nb::module_::import_("builtins").attr("range");
 
-    nb::enum_<Direction::value_type>(m, "Direction")
+    nb::enum_<Direction>(m, "Direction")
         .value("TO", Direction::TO)
         .value("DOWNTO", Direction::DOWNTO);
 
     nb::class_<Range>(m, "Range")
-        .def(nb::init<int32_t, Direction::value_type, int32_t>(),
-             "left"_a.noconvert(), "direction"_a, "right"_a.noconvert())
+        .def(nb::init<int32_t, Direction, int32_t>(), "left"_a.noconvert(),
+             "direction"_a, "right"_a.noconvert())
         .def(
             "__init__",
             [](Range* self, int32_t left, std::string_view direction,
