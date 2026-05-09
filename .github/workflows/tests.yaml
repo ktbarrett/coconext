@@ -53,10 +53,13 @@ jobs:
         python-version: ${{matrix.python-version}}
         allow-prereleases: true
 
-    - name: Setup ccache
-      uses: hendrikmuhs/ccache-action@v1.2
-      with:
-        create-symlink: true
+    - name: Setup ccache (pt. 1)
+      uses: hendrikmuhs/ccache-action@v1.2.23
+    - name: Setup ccache (pt. 2)
+      if: startsWith(matrix.os, 'ubuntu')
+      run: |
+        echo "/usr/lib/ccache" >> $GITHUB_PATH
+        echo "/usr/local/opt/ccache/libexec" >> $GITHUB_PATH
 
     - name: Set up NVC (Ubuntu)
       if: matrix.simulator == 'nvc' && startsWith(matrix.os, 'ubuntu')
