@@ -55,6 +55,8 @@ jobs:
 
     - name: Setup ccache (pt. 1)
       uses: hendrikmuhs/ccache-action@v1.2.23
+      with:
+        create-symlinks: true
     - name: Setup ccache (pt. 2)
       run: |
         echo "/usr/lib/ccache" >> $GITHUB_PATH
