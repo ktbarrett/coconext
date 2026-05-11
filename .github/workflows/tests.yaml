@@ -53,14 +53,10 @@ jobs:
         python-version: ${{matrix.python-version}}
         allow-prereleases: true
 
-    - name: Setup ccache (pt. 1)
+    - name: Setup ccache
       uses: hendrikmuhs/ccache-action@v1.2.23
       with:
         create-symlink: true
-    - name: Setup ccache (pt. 2)
-      run: |
-        echo "/usr/lib/ccache" >> $GITHUB_PATH
-        echo "/usr/local/opt/ccache/libexec" >> $GITHUB_PATH
 
     - name: Set up NVC
       uses: nickg/setup-nvc@v1
