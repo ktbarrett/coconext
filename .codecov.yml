@@ -7,7 +7,4 @@ coverage:
 
 codecov:
   notify:
-    after_n_builds: 6
-
-ignore:
-  - "**/tests/*"
+    after_n_builds: 8
