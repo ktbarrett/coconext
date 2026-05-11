@@ -16,7 +16,7 @@ repos:
   - id: check-toml
   - id: check-added-large-files
 - repo: https://github.com/henryiii/validate-pyproject-schema-store
-  rev: "2026.04.26"
+  rev: "2026.05.06"
   hooks:
     - id: validate-pyproject
 - repo: https://github.com/codespell-project/codespell
@@ -34,7 +34,7 @@ repos:
       - "--exit-non-zero-on-fix"
     - id: ruff-format
 - repo: https://github.com/pre-commit/mirrors-mypy
-  rev: v1.20.2
+  rev: v2.0.0
   hooks:
   - id: mypy
     additional_dependencies:
@@ -44,13 +44,13 @@ repos:
     - sphinx
     - nox-uv
 - repo: "https://github.com/pre-commit/mirrors-clang-format"
-  rev: "v22.1.4"
+  rev: "v22.1.5"
   hooks:
   - id: "clang-format"
     exclude: "^src/cocotb/share/include/(sv_vpi|vhpi|vpi)_user(_ext)?.h"
     types_or: [c, c++]
 - repo: https://github.com/astral-sh/uv-pre-commit
-  rev: 0.11.8
+  rev: 0.11.13
   hooks:
     - id: uv-lock
 
