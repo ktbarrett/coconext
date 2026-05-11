@@ -10,7 +10,7 @@ dev_build:
 	LDFLAGS="$$LDFLAGS --coverage" \
 	uv pip install --no-build-isolation --force-reinstall -e .
 
-GCOV_EXECUTABLE ?= $(subst gcc,gcov,$(or $(CC),gcc))
+GCOV_EXECUTABLE ?= gcov
 
 .PHONY: tests
 tests: dev_build
