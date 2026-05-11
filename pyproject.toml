@@ -72,9 +72,12 @@ show_error_codes = true
 [dependency-groups]
 dev = [
     "mypy",
-    "nanobind",
     "prek",
     "ruff",
+    {include-group = "tests"}
+]
+tests = [
+    "nanobind",
     "cmake>=3.20",
     "scikit-build-core",
     "setuptools",

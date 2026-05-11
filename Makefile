@@ -1,7 +1,7 @@
 
 .PHONY: dev_build
 dev_build:
-	uv sync --dev --no-install-project
+	uv sync --no-default-groups --group=tests --no-install-project
 
 	# Build the package with debugging and coverage flags
 	CCACHE_DISABLE=1 \
