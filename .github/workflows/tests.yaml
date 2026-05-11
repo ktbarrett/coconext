@@ -85,7 +85,7 @@ jobs:
         CXX: ${{ matrix.cxx || 'g++' }}
         GCOV_EXECUTABLE: ${{ matrix.gcov || 'gcov' }}
       run: |
-        make tests
+        make dev_tests
 
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v6
