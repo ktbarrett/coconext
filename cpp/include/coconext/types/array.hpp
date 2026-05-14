@@ -13,7 +13,15 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
-#include <vector>
+
+// std::unique_ptr's constexpr support landed in C++23 (P2273R3); under C++20
+// the constexpr keyword on Array's members is still legal but evaluating those
+// members in a constant expression fails. Gate accordingly.
+#if __cplusplus >= 202302L
+#define COCONEXT_ARRAY_CONSTEXPR constexpr
+#else
+#define COCONEXT_ARRAY_CONSTEXPR
+#endif
 
 namespace coconext::types {
 
@@ -162,16 +170,17 @@ class Array {
   public:
     using value_type = ValueT;
     static_assert(!std::is_reference_v<value_type>);
-    static_assert(
-        !std::is_const_v<value_type>,
-        "Array<const T> is not supported (std::vector forbids const "
-        "elements). Use `const Array<T>` for an immutable array."
-    );
     using index_type = Range::value_type;
 
     constexpr Array() = delete;  // no default constructor
-    constexpr Array(Array&& other) = default;
-    constexpr Array(Array const& other) = default;
+
+    COCONEXT_ARRAY_CONSTEXPR Array(Array&& other) noexcept = default;
+
+    COCONEXT_ARRAY_CONSTEXPR Array(Array const& other)
+        : data_(std::make_unique_for_overwrite<value_type[]>(other.range_.length())),
+          range_(other.range_) {
+        std::ranges::copy(other, data_.get());
+    }
 
     // Weird but valid. const on members is semantically different than const on
     // the whole object. Assignment is not valid on const variables (storage),
@@ -180,16 +189,18 @@ class Array {
     // so assignment is still sound and the language lets us do this. The
     // const_cast is required because libc++ insists on a non-const pointer
     // for std::destroy_at / std::construct_at.
-    constexpr Array& operator=(Array const& other) {
+    COCONEXT_ARRAY_CONSTEXPR Array& operator=(Array const& other) {
         if (this != &other) {
-            data_ = other.data_;
+            auto buf = std::make_unique_for_overwrite<value_type[]>(other.range_.length());
+            std::ranges::copy(other, buf.get());
+            data_ = std::move(buf);
             std::destroy_at(const_cast<Range*>(&range_));
             std::construct_at(const_cast<Range*>(&range_), other.range_);
         }
         return *this;
     }
 
-    constexpr Array& operator=(Array&& other) noexcept {
+    COCONEXT_ARRAY_CONSTEXPR Array& operator=(Array&& other) noexcept {
         if (this != &other) {
             data_ = std::move(other.data_);
             std::destroy_at(const_cast<Range*>(&range_));
@@ -198,53 +209,61 @@ class Array {
         return *this;
     }
 
-    explicit constexpr Array(Range range)
-        requires std::default_initializable<value_type>
-        : data_(), range_(range) {
-        data_.resize(range.length());
+    explicit COCONEXT_ARRAY_CONSTEXPR Array(Range range)
+        : data_(std::make_unique<value_type[]>(range.length())), range_(range) {}
+
+    COCONEXT_ARRAY_CONSTEXPR Array(std::initializer_list<value_type> init)
+        : data_(std::make_unique_for_overwrite<value_type[]>(init.size())),
+          range_(init.size()) {
+        std::ranges::copy(init, data_.get());
     }
 
-    constexpr Array(std::initializer_list<value_type> init)
-        : data_(init), range_(data_.size()) {}
-
-    constexpr Array(std::initializer_list<value_type> init, Range range)
-        : data_(init), range_(range) {
-        if (data_.size() != range.length()) {
+    COCONEXT_ARRAY_CONSTEXPR Array(std::initializer_list<value_type> init, Range range)
+        : range_(range) {
+        if (init.size() != range.length()) {
             throw std::invalid_argument(
-                "Initializer list of size " + std::to_string(data_.size())
+                "Initializer list of size " + std::to_string(init.size())
                 + " does not match range length " + std::to_string(range.length())
             );
         }
+        data_ = std::make_unique_for_overwrite<value_type[]>(range.length());
+        std::ranges::copy(init, data_.get());
     }
 
     template <std::ranges::sized_range R>
         requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
                   && (!std::same_as<std::remove_cvref_t<R>, Array>)
-    explicit constexpr Array(R const& obj)
-        : data_(std::ranges::begin(obj), std::ranges::end(obj)), range_(data_.size()) {}
+    explicit COCONEXT_ARRAY_CONSTEXPR Array(R const& obj)
+        : data_(std::make_unique_for_overwrite<value_type[]>(std::ranges::size(obj))),
+          range_(std::ranges::size(obj)) {
+        std::ranges::copy(obj, data_.get());
+    }
 
     template <std::ranges::sized_range R>
         requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
-    constexpr Array(R const& obj, Range range)
-        : data_(std::ranges::begin(obj), std::ranges::end(obj)), range_(range) {
-        if (data_.size() != range.length()) {
+    COCONEXT_ARRAY_CONSTEXPR Array(R const& obj, Range range) : range_(range) {
+        if (std::ranges::size(obj) != range.length()) {
             throw std::invalid_argument(
-                "Input of size " + std::to_string(data_.size())
+                "Input of size " + std::to_string(std::ranges::size(obj))
                 + " does not match range length " + std::to_string(range.length())
             );
         }
+        data_ = std::make_unique_for_overwrite<value_type[]>(range.length());
+        std::ranges::copy(obj, data_.get());
     }
 
     constexpr Range const& range() const noexcept { return range_; }
 
-    constexpr value_type& operator[](index_type idx) { return index(*this, idx); }
-    constexpr value_type const& operator[](index_type idx) const {
+    COCONEXT_ARRAY_CONSTEXPR value_type& operator[](index_type idx) {
         return index(*this, idx);
     }
-    constexpr auto operator()(index_type start, index_type end) {
+    COCONEXT_ARRAY_CONSTEXPR value_type const& operator[](index_type idx) const {
+        return index(*this, idx);
+    }
+    COCONEXT_ARRAY_CONSTEXPR auto operator()(index_type start, index_type end) {
         return slice(*this, start, end);
     }
-    constexpr auto operator()(index_type start, index_type end) const {
+    COCONEXT_ARRAY_CONSTEXPR auto operator()(index_type start, index_type end) const {
         return slice(*this, start, end);
     }
 #if __cplusplus >= 202302L
@@ -256,17 +275,27 @@ class Array {
     }
 #endif
 
-    constexpr auto begin() noexcept { return data_.begin(); }
-    constexpr auto begin() const noexcept { return data_.begin(); }
-    constexpr auto end() noexcept { return data_.end(); }
-    constexpr auto end() const noexcept { return data_.end(); }
-    constexpr auto rbegin() noexcept { return data_.rbegin(); }
-    constexpr auto rbegin() const noexcept { return data_.rbegin(); }
-    constexpr auto rend() noexcept { return data_.rend(); }
-    constexpr auto rend() const noexcept { return data_.rend(); }
+    COCONEXT_ARRAY_CONSTEXPR value_type* begin() noexcept { return data_.get(); }
+    COCONEXT_ARRAY_CONSTEXPR value_type const* begin() const noexcept {
+        return data_.get();
+    }
+    COCONEXT_ARRAY_CONSTEXPR value_type* end() noexcept {
+        return data_.get() + range_.length();
+    }
+    COCONEXT_ARRAY_CONSTEXPR value_type const* end() const noexcept {
+        return data_.get() + range_.length();
+    }
+    COCONEXT_ARRAY_CONSTEXPR auto rbegin() noexcept { return std::reverse_iterator(end()); }
+    COCONEXT_ARRAY_CONSTEXPR auto rbegin() const noexcept {
+        return std::reverse_iterator(end());
+    }
+    COCONEXT_ARRAY_CONSTEXPR auto rend() noexcept { return std::reverse_iterator(begin()); }
+    COCONEXT_ARRAY_CONSTEXPR auto rend() const noexcept {
+        return std::reverse_iterator(begin());
+    }
 
   private:
-    std::vector<value_type> data_;
+    std::unique_ptr<value_type[]> data_;
     Range const range_;
 };
 
@@ -338,5 +367,7 @@ struct hash<coconext::types::Array<T>> {
     }
 };
 }  // namespace std
+
+#undef COCONEXT_ARRAY_CONSTEXPR
 
 #endif  // COCONEXT_ARRAY_HPP
