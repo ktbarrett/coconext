@@ -30,6 +30,29 @@ namespace detail {
 template <typename R>
 concept sized_input_range = std::ranges::sized_range<R> && std::ranges::input_range<R>;
 
+// A child range is a valid subsequence of a parent range iff every value in
+// the child appears (in order) in the parent. This collapses to:
+//   - length 0:  always valid (any direction, any bounds)
+//   - length 1:  the single value must exist in the parent
+//   - length >= 2: direction must match the parent, and both endpoints
+//                  must exist in the parent
+constexpr void subsequence_check(Range parent, Range child) {
+    auto const len = child.length();
+    if (len >= 1 && find(parent, child.left) == parent.end()) {
+        throw std::out_of_range("slice start out of bounds");
+    }
+    if (len >= 2) {
+        if (child.direction != parent.direction) {
+            throw std::invalid_argument(
+                "Slice direction does not match array range direction"
+            );
+        }
+        if (find(parent, child.right) == parent.end()) {
+            throw std::out_of_range("slice end out of bounds");
+        }
+    }
+}
+
 }  // namespace detail
 
 // The minimum a type must expose so that index() and slice() can be
@@ -52,28 +75,9 @@ constexpr std::ranges::range_reference_t<ArrayT> index(ArrayT& arr, Range::value
     return *(arr.begin() + offset);
 }
 
-// A slice is valid against a parent range iff every value in the slice
-// appears (in order) in the parent. This collapses to:
-//   - length 0:  always valid (any direction, any bounds)
-//   - length 1:  the single value must exist in the parent
-//   - length >= 2: direction must match the parent, and both endpoints
-//                  must exist in the parent
 template <RangedSequence ArrayT>
 constexpr auto slice(ArrayT& arr, Range r) {
-    auto const len = r.length();
-    if (len >= 1 && find(arr.range(), r.left) == arr.range().end()) {
-        throw std::out_of_range("slice start out of bounds");
-    }
-    if (len >= 2) {
-        if (r.direction != arr.range().direction) {
-            throw std::invalid_argument(
-                "Slice direction does not match array range direction"
-            );
-        }
-        if (find(arr.range(), r.right) == arr.range().end()) {
-            throw std::out_of_range("slice end out of bounds");
-        }
-    }
+    detail::subsequence_check(arr.range(), r);
     return ArraySlice(&arr, r);
 }
 
@@ -101,24 +105,10 @@ class ArraySlice {
 
     constexpr reference operator[](index_type idx) const { return index(*arr_, idx); }
     // Sub-slicing flattens: returns a new ArraySlice over the same underlying
-    // array with a new range. Bounds-check against the slice's own range_,
-    // not arr_->range(), so we can't reuse slice(). Validity rule matches
-    // the free slice(): see its comment.
+    // array with a new range. Validity is checked against the slice's own
+    // range_, not arr_->range().
     constexpr ArraySlice operator()(Range r) const {
-        auto const len = r.length();
-        if (len >= 1 && find(range_, r.left) == range_.end()) {
-            throw std::out_of_range("slice start out of bounds");
-        }
-        if (len >= 2) {
-            if (r.direction != range_.direction) {
-                throw std::invalid_argument(
-                    "Slice direction does not match array range direction"
-                );
-            }
-            if (find(range_, r.right) == range_.end()) {
-                throw std::out_of_range("slice end out of bounds");
-            }
-        }
+        detail::subsequence_check(range_, r);
         return ArraySlice(arr_, r);
     }
 #if __cplusplus >= 202302L
