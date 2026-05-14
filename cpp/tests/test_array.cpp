@@ -1,3 +1,4 @@
+// LCOV_EXCL_BR_START -- gtest macros generate noisy uncovered branches
 #include <gtest/gtest.h>
 
 #include <coconext/types.hpp>
@@ -478,3 +479,4 @@ TEST(TestArray, ToStringLogic) {
     EXPECT_NE(s.find("0"), std::string::npos);
     EXPECT_NE(s.find("X"), std::string::npos);
 }
+// LCOV_EXCL_BR_STOP

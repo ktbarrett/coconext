@@ -1,3 +1,4 @@
+// LCOV_EXCL_BR_START -- gtest macros generate noisy uncovered branches
 #include <gtest/gtest.h>
 
 #include <coconext/types.hpp>
@@ -365,3 +366,4 @@ TEST(TestBit, BitIsHashable) {
     std::unordered_set<Bit> const different{'0'_b, '1'_b};
     EXPECT_EQ(different.size(), 2U);
 }
+// LCOV_EXCL_BR_STOP
