@@ -107,13 +107,10 @@ class ArraySlice {
     // Sub-slicing flattens: returns a new ArraySlice over the same underlying
     // array with a new range. Validity is checked against the slice's own
     // range_, not arr_->range().
-    constexpr ArraySlice operator()(Range r) const {
+    constexpr ArraySlice operator[](Range r) const {
         detail::subsequence_check(range_, r);
         return ArraySlice(arr_, r);
     }
-#if __cplusplus >= 202302L
-    constexpr ArraySlice operator[](Range r) const { return this->operator()(r); }
-#endif
 
     template <detail::sized_input_range R>
         requires(!std::is_const_v<ArrayT>)
@@ -262,12 +259,8 @@ class Array {
     COCONEXT_ARRAY_CONSTEXPR value_type const& operator[](index_type idx) const {
         return index(*this, idx);
     }
-    COCONEXT_ARRAY_CONSTEXPR auto operator()(Range r) { return slice(*this, r); }
-    COCONEXT_ARRAY_CONSTEXPR auto operator()(Range r) const { return slice(*this, r); }
-#if __cplusplus >= 202302L
-    constexpr auto operator[](Range r) { return slice(*this, r); }
-    constexpr auto operator[](Range r) const { return slice(*this, r); }
-#endif
+    COCONEXT_ARRAY_CONSTEXPR auto operator[](Range r) { return slice(*this, r); }
+    COCONEXT_ARRAY_CONSTEXPR auto operator[](Range r) const { return slice(*this, r); }
 
     COCONEXT_ARRAY_CONSTEXPR value_type* begin() noexcept { return data_.get(); }
     COCONEXT_ARRAY_CONSTEXPR value_type const* begin() const noexcept {
@@ -307,18 +300,18 @@ constexpr bool operator==(Array<ValueT> const& lhs, Array<ValueT> const& rhs) no
     return true;
 }
 
-// Specialization to use the slice flattening logic in operator(). The logic was
-// put in the class instead of here to prevent duplicating the code. We need the
-// non-const overload to prevent it from dispatching non-const versions to the
-// generic slice impl.
+// Specialization to use the slice flattening logic in operator[]. The logic
+// was put in the class instead of here to prevent duplicating the code. We
+// need the non-const overload to prevent it from dispatching non-const
+// versions to the generic slice impl.
 template <typename ArrayT>
 constexpr ArraySlice<ArrayT> slice(ArraySlice<ArrayT>& arr, Range r) {
-    return arr(r);
+    return arr[r];
 }
 
 template <typename ArrayT>
 constexpr ArraySlice<ArrayT> slice(ArraySlice<ArrayT> const& arr, Range r) {
-    return arr(r);
+    return arr[r];
 }
 
 template <RangedSequence ArrayT>
