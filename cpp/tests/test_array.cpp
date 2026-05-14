@@ -127,7 +127,7 @@ TEST(TestArray, IndexingConst) {
 
 TEST(TestArray, SliceTO) {
     Array<int> a({1, 2, 3, 4, 5, 6});
-    auto s = a(1, 4);
+    auto s = a({1, 4});
     EXPECT_EQ(s.range(), Range(1, Direction::TO, 4));
     EXPECT_EQ(s.range().length(), 4U);
     EXPECT_EQ(s[1], 2);
@@ -136,7 +136,7 @@ TEST(TestArray, SliceTO) {
 
 TEST(TestArray, SliceDOWNTO) {
     Array<int> a(std::vector<int>{10, 20, 30, 40}, Range(3, Direction::DOWNTO, 0));
-    auto s = a(2, 1);
+    auto s = a({2, 1});
     EXPECT_EQ(s.range().length(), 2U);
     EXPECT_EQ(s[2], 20);
     EXPECT_EQ(s[1], 30);
@@ -144,14 +144,14 @@ TEST(TestArray, SliceDOWNTO) {
 
 TEST(TestArray, SliceMutatesUnderlying) {
     Array<int> a({10, 20, 30, 40, 50});
-    auto s = a(1, 3);
+    auto s = a({1, 3});
     s[2] = 99;
     EXPECT_EQ(a[2], 99);
 }
 
 TEST(TestArray, SliceAssignFromRange) {
     Array<int> a({1, 2, 3, 4, 5});
-    auto s = a(1, 3);
+    auto s = a({1, 3});
     s = std::vector<int>{20, 30, 40};
     EXPECT_EQ(a[1], 20);
     EXPECT_EQ(a[3], 40);
@@ -159,38 +159,68 @@ TEST(TestArray, SliceAssignFromRange) {
 
 TEST(TestArray, SliceAssignFromInitializerList) {
     Array<int> a({1, 2, 3, 4, 5});
-    auto s = a(1, 3);
+    auto s = a({1, 3});
     s = {7, 8, 9};
     EXPECT_EQ(a[2], 8);
 }
 
 TEST(TestArray, SliceAssignWrongLength) {
     Array<int> a({1, 2, 3, 4, 5});
-    auto s = a(1, 3);
+    auto s = a({1, 3});
     EXPECT_THROW((s = std::vector<int>{1, 2, 3, 4}), std::invalid_argument);
     EXPECT_THROW((s = {1, 2}), std::invalid_argument);
 }
 
 TEST(TestArray, SliceStartOutOfRange) {
     Array<int> a({1, 2, 3});
-    EXPECT_THROW((void)a(99, 100), std::out_of_range);
+    EXPECT_THROW((void)a({99, 100}), std::out_of_range);
 }
 
 TEST(TestArray, SliceEndOutOfRange) {
     Array<int> a({1, 2, 3});
-    EXPECT_THROW((void)a(0, 99), std::out_of_range);
+    EXPECT_THROW((void)a({0, 99}), std::out_of_range);
 }
 
 TEST(TestArray, SliceDirectionMismatch) {
     Array<int> a(std::vector<int>{1, 2, 3, 4, 5}, Range(4, Direction::DOWNTO, 0));
     // start=0, end=4 walks against the array's DOWNTO direction.
-    EXPECT_THROW((void)a(0, 4), std::invalid_argument);
+    EXPECT_THROW((void)a({0, 4}), std::invalid_argument);
+}
+
+// -- Null slice corner cases (subsequence validity rule) -------------------
+//
+// A null range (length 0) is always a valid subsequence, so the slice should
+// succeed regardless of bounds or direction.
+
+TEST(TestArray, SliceNullDirectionMismatchOK) {
+    Array<int> a({1, 2, 3, 4, 5});  // Range(0, TO, 4)
+    // Range(3, TO, 1) has length 0; the wrong-direction-vs-owner doesn't
+    // matter because there are no values to walk.
+    auto s = a({3, Direction::TO, 1});
+    EXPECT_EQ(s.range().length(), 0U);
+    EXPECT_EQ(s.begin(), s.end());
+}
+
+TEST(TestArray, SliceNullOutOfBoundsOK) {
+    Array<int> a({1, 2, 3, 4, 5});
+    // Range(99, TO, 50) has length 0; bounds outside the parent are fine.
+    auto s = a({99, Direction::TO, 50});
+    EXPECT_EQ(s.range().length(), 0U);
+}
+
+TEST(TestArray, SliceLengthOneDirectionAgnostic) {
+    // Length-1 slice doesn't care about direction; only the single value
+    // needs to exist in the parent.
+    Array<int> a({10, 20, 30, 40});  // Range(0, TO, 3)
+    auto s = a({2, Direction::DOWNTO, 2});
+    EXPECT_EQ(s.range().length(), 1U);
+    EXPECT_EQ(s[2], 30);
 }
 
 TEST(TestArray, SliceOfSliceFlattens) {
     Array<int> a({1, 2, 3, 4, 5, 6, 7, 8});
-    auto s1 = a(1, 6);
-    auto s2 = s1(2, 4);
+    auto s1 = a({1, 6});
+    auto s2 = s1({2, 4});
     static_assert(
         std::is_same_v<decltype(s2), ArraySlice<Array<int>>>, "slice-of-slice must flatten"
     );
@@ -200,23 +230,23 @@ TEST(TestArray, SliceOfSliceFlattens) {
 
 TEST(TestArray, SliceOfSliceStartOutOfRange) {
     Array<int> a({1, 2, 3, 4, 5, 6, 7, 8});
-    auto s1 = a(1, 6);
+    auto s1 = a({1, 6});
     // 99 is outside s1's range.
-    EXPECT_THROW((void)s1(99, 100), std::out_of_range);
+    EXPECT_THROW((void)s1({99, 100}), std::out_of_range);
 }
 
 TEST(TestArray, SliceOfSliceEndOutOfRange) {
     Array<int> a({1, 2, 3, 4, 5, 6, 7, 8});
-    auto s1 = a(1, 6);
+    auto s1 = a({1, 6});
     // 1 is in s1's range, 99 isn't.
-    EXPECT_THROW((void)s1(1, 99), std::out_of_range);
+    EXPECT_THROW((void)s1({1, 99}), std::out_of_range);
 }
 
 TEST(TestArray, SliceOfSliceDirectionMismatch) {
     Array<int> a(std::vector<int>{1, 2, 3, 4, 5}, Range(4, Direction::DOWNTO, 0));
-    auto s1 = a(4, 1);  // DOWNTO slice over coords 4..1
+    auto s1 = a({4, 1});  // DOWNTO slice over coords 4..1
     // Asking for start=1, end=4 walks against s1's DOWNTO direction.
-    EXPECT_THROW((void)s1(1, 4), std::invalid_argument);
+    EXPECT_THROW((void)s1({1, 4}), std::invalid_argument);
 }
 
 // Same error paths but on const Array / const ArraySlice; index() and slice()
@@ -229,40 +259,40 @@ TEST(TestArray, IndexingConstOutOfRange) {
 
 TEST(TestArray, SliceConstStartOutOfRange) {
     Array<int> const a({1, 2, 3});
-    EXPECT_THROW((void)a(99, 100), std::out_of_range);
+    EXPECT_THROW((void)a({99, 100}), std::out_of_range);
 }
 
 TEST(TestArray, SliceConstEndOutOfRange) {
     Array<int> const a({1, 2, 3});
-    EXPECT_THROW((void)a(0, 99), std::out_of_range);
+    EXPECT_THROW((void)a({0, 99}), std::out_of_range);
 }
 
 TEST(TestArray, SliceConstDirectionMismatch) {
     Array<int> mut(std::vector<int>{1, 2, 3, 4, 5}, Range(4, Direction::DOWNTO, 0));
     Array<int> const& a = mut;
-    EXPECT_THROW((void)a(0, 4), std::invalid_argument);
+    EXPECT_THROW((void)a({0, 4}), std::invalid_argument);
 }
 
 TEST(TestArray, ConstSliceErrors) {
     Array<int> const a({1, 2, 3, 4, 5});
-    auto s = a(0, 4);
-    EXPECT_THROW((void)s(99, 100), std::out_of_range);
-    EXPECT_THROW((void)s(0, 99), std::out_of_range);
+    auto s = a({0, 4});
+    EXPECT_THROW((void)s({99, 100}), std::out_of_range);
+    EXPECT_THROW((void)s({0, 99}), std::out_of_range);
 }
 
 TEST(TestArray, ConstSliceDirectionMismatch) {
     Array<int> mut(std::vector<int>{1, 2, 3, 4, 5}, Range(4, Direction::DOWNTO, 0));
     Array<int> const& a = mut;
-    auto s = a(4, 0);
-    EXPECT_THROW((void)s(0, 4), std::invalid_argument);
+    auto s = a({4, 0});
+    EXPECT_THROW((void)s({0, 4}), std::invalid_argument);
 }
 
 TEST(TestArray, ConstSliceOfConstSlice) {
     // Success path of ArraySlice<const Array<int>>::operator() — its own
     // template instantiation, separate from the non-const slice case.
     Array<int> const a({1, 2, 3, 4, 5});
-    auto outer = a(0, 4);
-    auto inner = outer(1, 3);
+    auto outer = a({0, 4});
+    auto inner = outer({1, 3});
     EXPECT_EQ(inner.range().length(), 3U);
     EXPECT_EQ(inner[1], 2);
     EXPECT_EQ(inner[3], 4);
@@ -275,7 +305,7 @@ TEST(TestArray, ConstructLogicFromRange) {
 
 TEST(TestArray, ConstSliceOverConstArray) {
     Array<int> const a({10, 20, 30, 40});
-    auto s = a(1, 2);
+    auto s = a({1, 2});
     static_assert(std::is_same_v<decltype(s), ArraySlice<Array<int> const>>);
     EXPECT_EQ(s[1], 20);
     static_assert(std::is_same_v<decltype(s[1]), int const&>);
@@ -283,7 +313,7 @@ TEST(TestArray, ConstSliceOverConstArray) {
 
 TEST(TestArray, ConstSliceIteration) {
     Array<int> const a({1, 2, 3, 4, 5});
-    auto s = a(1, 3);
+    auto s = a({1, 3});
     int sum = std::accumulate(s.begin(), s.end(), 0);
     EXPECT_EQ(sum, 2 + 3 + 4);
 }
@@ -293,8 +323,8 @@ TEST(TestArray, ConstSliceOverMutableArrayMutates) {
     // not restrict element access. The slice's own const-ness only fixes the
     // pointer/range; the underlying ArrayT determines element mutability.
     Array<int> a({1, 2, 3, 4});
-    auto const cs = a(0, 3);  // const ArraySlice<Array<int>>
-    cs[0] = 99;               // mutation through const slice
+    auto const cs = a({0, 3});  // const ArraySlice<Array<int>>
+    cs[0] = 99;                 // mutation through const slice
     cs = std::vector<int>{10, 20, 30, 40};
     EXPECT_EQ(a[0], 10);
     EXPECT_EQ(a[3], 40);

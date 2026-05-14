@@ -52,22 +52,29 @@ constexpr std::ranges::range_reference_t<ArrayT> index(ArrayT& arr, Range::value
     return *(arr.begin() + offset);
 }
 
+// A slice is valid against a parent range iff every value in the slice
+// appears (in order) in the parent. This collapses to:
+//   - length 0:  always valid (any direction, any bounds)
+//   - length 1:  the single value must exist in the parent
+//   - length >= 2: direction must match the parent, and both endpoints
+//                  must exist in the parent
 template <RangedSequence ArrayT>
-constexpr auto slice(ArrayT& arr, Range::value_type start, Range::value_type end) {
-    auto left_it = find(arr.range(), start);
-    if (left_it == arr.range().end()) {
+constexpr auto slice(ArrayT& arr, Range r) {
+    auto const len = r.length();
+    if (len >= 1 && find(arr.range(), r.left) == arr.range().end()) {
         throw std::out_of_range("slice start out of bounds");
     }
-    auto right_it = find(arr.range(), end);
-    if (right_it == arr.range().end()) {
-        throw std::out_of_range("slice end out of bounds");
+    if (len >= 2) {
+        if (r.direction != arr.range().direction) {
+            throw std::invalid_argument(
+                "Slice direction does not match array range direction"
+            );
+        }
+        if (find(arr.range(), r.right) == arr.range().end()) {
+            throw std::out_of_range("slice end out of bounds");
+        }
     }
-    if (std::distance(arr.range().begin(), left_it)
-        > std::distance(arr.range().begin(), right_it))
-    {
-        throw std::invalid_argument("Slice direction does not match array range direction");
-    }
-    return ArraySlice(&arr, Range(start, arr.range().direction, end));
+    return ArraySlice(&arr, r);
 }
 
 template <typename ArrayT>
@@ -93,30 +100,29 @@ class ArraySlice {
     constexpr Range const& range() const noexcept { return range_; }
 
     constexpr reference operator[](index_type idx) const { return index(*arr_, idx); }
-    constexpr ArraySlice operator()(index_type start, index_type end) const {
-        // This is different than slice() since we want to flatten nested slices
-        // to prevent a bunch of chained accesses and lifetime issues.
-        auto left_it = find(range_, start);
-        if (left_it == range_.end()) {
+    // Sub-slicing flattens: returns a new ArraySlice over the same underlying
+    // array with a new range. Bounds-check against the slice's own range_,
+    // not arr_->range(), so we can't reuse slice(). Validity rule matches
+    // the free slice(): see its comment.
+    constexpr ArraySlice operator()(Range r) const {
+        auto const len = r.length();
+        if (len >= 1 && find(range_, r.left) == range_.end()) {
             throw std::out_of_range("slice start out of bounds");
         }
-        auto right_it = find(range_, end);
-        if (right_it == range_.end()) {
-            throw std::out_of_range("slice end out of bounds");
+        if (len >= 2) {
+            if (r.direction != range_.direction) {
+                throw std::invalid_argument(
+                    "Slice direction does not match array range direction"
+                );
+            }
+            if (find(range_, r.right) == range_.end()) {
+                throw std::out_of_range("slice end out of bounds");
+            }
         }
-        if (std::distance(range_.begin(), left_it)
-            > std::distance(range_.begin(), right_it))
-        {
-            throw std::invalid_argument(
-                "Slice direction does not match array range direction"
-            );
-        }
-        return ArraySlice(arr_, Range(start, range_.direction, end));
+        return ArraySlice(arr_, r);
     }
 #if __cplusplus >= 202302L
-    constexpr ArraySlice operator[](index_type start, index_type end) const {
-        return this->operator()(start, end);
-    }
+    constexpr ArraySlice operator[](Range r) const { return this->operator()(r); }
 #endif
 
     template <detail::sized_input_range R>
@@ -149,6 +155,12 @@ class ArraySlice {
     }
 
     constexpr iterator begin() const noexcept {
+        // Null slices may carry bounds outside the parent's range (the
+        // validity rule allows that). Pin them to the parent's begin so
+        // begin()/end() form a well-formed empty iterator pair.
+        if (range_.length() == 0) {
+            return arr_->begin();
+        }
         auto start = find(arr_->range(), range_.left);
         assert(
             start != arr_->range().end()
@@ -260,19 +272,11 @@ class Array {
     COCONEXT_ARRAY_CONSTEXPR value_type const& operator[](index_type idx) const {
         return index(*this, idx);
     }
-    COCONEXT_ARRAY_CONSTEXPR auto operator()(index_type start, index_type end) {
-        return slice(*this, start, end);
-    }
-    COCONEXT_ARRAY_CONSTEXPR auto operator()(index_type start, index_type end) const {
-        return slice(*this, start, end);
-    }
+    COCONEXT_ARRAY_CONSTEXPR auto operator()(Range r) { return slice(*this, r); }
+    COCONEXT_ARRAY_CONSTEXPR auto operator()(Range r) const { return slice(*this, r); }
 #if __cplusplus >= 202302L
-    constexpr auto operator[](index_type start, index_type stop) {
-        return slice(*this, start, stop);
-    }
-    constexpr auto operator[](index_type start, index_type stop) const {
-        return slice(*this, start, stop);
-    }
+    constexpr auto operator[](Range r) { return slice(*this, r); }
+    constexpr auto operator[](Range r) const { return slice(*this, r); }
 #endif
 
     COCONEXT_ARRAY_CONSTEXPR value_type* begin() noexcept { return data_.get(); }
@@ -318,17 +322,13 @@ constexpr bool operator==(Array<ValueT> const& lhs, Array<ValueT> const& rhs) no
 // non-const overload to prevent it from dispatching non-const versions to the
 // generic slice impl.
 template <typename ArrayT>
-constexpr ArraySlice<ArrayT> slice(
-    ArraySlice<ArrayT>& arr, Range::value_type start, Range::value_type end
-) {
-    return arr(start, end);
+constexpr ArraySlice<ArrayT> slice(ArraySlice<ArrayT>& arr, Range r) {
+    return arr(r);
 }
 
 template <typename ArrayT>
-constexpr ArraySlice<ArrayT> slice(
-    ArraySlice<ArrayT> const& arr, Range::value_type start, Range::value_type end
-) {
-    return arr(start, end);
+constexpr ArraySlice<ArrayT> slice(ArraySlice<ArrayT> const& arr, Range r) {
+    return arr(r);
 }
 
 template <RangedSequence ArrayT>

@@ -19,10 +19,10 @@ struct Range {
 
     constexpr Range() noexcept = default;
 
-    explicit constexpr Range(value_type l, Direction d, value_type r) noexcept
+    constexpr Range(value_type l, Direction d, value_type r) noexcept
         : left(l), direction(d), right(r) {}
 
-    explicit constexpr Range(value_type l, value_type r) noexcept
+    constexpr Range(value_type l, value_type r) noexcept
         : left(l), direction(l >= r ? Direction::DOWNTO : Direction::TO), right(r) {}
 
     explicit constexpr Range(size_t length)
