@@ -14,7 +14,8 @@ jobs:
     runs-on: ${{matrix.os}}
 
     env:
-      SIM: ${{matrix.simulator}}
+      SIM: ${{ matrix.simulator }}
+      TOPLEVEL_LANG: ${{ matrix.toplevel_lang }}
 
     strategy:
       fail-fast: false
@@ -23,21 +24,25 @@ jobs:
         simulator: [nvc]
         os: [ubuntu-24.04]
         nvc-version: ["1.20.1"]
+        toplevel_lang: [vhdl]
         include:
           # Ubuntu with Clang
           - python-version: "3.13"
             nvc-version: "1.20.1"
             os: "ubuntu-24.04"
             simulator: "nvc"
+            toplevel_lang: "vhdl"
             cc: "clang"
             cxx: "clang++"
             gcov: "llvm-cov gcov"
           # MacOS ARM and Intel
           - python-version: "3.13"
-            simulator: "nvc"
+            simulator: "icarus"
+            toplevel_lang: "verilog"
             os: "macos-26"
           - python-version: "3.13"
-            simulator: "nvc"
+            simulator: "icarus"
+            toplevel_lang: "verilog"
             os: "macos-15-intel"
 
     steps:
@@ -53,10 +58,16 @@ jobs:
         python-version: ${{matrix.python-version}}
         allow-prereleases: true
 
-    - name: Set up NVC
+    - name: Setup NVC
       uses: nickg/setup-nvc@v1
+      if: matrix.simulator == 'nvc'
       with:
         version: ${{matrix.nvc-version}}
+
+    - name: Setup Icarus (MacOS)
+      if: matrix.simulator == 'icarus' && startsWith(matrix.os, 'macos')
+      run: |
+        brew install icarus-verilog
 
     - name: Install uv
       uses: astral-sh/setup-uv@v7
@@ -71,8 +82,8 @@ jobs:
     - name: Run tests
       env:
         CC: ${{ matrix.cc || 'gcc' }}
-        CXX: ${{matrix.cxx || 'g++'}}
-        GCOV_EXECUTABLE: ${{matrix.gcov || 'gcov'}}
+        CXX: ${{ matrix.cxx || 'g++' }}
+        GCOV_EXECUTABLE: ${{ matrix.gcov || 'gcov' }}
       run: |
         make tests
 

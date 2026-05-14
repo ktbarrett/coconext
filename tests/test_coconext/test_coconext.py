@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 from cocotb_tools.runner import Runner, get_runner
@@ -10,9 +11,20 @@ from cocotb_tools.runner import Runner, get_runner
 @pytest.fixture
 def runner() -> Runner:
     pwd = Path(__file__).parent.absolute()
-    runner = get_runner(os.getenv("SIM", "nvc"))
-    runner.build(sources=[pwd / "empty.vhd"])
-    return runner
+    sim = os.getenv("SIM", "nvc").lower().strip()
+    r = get_runner(sim)
+    lang = os.getenv("TOPLEVEL_LANG", "vhdl").lower().strip()
+    if lang == "vhdl":
+        sources = [pwd / "empty.vhd"]
+    else:
+        sources = [pwd / "empty.sv"]
+    addl_args: dict[str, Any] = {}
+    if sim == "icarus":
+        addl_args = {
+            "timescale": ("1fs", "1fs"),
+        }
+    r.build(sources=sources, hdl_toplevel="top", **addl_args)
+    return r
 
 
 def test_triggers(runner: Runner) -> None:
