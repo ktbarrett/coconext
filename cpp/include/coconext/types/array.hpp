@@ -204,72 +204,33 @@ class Array {
         data_.resize(range.length());
     }
 
-    explicit constexpr Array(size_t length)
-        requires std::default_initializable<value_type>
-        : Array(Range(length)) {}
-
-    template <typename T>
-        requires std::convertible_to<T, value_type>
-    explicit constexpr Array(std::initializer_list<T> init)
+    constexpr Array(std::initializer_list<value_type> init)
         : data_(init), range_(data_.size()) {}
 
-    template <typename T>
-        requires std::convertible_to<T, value_type>
-    explicit constexpr Array(std::vector<T>&& vec)
-        : data_(std::move(vec)), range_(data_.size()) {}
-
-    template <std::ranges::input_range T>
-        requires std::convertible_to<std::ranges::range_value_t<T>, value_type>
-    explicit constexpr Array(T const& obj, Range range) : data_(), range_(range) {
-        data_.reserve(range.length());
-        data_.assign(std::ranges::begin(obj), std::ranges::end(obj));
+    constexpr Array(std::initializer_list<value_type> init, Range range)
+        : data_(init), range_(range) {
         if (data_.size() != range.length()) {
             throw std::invalid_argument(
-                "Input of size " + std::to_string(data_.size())
+                "Initializer list of size " + std::to_string(data_.size())
                 + " does not match range length " + std::to_string(range.length())
             );
         }
     }
 
-    template <std::ranges::input_range T>
-        requires std::convertible_to<std::ranges::range_value_t<T>, value_type>
-    explicit constexpr Array(T const& obj, size_t length) : data_(), range_(length) {
-        data_.reserve(length);
-        data_.assign(std::ranges::begin(obj), std::ranges::end(obj));
-        if (data_.size() != length) {
-            throw std::invalid_argument(
-                "Input of size " + std::to_string(data_.size())
-                + " does not match range length " + std::to_string(length)
-            );
-        }
-    }
+    template <std::ranges::sized_range R>
+        requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
+                  && (!std::same_as<std::remove_cvref_t<R>, Array>)
+    explicit constexpr Array(R const& obj)
+        : data_(std::ranges::begin(obj), std::ranges::end(obj)), range_(data_.size()) {}
 
-    template <std::input_iterator It>
-        requires std::convertible_to<
-                     typename std::iterator_traits<It>::value_type,
-                     value_type>
-    explicit constexpr Array(It begin, It end, Range range) : data_(), range_(range) {
-        data_.reserve(range.length());
-        data_.assign(begin, end);
+    template <std::ranges::sized_range R>
+        requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
+    constexpr Array(R const& obj, Range range)
+        : data_(std::ranges::begin(obj), std::ranges::end(obj)), range_(range) {
         if (data_.size() != range.length()) {
             throw std::invalid_argument(
-                "Iterator of size " + std::to_string(data_.size())
+                "Input of size " + std::to_string(data_.size())
                 + " does not match range length " + std::to_string(range.length())
-            );
-        }
-    }
-
-    template <std::input_iterator It>
-        requires std::convertible_to<
-                     typename std::iterator_traits<It>::value_type,
-                     value_type>
-    explicit constexpr Array(It begin, It end, size_t length) : data_(), range_(length) {
-        data_.reserve(length);
-        data_.assign(begin, end);
-        if (data_.size() != length) {
-            throw std::invalid_argument(
-                "Iterator of size " + std::to_string(data_.size())
-                + " does not match range length " + std::to_string(length)
             );
         }
     }

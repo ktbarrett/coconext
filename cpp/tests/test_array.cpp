@@ -24,35 +24,17 @@ TEST(TestArray, ConstructFromInitializerListEmpty) {
     EXPECT_EQ(a.range().length(), 0U);
 }
 
-TEST(TestArray, ConstructFromVectorMove) {
-    std::vector<int> v{1, 2, 3, 4};
-    Array<int> a(std::move(v));
-    EXPECT_EQ(a.range().length(), 4U);
-    EXPECT_EQ(a[0], 1);
-    EXPECT_EQ(a[3], 4);
-    EXPECT_TRUE(v.empty());  // moved-from
+TEST(TestArray, ConstructFromInitializerListWithRange) {
+    Array<int> a({10, 20, 30, 40}, Range(-2, Direction::TO, 1));
+    EXPECT_EQ(a.range(), Range(-2, Direction::TO, 1));
+    EXPECT_EQ(a[-2], 10);
+    EXPECT_EQ(a[1], 40);
 }
 
-TEST(TestArray, ConstructFromVectorMoveEmpty) {
-    std::vector<int> v;
-    Array<int> a(std::move(v));
-    EXPECT_EQ(a.range().length(), 0U);
-}
-
-TEST(TestArray, ConstructFromLength) {
-    Array<int> a(static_cast<size_t>(5));
-    EXPECT_EQ(a.range().length(), 5U);
-    EXPECT_EQ(a.range(), Range(0, Direction::TO, 4));
-}
-
-TEST(TestArray, ConstructFromLengthZero) {
-    Array<int> a(static_cast<size_t>(0));
-    EXPECT_EQ(a.range().length(), 0U);
-}
-
-TEST(TestArray, ConstructFromLengthOverflow) {
-    constexpr size_t too_big = static_cast<size_t>(std::numeric_limits<int32_t>::max()) + 1;
-    EXPECT_THROW(Array<int> a(too_big), std::length_error);
+TEST(TestArray, ConstructFromInitializerListWithRangeLengthMismatch) {
+    EXPECT_THROW(
+        Array<int> a({1, 2, 3}, Range(0, Direction::TO, 7)), std::invalid_argument
+    );
 }
 
 TEST(TestArray, ConstructFromRange) {
@@ -61,46 +43,24 @@ TEST(TestArray, ConstructFromRange) {
     EXPECT_EQ(a.range().length(), 4U);
 }
 
-TEST(TestArray, ConstructFromInputRangeWithRange) {
+TEST(TestArray, ConstructFromSizedRange) {
+    std::vector<int> src{1, 2, 3};
+    Array<int> a(src);
+    EXPECT_EQ(a.range(), Range(0, Direction::TO, 2));
+    EXPECT_EQ(a[0], 1);
+    EXPECT_EQ(a[2], 3);
+}
+
+TEST(TestArray, ConstructFromSizedRangeWithRange) {
     std::vector<int> src{10, 20, 30, 40};
     Array<int> a(src, Range(-2, Direction::TO, 1));
     EXPECT_EQ(a[-2], 10);
     EXPECT_EQ(a[1], 40);
 }
 
-TEST(TestArray, ConstructFromInputRangeWithLength) {
-    std::vector<int> src{1, 2, 3};
-    Array<int> a(src, static_cast<size_t>(3));
-    EXPECT_EQ(a.range(), Range(0, Direction::TO, 2));
-}
-
-TEST(TestArray, ConstructFromInputRangeLengthMismatch) {
+TEST(TestArray, ConstructFromSizedRangeLengthMismatch) {
     std::vector<int> src{1, 2, 3};
     EXPECT_THROW(Array<int> a(src, Range(0, Direction::TO, 7)), std::invalid_argument);
-    EXPECT_THROW(Array<int> a(src, static_cast<size_t>(7)), std::invalid_argument);
-}
-
-TEST(TestArray, ConstructFromIteratorPairWithRange) {
-    std::vector<int> src{1, 2, 3, 4};
-    Array<int> a(src.begin(), src.end(), Range(0, Direction::TO, 3));
-    EXPECT_EQ(a[2], 3);
-}
-
-TEST(TestArray, ConstructFromIteratorPairWithLength) {
-    std::vector<int> src{1, 2, 3, 4};
-    Array<int> a(src.begin(), src.end(), static_cast<size_t>(4));
-    EXPECT_EQ(a.range().length(), 4U);
-}
-
-TEST(TestArray, ConstructFromIteratorPairLengthMismatch) {
-    std::vector<int> src{1, 2, 3};
-    EXPECT_THROW(
-        Array<int> a(src.begin(), src.end(), Range(0, Direction::TO, 7)),
-        std::invalid_argument
-    );
-    EXPECT_THROW(
-        Array<int> a(src.begin(), src.end(), static_cast<size_t>(7)), std::invalid_argument
-    );
 }
 
 // -- range() ----------------------------------------------------------------
@@ -308,32 +268,9 @@ TEST(TestArray, ConstSliceOfConstSlice) {
     EXPECT_EQ(inner[3], 4);
 }
 
-TEST(TestArray, ConstructLogicLengthOverflow) {
-    // length_to_right_ is a static member of each Array<T> instantiation;
-    // Array<Logic>'s copy needs its own overflow exercise.
-    constexpr size_t too_big = static_cast<size_t>(std::numeric_limits<int32_t>::max()) + 1;
-    EXPECT_THROW(Array<Logic> a(too_big), std::length_error);
-}
-
-TEST(TestArray, ConstructLogicFromLength) {
-    // Successful Array<Logic>(size_t) — covers the data_.resize(length) line
-    // inside the size_t constructor's Array<Logic> instantiation.
-    Array<Logic> a(static_cast<size_t>(3));
+TEST(TestArray, ConstructLogicFromRange) {
+    Array<Logic> a(Range(3));
     EXPECT_EQ(a.range().length(), 3U);
-}
-
-// Cover length_to_right_'s overflow throw via the other constructor paths
-// that route through it.
-TEST(TestArray, ConstructFromInputRangeWithLengthOverflow) {
-    constexpr size_t too_big = static_cast<size_t>(std::numeric_limits<int32_t>::max()) + 1;
-    std::vector<int> empty;
-    EXPECT_THROW(Array<int> a(empty, too_big), std::length_error);
-}
-
-TEST(TestArray, ConstructFromIteratorPairWithLengthOverflow) {
-    constexpr size_t too_big = static_cast<size_t>(std::numeric_limits<int32_t>::max()) + 1;
-    std::vector<int> empty;
-    EXPECT_THROW(Array<int> a(empty.begin(), empty.end(), too_big), std::length_error);
 }
 
 TEST(TestArray, ConstSliceOverConstArray) {
