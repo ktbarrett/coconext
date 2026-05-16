@@ -1,6 +1,6 @@
 .PHONY: dev_build
 dev_build:
-	uv sync --no-default-groups --group=tests --no-install-project
+	uv sync --dev --no-install-project
 
 	# Build the package with debugging and coverage flags
 	CCACHE_DISABLE=1 \
@@ -35,6 +35,6 @@ DOCS_OUTDIR ?= .docs_out
 
 .PHONY: docs
 docs:
-	uv sync --no-default-groups --group=docs
+	uv sync --dev --no-install-project
 	sphinx-build docs/ '$(DOCS_OUTDIR)/' --color -b html
 	@echo "Documentation built at $(DOCS_OUTDIR)/index.html"
