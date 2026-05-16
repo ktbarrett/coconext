@@ -57,7 +57,11 @@ known-first-party = ["coconext"]
 docstring-code-format = true
 
 [tool.mypy]
-packages = ["coconext", "tests"]
+files = [
+    "python/",
+    "tests/python/",
+]
+mypy_path = "python/"
 disallow_untyped_defs = true
 disallow_any_unimported = true
 no_implicit_optional = true
@@ -69,14 +73,22 @@ warn_unused_ignores = true
 implicit_reexport = false
 show_error_codes = true
 
+# nanobind generates __eq__ overloads only for types it emits.
+# However Python expects __eq__ to be defined for all objects, i.e.
+#   __eq__(self, other: object, /) -> bool: ...
+# This breaks Liskov substitution so we have to turn off checking here.
+[[tool.mypy.overrides]]
+module = "_coconext"
+disable_error_code = ["override"]
+
 [dependency-groups]
 dev = [
     "mypy",
     "prek",
-    "ruff",
     {include-group = "dev_tests"}
 ]
 dev_tests = [
+    "ruff",
     "nanobind",
     "cmake>=3.20",
     "scikit-build-core",

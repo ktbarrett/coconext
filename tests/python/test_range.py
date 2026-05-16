@@ -79,9 +79,9 @@ def test_null_range() -> None:
 
 def test_bad_arguments() -> None:
     with pytest.raises(TypeError):
-        Range(1, "to")
+        Range(1, "to")  # type: ignore[call-overload]
     with pytest.raises(TypeError):
-        Range("1", "to", 5)
+        Range("1", "to", 5)  # type: ignore[call-overload]
     with pytest.raises(ValueError):
         Range(1, "BAD DIRECTION", 3)
 
@@ -131,7 +131,7 @@ def test_bad_direction() -> None:
 
 def test_bad_bound() -> None:
     with pytest.raises(TypeError):
-        Range(object(), "to", 8)
+        Range(object(), "to", 8)  # type: ignore[call-overload]
 
 
 def test_bad_step() -> None:
@@ -141,7 +141,7 @@ def test_bad_step() -> None:
 
 def test_bad_getitem() -> None:
     with pytest.raises(TypeError):
-        Range(10, "downto", 4)["8"]
+        Range(10, "downto", 4)["8"]  # type: ignore[call-overload]
 
 
 def test_copy() -> None:

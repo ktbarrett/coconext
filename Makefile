@@ -13,6 +13,11 @@ dev_build:
 	LDFLAGS="$$LDFLAGS --coverage" \
 	uv pip install --no-build-isolation --no-deps --force-reinstall -e .
 
+	cp "$$(python -c 'import _coconext, os; print(os.path.join(os.path.dirname(_coconext.__file__), "_coconext.pyi"))')" python/_coconext.pyi
+	ruff check --fix python/_coconext.pyi
+	ruff format python/_coconext.pyi
+	cp build/compile_commands.json compile_commands.json
+
 GCOV_EXECUTABLE ?= gcov
 CPP_TESTS_BUILD_DIR ?= build/tests
 
