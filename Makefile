@@ -27,55 +27,9 @@ dev_tests: dev_build
 	coverage report
 	gcovr build/ --gcov-executable='$(GCOV_EXECUTABLE)' --print-summary
 
-
 .PHONY: clean
 clean:
 	rm -rf build/
-
-
-.PHONY: release_build_wheel
-release_build_wheel:
-	@eval "$$(python tools/release_paths.py shell)" && \
-	SKBUILD_CMAKE_BUILD_TYPE=Release SKBUILD_BUILD_DIR="$$RELEASE_BUILD_DIR" uv build --wheel --out-dir "$$RELEASE_DIST_DIR"
-
-
-.PHONY: release_test_wheel
-release_test_wheel: release_build_wheel
-	@eval "$$(python tools/release_paths.py shell)" && \
-	if [ -d "$$RELEASE_VENV" ]; then rm -rf "$$RELEASE_VENV"; fi && \
-	uv venv "$$RELEASE_VENV" && \
-	. "$$RELEASE_VENV/bin/activate" && \
-	uv sync --active --no-default-groups --group=tests --no-install-project && \
-	SKBUILD_BUILD_DIR="$$RELEASE_BUILD_DIR" uv pip install --force-reinstall "$$RELEASE_WHEEL" && \
-	pytest && \
-	ctest --output-on-failure --test-dir "$$RELEASE_BUILD_DIR"
-
-
-.PHONY: release_build_sdist
-release_build_sdist:
-	@eval "$$(python tools/release_paths.py shell)" && \
-	SKBUILD_CMAKE_BUILD_TYPE=Release SKBUILD_BUILD_DIR="$$RELEASE_BUILD_DIR" uv build --sdist --out-dir "$$RELEASE_DIST_DIR"
-
-
-.PHONY: release_test_sdist
-release_test_sdist: release_build_sdist
-	@eval "$$(python tools/release_paths.py shell)" && \
-	if [ -d "$$RELEASE_VENV" ]; then rm -rf "$$RELEASE_VENV"; fi && \
-	uv venv "$$RELEASE_VENV" && \
-	. "$$RELEASE_VENV/bin/activate" && \
-	uv sync --active --no-default-groups --group=tests --no-install-project && \
-	SKBUILD_BUILD_DIR="$$RELEASE_BUILD_DIR" uv pip install "$$RELEASE_SDIST" && \
-	pytest && \
-	ctest --output-on-failure --test-dir "$$RELEASE_BUILD_DIR"
-
-
-.PHONY: release_build
-release_build: release_build_wheel release_build_sdist
-
-
-.PHONY: release_test
-release_test: release_test_wheel release_test_sdist
-
 
 DOCS_OUTDIR ?= .docs_out
 
