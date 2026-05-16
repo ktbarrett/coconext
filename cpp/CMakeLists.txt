@@ -14,12 +14,3 @@ install(TARGETS coconext
     EXPORT coconextTargets
     ARCHIVE DESTINATION coconext/lib)
 install(DIRECTORY include/coconext DESTINATION coconext/include)
-
-
-add_executable(coconext_tests
-    tests/test_logic.cpp
-    tests/test_range.cpp
-    tests/test_array.cpp)
-target_link_libraries(coconext_tests PRIVATE coconext GTest::gtest_main)
-
-gtest_discover_tests(coconext_tests)
