@@ -54,7 +54,7 @@ void register_logic(nb::module_& m) {
             "__init__",
             [](Logic* self, long long value) { new (self) Logic(to_logic(value)); }
         )
-        .def("__str__", &to_string)
+        .def("__str__", [](Logic const& self) { return to_string(self); })
         .def("__index__", &to_int)
         .def("__bool__", [](Logic const& self) { return to_int(self) != 0; })
         .def(
@@ -150,7 +150,7 @@ void register_logic(nb::module_& m) {
             [](Bit* self, std::string_view value) { new (self) Bit(to_bit(value)); }
         )
         .def("__init__", [](Bit* self, long long value) { new (self) Bit(to_bit(value)); })
-        .def("__str__", &to_string)
+        .def("__str__", [](Bit const& self) { return to_string(self); })
         .def("__index__", &to_int)
         .def("__bool__", [](Bit const& self) { return to_int(self) != 0; })
         .def(

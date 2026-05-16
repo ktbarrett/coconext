@@ -7,6 +7,7 @@
 #include "./types/direction.hpp"
 #include "./types/dynamic_array.hpp"
 #include "./types/logic.hpp"
+#include "./types/logic_array.hpp"
 #include "./types/range.hpp"
 // NOLINTEND(unused-includes)
 

@@ -1,6 +1,7 @@
 #ifndef COCONEXT_DIRECTION_HPP
 #define COCONEXT_DIRECTION_HPP
 
+#include <format>
 #include <stdexcept>
 #include <string_view>
 
@@ -45,5 +46,20 @@ constexpr Direction to_direction(std::string_view value) {
 }
 
 }  // namespace coconext::types
+
+template <>
+struct std::formatter<coconext::types::Direction> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        auto it = ctx.begin();
+        if (it != ctx.end() && *it != '}') {
+            throw std::format_error("Direction formatter takes no format spec");
+        }
+        return it;
+    }
+
+    auto format(coconext::types::Direction d, std::format_context& ctx) const {
+        return std::format_to(ctx.out(), "Direction{{{}}}", coconext::types::to_string(d));
+    }
+};
 
 #endif  // COCONEXT_DIRECTION_HPP

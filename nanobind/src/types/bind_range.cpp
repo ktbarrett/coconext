@@ -7,6 +7,7 @@
 #include <coconext/types/concepts.hpp>
 #include <coconext/types/range.hpp>
 #include <cstdint>
+#include <format>
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -117,7 +118,14 @@ void register_range(nb::module_& m) {
         )
         .def(nb::self == nb::self, nb::arg().noconvert())
         .def("__hash__", [](Range const& self) { return std::hash<Range>()(self); })
-        .def("__repr__", [](Range const& self) { return to_string(self); })
+        .def(
+            "__repr__",
+            [](Range const& self) {
+                return std::format(
+                    "Range({}, '{}', {})", self.left, to_string(self.direction), self.right
+                );
+            }
+        )
         .def(
             "index",
             [](Range const& self, int32_t value) {

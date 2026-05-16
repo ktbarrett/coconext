@@ -6,6 +6,7 @@
 #include <coconext/types/range.hpp>
 #include <concepts>
 #include <cstddef>
+#include <format>
 #include <initializer_list>
 #include <iterator>
 #include <memory>
@@ -308,22 +309,27 @@ constexpr bool operator==(
     return true;
 }
 
-template <RangedSequence ArrayT>
-    requires detail::Stringifiable<std::ranges::range_value_t<ArrayT>>
-std::string to_string(ArrayT const& arr) {
-    using std::to_string;  // make std::to_string and ADL candidates co-visible
-    std::string result = "Array([";
-    for (auto it = arr.begin(); it != arr.end(); ++it) {
-        result += to_string(*it);
-        if (std::next(it) != arr.end()) {
-            result += ", ";
+namespace detail {
+
+// Walks a RangedSequence, emitting "[range]{elem, elem, ...}" via the formatter
+// for each element type. Used by the generic Array/Slice formatters.
+template <RangedSequence ArrayT, typename OutIt>
+    requires Formattable<std::ranges::range_value_t<ArrayT>>
+OutIt format_array(ArrayT const& arr, OutIt out) {
+    out = std::format_to(out, "{}{{", arr.range());
+    bool first = true;
+    for (auto const& elem : arr) {
+        if (!first) {
+            out = std::format_to(out, ", ");
         }
+        out = std::format_to(out, "{}", elem);
+        first = false;
     }
-    result += "], ";
-    result += to_string(arr.range());
-    result += ")";
-    return result;
+    *out++ = '}';
+    return out;
 }
+
+}  // namespace detail
 
 static_assert(RangedSequence<DynamicArray<int>>);
 static_assert(RangedSequence<DynamicArray<int> const>);
@@ -340,6 +346,43 @@ struct std::hash<coconext::types::DynamicArray<T>> {
             seed = coconext::types::detail::hash_combine(seed, elem);
         }
         return seed;
+    }
+};
+
+template <typename T>
+    requires coconext::types::detail::Formattable<T>
+struct std::formatter<coconext::types::DynamicArray<T>> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        auto it = ctx.begin();
+        if (it != ctx.end() && *it != '}') {
+            throw std::format_error("DynamicArray formatter takes no format spec");
+        }
+        return it;
+    }
+
+    auto format(
+        coconext::types::DynamicArray<T> const& arr, std::format_context& ctx
+    ) const {
+        return coconext::types::detail::format_array(arr, ctx.out());
+    }
+};
+
+template <typename ArrayT>
+    requires coconext::types::detail::Formattable<
+        std::ranges::range_value_t<coconext::types::ArraySlice<ArrayT>>>
+struct std::formatter<coconext::types::ArraySlice<ArrayT>> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        auto it = ctx.begin();
+        if (it != ctx.end() && *it != '}') {
+            throw std::format_error("ArraySlice formatter takes no format spec");
+        }
+        return it;
+    }
+
+    auto format(
+        coconext::types::ArraySlice<ArrayT> const& arr, std::format_context& ctx
+    ) const {
+        return coconext::types::detail::format_array(arr, ctx.out());
     }
 };
 
