@@ -3,6 +3,7 @@
 
 #include <coconext/types/concepts.hpp>
 #include <cstdint>
+#include <format>
 #include <stdexcept>
 #include <string_view>
 #include <type_traits>
@@ -179,6 +180,10 @@ constexpr std::string_view to_string(Logic const& value) noexcept {
     return str_map[static_cast<size_t>(value.value())];
 }
 
+constexpr std::string_view to_string(Bit const& value) noexcept {
+    return value.value() == Bit::_0 ? "0" : "1";
+}
+
 constexpr char to_char(Logic const& value) noexcept {
     constexpr char char_map[] = {'0', '1', 'X', 'Z', 'U', 'W', 'L', 'H', '-'};
     return char_map[static_cast<size_t>(value.value())];
@@ -335,6 +340,36 @@ template <>
 struct std::hash<coconext::types::Bit> {
     size_t operator()(coconext::types::Bit const& bit) const noexcept {
         return std::hash<coconext::types::Bit::value_type>()(bit.value());
+    }
+};
+
+template <>
+struct std::formatter<coconext::types::Logic> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        auto it = ctx.begin();
+        if (it != ctx.end() && *it != '}') {
+            throw std::format_error("Logic formatter takes no format spec");
+        }
+        return it;
+    }
+
+    auto format(coconext::types::Logic const& v, std::format_context& ctx) const {
+        return std::format_to(ctx.out(), "Logic{{{}}}", coconext::types::to_string(v));
+    }
+};
+
+template <>
+struct std::formatter<coconext::types::Bit> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        auto it = ctx.begin();
+        if (it != ctx.end() && *it != '}') {
+            throw std::format_error("Bit formatter takes no format spec");
+        }
+        return it;
+    }
+
+    auto format(coconext::types::Bit v, std::format_context& ctx) const {
+        return std::format_to(ctx.out(), "Bit{{{}}}", coconext::types::to_string(v));
     }
 };
 

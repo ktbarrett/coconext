@@ -218,6 +218,16 @@ def test_bit_constructor() -> None:
         Bit(a)
 
 
+def test_bit_str_conversions() -> None:
+    assert str(Bit(0)) == "0"
+    assert str(Bit(1)) == "1"
+
+
+def test_bit_repr() -> None:
+    assert eval(repr(Bit(0))) == Bit(0)
+    assert eval(repr(Bit(1))) == Bit(1)
+
+
 def test_bit_ops() -> None:
     assert Bit(1) | Bit(0) == Bit(1)
     assert Bit(1) & Bit(0) == Bit(0)

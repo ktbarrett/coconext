@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 
 #include <coconext/types.hpp>
+#include <format>
 #include <stdexcept>
 #include <unordered_set>
 #include <vector>
@@ -101,9 +102,14 @@ TEST(TestRange, OtherConstructors) {
     EXPECT_EQ(Range(3, -4), Range(3, Direction::DOWNTO, -4));
 }
 
-TEST(TestRange, ReprEquivalent) {
-    Range const r(5, Direction::TO, 9);
-    EXPECT_EQ(to_string(r), "Range(5, 'to', 9)");
+TEST(TestRange, Formatter) {
+    EXPECT_EQ(std::format("{}", Range(5, Direction::TO, 9)), "[5 to 9]");
+    EXPECT_EQ(std::format("{}", Range(9, Direction::DOWNTO, 5)), "[9 downto 5]");
+}
+
+TEST(TestDirection, Formatter) {
+    EXPECT_EQ(std::format("{}", Direction::TO), "Direction{to}");
+    EXPECT_EQ(std::format("{}", Direction::DOWNTO), "Direction{downto}");
 }
 
 TEST(TestRange, UppercaseDirection) {

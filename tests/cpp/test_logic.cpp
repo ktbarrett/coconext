@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 
 #include <coconext/types.hpp>
+#include <format>
 #include <stdexcept>
 #include <unordered_set>
 #include <vector>
@@ -125,6 +126,18 @@ TEST(TestLogic, LogicStringConversions) {
 TEST(TestBit, BitStringConversions) {
     EXPECT_EQ(to_string('0'_b), "0");
     EXPECT_EQ(to_string('1'_b), "1");
+}
+
+TEST(TestLogic, LogicFormatter) {
+    EXPECT_EQ(std::format("{}", '0'_l), "Logic{0}");
+    EXPECT_EQ(std::format("{}", '1'_l), "Logic{1}");
+    EXPECT_EQ(std::format("{}", 'X'_l), "Logic{X}");
+    EXPECT_EQ(std::format("{}", 'Z'_l), "Logic{Z}");
+}
+
+TEST(TestBit, BitFormatter) {
+    EXPECT_EQ(std::format("{}", '0'_b), "Bit{0}");
+    EXPECT_EQ(std::format("{}", '1'_b), "Bit{1}");
 }
 
 TEST(TestLogic, LogicCharConversions) {

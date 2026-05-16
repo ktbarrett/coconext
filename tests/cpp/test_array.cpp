@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 
 #include <coconext/types.hpp>
+#include <format>
 #include <functional>
 #include <numeric>
 #include <stdexcept>
@@ -459,24 +460,43 @@ TEST(TestArray, MoveAssignReplacesRange) {
     EXPECT_EQ(a[4], 40);
 }
 
-// -- to_string --------------------------------------------------------------
+// -- Formatter --------------------------------------------------------------
 
-TEST(TestArray, ToStringInt) {
+TEST(TestArray, FormatterInt) {
     Array<int> a({1, 2, 3});
-    EXPECT_EQ(to_string(a), "Array([1, 2, 3], Range(0, 'to', 2))");
+    EXPECT_EQ(std::format("{}", a), "[0 to 2]{1, 2, 3}");
 }
 
-TEST(TestArray, ToStringEmpty) {
+TEST(TestArray, FormatterEmpty) {
     Array<int> a({});
-    EXPECT_EQ(to_string(a), "Array([], Range(0, 'to', -1))");
+    EXPECT_EQ(std::format("{}", a), "[0 to -1]{}");
 }
 
-TEST(TestArray, ToStringLogic) {
-    // Exercises the ADL path in to_string (Logic's to_string is in
-    // coconext::types, not std).
+TEST(TestArray, FormatterLogic) {
     Array<Logic> a({'0'_l, '1'_l, 'X'_l});
-    auto s = to_string(a);
-    EXPECT_NE(s.find("0"), std::string::npos);
-    EXPECT_NE(s.find("X"), std::string::npos);
+    EXPECT_EQ(std::format("{}", a), "Logic[0 to 2]{0, 1, X}");
+}
+
+TEST(TestArray, FormatterBit) {
+    Array<Bit> a({'0'_b, '1'_b, '0'_b, '1'_b});
+    EXPECT_EQ(std::format("{}", a), "Bit[0 to 3]{0, 1, 0, 1}");
+}
+
+TEST(TestArray, FormatterLogicSlice) {
+    Array<Logic> a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
+    auto s = a[Range(1, 2)];
+    EXPECT_EQ(std::format("{}", s), "Logic[1 to 2]{1, X}");
+}
+
+TEST(TestArray, FormatterLogicConstSlice) {
+    Array<Logic> const a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
+    auto s = a[Range(1, 2)];
+    EXPECT_EQ(std::format("{}", s), "Logic[1 to 2]{1, X}");
+}
+
+TEST(TestArray, FormatterBitSlice) {
+    Array<Bit> a({'0'_b, '1'_b, '0'_b, '1'_b});
+    auto s = a[Range(1, 2)];
+    EXPECT_EQ(std::format("{}", s), "Bit[1 to 2]{1, 0}");
 }
 // LCOV_EXCL_BR_STOP

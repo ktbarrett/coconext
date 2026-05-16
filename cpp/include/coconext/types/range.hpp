@@ -7,6 +7,7 @@
 #include <coconext/types/direction.hpp>
 #include <coconext/types/hash.hpp>
 #include <cstdint>
+#include <format>
 #include <limits>
 #include <ranges>
 #include <stdexcept>
@@ -180,20 +181,30 @@ constexpr Range::iterator find(Range const& range, Range::value_type value) {
     }
 }
 
-inline std::string to_string(Range const& range) {
-    auto res = std::string("Range(");
-    res += std::to_string(range.left);
-    res += ", '";
-    res += to_string(range.direction);
-    res += "', ";
-    res += std::to_string(range.right);
-    res += ")";
-    return res;
-}
-
 static_assert(std::ranges::random_access_range<Range>);
 
 }  // namespace coconext::types
+
+template <>
+struct std::formatter<coconext::types::Range> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        auto it = ctx.begin();
+        if (it != ctx.end() && *it != '}') {
+            throw std::format_error("Range formatter takes no format spec");
+        }
+        return it;
+    }
+
+    auto format(coconext::types::Range const& r, std::format_context& ctx) const {
+        return std::format_to(
+            ctx.out(),
+            "[{} {} {}]",
+            r.left,
+            coconext::types::to_string(r.direction),
+            r.right
+        );
+    }
+};
 
 template <>
 struct std::hash<coconext::types::Range> {

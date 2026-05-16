@@ -1,7 +1,10 @@
 #ifndef COCONEXT_TYPES_UTIL_HPP
 #define COCONEXT_TYPES_UTIL_HPP
 
-#include <string>
+#include <concepts>
+#include <cstddef>
+#include <format>
+#include <functional>
 #include <type_traits>
 
 namespace coconext::types {
@@ -52,18 +55,16 @@ struct is_int<unsigned long long> : public std::true_type {};
 
 namespace detail {
 
-// For use in other to_string methods. We can't overload std::to_string for
-// custom types, so we have to use ADL. This checks for both std and ADL
-// lookups. It also widens the result type requirements to anything that can be
-// used to build a string.
-template <typename T>
-concept Stringifiable = requires(T val, std::string s) { s += std::to_string(val); }
-                     || requires(T val, std::string s) { s += to_string(val); };
-
 template <typename T>
 concept Hashable = requires(T a) {
     { std::hash<T>{}(a) } -> std::convertible_to<std::size_t>;
 };
+
+// C++20 substitute for std::formattable (C++23). Strong enough to discriminate
+// types with a usable std::formatter specialization from those that fall back
+// to the disabled primary template.
+template <typename T>
+concept Formattable = std::semiregular<std::formatter<std::remove_cvref_t<T>, char>>;
 
 }  // namespace detail
 
