@@ -111,3 +111,12 @@ CMAKE_EXPORT_COMPILE_COMMANDS = true
 
 [tool.codespell]
 ignore-words-list = "sting"
+
+[tool.cibuildwheel]
+build = "cp*-manylinux_x86_64 cp*-macosx_x86_64 cp*-macosx_arm64"
+manylinux-x86_64-image = "manylinux_2_28"
+environment = {CFLAGS = "-O2 -g -flto", CPPFLAGS = "-O2 -g -flto", LDFLAGS = "-O2 -g -flto"}
+build-frontend = "build[uv]"
+# Tests run in a separate matrix job, not by cibuildwheel: the cocotb tests
+# need an HDL simulator that isn't in the manylinux container.
+test-skip = "*"
