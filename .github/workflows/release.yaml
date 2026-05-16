@@ -1,0 +1,225 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+    - '*'
+
+jobs:
+  build-wheels:
+    name: Build wheels (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-26, macos-15-intel]
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - uses: pypa/cibuildwheel@v3
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: wheels-${{ matrix.os }}
+        path: wheelhouse/*.whl
+
+  build-sdist:
+    name: Build sdist
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - uses: actions/setup-python@v6
+      with:
+        python-version: "3.13"
+
+    - uses: astral-sh/setup-uv@v7
+
+    - name: Build sdist
+      run: uv build --sdist --out-dir dist
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: sdist
+        path: dist/*.tar.gz
+
+  test-wheels:
+    name: Test wheel (Python ${{matrix.python-version}} | ${{matrix.simulator}}${{ matrix.cc != '' && format(' | {0}', matrix.cc) || '' }}${{ !startsWith(matrix.os, 'ubuntu') && format(' | {0}', matrix.os) || '' }})
+    needs: build-wheels
+    runs-on: ${{ matrix.os }}
+
+    env:
+      SIM: ${{ matrix.simulator }}
+      TOPLEVEL_LANG: ${{ matrix.toplevel_lang }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        simulator: [nvc]
+        os: [ubuntu-24.04]
+        nvc-version: ["1.20.1"]
+        toplevel_lang: [vhdl]
+        include:
+          - python-version: "3.13"
+            nvc-version: "1.20.1"
+            os: "ubuntu-24.04"
+            simulator: "nvc"
+            toplevel_lang: "vhdl"
+            cc: "clang"
+            cxx: "clang++"
+          - python-version: "3.13"
+            simulator: "icarus"
+            toplevel_lang: "verilog"
+            os: "macos-26"
+          - python-version: "3.13"
+            simulator: "icarus"
+            toplevel_lang: "verilog"
+            os: "macos-15-intel"
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - uses: actions/setup-python@v6
+      with:
+        python-version: ${{ matrix.python-version }}
+        allow-prereleases: true
+
+    - name: Setup NVC
+      if: matrix.simulator == 'nvc'
+      uses: nickg/setup-nvc@v1
+      with:
+        version: ${{ matrix.nvc-version }}
+
+    - name: Setup Icarus (MacOS)
+      if: matrix.simulator == 'icarus' && startsWith(matrix.os, 'macos')
+      run: brew install icarus-verilog
+
+    - uses: astral-sh/setup-uv@v7
+      with:
+        activate-environment: "true"
+
+    - name: Install OS-level test dependencies (Linux)
+      if: startsWith(matrix.os, 'ubuntu')
+      run: sudo apt install -y cmake make
+
+    - uses: actions/download-artifact@v4
+      with:
+        name: wheels-${{ matrix.os }}
+        path: dist
+
+    - name: Install wheel + run pytest + downstream ctest
+      env:
+        CC: ${{ matrix.cc || 'gcc' }}
+        CXX: ${{ matrix.cxx || 'g++' }}
+      run: |
+        uv sync --no-default-groups --group=tests --no-install-project
+        uv pip install coconext --find-links dist --no-index
+        pytest
+        cmake -S tests/cpp -B build/tests \
+          -DCMAKE_PREFIX_PATH="$(python -c 'import coconext; print(coconext.cmake_prefix_path())')"
+        cmake --build build/tests
+        ctest --output-on-failure --test-dir build/tests
+
+  test-sdist:
+    name: Test sdist (Python ${{matrix.python-version}} | ${{matrix.simulator}}${{ matrix.cc != '' && format(' | {0}', matrix.cc) || '' }}${{ !startsWith(matrix.os, 'ubuntu') && format(' | {0}', matrix.os) || '' }})
+    needs: build-sdist
+    runs-on: ${{ matrix.os }}
+
+    env:
+      SIM: ${{ matrix.simulator }}
+      TOPLEVEL_LANG: ${{ matrix.toplevel_lang }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        simulator: [nvc]
+        os: [ubuntu-24.04]
+        nvc-version: ["1.20.1"]
+        toplevel_lang: [vhdl]
+        include:
+          - python-version: "3.13"
+            nvc-version: "1.20.1"
+            os: "ubuntu-24.04"
+            simulator: "nvc"
+            toplevel_lang: "vhdl"
+            cc: "clang"
+            cxx: "clang++"
+          - python-version: "3.13"
+            simulator: "icarus"
+            toplevel_lang: "verilog"
+            os: "macos-26"
+          - python-version: "3.13"
+            simulator: "icarus"
+            toplevel_lang: "verilog"
+            os: "macos-15-intel"
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - uses: actions/setup-python@v6
+      with:
+        python-version: ${{ matrix.python-version }}
+        allow-prereleases: true
+
+    - name: Setup NVC
+      if: matrix.simulator == 'nvc'
+      uses: nickg/setup-nvc@v1
+      with:
+        version: ${{ matrix.nvc-version }}
+
+    - name: Setup Icarus (MacOS)
+      if: matrix.simulator == 'icarus' && startsWith(matrix.os, 'macos')
+      run: brew install icarus-verilog
+
+    - uses: astral-sh/setup-uv@v7
+      with:
+        activate-environment: "true"
+
+    - name: Install OS-level test dependencies (Linux)
+      if: startsWith(matrix.os, 'ubuntu')
+      run: sudo apt install -y cmake make
+
+    - uses: actions/download-artifact@v4
+      with:
+        name: sdist
+        path: dist
+
+    - name: Install sdist (source build) + run pytest + downstream ctest
+      env:
+        CC: ${{ matrix.cc || 'gcc' }}
+        CXX: ${{ matrix.cxx || 'g++' }}
+      run: |
+        uv sync --no-default-groups --group=tests --no-install-project
+        uv pip install coconext --find-links dist --no-index
+        pytest
+        cmake -S tests/cpp -B build/tests \
+          -DCMAKE_PREFIX_PATH="$(python -c 'import coconext; print(coconext.cmake_prefix_path())')"
+        cmake --build build/tests
+        ctest --output-on-failure --test-dir build/tests
+
+  publish:
+    name: Publish to PyPI
+    needs: [test-wheels, test-sdist]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        pattern: wheels-*
+        path: dist
+        merge-multiple: true
+
+    - uses: actions/download-artifact@v4
+      with:
+        name: sdist
+        path: dist
+
+    - uses: pypa/gh-action-pypi-publish@release/v1
