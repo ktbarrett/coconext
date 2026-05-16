@@ -169,7 +169,12 @@ class Array {
   public:
     using value_type = ValueT;
     static_assert(!std::is_reference_v<value_type>);
+    static_assert(!std::is_const_v<value_type>);
     using index_type = Range::value_type;
+    using reference = value_type&;
+    using const_reference = value_type const&;
+    using iterator = value_type*;
+    using const_iterator = value_type const*;
 
     constexpr Array() = delete;  // no default constructor
 
@@ -253,23 +258,21 @@ class Array {
 
     constexpr Range const& range() const noexcept { return range_; }
 
-    COCONEXT_ARRAY_CONSTEXPR value_type& operator[](index_type idx) {
+    COCONEXT_ARRAY_CONSTEXPR reference operator[](index_type idx) {
         return index(*this, idx);
     }
-    COCONEXT_ARRAY_CONSTEXPR value_type const& operator[](index_type idx) const {
+    COCONEXT_ARRAY_CONSTEXPR const_reference operator[](index_type idx) const {
         return index(*this, idx);
     }
     COCONEXT_ARRAY_CONSTEXPR auto operator[](Range r) { return slice(*this, r); }
     COCONEXT_ARRAY_CONSTEXPR auto operator[](Range r) const { return slice(*this, r); }
 
-    COCONEXT_ARRAY_CONSTEXPR value_type* begin() noexcept { return data_.get(); }
-    COCONEXT_ARRAY_CONSTEXPR value_type const* begin() const noexcept {
-        return data_.get();
-    }
-    COCONEXT_ARRAY_CONSTEXPR value_type* end() noexcept {
+    COCONEXT_ARRAY_CONSTEXPR iterator begin() noexcept { return data_.get(); }
+    COCONEXT_ARRAY_CONSTEXPR const_iterator begin() const noexcept { return data_.get(); }
+    COCONEXT_ARRAY_CONSTEXPR iterator end() noexcept {
         return data_.get() + range_.length();
     }
-    COCONEXT_ARRAY_CONSTEXPR value_type const* end() const noexcept {
+    COCONEXT_ARRAY_CONSTEXPR const_iterator end() const noexcept {
         return data_.get() + range_.length();
     }
     COCONEXT_ARRAY_CONSTEXPR auto rbegin() noexcept { return std::reverse_iterator(end()); }
