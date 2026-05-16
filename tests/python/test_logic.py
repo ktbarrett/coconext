@@ -53,7 +53,7 @@ def test_logic_conversions() -> None:
     with pytest.raises(ValueError):
         Logic(2)
     with pytest.raises(TypeError):
-        Logic(object())
+        Logic(object())  # type: ignore[call-overload]
 
 
 def test_logic_equality() -> None:
@@ -127,9 +127,9 @@ def test_logic_and() -> None:
     assert Logic(1) & Logic("1") == Logic(1)
     assert Logic("X") & Logic("Z") == Logic("X")
     with pytest.raises(TypeError):
-        Logic("1") & 8
+        Logic("1") & 8  # type: ignore[operator]
     with pytest.raises(TypeError):
-        8 & Logic("1")
+        8 & Logic("1")  # type: ignore[operator]
 
 
 def test_logic_or() -> None:
@@ -138,9 +138,9 @@ def test_logic_or() -> None:
     assert Logic(0) | Logic("0") == Logic(0)
     assert Logic("X") | Logic("Z") == Logic("X")
     with pytest.raises(TypeError):
-        8 | Logic(0)
+        8 | Logic(0)  # type: ignore[operator]
     with pytest.raises(TypeError):
-        Logic(0) | 8
+        Logic(0) | 8  # type: ignore[operator]
 
 
 def test_logic_xor() -> None:
@@ -149,9 +149,9 @@ def test_logic_xor() -> None:
     assert (Logic(1) ^ Logic("X")) == Logic("X")
     assert (Logic(1) ^ Logic(False)) == Logic(1)
     with pytest.raises(TypeError):
-        Logic(1) ^ ()
+        Logic(1) ^ ()  # type: ignore[operator]
     with pytest.raises(TypeError):
-        () ^ Logic(1)
+        () ^ Logic(1)  # type: ignore[operator]
 
 
 def test_logic_invert() -> None:

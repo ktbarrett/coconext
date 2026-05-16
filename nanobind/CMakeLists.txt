@@ -20,8 +20,7 @@ nanobind_add_stub(
   _coconext_stub
   INSTALL_TIME
   MODULE _coconext
-  OUTPUT _coconext-stubs/__init__.pyi
-  MARKER_FILE _coconext-stubs/py.typed
+  OUTPUT _coconext.pyi
   PYTHON_PATH "."
   DEPENDS _coconext
 )
