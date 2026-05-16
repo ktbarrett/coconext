@@ -30,26 +30,9 @@ namespace detail {
 template <typename R>
 concept sized_input_range = std::ranges::sized_range<R> && std::ranges::input_range<R>;
 
-// A child range is a valid subsequence of a parent range iff every value in
-// the child appears (in order) in the parent. This collapses to:
-//   - length 0:  always valid (any direction, any bounds)
-//   - length 1:  the single value must exist in the parent
-//   - length >= 2: direction must match the parent, and both endpoints
-//                  must exist in the parent
 constexpr void subsequence_check(Range parent, Range child) {
-    auto const len = child.length();
-    if (len >= 1 && find(parent, child.left) == parent.end()) {
-        throw std::out_of_range("slice start out of bounds");
-    }
-    if (len >= 2) {
-        if (child.direction != parent.direction) {
-            throw std::invalid_argument(
-                "Slice direction does not match array range direction"
-            );
-        }
-        if (find(parent, child.right) == parent.end()) {
-            throw std::out_of_range("slice end out of bounds");
-        }
+    if (!is_subsequence(parent, child)) {
+        throw std::invalid_argument("Range is not a valid sub-range of the parent");
     }
 }
 

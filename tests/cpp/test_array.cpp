@@ -174,12 +174,12 @@ TEST(TestArray, SliceAssignWrongLength) {
 
 TEST(TestArray, SliceStartOutOfRange) {
     Array<int> a({1, 2, 3});
-    EXPECT_THROW((void)(a[{99, 100}]), std::out_of_range);
+    EXPECT_THROW((void)(a[{99, 100}]), std::invalid_argument);
 }
 
 TEST(TestArray, SliceEndOutOfRange) {
     Array<int> a({1, 2, 3});
-    EXPECT_THROW((void)(a[{0, 99}]), std::out_of_range);
+    EXPECT_THROW((void)(a[{0, 99}]), std::invalid_argument);
 }
 
 TEST(TestArray, SliceDirectionMismatch) {
@@ -233,14 +233,14 @@ TEST(TestArray, SliceOfSliceStartOutOfRange) {
     Array<int> a({1, 2, 3, 4, 5, 6, 7, 8});
     auto s1 = a[{1, 6}];
     // 99 is outside s1's range.
-    EXPECT_THROW((void)(s1[{99, 100}]), std::out_of_range);
+    EXPECT_THROW((void)(s1[{99, 100}]), std::invalid_argument);
 }
 
 TEST(TestArray, SliceOfSliceEndOutOfRange) {
     Array<int> a({1, 2, 3, 4, 5, 6, 7, 8});
     auto s1 = a[{1, 6}];
     // 1 is in s1's range, 99 isn't.
-    EXPECT_THROW((void)(s1[{1, 99}]), std::out_of_range);
+    EXPECT_THROW((void)(s1[{1, 99}]), std::invalid_argument);
 }
 
 TEST(TestArray, SliceOfSliceDirectionMismatch) {
@@ -260,12 +260,12 @@ TEST(TestArray, IndexingConstOutOfRange) {
 
 TEST(TestArray, SliceConstStartOutOfRange) {
     Array<int> const a({1, 2, 3});
-    EXPECT_THROW((void)(a[{99, 100}]), std::out_of_range);
+    EXPECT_THROW((void)(a[{99, 100}]), std::invalid_argument);
 }
 
 TEST(TestArray, SliceConstEndOutOfRange) {
     Array<int> const a({1, 2, 3});
-    EXPECT_THROW((void)(a[{0, 99}]), std::out_of_range);
+    EXPECT_THROW((void)(a[{0, 99}]), std::invalid_argument);
 }
 
 TEST(TestArray, SliceConstDirectionMismatch) {
@@ -277,8 +277,8 @@ TEST(TestArray, SliceConstDirectionMismatch) {
 TEST(TestArray, ConstSliceErrors) {
     Array<int> const a({1, 2, 3, 4, 5});
     auto s = a[{0, 4}];
-    EXPECT_THROW((void)(s[{99, 100}]), std::out_of_range);
-    EXPECT_THROW((void)(s[{0, 99}]), std::out_of_range);
+    EXPECT_THROW((void)(s[{99, 100}]), std::invalid_argument);
+    EXPECT_THROW((void)(s[{0, 99}]), std::invalid_argument);
 }
 
 TEST(TestArray, ConstSliceDirectionMismatch) {
