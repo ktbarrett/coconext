@@ -317,9 +317,8 @@ static_assert(RangedSequence<ArraySlice<Array<int> const>>);
 
 }  // namespace coconext::types
 
-namespace std {
 template <typename T>
-struct hash<coconext::types::Array<T>> {
+struct std::hash<coconext::types::Array<T>> {
     size_t operator()(coconext::types::Array<T> const& arr) const noexcept {
         size_t seed = hash<coconext::types::Range>{}(arr.range());
         for (auto const& elem : arr) {
@@ -328,7 +327,6 @@ struct hash<coconext::types::Array<T>> {
         return seed;
     }
 };
-}  // namespace std
 
 #undef COCONEXT_ARRAY_CONSTEXPR
 

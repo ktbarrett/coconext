@@ -195,10 +195,8 @@ static_assert(std::ranges::random_access_range<Range>);
 
 }  // namespace coconext::types
 
-namespace std {
-
 template <>
-struct hash<coconext::types::Range> {
+struct std::hash<coconext::types::Range> {
     size_t operator()(coconext::types::Range const& range) const noexcept {
         // if a == a then hash(a) == hash(a), so we have to force all 0 and 1
         // length ranges to have repeatable hashes.
@@ -214,7 +212,5 @@ struct hash<coconext::types::Range> {
         }
     }
 };
-
-}  // namespace std
 
 #endif  // COCONEXT_RANGE_HPP

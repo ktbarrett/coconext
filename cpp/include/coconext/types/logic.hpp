@@ -307,22 +307,18 @@ inline Bit resolve(Bit const& value, ResolveMethod method) { return value; }
 
 }  // namespace coconext::types
 
-namespace std {
-
 template <>
-struct hash<coconext::types::Logic> {
+struct std::hash<coconext::types::Logic> {
     size_t operator()(coconext::types::Logic const& logic) const noexcept {
         return std::hash<coconext::types::Logic::value_type>()(logic.value());
     }
 };
 
 template <>
-struct hash<coconext::types::Bit> {
+struct std::hash<coconext::types::Bit> {
     size_t operator()(coconext::types::Bit const& bit) const noexcept {
         return std::hash<coconext::types::Bit::value_type>()(bit.value());
     }
 };
-
-}  // namespace std
 
 #endif  // COCONEXT_LOGIC_HPP
