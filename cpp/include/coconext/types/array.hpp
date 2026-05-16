@@ -48,22 +48,6 @@ concept RangedSequence = std::ranges::random_access_range<T> && requires(T& t) {
 template <typename ArrayT>
 class ArraySlice;
 
-template <RangedSequence ArrayT>
-constexpr std::ranges::range_reference_t<ArrayT> index(ArrayT& arr, Range::value_type idx) {
-    auto find_idx = find(arr.range(), idx);
-    if (find_idx == arr.range().end()) {
-        throw std::out_of_range("Index out of bounds");
-    }
-    auto offset = std::distance(arr.range().begin(), find_idx);
-    return *(arr.begin() + offset);
-}
-
-template <RangedSequence ArrayT>
-constexpr auto slice(ArrayT& arr, Range r) {
-    detail::subsequence_check(arr.range(), r);
-    return ArraySlice(&arr, r);
-}
-
 template <typename ArrayT>
 class ArraySlice {
   public:
@@ -86,7 +70,16 @@ class ArraySlice {
 
     constexpr Range const& range() const noexcept { return range_; }
 
-    constexpr reference operator[](index_type idx) const { return index(*arr_, idx); }
+    // Element access bounds-checks against this slice's range_, not the
+    // owner's range. An idx that's valid in the owner but outside the slice
+    // is out-of-range.
+    constexpr reference operator[](index_type idx) const {
+        auto it = find(range_, idx);
+        if (it == range_.end()) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        return *(begin() + std::distance(range_.begin(), it));
+    }
     // Sub-slicing flattens: returns a new ArraySlice over the same underlying
     // array with a new range. Validity is checked against the slice's own
     // range_, not arr_->range().
@@ -242,13 +235,27 @@ class Array {
     constexpr Range const& range() const noexcept { return range_; }
 
     COCONEXT_ARRAY_CONSTEXPR reference operator[](index_type idx) {
-        return index(*this, idx);
+        auto it = find(range_, idx);
+        if (it == range_.end()) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        return *(data_.get() + std::distance(range_.begin(), it));
     }
     COCONEXT_ARRAY_CONSTEXPR const_reference operator[](index_type idx) const {
-        return index(*this, idx);
+        auto it = find(range_, idx);
+        if (it == range_.end()) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        return *(data_.get() + std::distance(range_.begin(), it));
     }
-    COCONEXT_ARRAY_CONSTEXPR auto operator[](Range r) { return slice(*this, r); }
-    COCONEXT_ARRAY_CONSTEXPR auto operator[](Range r) const { return slice(*this, r); }
+    COCONEXT_ARRAY_CONSTEXPR ArraySlice<Array> operator[](Range r) {
+        detail::subsequence_check(range_, r);
+        return ArraySlice<Array>(this, r);
+    }
+    COCONEXT_ARRAY_CONSTEXPR ArraySlice<Array const> operator[](Range r) const {
+        detail::subsequence_check(range_, r);
+        return ArraySlice<Array const>(this, r);
+    }
 
     COCONEXT_ARRAY_CONSTEXPR iterator begin() noexcept { return data_.get(); }
     COCONEXT_ARRAY_CONSTEXPR const_iterator begin() const noexcept { return data_.get(); }
@@ -284,20 +291,6 @@ constexpr bool operator==(Array<ValueT> const& lhs, Array<ValueT> const& rhs) no
         }
     }
     return true;
-}
-
-// Specialization to use the slice flattening logic in operator[]. The logic
-// was put in the class instead of here to prevent duplicating the code. We
-// need the non-const overload to prevent it from dispatching non-const
-// versions to the generic slice impl.
-template <typename ArrayT>
-constexpr ArraySlice<ArrayT> slice(ArraySlice<ArrayT>& arr, Range r) {
-    return arr[r];
-}
-
-template <typename ArrayT>
-constexpr ArraySlice<ArrayT> slice(ArraySlice<ArrayT> const& arr, Range r) {
-    return arr[r];
 }
 
 template <RangedSequence ArrayT>
