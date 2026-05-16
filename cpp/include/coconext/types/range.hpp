@@ -126,6 +126,45 @@ struct Range {
     }
 };
 
+// A child range is a valid subsequence of a parent range iff every value in
+// the child appears (in order) in the parent. The rule collapses to:
+//   - length 0:   always a subsequence (any direction, any bounds)
+//   - length 1:   the single value must exist in the parent; the child's
+//                 direction is irrelevant (a one-element ordering is the same
+//                 either way)
+//   - length 2+:  the child's direction must match the parent's (otherwise
+//                 the child's values appear in the parent but in reversed
+//                 order, which isn't a subsequence) and both endpoints must
+//                 exist in the parent
+//
+// constexpr-evaluable, so callers can static_assert it at compile time as
+// well as use it as a runtime predicate.
+constexpr bool is_subsequence(Range parent, Range child) noexcept {
+    auto const in_parent = [&](Range::value_type v) {
+        if (parent.direction == Direction::TO) {
+            return v >= parent.left && v <= parent.right;
+        }
+        return v <= parent.left && v >= parent.right;
+    };
+    // This follows similar logic to operator==, but with in_parent predicate,
+    // and we aren't checking for equality of length, so we have
+    // to check for direction and right endpoint for length >= 2 cases.
+    auto const len = child.length();
+    if (len == 0) {
+        return true;
+    }
+    if (!in_parent(child.left)) {
+        return false;
+    }
+    if (len == 1) {
+        return true;
+    }
+    if (child.direction != parent.direction) {
+        return false;
+    }
+    return in_parent(child.right);
+}
+
 // more optimal implementation of std::ranges::find for Range
 constexpr Range::iterator find(Range const& range, Range::value_type value) {
     if (range.direction == Direction::TO) {
