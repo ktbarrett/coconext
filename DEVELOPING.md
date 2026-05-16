@@ -7,12 +7,13 @@ If you run into issues just `rm -rf build/`.
 Release Builds
 ==============
 
-Release builds are staged under `release/{version}-{wheel-tag}/`.
-There are the `dist/`, `build/`, and `.venv/` directories used during the build.
-Use `python tools/release_paths.py` to inspect the exact paths for the current metadata and interpreter.
+Release wheels and sdists are produced by the `Release` GitHub Actions workflow
+(see `.github/workflows/release.yaml`), which runs cibuildwheel, executes the
+full test matrix against the produced artifacts, and publishes to PyPI on tag
+pushes.
 
 Generating Compilation DB
 =========================
 
 Build the project by running ``make dev_build``.
-The compilation DB should now be under `build/{your python version triplet}/compile_commands.json`.
+The compilation DB should now be under `build/compile_commands.json`.
