@@ -23,3 +23,15 @@ include(GoogleTest)
 # Add libraries
 add_subdirectory(cpp)
 add_subdirectory(nanobind)
+
+include(CMakePackageConfigHelpers)
+install(EXPORT coconextTargets
+    FILE coconextTargets.cmake
+    NAMESPACE coconext::
+    DESTINATION coconext/share/cmake/coconext)
+configure_package_config_file(
+    cmake/coconextConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/coconextConfig.cmake
+    INSTALL_DESTINATION coconext/share/cmake/coconext)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/coconextConfig.cmake
+    DESTINATION coconext/share/cmake/coconext)
