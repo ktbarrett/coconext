@@ -9,7 +9,7 @@ using namespace coconext::types;
 void register_logic(nb::module_& m);
 void register_range(nb::module_& m);
 
-NB_MODULE(types, m) {
+NB_MODULE(_coconext, m) {
     register_logic(m);
     register_range(m);
 }
