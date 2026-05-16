@@ -114,3 +114,8 @@ build-frontend = "build[uv]"
 # Tests run in a separate matrix job, not by cibuildwheel: the cocotb tests
 # need an HDL simulator that isn't in the manylinux container.
 test-skip = "*"
+
+[tool.pytest]
+testpaths = [
+    "tests/python",
+]
