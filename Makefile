@@ -1,6 +1,10 @@
+# Defaults to dev so environments are shifting back and forth locally,
+# but set to "tests" in CI to avoid installing unnecessary dependencies.
+DEV_BUILD_DEP_GROUP ?= dev
+
 .PHONY: dev_build
 dev_build:
-	uv sync --dev --no-install-project
+	uv sync --no-default-groups --group=$(DEV_BUILD_DEP_GROUP) --no-install-project
 
 	# Build the package with debugging and coverage flags
 	CCACHE_DISABLE=1 \
