@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <stdexcept>
 #include <string_view>
+#include <type_traits>
 
 namespace coconext::types {
 
@@ -304,6 +305,22 @@ enum class ResolveMethod {
 Logic resolve(Logic const& value, ResolveMethod method);
 
 inline Bit resolve(Bit const& value, ResolveMethod method) { return value; }
+
+template <typename T>
+struct is_logic : std::false_type {};
+
+template <>
+struct is_logic<Logic> : std::true_type {};
+
+template <>
+struct is_logic<Bit> : std::true_type {};
+
+template <typename T>
+concept LogicType = is_logic<std::remove_cv_t<T>>::value;
+
+static_assert(LogicType<Logic>);
+static_assert(LogicType<Bit>);
+static_assert(!LogicType<int>);
 
 }  // namespace coconext::types
 
