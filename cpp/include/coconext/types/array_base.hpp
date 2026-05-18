@@ -134,8 +134,27 @@ class ArraySlice {
 
 namespace detail {
 
+// Opt-in trait that array types specialize to participate in the generic
+// std::formatter<ArrayLike> below (and in any future array-only generic
+// machinery). Specialized for ArraySlice here; each owning array type
+// (DynamicArray, StaticArray) specializes it in its own header so the trait
+// visibility tracks the type's visibility.
+template <typename T>
+struct is_array : std::false_type {};
+
+template <typename ArrayT>
+struct is_array<ArraySlice<ArrayT>> : std::true_type {};
+
+// Any array type whose element type is formattable. The single
+// std::formatter<ArrayLike T> partial specialization in std:: below picks
+// up every type that opts in via is_array, eliminating the per-type
+// formatter boilerplate that otherwise scales with each new array family.
+template <typename T>
+concept ArrayLike =
+    is_array<std::remove_cvref_t<T>>::value && Formattable<std::ranges::range_value_t<T>>;
+
 // Walks a RangedSequence, emitting "[range]{elem, elem, ...}" via the formatter
-// for each element type. Used by the generic Array/Slice formatters.
+// for each element type. Used by the generic Array/Slice formatter.
 template <RangedSequence ArrayT, typename OutIt>
     requires Formattable<std::ranges::range_value_t<ArrayT>>
 OutIt format_array(ArrayT const& arr, OutIt out) {
@@ -156,21 +175,22 @@ OutIt format_array(ArrayT const& arr, OutIt out) {
 
 }  // namespace coconext::types
 
-template <typename ArrayT>
-    requires coconext::types::detail::Formattable<
-        std::ranges::range_value_t<coconext::types::ArraySlice<ArrayT>>>
-struct std::formatter<coconext::types::ArraySlice<ArrayT>> {
+// One generic formatter for every array type that opts into is_array. The
+// LogicType-constrained version in logic_array.hpp subsumes this one for
+// arrays of Logic/Bit (via constraint conjunction) and produces the terse
+// "Logic[range]{0, 1, X}" form instead.
+template <typename T>
+    requires coconext::types::detail::ArrayLike<T>
+struct std::formatter<T> {
     constexpr auto parse(std::format_parse_context& ctx) {
         auto it = ctx.begin();
         if (it != ctx.end() && *it != '}') {
-            throw std::format_error("ArraySlice formatter takes no format spec");
+            throw std::format_error("ArrayLike formatter takes no format spec");
         }
         return it;
     }
 
-    auto format(
-        coconext::types::ArraySlice<ArrayT> const& arr, std::format_context& ctx
-    ) const {
+    auto format(T const& arr, std::format_context& ctx) const {
         return coconext::types::detail::format_array(arr, ctx.out());
     }
 };
