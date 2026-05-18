@@ -3,6 +3,7 @@
 
 #include <coconext/types/dynamic_array.hpp>
 #include <coconext/types/logic.hpp>
+#include <coconext/types/static_array.hpp>
 #include <format>
 
 namespace coconext::types::detail {
@@ -96,6 +97,75 @@ struct std::formatter<coconext::types::ArraySlice<coconext::types::DynamicArray<
 
     auto format(
         coconext::types::ArraySlice<coconext::types::DynamicArray<T> const> const& arr,
+        std::format_context& ctx
+    ) const {
+        return coconext::types::detail::format_typed_array(
+            coconext::types::detail::logic_type_name<T>(), arr, ctx.out()
+        );
+    }
+};
+
+template <coconext::types::LogicType T, coconext::types::Range R>
+    requires coconext::types::detail::Formattable<T>
+struct std::formatter<coconext::types::StaticArray<T, R>> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        auto it = ctx.begin();
+        if (it != ctx.end() && *it != '}') {
+            throw std::format_error(
+                "StaticArray<Logic/Bit, R> formatter takes no format spec"
+            );
+        }
+        return it;
+    }
+
+    auto format(
+        coconext::types::StaticArray<T, R> const& arr, std::format_context& ctx
+    ) const {
+        return coconext::types::detail::format_typed_array(
+            coconext::types::detail::logic_type_name<T>(), arr, ctx.out()
+        );
+    }
+};
+
+template <coconext::types::LogicType T, coconext::types::Range R>
+    requires coconext::types::detail::Formattable<T>
+struct std::formatter<coconext::types::ArraySlice<coconext::types::StaticArray<T, R>>> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        auto it = ctx.begin();
+        if (it != ctx.end() && *it != '}') {
+            throw std::format_error(
+                "ArraySlice<StaticArray<Logic/Bit, R>> formatter takes no spec"
+            );
+        }
+        return it;
+    }
+
+    auto format(
+        coconext::types::ArraySlice<coconext::types::StaticArray<T, R>> const& arr,
+        std::format_context& ctx
+    ) const {
+        return coconext::types::detail::format_typed_array(
+            coconext::types::detail::logic_type_name<T>(), arr, ctx.out()
+        );
+    }
+};
+
+template <coconext::types::LogicType T, coconext::types::Range R>
+    requires coconext::types::detail::Formattable<T>
+struct std::formatter<
+    coconext::types::ArraySlice<coconext::types::StaticArray<T, R> const>> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        auto it = ctx.begin();
+        if (it != ctx.end() && *it != '}') {
+            throw std::format_error(
+                "ArraySlice<StaticArray<Logic/Bit, R>> formatter takes no spec"
+            );
+        }
+        return it;
+    }
+
+    auto format(
+        coconext::types::ArraySlice<coconext::types::StaticArray<T, R> const> const& arr,
         std::format_context& ctx
     ) const {
         return coconext::types::detail::format_typed_array(

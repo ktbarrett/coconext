@@ -499,4 +499,89 @@ TEST(TestArray, FormatterBitSlice) {
     auto s = a[Range(1, 2)];
     EXPECT_EQ(std::format("{}", s), "Bit[1 to 2]{1, 0}");
 }
+
+// -- Compile-time dispatch -------------------------------------------------
+
+// No NTTPs -> dynamic.
+static_assert(std::is_same_v<Array<int>, DynamicArray<int>>);
+
+// Single integral arg -> length-based static range starting at 0.
+static_assert(Array<int, 8>::static_range == Range{0, Direction::TO, 7});
+static_assert(Array<int, 0>::static_range == Range{0, Direction::TO, -1});
+static_assert(Array<int, 1>::static_range == Range{0, Direction::TO, 0});
+
+// Single Range arg -> direct passthrough.
+static_assert(
+    Array<int, Range{2, Direction::DOWNTO, -5}>::static_range
+    == Range{2, Direction::DOWNTO, -5}
+);
+
+// Two args -> (left, right), direction inferred.
+static_assert(Array<int, 1, 3>::static_range == Range{1, Direction::TO, 3});
+static_assert(Array<int, 4, 0>::static_range == Range{4, Direction::DOWNTO, 0});
+static_assert(Array<int, -3, 4>::static_range == Range{-3, Direction::TO, 4});
+
+// Three args -> (left, Direction, right) verbatim.
+static_assert(Array<int, 1, Direction::TO, 3>::static_range == Range{1, Direction::TO, 3});
+static_assert(
+    Array<int, 4, Direction::DOWNTO, 0>::static_range == Range{4, Direction::DOWNTO, 0}
+);
+
+// Different spellings of the same static range collapse to the same type:
+// length, two-arg, three-arg, and Range forms all unify.
+static_assert(std::is_same_v<Array<int, 8>, Array<int, Range{0, Direction::TO, 7}>>);
+static_assert(std::is_same_v<Array<int, 1, 3>, Array<int, 1, Direction::TO, 3>>);
+static_assert(std::is_same_v<Array<int, 4, 0>, Array<int, 4, Direction::DOWNTO, 0>>);
+
+// Forwarding the static_range of one Array into the alias of another.
+using A_1_to_4 = Array<int, 1, 4>;
+static_assert(std::is_same_v<Array<int, A_1_to_4::static_range>, Array<int, 1, 4>>);
+
+// -- Runtime: verify the dispatched type actually works --------------------
+
+TEST(TestArray, StaticLengthViaAlias) {
+    Array<int, 4> a({1, 2, 3, 4});
+    EXPECT_EQ(a.range(), (Range{0, Direction::TO, 3}));
+    EXPECT_EQ(a[2], 3);
+    a[3] = 99;
+    EXPECT_EQ(a[3], 99);
+}
+
+TEST(TestArray, StaticRangeViaAlias) {
+    constexpr Range R{10, Direction::TO, 13};
+    Array<int, R> a({100, 200, 300, 400});
+    EXPECT_EQ(a.range(), R);
+    EXPECT_EQ(a[10], 100);
+    EXPECT_EQ(a[13], 400);
+}
+
+TEST(TestArray, StaticTwoArgViaAlias) {
+    Array<int, 2, 5> a({10, 20, 30, 40});
+    EXPECT_EQ(a.range(), (Range{2, Direction::TO, 5}));
+    EXPECT_EQ(a[2], 10);
+    EXPECT_EQ(a[5], 40);
+}
+
+TEST(TestArray, StaticTwoArgDOWNTOViaAlias) {
+    Array<int, 4, 1> a({10, 20, 30, 40});
+    EXPECT_EQ(a.range(), (Range{4, Direction::DOWNTO, 1}));
+    EXPECT_EQ(a[4], 10);
+    EXPECT_EQ(a[1], 40);
+}
+
+TEST(TestArray, StaticThreeArgViaAlias) {
+    Array<int, 4, Direction::DOWNTO, 1> a({10, 20, 30, 40});
+    EXPECT_EQ(a.range(), (Range{4, Direction::DOWNTO, 1}));
+    EXPECT_EQ(a[4], 10);
+    EXPECT_EQ(a[1], 40);
+}
+
+TEST(TestArray, StaticFromForeignStaticRange) {
+    using Src = Array<int, 1, 3>;
+    Src src({10, 20, 30});
+    Array<int, Src::static_range> dst({100, 200, 300});
+    EXPECT_EQ(dst.range(), src.range());
+    EXPECT_EQ(dst[1], 100);
+    EXPECT_EQ(dst[3], 300);
+}
 // LCOV_EXCL_BR_STOP
