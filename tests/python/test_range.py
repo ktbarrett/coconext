@@ -5,9 +5,20 @@ from __future__ import annotations
 
 import copy
 
+import cocotb.types
 import pytest
+from cocotb.types import Range
 
-from coconext.types import Range
+import coconext.types
+from coconext.cocotb_patcher import patch_cocotb
+
+patch_cocotb()
+
+print(cocotb.types.Logic)
+print(coconext.types.Logic)
+print(cocotb.types.Logic is coconext.types.Logic)
+
+assert cocotb.types.Logic is coconext.types.Logic
 
 
 def test_to_range() -> None:
