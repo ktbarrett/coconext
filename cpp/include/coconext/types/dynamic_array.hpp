@@ -128,18 +128,10 @@ class DynamicArray {
     constexpr Range const& range() const noexcept { return range_; }
 
     COCONEXT_DYNAMIC_ARRAY_CONSTEXPR reference operator[](index_type idx) {
-        auto it = find(range_, idx);
-        if (it == range_.end()) {
-            throw std::out_of_range("Index out of bounds");
-        }
-        return *(data_.get() + std::distance(range_.begin(), it));
+        return access_(*this, idx);
     }
     COCONEXT_DYNAMIC_ARRAY_CONSTEXPR const_reference operator[](index_type idx) const {
-        auto it = find(range_, idx);
-        if (it == range_.end()) {
-            throw std::out_of_range("Index out of bounds");
-        }
-        return *(data_.get() + std::distance(range_.begin(), it));
+        return access_(*this, idx);
     }
     COCONEXT_DYNAMIC_ARRAY_CONSTEXPR ArraySlice<DynamicArray> operator[](Range r) {
         detail::subsequence_check(range_, r);
@@ -176,6 +168,19 @@ class DynamicArray {
     }
 
   private:
+    // Shared body for the two operator[](index_type) overloads. Self is
+    // deduced as DynamicArray for the non-const caller and DynamicArray
+    // const for the const caller; the return type follows Self's constness
+    // implicitly (via the public overload's signature).
+    template <typename Self>
+    static COCONEXT_DYNAMIC_ARRAY_CONSTEXPR auto& access_(Self& self, index_type idx) {
+        auto it = find(self.range_, idx);
+        if (it == self.range_.end()) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        return *(self.data_.get() + std::distance(self.range_.begin(), it));
+    }
+
     std::unique_ptr<value_type[]> data_;
     Range const range_;
 };

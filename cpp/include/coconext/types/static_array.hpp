@@ -72,31 +72,9 @@ class StaticArray {
 
     constexpr Range range() const noexcept { return R; }
 
-    constexpr reference operator[](index_type idx) {
-        if constexpr (R.direction == Direction::TO) {
-            if (idx < R.left || idx > R.right) {
-                throw std::out_of_range("Index out of bounds");
-            }
-            return *(begin() + (idx - R.left));
-        } else {
-            if (idx > R.left || idx < R.right) {
-                throw std::out_of_range("Index out of bounds");
-            }
-            return *(begin() + (R.left - idx));
-        }
-    }
+    constexpr reference operator[](index_type idx) { return access_(*this, idx); }
     constexpr const_reference operator[](index_type idx) const {
-        if constexpr (R.direction == Direction::TO) {
-            if (idx < R.left || idx > R.right) {
-                throw std::out_of_range("Index out of bounds");
-            }
-            return *(begin() + (idx - R.left));
-        } else {
-            if (idx > R.left || idx < R.right) {
-                throw std::out_of_range("Index out of bounds");
-            }
-            return *(begin() + (R.left - idx));
-        }
+        return access_(*this, idx);
     }
     constexpr ArraySlice<StaticArray> operator[](Range r) {
         detail::subsequence_check(static_range, r);
@@ -117,6 +95,25 @@ class StaticArray {
     constexpr auto rend() const noexcept { return data_.rend(); }
 
   private:
+    // Shared body for the two operator[](index_type) overloads. Self is
+    // deduced as StaticArray for the non-const caller and StaticArray
+    // const for the const caller; the return type follows Self's constness
+    // implicitly (via the public overload's signature).
+    template <typename Self>
+    static constexpr auto& access_(Self& self, index_type idx) {
+        if constexpr (R.direction == Direction::TO) {
+            if (idx < R.left || idx > R.right) {
+                throw std::out_of_range("Index out of bounds");
+            }
+            return *(self.begin() + (idx - R.left));
+        } else {
+            if (idx > R.left || idx < R.right) {
+                throw std::out_of_range("Index out of bounds");
+            }
+            return *(self.begin() + (R.left - idx));
+        }
+    }
+
     std::array<value_type, R.length()> data_;
 };
 
