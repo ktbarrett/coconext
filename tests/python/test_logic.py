@@ -5,9 +5,20 @@ from __future__ import annotations
 
 import copy
 
+import cocotb.types
 import pytest
+from cocotb.types import Bit, Logic
 
-from coconext.types import Bit, Logic
+import coconext.types
+from coconext.cocotb_patcher import patch_cocotb
+
+patch_cocotb()
+
+print(cocotb.types.Logic)
+print(coconext.types.Logic)
+print(cocotb.types.Logic is coconext.types.Logic)
+
+assert cocotb.types.Logic is coconext.types.Logic
 
 
 def test_logic_conversions() -> None:
@@ -53,7 +64,7 @@ def test_logic_conversions() -> None:
     with pytest.raises(ValueError):
         Logic(2)
     with pytest.raises(TypeError):
-        Logic(object())  # type: ignore[call-overload]
+        Logic(object())  # type: ignore[arg-type]
 
 
 def test_logic_equality() -> None:
