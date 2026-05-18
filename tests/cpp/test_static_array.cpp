@@ -1,0 +1,303 @@
+// LCOV_EXCL_BR_START -- gtest macros generate noisy uncovered branches
+#include <gtest/gtest.h>
+
+#include <coconext/types.hpp>
+#include <format>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+#include <unordered_set>
+#include <vector>
+
+using namespace coconext::types;
+
+// -- Construction -----------------------------------------------------------
+
+TEST(TestStaticArray, DefaultConstructZeroInit) {
+    StaticArray<int, Range{0, Direction::TO, 3}> a;
+    EXPECT_EQ(a[0], 0);
+    EXPECT_EQ(a[3], 0);
+}
+
+TEST(TestStaticArray, ConstructFromInitializerList) {
+    StaticArray<int, Range{0, Direction::TO, 3}> a({1, 2, 3, 4});
+    EXPECT_EQ(a[0], 1);
+    EXPECT_EQ(a[3], 4);
+}
+
+TEST(TestStaticArray, ConstructFromInitializerListLengthMismatch) {
+    using A = StaticArray<int, Range{0, Direction::TO, 3}>;
+    EXPECT_THROW(A a({1, 2, 3}), std::invalid_argument);
+    EXPECT_THROW(A a({1, 2, 3, 4, 5}), std::invalid_argument);
+}
+
+TEST(TestStaticArray, ConstructFromSizedRange) {
+    std::vector<int> src = {10, 20, 30, 40};
+    StaticArray<int, Range{-2, Direction::TO, 1}> a(src);
+    EXPECT_EQ(a[-2], 10);
+    EXPECT_EQ(a[1], 40);
+}
+
+TEST(TestStaticArray, ConstructFromSizedRangeLengthMismatch) {
+    std::vector<int> src = {1, 2, 3};
+    using A = StaticArray<int, Range{0, Direction::TO, 3}>;
+    EXPECT_THROW(A a(src), std::invalid_argument);
+}
+
+TEST(TestStaticArray, CopyAndMove) {
+    StaticArray<int, Range{0, Direction::TO, 3}> a({1, 2, 3, 4});
+    StaticArray<int, Range{0, Direction::TO, 3}> b = a;
+    EXPECT_EQ(a, b);
+    StaticArray<int, Range{0, Direction::TO, 3}> c = std::move(a);
+    EXPECT_EQ(b, c);
+}
+
+// -- Range / iteration ------------------------------------------------------
+
+TEST(TestStaticArray, RangeAccessor) {
+    StaticArray<int, Range{2, Direction::TO, 5}> a({1, 2, 3, 4});
+    EXPECT_EQ(a.range(), (Range{2, Direction::TO, 5}));
+    static_assert(decltype(a)::static_range == Range{2, Direction::TO, 5});
+}
+
+TEST(TestStaticArray, ForwardIteration) {
+    StaticArray<int, Range{0, Direction::TO, 4}> a({1, 2, 3, 4, 5});
+    int sum = 0;
+    for (auto v : a) {
+        sum += v;
+    }
+    EXPECT_EQ(sum, 15);
+}
+
+TEST(TestStaticArray, ReverseIteration) {
+    StaticArray<int, Range{0, Direction::TO, 4}> a({1, 2, 3, 4, 5});
+    std::vector<int> rev(a.rbegin(), a.rend());
+    EXPECT_EQ(rev, (std::vector<int>{5, 4, 3, 2, 1}));
+}
+
+TEST(TestStaticArray, IterationConst) {
+    StaticArray<int, Range{0, Direction::TO, 2}> const a({1, 2, 3});
+    int sum = 0;
+    for (auto v : a) {
+        sum += v;
+    }
+    EXPECT_EQ(sum, 6);
+}
+
+// -- Indexing ---------------------------------------------------------------
+
+TEST(TestStaticArray, IndexingTO) {
+    StaticArray<int, Range{8, Direction::TO, 11}> a({10, 20, 30, 40});
+    EXPECT_EQ(a[8], 10);
+    EXPECT_EQ(a[11], 40);
+}
+
+TEST(TestStaticArray, IndexingDOWNTO) {
+    StaticArray<int, Range{10, Direction::DOWNTO, 7}> a({10, 20, 30, 40});
+    EXPECT_EQ(a[10], 10);
+    EXPECT_EQ(a[7], 40);
+}
+
+TEST(TestStaticArray, IndexingMutates) {
+    StaticArray<int, Range{0, Direction::TO, 4}> a({1, 2, 3, 4, 5});
+    a[2] = 99;
+    EXPECT_EQ(a[2], 99);
+}
+
+TEST(TestStaticArray, IndexingOutOfRange) {
+    StaticArray<int, Range{0, Direction::TO, 4}> a({1, 2, 3, 4, 5});
+    EXPECT_THROW((void)a[-1], std::out_of_range);
+    EXPECT_THROW((void)a[5], std::out_of_range);
+}
+
+TEST(TestStaticArray, IndexingDOWNTOOutOfRange) {
+    StaticArray<int, Range{4, Direction::DOWNTO, 0}> a({1, 2, 3, 4, 5});
+    EXPECT_THROW((void)a[-1], std::out_of_range);
+    EXPECT_THROW((void)a[5], std::out_of_range);
+}
+
+TEST(TestStaticArray, IndexingConst) {
+    StaticArray<int, Range{0, Direction::TO, 2}> const a({1, 2, 3});
+    EXPECT_EQ(a[0], 1);
+    EXPECT_EQ(a[2], 3);
+    static_assert(std::is_same_v<decltype(a[0]), int const&>);
+}
+
+// -- Slicing (runtime, returns ArraySlice) ---------------------------------
+
+TEST(TestStaticArray, SliceTO) {
+    StaticArray<int, Range{0, Direction::TO, 4}> a({1, 2, 3, 4, 5});
+    auto s = a[{1, 4}];
+    EXPECT_EQ(s.range(), (Range{1, Direction::TO, 4}));
+    EXPECT_EQ(s[1], 2);
+    EXPECT_EQ(s[4], 5);
+}
+
+TEST(TestStaticArray, SliceDOWNTO) {
+    StaticArray<int, Range{3, Direction::DOWNTO, 0}> a({10, 20, 30, 40});
+    auto s = a[{2, 1}];
+    EXPECT_EQ(s.range(), (Range{2, Direction::DOWNTO, 1}));
+    EXPECT_EQ(s[2], 20);
+    EXPECT_EQ(s[1], 30);
+}
+
+TEST(TestStaticArray, SliceMutatesUnderlying) {
+    StaticArray<int, Range{0, Direction::TO, 4}> a({1, 2, 3, 4, 5});
+    auto s = a[{1, 3}];
+    s[2] = 99;
+    EXPECT_EQ(a[2], 99);
+}
+
+TEST(TestStaticArray, SliceAssignFromRange) {
+    StaticArray<int, Range{0, Direction::TO, 4}> a({1, 2, 3, 4, 5});
+    auto s = a[{1, 3}];
+    s = std::vector<int>{20, 30, 40};
+    EXPECT_EQ(a[1], 20);
+    EXPECT_EQ(a[3], 40);
+}
+
+TEST(TestStaticArray, SliceAssignFromInitializerList) {
+    StaticArray<int, Range{0, Direction::TO, 4}> a({1, 2, 3, 4, 5});
+    auto s = a[{1, 3}];
+    s = {7, 8, 9};
+    EXPECT_EQ(a[1], 7);
+    EXPECT_EQ(a[3], 9);
+}
+
+TEST(TestStaticArray, SliceAssignWrongLength) {
+    StaticArray<int, Range{0, Direction::TO, 2}> a({1, 2, 3});
+    auto s = a[{0, 2}];
+    EXPECT_THROW((s = std::vector<int>{1, 2}), std::invalid_argument);
+    EXPECT_THROW((s = {1, 2}), std::invalid_argument);
+}
+
+TEST(TestStaticArray, SliceStartOutOfRange) {
+    StaticArray<int, Range{0, Direction::TO, 2}> a({1, 2, 3});
+    EXPECT_THROW((void)(a[{99, 1}]), std::invalid_argument);
+}
+
+TEST(TestStaticArray, SliceEndOutOfRange) {
+    StaticArray<int, Range{0, Direction::TO, 2}> a({1, 2, 3});
+    EXPECT_THROW((void)(a[{0, 99}]), std::invalid_argument);
+}
+
+TEST(TestStaticArray, SliceDirectionMismatch) {
+    StaticArray<int, Range{0, Direction::TO, 4}> a({1, 2, 3, 4, 5});
+    EXPECT_THROW((void)(a[{3, Direction::DOWNTO, 1}]), std::invalid_argument);
+}
+
+TEST(TestStaticArray, SliceNullOutOfBoundsOK) {
+    StaticArray<int, Range{0, Direction::TO, 4}> a({1, 2, 3, 4, 5});
+    auto s = a[{99, Direction::TO, 50}];  // length 0
+    EXPECT_EQ(s.range().length(), 0u);
+    EXPECT_EQ(s.begin(), s.end());
+}
+
+TEST(TestStaticArray, SliceLengthOneDirectionAgnostic) {
+    StaticArray<int, Range{0, Direction::TO, 4}> a({1, 2, 3, 4, 5});
+    auto s = a[{2, Direction::DOWNTO, 2}];
+    EXPECT_EQ(s.range().length(), 1u);
+    EXPECT_EQ(s[2], 3);
+}
+
+TEST(TestStaticArray, SliceOfSliceFlattens) {
+    StaticArray<int, Range{0, Direction::TO, 6}> a({1, 2, 3, 4, 5, 6, 7});
+    auto s1 = a[{1, 6}];
+    auto s2 = s1[{2, 4}];
+    EXPECT_EQ(s2.range(), (Range{2, Direction::TO, 4}));
+    EXPECT_EQ(s2[2], 3);
+    EXPECT_EQ(s2[4], 5);
+}
+
+TEST(TestStaticArray, SliceOfSliceErrors) {
+    StaticArray<int, Range{0, Direction::TO, 6}> a({1, 2, 3, 4, 5, 6, 7});
+    auto s1 = a[{1, 4}];
+    EXPECT_THROW((void)(s1[{0, 2}]), std::invalid_argument);
+    EXPECT_THROW((void)(s1[{1, 5}]), std::invalid_argument);
+    EXPECT_THROW((void)(s1[{4, Direction::DOWNTO, 1}]), std::invalid_argument);
+}
+
+TEST(TestStaticArray, ConstSliceOverConstArray) {
+    StaticArray<int, Range{0, Direction::TO, 4}> const a({1, 2, 3, 4, 5});
+    auto s = a[{1, 3}];
+    static_assert(std::is_same_v<decltype(s[1]), int const&>);
+    EXPECT_EQ(s[1], 2);
+    EXPECT_EQ(s[3], 4);
+}
+
+// -- Equality ---------------------------------------------------------------
+
+TEST(TestStaticArray, EqualityValues) {
+    StaticArray<int, Range{0, Direction::TO, 2}> a({1, 2, 3});
+    StaticArray<int, Range{0, Direction::TO, 2}> b({1, 2, 3});
+    EXPECT_EQ(a, b);
+}
+
+TEST(TestStaticArray, InequalityDifferentValues) {
+    StaticArray<int, Range{0, Direction::TO, 2}> a({1, 2, 3});
+    StaticArray<int, Range{0, Direction::TO, 2}> b({1, 2, 9});
+    EXPECT_FALSE(a == b);
+}
+
+// -- Hashing ----------------------------------------------------------------
+
+TEST(TestStaticArray, HashEqualArrays) {
+    StaticArray<int, Range{0, Direction::TO, 2}> a({1, 2, 3});
+    StaticArray<int, Range{0, Direction::TO, 2}> b({1, 2, 3});
+    using H = std::hash<StaticArray<int, Range{0, Direction::TO, 2}>>;
+    EXPECT_EQ(H{}(a), H{}(b));
+}
+
+TEST(TestStaticArray, UnorderedSetByValue) {
+    std::unordered_set<StaticArray<int, Range{0, Direction::TO, 2}>> s;
+    s.insert(StaticArray<int, Range{0, Direction::TO, 2}>({1, 2, 3}));
+    s.insert(StaticArray<int, Range{0, Direction::TO, 2}>({1, 2, 3}));
+    EXPECT_EQ(s.size(), 1u);
+}
+
+// -- Formatter --------------------------------------------------------------
+
+TEST(TestStaticArray, FormatterInt) {
+    StaticArray<int, Range{0, Direction::TO, 2}> a({1, 2, 3});
+    EXPECT_EQ(std::format("{}", a), "[0 to 2]{1, 2, 3}");
+}
+
+TEST(TestStaticArray, FormatterEmpty) {
+    StaticArray<int, Range{0, Direction::TO, -1}> a;
+    EXPECT_EQ(std::format("{}", a), "[0 to -1]{}");
+}
+
+TEST(TestStaticArray, FormatterLogic) {
+    StaticArray<Logic, Range{0, Direction::TO, 2}> a({'0'_l, '1'_l, 'X'_l});
+    EXPECT_EQ(std::format("{}", a), "Logic[0 to 2]{0, 1, X}");
+}
+
+TEST(TestStaticArray, FormatterBit) {
+    StaticArray<Bit, Range{0, Direction::TO, 3}> a({'0'_b, '1'_b, '0'_b, '1'_b});
+    EXPECT_EQ(std::format("{}", a), "Bit[0 to 3]{0, 1, 0, 1}");
+}
+
+TEST(TestStaticArray, FormatterLogicRuntimeSlice) {
+    StaticArray<Logic, Range{0, Direction::TO, 3}> a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
+    auto s = a[Range{1, 2}];
+    EXPECT_EQ(std::format("{}", s), "Logic[1 to 2]{1, X}");
+}
+
+TEST(TestStaticArray, FormatterLogicRuntimeSliceConst) {
+    StaticArray<Logic, Range{0, Direction::TO, 3}> const a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
+    auto s = a[Range{1, 2}];
+    EXPECT_EQ(std::format("{}", s), "Logic[1 to 2]{1, X}");
+}
+
+TEST(TestStaticArray, FormatterBitRuntimeSlice) {
+    StaticArray<Bit, Range{0, Direction::TO, 3}> a({'0'_b, '1'_b, '0'_b, '1'_b});
+    auto s = a[Range{1, 2}];
+    EXPECT_EQ(std::format("{}", s), "Bit[1 to 2]{1, 0}");
+}
+
+TEST(TestStaticArray, FormatterBitRuntimeSliceConst) {
+    StaticArray<Bit, Range{0, Direction::TO, 3}> const a({'0'_b, '1'_b, '0'_b, '1'_b});
+    auto s = a[Range{1, 2}];
+    EXPECT_EQ(std::format("{}", s), "Bit[1 to 2]{1, 0}");
+}
+// LCOV_EXCL_BR_STOP
