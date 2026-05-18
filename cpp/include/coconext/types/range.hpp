@@ -24,7 +24,7 @@ struct Range {
         : left(l), direction(d), right(r) {}
 
     constexpr Range(value_type l, value_type r) noexcept
-        : left(l), direction(l >= r ? Direction::DOWNTO : Direction::TO), right(r) {}
+        : left(l), direction(l > r ? Direction::DOWNTO : Direction::TO), right(r) {}
 
     explicit constexpr Range(size_t length)
         : left(0), direction(Direction::TO), right(static_cast<value_type>(length) - 1) {
