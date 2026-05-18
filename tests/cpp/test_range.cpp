@@ -100,6 +100,8 @@ TEST(TestRange, EqualitySingleElementIgnoresDirection) {
 TEST(TestRange, OtherConstructors) {
     EXPECT_EQ(Range(1, 8), Range(1, Direction::TO, 8));
     EXPECT_EQ(Range(3, -4), Range(3, Direction::DOWNTO, -4));
+    // L == H is a single-element range; direction is canonically TO.
+    EXPECT_EQ(Range(5, 5).direction, Direction::TO);
 }
 
 TEST(TestRange, Formatter) {
