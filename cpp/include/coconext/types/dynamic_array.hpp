@@ -201,6 +201,13 @@ constexpr bool operator==(
     return true;
 }
 
+namespace detail {
+
+template <typename T>
+struct is_array<DynamicArray<T>> : std::true_type {};
+
+}  // namespace detail
+
 static_assert(RangedSequence<DynamicArray<int>>);
 static_assert(RangedSequence<DynamicArray<int> const>);
 static_assert(RangedSequence<ArraySlice<DynamicArray<int>>>);
@@ -216,24 +223,6 @@ struct std::hash<coconext::types::DynamicArray<T>> {
             seed = coconext::types::detail::hash_combine(seed, elem);
         }
         return seed;
-    }
-};
-
-template <typename T>
-    requires coconext::types::detail::Formattable<T>
-struct std::formatter<coconext::types::DynamicArray<T>> {
-    constexpr auto parse(std::format_parse_context& ctx) {
-        auto it = ctx.begin();
-        if (it != ctx.end() && *it != '}') {
-            throw std::format_error("DynamicArray formatter takes no format spec");
-        }
-        return it;
-    }
-
-    auto format(
-        coconext::types::DynamicArray<T> const& arr, std::format_context& ctx
-    ) const {
-        return coconext::types::detail::format_array(arr, ctx.out());
     }
 };
 

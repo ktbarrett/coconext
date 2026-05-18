@@ -125,6 +125,13 @@ constexpr bool operator==(
     return std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
 }
 
+namespace detail {
+
+template <typename T, Range R>
+struct is_array<StaticArray<T, R>> : std::true_type {};
+
+}  // namespace detail
+
 static_assert(RangedSequence<StaticArray<int, Range{0, Direction::TO, 7}>>);
 static_assert(RangedSequence<StaticArray<int, Range{0, Direction::TO, 7}> const>);
 static_assert(RangedSequence<ArraySlice<StaticArray<int, Range{0, Direction::TO, 7}>>>);
@@ -142,24 +149,6 @@ struct std::hash<coconext::types::StaticArray<T, R>> {
             seed = coconext::types::detail::hash_combine(seed, elem);
         }
         return seed;
-    }
-};
-
-template <typename T, coconext::types::Range R>
-    requires coconext::types::detail::Formattable<T>
-struct std::formatter<coconext::types::StaticArray<T, R>> {
-    constexpr auto parse(std::format_parse_context& ctx) {
-        auto it = ctx.begin();
-        if (it != ctx.end() && *it != '}') {
-            throw std::format_error("StaticArray formatter takes no format spec");
-        }
-        return it;
-    }
-
-    auto format(
-        coconext::types::StaticArray<T, R> const& arr, std::format_context& ctx
-    ) const {
-        return coconext::types::detail::format_array(arr, ctx.out());
     }
 };
 
