@@ -88,6 +88,11 @@ jobs:
       run: |
         make dev_tests
 
+    - name: Run patched cocotb tests
+      run: |
+        git clone --depth 1 https://github.com/cocotb/cocotb.git
+        pytest tests/python/test_patched_cocotb.py
+
     - name: Check stubs haven't diverged
       run: |
         git diff --exit-code -- python/_coconext.pyi
