@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import cocotb.types
 import pytest
 from coconext_tools.cocotb_patcher import patch_cocotb
@@ -16,13 +18,15 @@ def test_cocotb() -> None:
     assert cocotb.types.Bit is coconext.types.Bit
     assert cocotb.types.Range is coconext.types.Range
 
-    cocotb_pytest_dir_path: str | None = "cocotb/tests/pytest/"
+    cocotb_dir_path: str | None = os.environ.get("COCOTB_DIR_PATH")
 
     # TODO this would likely need generalization in future
     # For now maybe we can keep on adding more tests here manually
     cocotb_pytest_testcases: list[str] = ["test_logic.py", "test_range.py"]
 
-    if cocotb_pytest_dir_path is not None:
+    if cocotb_dir_path is not None:
+        cocotb_pytest_dir_path = f"{cocotb_dir_path}/tests/pytest"
+
         for cocotb_pytest_testcase in cocotb_pytest_testcases:
             result = pytest.main(
                 [
