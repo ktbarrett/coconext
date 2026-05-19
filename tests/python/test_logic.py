@@ -7,10 +7,10 @@ import copy
 
 import cocotb.types
 import pytest
+from coconext_tools.cocotb_patcher import patch_cocotb
 from cocotb.types import Bit, Logic
 
 import coconext.types
-from coconext.cocotb_patcher import patch_cocotb
 
 patch_cocotb()
 

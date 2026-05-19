@@ -120,7 +120,7 @@ jobs:
         uv pip install coconext --find-links dist --no-index
         pytest
         cmake -S tests/cpp -B build/tests \
-          -DCMAKE_PREFIX_PATH="$(python -c 'import coconext; print(coconext.cmake_prefix_path())')"
+          -DCMAKE_PREFIX_PATH="$(python -c 'import coconext_tools; print(coconext_tools.cmake_prefix_path())')"
         cmake --build build/tests
         ctest --output-on-failure --test-dir build/tests
 
@@ -198,7 +198,7 @@ jobs:
         uv pip install coconext --find-links dist --no-index
         pytest
         cmake -S tests/cpp -B build/tests \
-          -DCMAKE_PREFIX_PATH="$(python -c 'import coconext; print(coconext.cmake_prefix_path())')"
+          -DCMAKE_PREFIX_PATH="$(python -c 'import coconext_tools; print(coconext_tools.cmake_prefix_path())')"
         cmake --build build/tests
         ctest --output-on-failure --test-dir build/tests
 
