@@ -26,7 +26,7 @@ dev_tests: dev_build
 	find . -name ".coverage" -delete
 	COCOTB_USER_COVERAGE=1 pytest --cov=coconext --cov-report=
 	cmake -S tests/cpp -B "$(CPP_TESTS_BUILD_DIR)" \
-	    -DCMAKE_PREFIX_PATH="$$(python -c 'import coconext; print(coconext.cmake_prefix_path())')" \
+	    -DCMAKE_PREFIX_PATH="$$(python -c 'import coconext_tools; print(coconext_tools.cmake_prefix_path())')" \
 	    -DCMAKE_EXE_LINKER_FLAGS=--coverage
 	cmake --build "$(CPP_TESTS_BUILD_DIR)"
 	ctest --output-on-failure --test-dir "$(CPP_TESTS_BUILD_DIR)"
