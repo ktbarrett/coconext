@@ -2,7 +2,9 @@
 #define COCONEXT_DYNAMIC_ARRAY_HPP
 
 #include <algorithm>
+#include <coconext/types/array_base.hpp>
 #include <coconext/types/concepts.hpp>
+#include <coconext/types/hash.hpp>
 #include <coconext/types/range.hpp>
 #include <concepts>
 #include <cstddef>
@@ -25,121 +27,6 @@
 #endif
 
 namespace coconext::types {
-
-namespace detail {
-
-template <typename R>
-concept sized_input_range = std::ranges::sized_range<R> && std::ranges::input_range<R>;
-
-constexpr void subsequence_check(Range parent, Range child) {
-    if (!is_subsequence(parent, child)) {
-        throw std::invalid_argument("Range is not a valid sub-range of the parent");
-    }
-}
-
-}  // namespace detail
-
-// The minimum a type must expose so that index() and slice() can be
-// implemented for it externally.
-template <typename T>
-concept RangedSequence = std::ranges::random_access_range<T> && requires(T& t) {
-    { t.range() } -> std::convertible_to<Range>;
-};
-
-template <typename ArrayT>
-class ArraySlice;
-
-template <typename ArrayT>
-class ArraySlice {
-  public:
-    // ArraySlice is a non-owning view (like std::span). Element mutability is
-    // determined by ArrayT's constness:
-    // - ArraySlice<DynamicArray<T>>          -- mutable view, can write elements.
-    // - ArraySlice<const DynamicArray<T>>    -- read-only view.
-    // - const ArraySlice<X>                  -- pointer/range fixed; element access
-    //                                           follows X's mutability rules.
-    using value_type = std::ranges::range_value_t<ArrayT>;
-    using reference = std::ranges::range_reference_t<ArrayT>;
-    using index_type = Range::value_type;
-    using iterator = std::ranges::iterator_t<ArrayT>;
-    static_assert(!std::is_reference_v<value_type>);
-
-    constexpr ArraySlice() = delete;
-    constexpr ArraySlice(ArraySlice const&) = default;
-    constexpr ArraySlice(ArraySlice&&) = default;
-    constexpr ArraySlice(ArrayT* arr, Range range) noexcept : arr_(arr), range_(range) {}
-
-    constexpr Range const& range() const noexcept { return range_; }
-
-    // Element access bounds-checks against this slice's range_, not the
-    // owner's range. An idx that's valid in the owner but outside the slice
-    // is out-of-range.
-    constexpr reference operator[](index_type idx) const {
-        auto it = find(range_, idx);
-        if (it == range_.end()) {
-            throw std::out_of_range("Index out of bounds");
-        }
-        return *(begin() + std::distance(range_.begin(), it));
-    }
-    // Sub-slicing flattens: returns a new ArraySlice over the same underlying
-    // array with a new range. Validity is checked against the slice's own
-    // range_, not arr_->range().
-    constexpr ArraySlice operator[](Range r) const {
-        detail::subsequence_check(range_, r);
-        return ArraySlice(arr_, r);
-    }
-
-    template <detail::sized_input_range R>
-        requires(!std::is_const_v<ArrayT>)
-             && std::convertible_to<std::ranges::range_value_t<R>, value_type>
-    constexpr ArraySlice const& operator=(R const& obj) const {
-        if (std::ranges::size(obj) != range_.length()) {
-            throw std::invalid_argument(
-                "Value of length " + std::to_string(std::ranges::size(obj))
-                + " cannot be assigned to array slice of length "
-                + std::to_string(range_.length())
-            );
-        }
-        std::ranges::copy(obj, begin());
-        return *this;
-    }
-
-    template <typename T>
-        requires(!std::is_const_v<ArrayT>) && std::convertible_to<T, value_type>
-    constexpr ArraySlice const& operator=(std::initializer_list<T> init) const {
-        if (init.size() != static_cast<size_t>(range_.length())) {
-            throw std::invalid_argument(
-                "Initializer list of size " + std::to_string(init.size())
-                + " cannot be assigned to array slice of length "
-                + std::to_string(range_.length())
-            );
-        }
-        std::ranges::copy(init, begin());
-        return *this;
-    }
-
-    constexpr iterator begin() const noexcept {
-        // Null slices may carry bounds outside the parent's range (the
-        // validity rule allows that). Pin them to the parent's begin so
-        // begin()/end() form a well-formed empty iterator pair.
-        if (range_.length() == 0) {
-            return arr_->begin();
-        }
-        auto start = find(arr_->range(), range_.left);
-        assert(
-            start != arr_->range().end()
-            && "slice range not a sub-range of the owner's range"
-        );
-        return arr_->begin() + std::distance(arr_->range().begin(), start);
-    }
-    constexpr iterator end() const noexcept { return begin() + range_.length(); }
-    constexpr auto rbegin() const noexcept { return std::reverse_iterator(end()); }
-    constexpr auto rend() const noexcept { return std::reverse_iterator(begin()); }
-
-  private:
-    ArrayT* arr_;
-    Range range_;
-};
 
 template <typename ValueT>
 class DynamicArray {
@@ -241,18 +128,10 @@ class DynamicArray {
     constexpr Range const& range() const noexcept { return range_; }
 
     COCONEXT_DYNAMIC_ARRAY_CONSTEXPR reference operator[](index_type idx) {
-        auto it = find(range_, idx);
-        if (it == range_.end()) {
-            throw std::out_of_range("Index out of bounds");
-        }
-        return *(data_.get() + std::distance(range_.begin(), it));
+        return access_(*this, idx);
     }
     COCONEXT_DYNAMIC_ARRAY_CONSTEXPR const_reference operator[](index_type idx) const {
-        auto it = find(range_, idx);
-        if (it == range_.end()) {
-            throw std::out_of_range("Index out of bounds");
-        }
-        return *(data_.get() + std::distance(range_.begin(), it));
+        return access_(*this, idx);
     }
     COCONEXT_DYNAMIC_ARRAY_CONSTEXPR ArraySlice<DynamicArray> operator[](Range r) {
         detail::subsequence_check(range_, r);
@@ -289,6 +168,19 @@ class DynamicArray {
     }
 
   private:
+    // Shared body for the two operator[](index_type) overloads. Self is
+    // deduced as DynamicArray for the non-const caller and DynamicArray
+    // const for the const caller; the return type follows Self's constness
+    // implicitly (via the public overload's signature).
+    template <typename Self>
+    static COCONEXT_DYNAMIC_ARRAY_CONSTEXPR auto& access_(Self& self, index_type idx) {
+        auto it = find(self.range_, idx);
+        if (it == self.range_.end()) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        return *(self.data_.get() + std::distance(self.range_.begin(), it));
+    }
+
     std::unique_ptr<value_type[]> data_;
     Range const range_;
 };
@@ -311,23 +203,8 @@ constexpr bool operator==(
 
 namespace detail {
 
-// Walks a RangedSequence, emitting "[range]{elem, elem, ...}" via the formatter
-// for each element type. Used by the generic Array/Slice formatters.
-template <RangedSequence ArrayT, typename OutIt>
-    requires Formattable<std::ranges::range_value_t<ArrayT>>
-OutIt format_array(ArrayT const& arr, OutIt out) {
-    out = std::format_to(out, "{}{{", arr.range());
-    bool first = true;
-    for (auto const& elem : arr) {
-        if (!first) {
-            out = std::format_to(out, ", ");
-        }
-        out = std::format_to(out, "{}", elem);
-        first = false;
-    }
-    *out++ = '}';
-    return out;
-}
+template <typename T>
+struct is_array<DynamicArray<T>> : std::true_type {};
 
 }  // namespace detail
 
@@ -346,43 +223,6 @@ struct std::hash<coconext::types::DynamicArray<T>> {
             seed = coconext::types::detail::hash_combine(seed, elem);
         }
         return seed;
-    }
-};
-
-template <typename T>
-    requires coconext::types::detail::Formattable<T>
-struct std::formatter<coconext::types::DynamicArray<T>> {
-    constexpr auto parse(std::format_parse_context& ctx) {
-        auto it = ctx.begin();
-        if (it != ctx.end() && *it != '}') {
-            throw std::format_error("DynamicArray formatter takes no format spec");
-        }
-        return it;
-    }
-
-    auto format(
-        coconext::types::DynamicArray<T> const& arr, std::format_context& ctx
-    ) const {
-        return coconext::types::detail::format_array(arr, ctx.out());
-    }
-};
-
-template <typename ArrayT>
-    requires coconext::types::detail::Formattable<
-        std::ranges::range_value_t<coconext::types::ArraySlice<ArrayT>>>
-struct std::formatter<coconext::types::ArraySlice<ArrayT>> {
-    constexpr auto parse(std::format_parse_context& ctx) {
-        auto it = ctx.begin();
-        if (it != ctx.end() && *it != '}') {
-            throw std::format_error("ArraySlice formatter takes no format spec");
-        }
-        return it;
-    }
-
-    auto format(
-        coconext::types::ArraySlice<ArrayT> const& arr, std::format_context& ctx
-    ) const {
-        return coconext::types::detail::format_array(arr, ctx.out());
     }
 };
 
