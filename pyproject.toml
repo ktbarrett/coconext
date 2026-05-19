@@ -51,7 +51,10 @@ ignore = [
 
 [tool.ruff.lint.isort]
 required-imports = ["from __future__ import annotations"]
-known-first-party = ["coconext"]
+known-first-party = [
+    "coconext",
+    "coconext_tools",
+]
 
 [tool.ruff.format]
 docstring-code-format = true
