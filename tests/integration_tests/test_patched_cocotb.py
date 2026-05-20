@@ -4,9 +4,9 @@ import os
 
 import cocotb.types
 import pytest
-from coconext_tools.cocotb_patcher import patch_cocotb
 
 import coconext.types
+from coconext_tools.cocotb_patcher import patch_cocotb
 
 
 def test_cocotb() -> None:
