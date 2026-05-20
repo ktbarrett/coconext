@@ -10,7 +10,6 @@
 #include "./types/logic.hpp"
 #include "./types/logic_array.hpp"
 #include "./types/range.hpp"
-#include "./types/static_array.hpp"
 // NOLINTEND(unused-includes)
 
 #endif  // COCONEXT_TYPES_HPP
