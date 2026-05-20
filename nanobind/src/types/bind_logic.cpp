@@ -123,7 +123,9 @@ void register_logic(nb::module_& m) {
         .def(
             "__xor__", [](Logic const& a, Bit const& b) { return a ^ b; }, nb::is_operator()
         )
-        .def("__invert__", nb::overload_cast<Logic const&>(&operator~), nb::is_operator())
+        .def(
+            "__invert__", [](Logic const& self) { return ~self; }, nb::is_operator()
+        )
         .def_prop_ro("is_resolvable", &Logic::is_resolvable)
         .def(
             "resolve",

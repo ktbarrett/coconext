@@ -22,6 +22,179 @@ namespace coconext::types {
 
 namespace detail {
 
+template <typename T, Range R>
+class Array;
+
+template <typename T, Range R>
+
+// The actual Array implementation. Separated out so it can be reused for the LogicArray
+// specialization.
+class ArrayImpl {
+  public:
+    using value_type = T;
+    using index_type = Range::value_type;
+    static_assert(!std::is_reference_v<value_type>);
+    static_assert(!std::is_const_v<value_type>);
+    using reference = value_type&;
+    using const_reference = value_type const&;
+    using iterator = typename std::array<value_type, R.length()>::iterator;
+    using const_iterator = typename std::array<value_type, R.length()>::const_iterator;
+
+    constexpr ArrayImpl()
+        requires std::default_initializable<value_type>
+        : data_{} {}
+
+    constexpr ArrayImpl(ArrayImpl const&) = default;
+    constexpr ArrayImpl(ArrayImpl&&) = default;
+    constexpr ArrayImpl& operator=(ArrayImpl const&) = default;
+    constexpr ArrayImpl& operator=(ArrayImpl&&) = default;
+
+    template <typename U>
+        requires std::convertible_to<U, value_type>
+    constexpr ArrayImpl(std::initializer_list<U> init) : data_{} {
+        if (init.size() != R.length()) {
+            throw std::invalid_argument(
+                "Initializer list of size " + std::to_string(init.size())
+                + " does not match Array length " + std::to_string(R.length())
+            );
+        }
+        std::copy(init.begin(), init.end(), data_.begin());
+    }
+
+    template <std::ranges::sized_range Rng>
+        requires std::convertible_to<std::ranges::range_value_t<Rng>, value_type>
+              && (!std::derived_from<std::remove_cvref_t<Rng>, ArrayImpl>)
+    explicit constexpr ArrayImpl(Rng const& obj) : data_{} {
+        if (std::ranges::size(obj) != R.length()) {
+            throw std::invalid_argument(
+                "Input of size " + std::to_string(std::ranges::size(obj))
+                + " does not match Array length " + std::to_string(R.length())
+            );
+        }
+        std::ranges::copy(obj, data_.begin());
+    }
+
+    // Deliberately similar to DynArray's instance range() so that generic code can query
+    // the range with instance access pattern: `obj.range()`.
+    static constexpr Range range() noexcept { return R; }
+
+    constexpr reference operator[](index_type idx) { return access_(*this, idx); }
+    constexpr const_reference operator[](index_type idx) const {
+        return access_(*this, idx);
+    }
+
+    // Slices are constructed with the outer `Array<T, R>` (or const variant)
+    // as the owner. `this` is an ArrayImpl*, but the outer Array derives from
+    // it, so static_cast safely lands on the most-derived type at every
+    // instantiation -- and routes through the Logic/Bit slice partial spec
+    // when applicable.
+    constexpr DynArraySlice<Array<T, R>> operator[](Range r) {
+        detail::subsequence_check(R, r);
+        return DynArraySlice<Array<T, R>>(static_cast<Array<T, R>*>(this), r);
+    }
+    constexpr DynArraySlice<Array<T, R> const> operator[](Range r) const {
+        detail::subsequence_check(R, r);
+        return DynArraySlice<Array<T, R> const>(static_cast<Array<T, R> const*>(this), r);
+    }
+#if __cplusplus >= 202302L
+    constexpr DynArraySlice<Array<T, R>> operator[](
+        Range::value_type left, Range::value_type right
+    ) const {
+        return (*this)[Range{left, R.direction, right}];
+    }
+    constexpr DynArraySlice<Array<T, R>> operator[](
+        Range::value_type left, Direction dir, Range::value_type right
+    ) const {
+        return (*this)[Range{left, dir, right}];
+    }
+#endif
+
+    template <Range R2>
+    constexpr ArraySlice<Array<T, R>, R2> slice() {
+        static_assert(
+            R2.is_subsequence_of(R),
+            "static sub-slice range is not a sub-range of the parent Array"
+        );
+        return ArraySlice<Array<T, R>, R2>(static_cast<Array<T, R>*>(this));
+    }
+    template <Range R2>
+    constexpr ArraySlice<Array<T, R> const, R2> slice() const {
+        static_assert(
+            R2.is_subsequence_of(R),
+            "static sub-slice range is not a sub-range of the parent Array"
+        );
+        return ArraySlice<Array<T, R> const, R2>(static_cast<Array<T, R> const*>(this));
+    }
+
+    constexpr iterator begin() noexcept { return data_.begin(); }
+    constexpr const_iterator begin() const noexcept { return data_.begin(); }
+    constexpr iterator end() noexcept { return data_.end(); }
+    constexpr const_iterator end() const noexcept { return data_.end(); }
+    constexpr auto rbegin() noexcept { return data_.rbegin(); }
+    constexpr auto rbegin() const noexcept { return data_.rbegin(); }
+    constexpr auto rend() noexcept { return data_.rend(); }
+    constexpr auto rend() const noexcept { return data_.rend(); }
+
+  private:
+    template <typename Self>
+    static constexpr auto& access_(Self& self, index_type idx) {
+        if constexpr (R.direction == Direction::TO) {
+            if (idx < R.left || idx > R.right) {
+                throw std::out_of_range("Index out of bounds");
+            }
+            return *(self.begin() + (idx - R.left));
+        } else {
+            if (idx > R.left || idx < R.right) {
+                throw std::out_of_range("Index out of bounds");
+            }
+            return *(self.begin() + (R.left - idx));
+        }
+    }
+
+    std::array<value_type, R.length()> data_;
+};
+
+// Local-allocated, compile-time-bounded array indexed according to its Range.
+// This is the canonical "Array" implementation. It's stuck in detail since `Array`
+template <typename T, Range R>
+class Array : public ArrayImpl<T, R> {
+  public:
+    using ArrayImpl<T, R>::ArrayImpl;
+    using ArrayImpl<T, R>::operator=;
+};
+
+template <typename T, Range R1, Range R2>
+    requires std::equality_comparable<T>
+constexpr bool operator==(Array<T, R1> const& lhs, Array<T, R2> const& rhs) noexcept {
+    if constexpr (R1 != R2) {
+        return false;
+    }
+    return std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
+}
+
+template <typename T, Range R>
+struct is_array<Array<T, R>> : std::true_type {};
+
+static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}>>);
+static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}> const>);
+static_assert(RangedSequence<DynArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
+static_assert(RangedSequence<DynArraySlice<Array<int, Range{0, Direction::TO, 7}> const>>);
+static_assert(
+    RangedSequence<
+        ArraySlice<Array<int, Range{0, Direction::TO, 7}>, Range{1, Direction::TO, 3}>>
+);
+static_assert(RangedSequence<ArraySlice<
+                  Array<int, Range{0, Direction::TO, 7}> const,
+                  Range{1, Direction::TO, 3}>>);
+
+static_assert(StaticRangedSequence<Array<int, Range{0, Direction::TO, 7}>>);
+static_assert(StaticRangedSequence<Array<int, Range{0, Direction::TO, 7}> const>);
+static_assert(!StaticRangedSequence<DynArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
+static_assert(
+    StaticRangedSequence<
+        ArraySlice<Array<int, Range{0, Direction::TO, 7}>, Range{1, Direction::TO, 3}>>
+);
+
 template <auto V>
 constexpr bool fits_range_value_type =
     static_cast<long long>(V) >= std::numeric_limits<Range::value_type>::min()
@@ -80,151 +253,10 @@ constexpr Range make_static_range() {
     }
 }
 
-// Compile-time-bounded array. The range R is part of the type, so length,
-// bounds checks, and indexing fold against R. Storage is std::array, so
-// instances live in automatic / static storage with no heap allocation.
-template <typename T, Range R>
-class Array {
-  public:
-    using value_type = T;
-    using index_type = Range::value_type;
-    static_assert(!std::is_reference_v<value_type>);
-    static_assert(!std::is_const_v<value_type>);
-    using reference = value_type&;
-    using const_reference = value_type const&;
-    using iterator = typename std::array<value_type, R.length()>::iterator;
-    using const_iterator = typename std::array<value_type, R.length()>::const_iterator;
-
-    constexpr Array()
-        requires std::default_initializable<value_type>
-        : data_{} {}
-
-    constexpr Array(Array const&) = default;
-    constexpr Array(Array&&) = default;
-    constexpr Array& operator=(Array const&) = default;
-    constexpr Array& operator=(Array&&) = default;
-
-    template <typename U>
-        requires std::convertible_to<U, value_type>
-    constexpr Array(std::initializer_list<U> init) : data_{} {
-        if (init.size() != R.length()) {
-            throw std::invalid_argument(
-                "Initializer list of size " + std::to_string(init.size())
-                + " does not match Array length " + std::to_string(R.length())
-            );
-        }
-        std::copy(init.begin(), init.end(), data_.begin());
-    }
-
-    template <std::ranges::sized_range Rng>
-        requires std::convertible_to<std::ranges::range_value_t<Rng>, value_type>
-              && (!std::same_as<std::remove_cvref_t<Rng>, Array>)
-    explicit constexpr Array(Rng const& obj) : data_{} {
-        if (std::ranges::size(obj) != R.length()) {
-            throw std::invalid_argument(
-                "Input of size " + std::to_string(std::ranges::size(obj))
-                + " does not match Array length " + std::to_string(R.length())
-            );
-        }
-        std::ranges::copy(obj, data_.begin());
-    }
-
-    static constexpr Range range() noexcept { return R; }
-
-    constexpr reference operator[](index_type idx) { return access_(*this, idx); }
-    constexpr const_reference operator[](index_type idx) const {
-        return access_(*this, idx);
-    }
-    constexpr DynArraySlice<Array> operator[](Range r) {
-        detail::subsequence_check(R, r);
-        return DynArraySlice<Array>(this, r);
-    }
-    constexpr DynArraySlice<Array const> operator[](Range r) const {
-        detail::subsequence_check(R, r);
-        return DynArraySlice<Array const>(this, r);
-    }
-
-    // Compile-time-checked sub-slice. R2 is validated against R at compile time;
-    // the result keeps the static range so its bounds checks fold to constants.
-    template <Range R2>
-    constexpr ArraySlice<Array, R2> slice() {
-        static_assert(
-            R2.is_subsequence_of(R),
-            "static sub-slice range is not a sub-range of the parent Array"
-        );
-        return ArraySlice<Array, R2>(this);
-    }
-    template <Range R2>
-    constexpr ArraySlice<Array const, R2> slice() const {
-        static_assert(
-            R2.is_subsequence_of(R),
-            "static sub-slice range is not a sub-range of the parent Array"
-        );
-        return ArraySlice<Array const, R2>(this);
-    }
-
-    constexpr iterator begin() noexcept { return data_.begin(); }
-    constexpr const_iterator begin() const noexcept { return data_.begin(); }
-    constexpr iterator end() noexcept { return data_.end(); }
-    constexpr const_iterator end() const noexcept { return data_.end(); }
-    constexpr auto rbegin() noexcept { return data_.rbegin(); }
-    constexpr auto rbegin() const noexcept { return data_.rbegin(); }
-    constexpr auto rend() noexcept { return data_.rend(); }
-    constexpr auto rend() const noexcept { return data_.rend(); }
-
-  private:
-    template <typename Self>
-    static constexpr auto& access_(Self& self, index_type idx) {
-        if constexpr (R.direction == Direction::TO) {
-            if (idx < R.left || idx > R.right) {
-                throw std::out_of_range("Index out of bounds");
-            }
-            return *(self.begin() + (idx - R.left));
-        } else {
-            if (idx > R.left || idx < R.right) {
-                throw std::out_of_range("Index out of bounds");
-            }
-            return *(self.begin() + (R.left - idx));
-        }
-    }
-
-    std::array<value_type, R.length()> data_;
-};
-
-template <typename T, Range R>
-    requires std::equality_comparable<T>
-constexpr bool operator==(Array<T, R> const& lhs, Array<T, R> const& rhs) noexcept {
-    return std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
-}
-
-template <typename T, Range R>
-struct is_array<Array<T, R>> : std::true_type {};
-
-static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}>>);
-static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}> const>);
-static_assert(RangedSequence<DynArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
-static_assert(RangedSequence<DynArraySlice<Array<int, Range{0, Direction::TO, 7}> const>>);
-static_assert(
-    RangedSequence<
-        ArraySlice<Array<int, Range{0, Direction::TO, 7}>, Range{1, Direction::TO, 3}>>
-);
-static_assert(RangedSequence<ArraySlice<
-                  Array<int, Range{0, Direction::TO, 7}> const,
-                  Range{1, Direction::TO, 3}>>);
-
-// Array's range is part of its type, so it matches; a runtime view (even of
-// a static Array) does not.
-static_assert(StaticRangedSequence<Array<int, Range{0, Direction::TO, 7}>>);
-static_assert(StaticRangedSequence<Array<int, Range{0, Direction::TO, 7}> const>);
-static_assert(!StaticRangedSequence<DynArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
-static_assert(
-    StaticRangedSequence<
-        ArraySlice<Array<int, Range{0, Direction::TO, 7}>, Range{1, Direction::TO, 3}>>
-);
-
 }  // namespace detail
 
-// Static-bounded array. Range is built from the trailing NTTPs:
+// Static-bounded array. Storage is local, not on the heap, similar to std::array. Range is
+// built from the trailing NTTPs:
 //   Array<T, N>           (integral N)      -> detail::Array<T, Range(N)>
 //   Array<T, R>           (Range R)         -> detail::Array<T, R>
 //   Array<T, L, H>        (integral L, H)   -> detail::Array<T, Range{L, H}>

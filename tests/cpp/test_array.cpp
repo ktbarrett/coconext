@@ -91,6 +91,21 @@ TEST(TestDynArray, IterationConst) {
     EXPECT_EQ(sum, 6);
 }
 
+// -- Find -------------------------------------------------------------------
+
+TEST(TestDynArray, FindElement) {
+    DynArray<int> a({10, 20, 30, 40, 50});
+    auto it = std::find(a.begin(), a.end(), 30);
+    ASSERT_NE(it, a.end());
+    EXPECT_EQ(*it, 30);
+    EXPECT_EQ(std::distance(a.begin(), it), 2);
+}
+
+TEST(TestDynArray, FindElementMissing) {
+    DynArray<int> a({10, 20, 30});
+    EXPECT_EQ(std::find(a.begin(), a.end(), 99), a.end());
+}
+
 // -- Indexing ---------------------------------------------------------------
 
 TEST(TestDynArray, IndexingTO) {

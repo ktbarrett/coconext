@@ -108,7 +108,9 @@ constexpr Logic to_logic(CharType c) {
     case '-':
         return Logic::DC;
     default:
-        throw std::invalid_argument("Invalid logic literal");
+        throw std::invalid_argument(
+            std::string("Invalid logic literal: '") + static_cast<char>(c) + "'"
+        );
     }
 }
 
@@ -119,7 +121,9 @@ constexpr Bit to_bit(CharType value) {
     } else if (value == '1') {
         return Bit::_1;
     } else {
-        throw std::invalid_argument("Invalid bit value");
+        throw std::invalid_argument(
+            std::string("Invalid bit value: '") + static_cast<char>(value) + "'"
+        );
     }
 }
 
@@ -205,6 +209,10 @@ constexpr std::string_view to_string(Bit const& value) noexcept {
 constexpr char to_char(Logic const& value) noexcept {
     constexpr char char_map[] = {'0', '1', 'X', 'Z', 'U', 'W', 'L', 'H', '-'};
     return char_map[static_cast<size_t>(value.value())];
+}
+
+constexpr char to_char(Bit const& value) noexcept {
+    return value.value() == Bit::_0 ? '0' : '1';
 }
 
 constexpr int to_int(Logic const& value) {
