@@ -1,22 +1,21 @@
 # Copyright cocotb contributors
 # Licensed under the Revised BSD License, see LICENSE for details.
 # SPDX-License-Identifier: BSD-3-Clause
+# ruff: noqa: E402
 from __future__ import annotations
+
+from coconext_tools.cocotb_patcher import patch_cocotb
+
+patch_cocotb()
+# isort: split
 
 import copy
 
 import cocotb.types
 import pytest
-from coconext_tools.cocotb_patcher import patch_cocotb
 from cocotb.types import Bit, Logic
 
 import coconext.types
-
-patch_cocotb()
-
-print(cocotb.types.Logic)
-print(coconext.types.Logic)
-print(cocotb.types.Logic is coconext.types.Logic)
 
 assert cocotb.types.Logic is coconext.types.Logic
 
