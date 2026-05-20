@@ -23,7 +23,7 @@ namespace detail {
 template <typename R>
 concept sized_input_range = std::ranges::sized_range<R> && std::ranges::input_range<R>;
 
-// Opt-in trait that array types.
+// Opt-in trait for array types.
 template <typename T>
 struct is_array : std::false_type {};
 
@@ -65,41 +65,35 @@ constexpr void subsequence_check(Range parent, Range child) {
 
 }  // namespace detail
 
+template <typename ArrayT>
+class DynArraySlice;
 template <typename ArrayT, Range R>
 class ArraySlice;
 
+// We split out the implementations into a base class so that we can reuse then in the
+// Logic/Bit-aware specializations in logic_array.hpp. LogicArray is just an Array with
+// extra members. BitArray is too, for now...
+
+namespace detail {
+
 template <typename ArrayT>
-class DynArraySlice {
+class DynArraySliceImpl {
   public:
-    // DynArraySlice is a non-owning view (like std::span) with a runtime
-    // range. Element mutability is determined by ArrayT's constness:
-    // - DynArraySlice<ArrayT>          -- mutable view, can write elements.
-    // - DynArraySlice<const ArrayT>    -- read-only view.
-    // - const DynArraySlice<X>         -- pointer/range fixed; element access
-    //                                     follows X's mutability rules.
     using value_type = std::ranges::range_value_t<ArrayT>;
     using reference = std::ranges::range_reference_t<ArrayT>;
     using index_type = Range::value_type;
     using iterator = std::ranges::iterator_t<ArrayT>;
     static_assert(!std::is_reference_v<value_type>);
 
-    constexpr DynArraySlice() = delete;
-    constexpr DynArraySlice(DynArraySlice const&) = default;
-    constexpr DynArraySlice(DynArraySlice&&) = default;
-    // begin_ is computed once at construction by walking the owner's range to
-    // locate range.left. Subsequent begin() / end() / operator[] calls are
-    // O(1) and avoid re-projecting on every access. Slice constructors are
-    // expected to have already validated `range` against the owner (via
-    // detail::subsequence_check or operator[](Range r)); we don't re-check.
-    constexpr DynArraySlice(ArrayT* arr, Range range) noexcept
+    constexpr DynArraySliceImpl() = delete;
+    constexpr DynArraySliceImpl(DynArraySliceImpl const&) = default;
+    constexpr DynArraySliceImpl(DynArraySliceImpl&&) = default;
+    constexpr DynArraySliceImpl(ArrayT* arr, Range range) noexcept
         : arr_(arr), range_(range), begin_(compute_begin(arr, range)) {}
 
     constexpr Range const& range() const noexcept { return range_; }
 
-    // Element access bounds-checks against this slice's range_, not the
-    // owner's range. An idx that's valid in the owner but outside the slice
-    // is out-of-range. Uses the cached begin_ + direct arithmetic instead of
-    // re-projecting through find()/distance() on every call.
+    // Element access bounds-checks against this slice's range_, not the owner's range.
     constexpr reference operator[](index_type idx) const {
         if (range_.direction == Direction::TO) {
             if (idx < range_.left || idx > range_.right) {
@@ -113,26 +107,37 @@ class DynArraySlice {
             return *(begin_ + (range_.left - idx));
         }
     }
-    // Sub-slicing flattens: returns a new DynArraySlice over the same
-    // underlying array with a new range. Validity is checked against the
-    // slice's own range_, not arr_->range().
-    constexpr DynArraySlice operator[](Range r) const {
-        detail::subsequence_check(range_, r);
-        return DynArraySlice(arr_, r);
-    }
 
-    // Static sub-slicing flattens to ArraySlice<ArrayT, R> over the same
-    // underlying array. The subsequence check is runtime here (this slice's
-    // own bound is dynamic).
+    // Slicing a slice flattens to a new DynArraySlice of the same underlying array.
+    // Validity is checked against the slice's range, not the underlying owner's range. This
+    // returns the outer DynArraySlice type so that we pick up the Logic and Bit
+    // specializations.
+    constexpr DynArraySlice<ArrayT> operator[](Range r) const {
+        detail::subsequence_check(range_, r);
+        return DynArraySlice<ArrayT>(arr_, r);
+    }
+#if __cplusplus >= 202302L
+    constexpr DynArraySlice<ArrayT> operator[](
+        Range::value_type left, Range::value_type right
+    ) const {
+        return (*this)[Range{left, range_.direction, right}];
+    }
+    constexpr DynArraySlice<ArrayT> operator[](
+        Range::value_type left, Direction dir, Range::value_type right
+    ) const {
+        return (*this)[Range{left, dir, right}];
+    }
+#endif
+
     template <Range R>
     constexpr ArraySlice<ArrayT, R> slice() const {
         detail::subsequence_check(range_, R);
         return ArraySlice<ArrayT, R>(arr_);
     }
 
-    // Explicitly define a DynArraySlice assignment since the implicitly created one is a
-    // variable assignment and not an element-wise assignment to the underlying storage.
-    constexpr DynArraySlice const& operator=(DynArraySlice const& other) const
+    // Have to override this since the implicitly generated copy assignment acts as a
+    // variable assignment rather than writing through to the underlying storage.
+    constexpr DynArraySliceImpl const& operator=(DynArraySliceImpl const& other) const
         requires(!std::is_const_v<ArrayT>)
     {
         if (other.range_.length() != range_.length()) {
@@ -149,7 +154,7 @@ class DynArraySlice {
     template <detail::sized_input_range R>
         requires(!std::is_const_v<ArrayT>)
              && std::convertible_to<std::ranges::range_value_t<R>, value_type>
-    constexpr DynArraySlice const& operator=(R const& obj) const {
+    constexpr DynArraySliceImpl const& operator=(R const& obj) const {
         if (std::ranges::size(obj) != range_.length()) {
             throw std::invalid_argument(
                 "Value of length " + std::to_string(std::ranges::size(obj))
@@ -163,7 +168,7 @@ class DynArraySlice {
 
     template <typename T>
         requires(!std::is_const_v<ArrayT>) && std::convertible_to<T, value_type>
-    constexpr DynArraySlice const& operator=(std::initializer_list<T> init) const {
+    constexpr DynArraySliceImpl const& operator=(std::initializer_list<T> init) const {
         if (init.size() != range_.length()) {
             throw std::invalid_argument(
                 "Initializer list of size " + std::to_string(init.size())
@@ -181,6 +186,8 @@ class DynArraySlice {
     constexpr auto rend() const noexcept { return std::reverse_iterator(begin()); }
 
   private:
+    // Cache the begin pointer. This is just one stack pointer for a temporary object, and
+    // it saves recomputing the offset on every element access.
     static constexpr iterator compute_begin(ArrayT* arr, Range range) noexcept {
         // Null slices may carry bounds outside the parent's range (the
         // validity rule allows that). Pin them to the parent's begin so
@@ -201,12 +208,8 @@ class DynArraySlice {
     iterator begin_;
 };
 
-// Compile-time-bounded counterpart to DynArraySlice. R is part of the type,
-// so length, bounds checks, and indexing fold against R. When the parent's
-// range is also a compile-time constant (a static Array, or another static
-// ArraySlice), begin()/end() collapse to a single pointer offset.
 template <typename ArrayT, Range R>
-class ArraySlice {
+class ArraySliceImpl {
   public:
     using value_type = std::ranges::range_value_t<ArrayT>;
     using reference = std::ranges::range_reference_t<ArrayT>;
@@ -214,11 +217,13 @@ class ArraySlice {
     using iterator = std::ranges::iterator_t<ArrayT>;
     static_assert(!std::is_reference_v<value_type>);
 
-    constexpr ArraySlice() = delete;
-    constexpr ArraySlice(ArraySlice const&) = default;
-    constexpr ArraySlice(ArraySlice&&) = default;
-    constexpr explicit ArraySlice(ArrayT* arr) noexcept : arr_(arr) {}
+    constexpr ArraySliceImpl() = delete;
+    constexpr ArraySliceImpl(ArraySliceImpl const&) = default;
+    constexpr ArraySliceImpl(ArraySliceImpl&&) = default;
+    constexpr explicit ArraySliceImpl(ArrayT* arr) noexcept : arr_(arr) {}
 
+    // Deliberately similar to DynArraySlice's instance range() so that generic code can
+    // query the range with instance access pattern: `obj.range()`.
     static constexpr Range range() noexcept { return R; }
 
     constexpr reference operator[](index_type idx) const {
@@ -235,8 +240,6 @@ class ArraySlice {
         }
     }
 
-    // Static sub-slicing flattens to ArraySlice<ArrayT, R2> over the same
-    // underlying array. R2's validity against R is checked at compile time.
     template <Range R2>
     constexpr ArraySlice<ArrayT, R2> slice() const {
         static_assert(
@@ -246,16 +249,26 @@ class ArraySlice {
         return ArraySlice<ArrayT, R2>(arr_);
     }
 
-    // Runtime sub-slicing flattens to DynArraySlice<ArrayT> -- the result is
-    // no longer compile-time-bounded, since r is a runtime value.
     constexpr DynArraySlice<ArrayT> operator[](Range r) const {
         detail::subsequence_check(R, r);
         return DynArraySlice<ArrayT>(arr_, r);
     }
+#if __cplusplus >= 202302L
+    constexpr DynArraySlice<ArrayT> operator[](
+        Range::value_type left, Range::value_type right
+    ) const {
+        return (*this)[Range{left, range_.direction, right}];
+    }
+    constexpr DynArraySlice<ArrayT> operator[](
+        Range::value_type left, Direction dir, Range::value_type right
+    ) const {
+        return (*this)[Range{left, dir, right}];
+    }
+#endif
 
-    // Explicitly define a ArraySlice assignment since the implicitly created one is a
-    // variable assignment and not an element-wise assignment to the underlying storage.
-    constexpr ArraySlice const& operator=(ArraySlice const& other) const
+    // Have to override this since the implicitly generated copy assignment acts as a
+    // variable assignment rather than writing through to the underlying storage.
+    constexpr ArraySliceImpl const& operator=(ArraySliceImpl const& other) const
         requires(!std::is_const_v<ArrayT>)
     {
         std::ranges::copy(other, begin());
@@ -265,7 +278,7 @@ class ArraySlice {
     template <detail::sized_input_range Rng>
         requires(!std::is_const_v<ArrayT>)
              && std::convertible_to<std::ranges::range_value_t<Rng>, value_type>
-    constexpr ArraySlice const& operator=(Rng const& obj) const {
+    constexpr ArraySliceImpl const& operator=(Rng const& obj) const {
         if constexpr (StaticRangedSequence<Rng>) {
             static_assert(
                 std::remove_cvref_t<Rng>::range().length() == R.length(),
@@ -284,7 +297,7 @@ class ArraySlice {
 
     template <typename T>
         requires(!std::is_const_v<ArrayT>) && std::convertible_to<T, value_type>
-    constexpr ArraySlice const& operator=(std::initializer_list<T> init) const {
+    constexpr ArraySliceImpl const& operator=(std::initializer_list<T> init) const {
         if (init.size() != R.length()) {
             throw std::invalid_argument(
                 "Initializer list of size " + std::to_string(init.size())
@@ -297,6 +310,9 @@ class ArraySlice {
     }
 
     constexpr iterator begin() const noexcept {
+        // We don't cache the begin pointer here since we can conditionally leverage the
+        // compile-time range to fold the offset to a constant.
+
         // Null slices may carry bounds outside the parent's range (the
         // validity rule allows that). Pin them to the parent's begin so
         // begin()/end() form a well-formed empty iterator pair.
@@ -325,6 +341,34 @@ class ArraySlice {
 
   private:
     ArrayT* arr_;
+};
+
+}  // namespace detail
+
+// A non-owning view (like std::span with dynamic extent) with a runtime range. Element
+// mutability is determined by ArrayT's constness:
+// - DynArraySlice<ArrayT>          -- mutable view, can write elements.
+// - DynArraySlice<const ArrayT>    -- read-only view.
+// - const DynArraySlice<X>         -- pointer/range fixed; element access
+//                                     follows X's mutability rules.
+template <typename ArrayT>
+class DynArraySlice : public detail::DynArraySliceImpl<ArrayT> {
+  public:
+    using detail::DynArraySliceImpl<ArrayT>::DynArraySliceImpl;
+    using detail::DynArraySliceImpl<ArrayT>::operator=;
+};
+
+// A non-owning view (like std::span) with a compile-time range. Element mutability is
+// determined by ArrayT's constness:
+// - ArraySlice<ArrayT>          -- mutable view, can write elements.
+// - ArraySlice<const ArrayT>    -- read-only view.
+// - const ArraySlice<X>         -- pointer/range fixed; element access
+//                                  follows X's mutability rules.
+template <typename ArrayT, Range R>
+class ArraySlice : public detail::ArraySliceImpl<ArrayT, R> {
+  public:
+    using detail::ArraySliceImpl<ArrayT, R>::ArraySliceImpl;
+    using detail::ArraySliceImpl<ArrayT, R>::operator=;
 };
 
 namespace detail {

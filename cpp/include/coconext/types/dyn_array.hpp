@@ -28,7 +28,15 @@
 namespace coconext::types {
 
 template <typename ValueT>
-class DynArray {
+class DynArray;
+
+namespace detail {
+
+template <typename ValueT>
+
+// The actual DynArray implementation. Separated out so it can be reused for the
+// DynLogicArray specialization.
+class DynArrayImpl {
   public:
     using value_type = ValueT;
     static_assert(!std::is_reference_v<value_type>);
@@ -39,17 +47,17 @@ class DynArray {
     using iterator = value_type*;
     using const_iterator = value_type const*;
 
-    constexpr DynArray() = delete;  // no default constructor
+    constexpr DynArrayImpl() = delete;  // no default constructor
 
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArray(DynArray&& other) noexcept = default;
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArrayImpl(DynArrayImpl&& other) noexcept = default;
 
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArray(DynArray const& other)
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArrayImpl(DynArrayImpl const& other)
         : data_(std::make_unique_for_overwrite<value_type[]>(other.range_.length())),
           range_(other.range_) {
         std::ranges::copy(other, data_.get());
     }
 
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArray& operator=(DynArray const& other) {
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArrayImpl& operator=(DynArrayImpl const& other) {
         if (this != &other) {
             auto buf = std::make_unique_for_overwrite<value_type[]>(other.range_.length());
             std::ranges::copy(other, buf.get());
@@ -59,7 +67,7 @@ class DynArray {
         return *this;
     }
 
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArray& operator=(DynArray&& other) noexcept {
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArrayImpl& operator=(DynArrayImpl&& other) noexcept {
         if (this != &other) {
             data_ = std::move(other.data_);
             range_ = other.range_;
@@ -67,16 +75,16 @@ class DynArray {
         return *this;
     }
 
-    explicit COCONEXT_DYN_ARRAY_CONSTEXPR DynArray(Range range)
+    explicit COCONEXT_DYN_ARRAY_CONSTEXPR DynArrayImpl(Range range)
         : data_(std::make_unique<value_type[]>(range.length())), range_(range) {}
 
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArray(std::initializer_list<value_type> init)
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArrayImpl(std::initializer_list<value_type> init)
         : data_(std::make_unique_for_overwrite<value_type[]>(init.size())),
           range_(init.size()) {
         std::ranges::copy(init, data_.get());
     }
 
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArray(
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArrayImpl(
         std::initializer_list<value_type> init, Range range
     )
         : range_(range) {
@@ -92,8 +100,8 @@ class DynArray {
 
     template <std::ranges::sized_range R>
         requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
-                  && (!std::same_as<std::remove_cvref_t<R>, DynArray>)
-    explicit COCONEXT_DYN_ARRAY_CONSTEXPR DynArray(R const& obj)
+                  && (!std::derived_from<std::remove_cvref_t<R>, DynArrayImpl>)
+    explicit COCONEXT_DYN_ARRAY_CONSTEXPR DynArrayImpl(R const& obj)
         : data_(std::make_unique_for_overwrite<value_type[]>(std::ranges::size(obj))),
           range_(std::ranges::size(obj)) {
         std::ranges::copy(obj, data_.get());
@@ -101,7 +109,7 @@ class DynArray {
 
     template <std::ranges::sized_range R>
         requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArray(R const& obj, Range range) : range_(range) {
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArrayImpl(R const& obj, Range range) : range_(range) {
         if (std::ranges::size(obj) != range.length()) {
             throw std::invalid_argument(
                 "Input of size " + std::to_string(std::ranges::size(obj))
@@ -120,27 +128,57 @@ class DynArray {
     COCONEXT_DYN_ARRAY_CONSTEXPR const_reference operator[](index_type idx) const {
         return access_(*this, idx);
     }
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArraySlice<DynArray> operator[](Range r) {
-        detail::subsequence_check(range_, r);
-        return DynArraySlice<DynArray>(this, r);
-    }
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArraySlice<DynArray const> operator[](Range r) const {
-        detail::subsequence_check(range_, r);
-        return DynArraySlice<DynArray const>(this, r);
-    }
 
-    // Statically-typed sub-slice. R lives in the result type, so the slice's
-    // own bounds checks fold to constants; the subsequence check against this
-    // DynArray's runtime range happens once, here.
+    // Slices route through the outer `DynArray<ValueT>` (or const variant)
+    // so they pick up the Logic/Bit slice spec when applicable.
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArraySlice<DynArray<ValueT>> operator[](Range r) {
+        detail::subsequence_check(range_, r);
+        return DynArraySlice<DynArray<ValueT>>(static_cast<DynArray<ValueT>*>(this), r);
+    }
+#if __cplusplus >= 202302L
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArraySlice<DynArray<ValueT>> operator[](
+        Range::value_type left, Range::value_type right
+    ) {
+        return operator[](Range{left, right});
+    }
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArraySlice<DynArray<ValueT>> operator[](
+        Range::value_type left, Direction dir, Range::value_type right
+    ) {
+        return operator[](Range{left, dir, right});
+    }
+#endif
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArraySlice<DynArray<ValueT> const> operator[](
+        Range r
+    ) const {
+        detail::subsequence_check(range_, r);
+        return DynArraySlice<DynArray<ValueT> const>(
+            static_cast<DynArray<ValueT> const*>(this), r
+        );
+    }
+#if __cplusplus >= 202302L
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArraySlice<DynArray<ValueT> const> operator[](
+        Range::value_type left, Range::value_type right
+    ) {
+        return operator[](Range{left, right});
+    }
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArraySlice<DynArray<ValueT> const> operator[](
+        Range::value_type left, Direction dir, Range::value_type right
+    ) {
+        return operator[](Range{left, dir, right});
+    }
+#endif
+
     template <Range R>
-    COCONEXT_DYN_ARRAY_CONSTEXPR ArraySlice<DynArray, R> slice() {
+    COCONEXT_DYN_ARRAY_CONSTEXPR ArraySlice<DynArray<ValueT>, R> slice() {
         detail::subsequence_check(range_, R);
-        return ArraySlice<DynArray, R>(this);
+        return ArraySlice<DynArray<ValueT>, R>(static_cast<DynArray<ValueT>*>(this));
     }
     template <Range R>
-    COCONEXT_DYN_ARRAY_CONSTEXPR ArraySlice<DynArray const, R> slice() const {
+    COCONEXT_DYN_ARRAY_CONSTEXPR ArraySlice<DynArray<ValueT> const, R> slice() const {
         detail::subsequence_check(range_, R);
-        return ArraySlice<DynArray const, R>(this);
+        return ArraySlice<DynArray<ValueT> const, R>(
+            static_cast<DynArray<ValueT> const*>(this)
+        );
     }
 
     COCONEXT_DYN_ARRAY_CONSTEXPR iterator begin() noexcept { return data_.get(); }
@@ -167,10 +205,6 @@ class DynArray {
     }
 
   private:
-    // Shared body for the two operator[](index_type) overloads. Self is
-    // deduced as DynArray for the non-const caller and DynArray
-    // const for the const caller; the return type follows Self's constness
-    // implicitly (via the public overload's signature).
     template <typename Self>
     static COCONEXT_DYN_ARRAY_CONSTEXPR auto& access_(Self& self, index_type idx) {
         auto it = find(self.range_, idx);
@@ -184,10 +218,15 @@ class DynArray {
     Range range_;
 };
 
-static_assert(
-    std::is_same_v<decltype(std::declval<DynArray<int>>().range()), Range const&>,
-    "DynArray::range() must return Range const& to preserve the range/storage invariant"
-);
+}  // namespace detail
+
+// Heap-allocated, runtime-bounded array indexed according to its Range.
+template <typename ValueT>
+class DynArray : public detail::DynArrayImpl<ValueT> {
+  public:
+    using detail::DynArrayImpl<ValueT>::DynArrayImpl;
+    using detail::DynArrayImpl<ValueT>::operator=;
+};
 
 template <typename ValueT>
     requires std::equality_comparable<ValueT>
@@ -207,6 +246,7 @@ constexpr bool operator==(
 
 namespace detail {
 
+// Opt into array-specific features such as formatting.
 template <typename T>
 struct is_array<DynArray<T>> : std::true_type {};
 
@@ -219,11 +259,8 @@ static_assert(RangedSequence<DynArraySlice<DynArray<int> const>>);
 static_assert(RangedSequence<ArraySlice<DynArray<int>, Range{0, Direction::TO, 3}>>);
 static_assert(RangedSequence<ArraySlice<DynArray<int> const, Range{0, Direction::TO, 3}>>);
 
-// Runtime-ranged types have no static_range, so they must not match.
 static_assert(!StaticRangedSequence<DynArray<int>>);
 static_assert(!StaticRangedSequence<DynArraySlice<DynArray<int>>>);
-// ArraySlice carries the range in its type, so it does match -- even when the
-// underlying owner's range is runtime-only.
 static_assert(StaticRangedSequence<ArraySlice<DynArray<int>, Range{0, Direction::TO, 3}>>);
 
 }  // namespace coconext::types
