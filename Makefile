@@ -36,6 +36,12 @@ dev_tests: dev_build
 	coverage report
 	gcovr build/ --gcov-executable='$(GCOV_EXECUTABLE)' --print-summary
 
+.PHONY: integration_tests
+COCOTB_DIR_PATH ?= $(PWD)/cocotb
+integration_tests:
+	COCOTB_DIR_PATH="$(COCOTB_DIR_PATH)" \
+	pytest tests/integration_tests/test_patched_cocotb.py
+
 .PHONY: clean
 clean:
 	rm -rf build/
