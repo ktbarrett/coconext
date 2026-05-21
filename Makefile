@@ -43,7 +43,6 @@ COCOTB_DIR_PATH ?= $(PWD)/cocotb
 .PHONY: integration_tests
 integration_tests: dev_build
 	COCOTB_DIR_PATH="$(COCOTB_DIR_PATH)" \
-	COCOTB_USER_COVERAGE=1 \
 	pytest --cov=coconext --cov-report= tests/integration_tests/*.py
 
 .PHONY: generate_report
