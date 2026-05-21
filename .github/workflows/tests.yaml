@@ -86,7 +86,9 @@ jobs:
         GCOV_EXECUTABLE: ${{ matrix.gcov || 'gcov' }}
         DEV_BUILD_DEP_GROUP: dev_tests
       run: |
+        make clean_coverage
         make dev_tests
+        make generate_report
 
     - name: Check stubs haven't diverged
       run: |
