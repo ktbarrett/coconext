@@ -130,13 +130,27 @@ class DynArray {
     COCONEXT_DYN_ARRAY_CONSTEXPR const_reference operator[](index_type idx) const {
         return access_(*this, idx);
     }
-    COCONEXT_DYN_ARRAY_CONSTEXPR ArraySlice<DynArray> operator[](Range r) {
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArraySlice<DynArray> operator[](Range r) {
         detail::subsequence_check(range_, r);
-        return ArraySlice<DynArray>(this, r);
+        return DynArraySlice<DynArray>(this, r);
     }
-    COCONEXT_DYN_ARRAY_CONSTEXPR ArraySlice<DynArray const> operator[](Range r) const {
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArraySlice<DynArray const> operator[](Range r) const {
         detail::subsequence_check(range_, r);
-        return ArraySlice<DynArray const>(this, r);
+        return DynArraySlice<DynArray const>(this, r);
+    }
+
+    // Statically-typed sub-slice. R lives in the result type, so the slice's
+    // own bounds checks fold to constants; the subsequence check against this
+    // DynArray's runtime range happens once, here.
+    template <Range R>
+    COCONEXT_DYN_ARRAY_CONSTEXPR ArraySlice<DynArray, R> slice() {
+        detail::subsequence_check(range_, R);
+        return ArraySlice<DynArray, R>(this);
+    }
+    template <Range R>
+    COCONEXT_DYN_ARRAY_CONSTEXPR ArraySlice<DynArray const, R> slice() const {
+        detail::subsequence_check(range_, R);
+        return ArraySlice<DynArray const, R>(this);
     }
 
     COCONEXT_DYN_ARRAY_CONSTEXPR iterator begin() noexcept { return data_.get(); }
@@ -205,12 +219,17 @@ struct is_array<DynArray<T>> : std::true_type {};
 
 static_assert(RangedSequence<DynArray<int>>);
 static_assert(RangedSequence<DynArray<int> const>);
-static_assert(RangedSequence<ArraySlice<DynArray<int>>>);
-static_assert(RangedSequence<ArraySlice<DynArray<int> const>>);
+static_assert(RangedSequence<DynArraySlice<DynArray<int>>>);
+static_assert(RangedSequence<DynArraySlice<DynArray<int> const>>);
+static_assert(RangedSequence<ArraySlice<DynArray<int>, Range{0, Direction::TO, 3}>>);
+static_assert(RangedSequence<ArraySlice<DynArray<int> const, Range{0, Direction::TO, 3}>>);
 
-// Neither DynArray nor a runtime-ranged slice exposes static_range.
+// Runtime-ranged types have no static_range, so they must not match.
 static_assert(!StaticRangedSequence<DynArray<int>>);
-static_assert(!StaticRangedSequence<ArraySlice<DynArray<int>>>);
+static_assert(!StaticRangedSequence<DynArraySlice<DynArray<int>>>);
+// ArraySlice carries the range in its type, so it does match -- even when the
+// underlying owner's range is runtime-only.
+static_assert(StaticRangedSequence<ArraySlice<DynArray<int>, Range{0, Direction::TO, 3}>>);
 
 }  // namespace coconext::types
 

@@ -137,13 +137,32 @@ class Array {
     constexpr const_reference operator[](index_type idx) const {
         return access_(*this, idx);
     }
-    constexpr ArraySlice<Array> operator[](Range r) {
+    constexpr DynArraySlice<Array> operator[](Range r) {
         detail::subsequence_check(static_range, r);
-        return ArraySlice<Array>(this, r);
+        return DynArraySlice<Array>(this, r);
     }
-    constexpr ArraySlice<Array const> operator[](Range r) const {
+    constexpr DynArraySlice<Array const> operator[](Range r) const {
         detail::subsequence_check(static_range, r);
-        return ArraySlice<Array const>(this, r);
+        return DynArraySlice<Array const>(this, r);
+    }
+
+    // Compile-time-checked sub-slice. R2 is validated against R at compile time;
+    // the result keeps the static range so its bounds checks fold to constants.
+    template <Range R2>
+    constexpr ArraySlice<Array, R2> slice() {
+        static_assert(
+            is_subsequence(R, R2),
+            "static sub-slice range is not a sub-range of the parent Array"
+        );
+        return ArraySlice<Array, R2>(this);
+    }
+    template <Range R2>
+    constexpr ArraySlice<Array const, R2> slice() const {
+        static_assert(
+            is_subsequence(R, R2),
+            "static sub-slice range is not a sub-range of the parent Array"
+        );
+        return ArraySlice<Array const, R2>(this);
     }
 
     constexpr iterator begin() noexcept { return data_.begin(); }
@@ -194,14 +213,25 @@ namespace detail {
 
 static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}>>);
 static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}> const>);
-static_assert(RangedSequence<ArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
-static_assert(RangedSequence<ArraySlice<Array<int, Range{0, Direction::TO, 7}> const>>);
+static_assert(RangedSequence<DynArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
+static_assert(RangedSequence<DynArraySlice<Array<int, Range{0, Direction::TO, 7}> const>>);
+static_assert(
+    RangedSequence<
+        ArraySlice<Array<int, Range{0, Direction::TO, 7}>, Range{1, Direction::TO, 3}>>
+);
+static_assert(RangedSequence<ArraySlice<
+                  Array<int, Range{0, Direction::TO, 7}> const,
+                  Range{1, Direction::TO, 3}>>);
 
-// Array's range is part of its type, so it matches; a runtime slice (even
-// over a static Array) does not.
+// Array's range is part of its type, so it matches; a runtime view (even of
+// a static Array) does not.
 static_assert(StaticRangedSequence<Array<int, Range{0, Direction::TO, 7}>>);
 static_assert(StaticRangedSequence<Array<int, Range{0, Direction::TO, 7}> const>);
-static_assert(!StaticRangedSequence<ArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
+static_assert(!StaticRangedSequence<DynArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
+static_assert(
+    StaticRangedSequence<
+        ArraySlice<Array<int, Range{0, Direction::TO, 7}>, Range{1, Direction::TO, 3}>>
+);
 
 }  // namespace detail
 
