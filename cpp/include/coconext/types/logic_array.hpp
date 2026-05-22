@@ -53,7 +53,7 @@ using DynLogicArray = DynArray<Logic>;
 // print as "Logic[range]{0, 1, X}" instead of "[range]{Logic{0}, Logic{1},
 // Logic{X}}".
 template <typename T>
-    requires coconext::types::detail::ArrayType<T>
+    requires coconext::types::ArrayType<T>
           && coconext::types::detail::Formattable<std::ranges::range_value_t<T>>
           && coconext::types::LogicType<std::ranges::range_value_t<T>>
 struct std::formatter<T> {
