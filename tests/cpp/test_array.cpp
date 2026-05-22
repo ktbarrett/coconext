@@ -224,7 +224,7 @@ TEST(TestDynArray, SliceOfSliceFlattens) {
     auto s1 = a[{1, 6}];
     auto s2 = s1[{2, 4}];
     static_assert(
-        std::is_same_v<decltype(s2), ArraySlice<DynArray<int>>>,
+        std::is_same_v<decltype(s2), DynArraySlice<DynArray<int>>>,
         "slice-of-slice must flatten"
     );
     EXPECT_EQ(s2[2], 3);
@@ -252,7 +252,7 @@ TEST(TestDynArray, SliceOfSliceDirectionMismatch) {
     EXPECT_THROW((void)(s1[{1, 4}]), std::invalid_argument);
 }
 
-// Same error paths but on const DynArray / const ArraySlice; index() and
+// Same error paths but on const DynArray / const DynArraySlice; index() and
 // slice() are templates, so const and non-const callers instantiate separate
 // specializations and each throw needs to be exercised independently.
 TEST(TestDynArray, IndexingConstOutOfRange) {
@@ -307,7 +307,7 @@ TEST(TestDynArray, ConstructLogicFromRange) {
 TEST(TestDynArray, ConstSliceOverConstArray) {
     DynArray<int> const a({10, 20, 30, 40});
     auto s = a[{1, 2}];
-    static_assert(std::is_same_v<decltype(s), ArraySlice<DynArray<int> const>>);
+    static_assert(std::is_same_v<decltype(s), DynArraySlice<DynArray<int> const>>);
     EXPECT_EQ(s[1], 20);
     static_assert(std::is_same_v<decltype(s[1]), int const&>);
 }
@@ -324,7 +324,7 @@ TEST(TestDynArray, ConstSliceOverMutableArrayMutates) {
     // not restrict element access. The slice's own const-ness only fixes the
     // pointer/range; the underlying ArrayT determines element mutability.
     DynArray<int> a({1, 2, 3, 4});
-    auto const cs = a[{0, 3}];  // const ArraySlice<DynArray<int>>
+    auto const cs = a[{0, 3}];  // const DynArraySlice<DynArray<int>>
     cs[0] = 99;                 // mutation through const slice
     cs = std::vector<int>{10, 20, 30, 40};
     EXPECT_EQ(a[0], 10);
@@ -485,6 +485,96 @@ TEST(TestDynArray, FormatterBitSlice) {
     EXPECT_EQ(std::format("{}", s), "Bit[1 to 2]{1, 0}");
 }
 
+// -- Static slice of DynArray (compile-time-bounded view) -----------------
+
+TEST(TestDynArrayStaticSlice, SliceHappyPath) {
+    DynArray<int> a({10, 20, 30, 40, 50});
+    auto s = a.slice<Range{1, 3}>();
+    static_assert(
+        std::is_same_v<decltype(s), ArraySlice<DynArray<int>, Range{1, 3}>>,
+        "DynArray::slice<R>() must return a static ArraySlice"
+    );
+    static_assert(decltype(s)::static_range == Range{1, Direction::TO, 3});
+    EXPECT_EQ(s.range().length(), 3U);
+    EXPECT_EQ(s[1], 20);
+    EXPECT_EQ(s[3], 40);
+}
+
+TEST(TestDynArrayStaticSlice, SliceMutatesUnderlying) {
+    DynArray<int> a({1, 2, 3, 4, 5});
+    auto s = a.slice<Range{1, 3}>();
+    s[2] = 99;
+    EXPECT_EQ(a[2], 99);
+}
+
+TEST(TestDynArrayStaticSlice, SliceAssignFromRange) {
+    DynArray<int> a({1, 2, 3, 4, 5});
+    auto s = a.slice<Range{1, 3}>();
+    s = std::vector<int>{20, 30, 40};
+    EXPECT_EQ(a[1], 20);
+    EXPECT_EQ(a[3], 40);
+}
+
+TEST(TestDynArrayStaticSlice, SliceAssignFromInitializerList) {
+    DynArray<int> a({1, 2, 3, 4, 5});
+    auto s = a.slice<Range{1, 3}>();
+    s = {7, 8, 9};
+    EXPECT_EQ(a[2], 8);
+}
+
+TEST(TestDynArrayStaticSlice, SliceAssignWrongLength) {
+    DynArray<int> a({1, 2, 3, 4, 5});
+    auto s = a.slice<Range{1, 3}>();
+    EXPECT_THROW((s = std::vector<int>{1, 2, 3, 4}), std::invalid_argument);
+}
+
+TEST(TestDynArrayStaticSlice, SliceOutOfRangeRuntime) {
+    DynArray<int> a({1, 2, 3});
+    EXPECT_THROW((void)(a.slice<Range{99, 100}>()), std::invalid_argument);
+}
+
+TEST(TestDynArrayStaticSlice, SliceConstReturnsConstSlice) {
+    DynArray<int> const a({10, 20, 30, 40});
+    auto s = a.slice<Range{1, 2}>();
+    static_assert(
+        std::is_same_v<decltype(s), ArraySlice<DynArray<int> const, Range{1, 2}>>
+    );
+    static_assert(std::is_same_v<decltype(s[1]), int const&>);
+    EXPECT_EQ(s[1], 20);
+    EXPECT_EQ(s[2], 30);
+}
+
+TEST(TestDynArrayStaticSlice, RuntimeSubSliceFlattensToDyn) {
+    DynArray<int> a({1, 2, 3, 4, 5, 6});
+    auto s = a.slice<Range{1, 4}>();
+    auto sub = s[Range{2, 3}];
+    static_assert(
+        std::is_same_v<decltype(sub), DynArraySlice<DynArray<int>>>,
+        "runtime sub-slice of a static slice must flatten to DynArraySlice"
+    );
+    EXPECT_EQ(sub[2], 3);
+    EXPECT_EQ(sub[3], 4);
+}
+
+TEST(TestDynArrayStaticSlice, StaticSubSliceFlattensToSameOwner) {
+    DynArray<int> a({1, 2, 3, 4, 5, 6, 7, 8});
+    auto s = a.slice<Range{1, 6}>();
+    auto sub = s.slice<Range{2, 4}>();
+    static_assert(
+        std::is_same_v<decltype(sub), ArraySlice<DynArray<int>, Range{2, 4}>>,
+        "static sub-slice flattens to ArraySlice<owner, R>, not nested slices"
+    );
+    EXPECT_EQ(sub[2], 3);
+    EXPECT_EQ(sub[4], 5);
+}
+
+TEST(TestDynArrayStaticSlice, NullSliceBoundsOutsideParentOK) {
+    DynArray<int> a({1, 2, 3, 4, 5});
+    auto s = a.slice<Range{99, Direction::TO, 50}>();
+    EXPECT_EQ(s.range().length(), 0U);
+    EXPECT_EQ(s.begin(), s.end());
+}
+
 // -- Compile-time dispatch -------------------------------------------------
 
 // Single integral arg -> length-based static range starting at 0.
@@ -565,5 +655,46 @@ TEST(TestArray, StaticFromForeignStaticRange) {
     EXPECT_EQ(dst.range(), src.range());
     EXPECT_EQ(dst[1], 100);
     EXPECT_EQ(dst[3], 300);
+}
+
+// -- DynArraySlice::slice<R> (runtime parent, static sub-slice) ------------
+
+TEST(TestDynArraySlice, StaticSliceFlattensToOwner) {
+    DynArray<int> a({10, 20, 30, 40, 50, 60});
+    auto dyn = a[{1, 4}];
+    auto s = dyn.slice<Range{2, 3}>();
+    static_assert(
+        std::is_same_v<decltype(s), ArraySlice<DynArray<int>, Range{2, 3}>>,
+        "static sub-slice of DynArraySlice flattens to ArraySlice<owner, R>"
+    );
+    EXPECT_EQ(s.range().length(), 2U);
+    EXPECT_EQ(s[2], 30);
+    EXPECT_EQ(s[3], 40);
+}
+
+TEST(TestDynArraySlice, StaticSliceMutatesUnderlying) {
+    DynArray<int> a({1, 2, 3, 4, 5});
+    auto dyn = a[{1, 4}];
+    auto s = dyn.slice<Range{2, 3}>();
+    s[2] = 99;
+    EXPECT_EQ(a[2], 99);
+}
+
+TEST(TestDynArraySlice, StaticSliceOutOfRangeRuntime) {
+    DynArray<int> a({1, 2, 3, 4, 5});
+    auto dyn = a[{1, 3}];
+    EXPECT_THROW((void)(dyn.slice<Range{99, 100}>()), std::invalid_argument);
+}
+
+TEST(TestDynArraySlice, StaticSliceConstReturnsConstSlice) {
+    DynArray<int> const a({10, 20, 30, 40, 50});
+    auto dyn = a[{1, 4}];
+    auto s = dyn.slice<Range{2, 3}>();
+    static_assert(
+        std::is_same_v<decltype(s), ArraySlice<DynArray<int> const, Range{2, 3}>>
+    );
+    static_assert(std::is_same_v<decltype(s[2]), int const&>);
+    EXPECT_EQ(s[2], 30);
+    EXPECT_EQ(s[3], 40);
 }
 // LCOV_EXCL_BR_STOP

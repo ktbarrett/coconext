@@ -45,13 +45,12 @@ using DynLogicArray = DynArray<Logic>;
 }  // namespace coconext::types
 
 // One LogicType-constrained formatter for every array type that opts into
-// is_array (DynArray, Array, ArraySlice). The
-// constraint is a conjunction of the generic ArrayType constraint plus a
-// LogicType check on the element type, so it subsumes the generic
-// std::formatter<ArrayType T> in array_base.hpp via C++20 partial
-// specialization ordering with constraints. Result: arrays of Logic/Bit
-// print as "Logic[range]{0, 1, X}" instead of "[range]{Logic{0}, Logic{1},
-// Logic{X}}".
+// is_array (DynArray, Array, DynArraySlice, ArraySlice). The constraint is a
+// conjunction of the generic ArrayType constraint plus a LogicType check on
+// the element type, so it subsumes the generic std::formatter<ArrayType T> in
+// array_base.hpp via C++20 partial specialization ordering with constraints.
+// Result: arrays of Logic/Bit print as "Logic[range]{0, 1, X}" instead of
+// "[range]{Logic{0}, Logic{1}, Logic{X}}".
 template <typename T>
     requires coconext::types::ArrayType<T>
           && coconext::types::detail::Formattable<std::ranges::range_value_t<T>>
