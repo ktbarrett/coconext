@@ -145,13 +145,11 @@ struct is_array : std::false_type {};
 template <typename ArrayT>
 struct is_array<ArraySlice<ArrayT>> : std::true_type {};
 
-// Any array type whose element type is formattable. The single
-// std::formatter<ArrayLike T> partial specialization in std:: below picks
-// up every type that opts in via is_array, eliminating the per-type
-// formatter boilerplate that otherwise scales with each new array family.
+// Any type that opts into the array machinery via is_array. Element-type
+// constraints (formattability, etc.) live on the consumers that need them,
+// not on this concept.
 template <typename T>
-concept ArrayLike =
-    is_array<std::remove_cvref_t<T>>::value && Formattable<std::ranges::range_value_t<T>>;
+concept ArrayLike = is_array<std::remove_cvref_t<T>>::value;
 
 // Walks a RangedSequence, emitting "[range]{elem, elem, ...}" via the formatter
 // for each element type. Used by the generic Array/Slice formatter.
@@ -181,6 +179,7 @@ OutIt format_array(ArrayT const& arr, OutIt out) {
 // "Logic[range]{0, 1, X}" form instead.
 template <typename T>
     requires coconext::types::detail::ArrayLike<T>
+          && coconext::types::detail::Formattable<std::ranges::range_value_t<T>>
 struct std::formatter<T> {
     constexpr auto parse(std::format_parse_context& ctx) {
         auto it = ctx.begin();
