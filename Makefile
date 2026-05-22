@@ -28,7 +28,7 @@ CPP_TESTS_BUILD_DIR ?= build/tests
 
 .PHONY: dev_tests
 dev_tests: dev_build
-	COCOTB_USER_COVERAGE=1 pytest --cov=coconext --cov-branch --cov-report=
+	COCOTB_USER_COVERAGE=1 pytest --cov=coconext --cov-branch --cov-report= tests/
 	cmake -S tests/cpp -B "$(CPP_TESTS_BUILD_DIR)" \
 	    -DCMAKE_PREFIX_PATH="$$(python -c 'import coconext_tools; print(coconext_tools.cmake_prefix_path())')" \
 	    -DCMAKE_EXE_LINKER_FLAGS=--coverage
@@ -43,7 +43,7 @@ COCOTB_DIR_PATH ?= $(PWD)/cocotb
 .PHONY: integration_tests
 integration_tests: dev_build
 	COCOTB_DIR_PATH="$(COCOTB_DIR_PATH)" \
-	pytest --cov=coconext --cov-branch --cov-append --cov-report= tests/integration_tests/*.py
+	pytest --cov=coconext --cov-branch --cov-append --cov-report= tests/integration_tests/
 
 .PHONY: generate_report
 generate_report:
