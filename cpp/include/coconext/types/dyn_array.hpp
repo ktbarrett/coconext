@@ -1,5 +1,5 @@
-#ifndef COCONEXT_DYNAMIC_ARRAY_HPP
-#define COCONEXT_DYNAMIC_ARRAY_HPP
+#ifndef COCONEXT_DYN_ARRAY_HPP
+#define COCONEXT_DYN_ARRAY_HPP
 
 #include <algorithm>
 #include <coconext/types/array_base.hpp>
@@ -18,18 +18,18 @@
 #include <type_traits>
 
 // std::unique_ptr's constexpr support landed in C++23 (P2273R3); under C++20
-// the constexpr keyword on DynamicArray's members is still legal but evaluating
+// the constexpr keyword on DynArray's members is still legal but evaluating
 // those members in a constant expression fails. Gate accordingly.
 #if __cplusplus >= 202302L
-#define COCONEXT_DYNAMIC_ARRAY_CONSTEXPR constexpr
+#define COCONEXT_DYN_ARRAY_CONSTEXPR constexpr
 #else
-#define COCONEXT_DYNAMIC_ARRAY_CONSTEXPR
+#define COCONEXT_DYN_ARRAY_CONSTEXPR
 #endif
 
 namespace coconext::types {
 
 template <typename ValueT>
-class DynamicArray {
+class DynArray {
   public:
     using value_type = ValueT;
     static_assert(!std::is_reference_v<value_type>);
@@ -40,11 +40,11 @@ class DynamicArray {
     using iterator = value_type*;
     using const_iterator = value_type const*;
 
-    constexpr DynamicArray() = delete;  // no default constructor
+    constexpr DynArray() = delete;  // no default constructor
 
-    COCONEXT_DYNAMIC_ARRAY_CONSTEXPR DynamicArray(DynamicArray&& other) noexcept = default;
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArray(DynArray&& other) noexcept = default;
 
-    COCONEXT_DYNAMIC_ARRAY_CONSTEXPR DynamicArray(DynamicArray const& other)
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArray(DynArray const& other)
         : data_(std::make_unique_for_overwrite<value_type[]>(other.range_.length())),
           range_(other.range_) {
         std::ranges::copy(other, data_.get());
@@ -57,7 +57,7 @@ class DynamicArray {
     // so assignment is still sound and the language lets us do this. The
     // const_cast is required because libc++ insists on a non-const pointer
     // for std::destroy_at / std::construct_at.
-    COCONEXT_DYNAMIC_ARRAY_CONSTEXPR DynamicArray& operator=(DynamicArray const& other) {
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArray& operator=(DynArray const& other) {
         if (this != &other) {
             auto buf = std::make_unique_for_overwrite<value_type[]>(other.range_.length());
             std::ranges::copy(other, buf.get());
@@ -68,9 +68,7 @@ class DynamicArray {
         return *this;
     }
 
-    COCONEXT_DYNAMIC_ARRAY_CONSTEXPR DynamicArray& operator=(
-        DynamicArray&& other
-    ) noexcept {
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArray& operator=(DynArray&& other) noexcept {
         if (this != &other) {
             data_ = std::move(other.data_);
             std::destroy_at(const_cast<Range*>(&range_));
@@ -79,16 +77,16 @@ class DynamicArray {
         return *this;
     }
 
-    explicit COCONEXT_DYNAMIC_ARRAY_CONSTEXPR DynamicArray(Range range)
+    explicit COCONEXT_DYN_ARRAY_CONSTEXPR DynArray(Range range)
         : data_(std::make_unique<value_type[]>(range.length())), range_(range) {}
 
-    COCONEXT_DYNAMIC_ARRAY_CONSTEXPR DynamicArray(std::initializer_list<value_type> init)
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArray(std::initializer_list<value_type> init)
         : data_(std::make_unique_for_overwrite<value_type[]>(init.size())),
           range_(init.size()) {
         std::ranges::copy(init, data_.get());
     }
 
-    COCONEXT_DYNAMIC_ARRAY_CONSTEXPR DynamicArray(
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArray(
         std::initializer_list<value_type> init, Range range
     )
         : range_(range) {
@@ -104,8 +102,8 @@ class DynamicArray {
 
     template <std::ranges::sized_range R>
         requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
-                  && (!std::same_as<std::remove_cvref_t<R>, DynamicArray>)
-    explicit COCONEXT_DYNAMIC_ARRAY_CONSTEXPR DynamicArray(R const& obj)
+                  && (!std::same_as<std::remove_cvref_t<R>, DynArray>)
+    explicit COCONEXT_DYN_ARRAY_CONSTEXPR DynArray(R const& obj)
         : data_(std::make_unique_for_overwrite<value_type[]>(std::ranges::size(obj))),
           range_(std::ranges::size(obj)) {
         std::ranges::copy(obj, data_.get());
@@ -113,8 +111,7 @@ class DynamicArray {
 
     template <std::ranges::sized_range R>
         requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
-    COCONEXT_DYNAMIC_ARRAY_CONSTEXPR DynamicArray(R const& obj, Range range)
-        : range_(range) {
+    COCONEXT_DYN_ARRAY_CONSTEXPR DynArray(R const& obj, Range range) : range_(range) {
         if (std::ranges::size(obj) != range.length()) {
             throw std::invalid_argument(
                 "Input of size " + std::to_string(std::ranges::size(obj))
@@ -127,53 +124,51 @@ class DynamicArray {
 
     constexpr Range const& range() const noexcept { return range_; }
 
-    COCONEXT_DYNAMIC_ARRAY_CONSTEXPR reference operator[](index_type idx) {
+    COCONEXT_DYN_ARRAY_CONSTEXPR reference operator[](index_type idx) {
         return access_(*this, idx);
     }
-    COCONEXT_DYNAMIC_ARRAY_CONSTEXPR const_reference operator[](index_type idx) const {
+    COCONEXT_DYN_ARRAY_CONSTEXPR const_reference operator[](index_type idx) const {
         return access_(*this, idx);
     }
-    COCONEXT_DYNAMIC_ARRAY_CONSTEXPR ArraySlice<DynamicArray> operator[](Range r) {
+    COCONEXT_DYN_ARRAY_CONSTEXPR ArraySlice<DynArray> operator[](Range r) {
         detail::subsequence_check(range_, r);
-        return ArraySlice<DynamicArray>(this, r);
+        return ArraySlice<DynArray>(this, r);
     }
-    COCONEXT_DYNAMIC_ARRAY_CONSTEXPR ArraySlice<DynamicArray const> operator[](
-        Range r
-    ) const {
+    COCONEXT_DYN_ARRAY_CONSTEXPR ArraySlice<DynArray const> operator[](Range r) const {
         detail::subsequence_check(range_, r);
-        return ArraySlice<DynamicArray const>(this, r);
+        return ArraySlice<DynArray const>(this, r);
     }
 
-    COCONEXT_DYNAMIC_ARRAY_CONSTEXPR iterator begin() noexcept { return data_.get(); }
-    COCONEXT_DYNAMIC_ARRAY_CONSTEXPR const_iterator begin() const noexcept {
+    COCONEXT_DYN_ARRAY_CONSTEXPR iterator begin() noexcept { return data_.get(); }
+    COCONEXT_DYN_ARRAY_CONSTEXPR const_iterator begin() const noexcept {
         return data_.get();
     }
-    COCONEXT_DYNAMIC_ARRAY_CONSTEXPR iterator end() noexcept {
+    COCONEXT_DYN_ARRAY_CONSTEXPR iterator end() noexcept {
         return data_.get() + range_.length();
     }
-    COCONEXT_DYNAMIC_ARRAY_CONSTEXPR const_iterator end() const noexcept {
+    COCONEXT_DYN_ARRAY_CONSTEXPR const_iterator end() const noexcept {
         return data_.get() + range_.length();
     }
-    COCONEXT_DYNAMIC_ARRAY_CONSTEXPR auto rbegin() noexcept {
+    COCONEXT_DYN_ARRAY_CONSTEXPR auto rbegin() noexcept {
         return std::reverse_iterator(end());
     }
-    COCONEXT_DYNAMIC_ARRAY_CONSTEXPR auto rbegin() const noexcept {
+    COCONEXT_DYN_ARRAY_CONSTEXPR auto rbegin() const noexcept {
         return std::reverse_iterator(end());
     }
-    COCONEXT_DYNAMIC_ARRAY_CONSTEXPR auto rend() noexcept {
+    COCONEXT_DYN_ARRAY_CONSTEXPR auto rend() noexcept {
         return std::reverse_iterator(begin());
     }
-    COCONEXT_DYNAMIC_ARRAY_CONSTEXPR auto rend() const noexcept {
+    COCONEXT_DYN_ARRAY_CONSTEXPR auto rend() const noexcept {
         return std::reverse_iterator(begin());
     }
 
   private:
     // Shared body for the two operator[](index_type) overloads. Self is
-    // deduced as DynamicArray for the non-const caller and DynamicArray
+    // deduced as DynArray for the non-const caller and DynArray
     // const for the const caller; the return type follows Self's constness
     // implicitly (via the public overload's signature).
     template <typename Self>
-    static COCONEXT_DYNAMIC_ARRAY_CONSTEXPR auto& access_(Self& self, index_type idx) {
+    static COCONEXT_DYN_ARRAY_CONSTEXPR auto& access_(Self& self, index_type idx) {
         auto it = find(self.range_, idx);
         if (it == self.range_.end()) {
             throw std::out_of_range("Index out of bounds");
@@ -188,7 +183,7 @@ class DynamicArray {
 template <typename ValueT>
     requires std::equality_comparable<ValueT>
 constexpr bool operator==(
-    DynamicArray<ValueT> const& lhs, DynamicArray<ValueT> const& rhs
+    DynArray<ValueT> const& lhs, DynArray<ValueT> const& rhs
 ) noexcept {
     if (lhs.range() != rhs.range()) {
         return false;
@@ -204,20 +199,20 @@ constexpr bool operator==(
 namespace detail {
 
 template <typename T>
-struct is_array<DynamicArray<T>> : std::true_type {};
+struct is_array<DynArray<T>> : std::true_type {};
 
 }  // namespace detail
 
-static_assert(RangedSequence<DynamicArray<int>>);
-static_assert(RangedSequence<DynamicArray<int> const>);
-static_assert(RangedSequence<ArraySlice<DynamicArray<int>>>);
-static_assert(RangedSequence<ArraySlice<DynamicArray<int> const>>);
+static_assert(RangedSequence<DynArray<int>>);
+static_assert(RangedSequence<DynArray<int> const>);
+static_assert(RangedSequence<ArraySlice<DynArray<int>>>);
+static_assert(RangedSequence<ArraySlice<DynArray<int> const>>);
 
 }  // namespace coconext::types
 
 template <typename T>
-struct std::hash<coconext::types::DynamicArray<T>> {
-    size_t operator()(coconext::types::DynamicArray<T> const& arr) const noexcept {
+struct std::hash<coconext::types::DynArray<T>> {
+    size_t operator()(coconext::types::DynArray<T> const& arr) const noexcept {
         size_t seed = hash<coconext::types::Range>{}(arr.range());
         for (auto const& elem : arr) {
             seed = coconext::types::detail::hash_combine(seed, elem);
@@ -226,6 +221,6 @@ struct std::hash<coconext::types::DynamicArray<T>> {
     }
 };
 
-#undef COCONEXT_DYNAMIC_ARRAY_CONSTEXPR
+#undef COCONEXT_DYN_ARRAY_CONSTEXPR
 
-#endif  // COCONEXT_DYNAMIC_ARRAY_HPP
+#endif  // COCONEXT_DYN_ARRAY_HPP
