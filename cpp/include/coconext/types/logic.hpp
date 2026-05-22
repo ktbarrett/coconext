@@ -375,9 +375,9 @@ struct std::formatter<coconext::types::Bit> {
 
 // Pull in the Logic/Bit-specialized array formatters so any TU that can name
 // Logic or Bit also sees the LogicType-constrained std::formatter
-// specializations for DynamicArray<Logic/Bit>, Array<Logic/Bit, R>, and
+// specializations for DynArray<Logic/Bit>, Array<Logic/Bit, R>, and
 // their ArraySlice views. Without this, a TU that includes only logic.hpp +
-// (dynamic|static)_array.hpp would instantiate the generic Array formatter
+// (dyn_array|array).hpp would instantiate the generic Array formatter
 // for those element types, while a TU with the umbrella header would
 // instantiate the terse LogicType form -- an ODR violation. The recursive
 // include is safe: logic_array.hpp's guarded include of logic.hpp is a no-op

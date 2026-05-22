@@ -137,7 +137,7 @@ namespace detail {
 // Opt-in trait that array types specialize to participate in the generic
 // std::formatter<ArrayLike> below (and in any future array-only generic
 // machinery). Specialized for ArraySlice here; each owning array type
-// (DynamicArray, Array) specializes it in its own header so the trait
+// (DynArray, Array) specializes it in its own header so the trait
 // visibility tracks the type's visibility.
 template <typename T>
 struct is_array : std::false_type {};

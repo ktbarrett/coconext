@@ -2,7 +2,7 @@
 #define COCONEXT_LOGIC_ARRAY_HPP
 
 #include <coconext/types/array.hpp>
-#include <coconext/types/dynamic_array.hpp>
+#include <coconext/types/dyn_array.hpp>
 #include <coconext/types/logic.hpp>
 #include <format>
 
@@ -40,12 +40,12 @@ OutIt format_typed_array(std::string_view type_name, ArrayT const& arr, OutIt ou
 
 namespace coconext::types {
 
-using DynamicLogicArray = DynamicArray<Logic>;
+using DynLogicArray = DynArray<Logic>;
 
 }  // namespace coconext::types
 
 // One LogicType-constrained formatter for every array type that opts into
-// is_array (DynamicArray, Array, ArraySlice). The
+// is_array (DynArray, Array, ArraySlice). The
 // constraint is a conjunction of the generic ArrayLike constraint plus a
 // LogicType check on the element type, so it subsumes the generic
 // std::formatter<ArrayLike T> in array_base.hpp via C++20 partial
