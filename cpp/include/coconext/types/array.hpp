@@ -183,6 +183,15 @@ constexpr bool operator==(Array<T, R> const& lhs, Array<T, R> const& rhs) noexce
 template <typename T, Range R>
 struct is_array<Array<T, R>> : std::true_type {};
 
+}  // namespace detail
+
+template <typename T, Range R>
+struct static_range_of<detail::Array<T, R>> {
+    static constexpr Range value = R;
+};
+
+namespace detail {
+
 static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}>>);
 static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}> const>);
 static_assert(RangedSequence<ArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
