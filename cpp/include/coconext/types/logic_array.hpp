@@ -54,6 +54,7 @@ using DynLogicArray = DynArray<Logic>;
 // Logic{X}}".
 template <typename T>
     requires coconext::types::detail::ArrayLike<T>
+          && coconext::types::detail::Formattable<std::ranges::range_value_t<T>>
           && coconext::types::LogicType<std::ranges::range_value_t<T>>
 struct std::formatter<T> {
     constexpr auto parse(std::format_parse_context& ctx) {
