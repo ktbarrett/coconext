@@ -17,16 +17,16 @@
 
 namespace coconext::types {
 
+// -- Concepts and traits ------------------------------------------------------
+
 namespace detail {
 
 template <typename R>
 concept sized_input_range = std::ranges::sized_range<R> && std::ranges::input_range<R>;
 
-constexpr void subsequence_check(Range parent, Range child) {
-    if (!is_subsequence(parent, child)) {
-        throw std::invalid_argument("Range is not a valid sub-range of the parent");
-    }
-}
+// Opt-in trait that array types.
+template <typename T>
+struct is_array : std::false_type {};
 
 }  // namespace detail
 
@@ -36,6 +36,24 @@ template <typename T>
 concept RangedSequence = std::ranges::random_access_range<T> && requires(T& t) {
     { t.range() } -> std::convertible_to<Range>;
 };
+
+// Any type that opts into the array machinery via is_array. Element-type
+// constraints (formattability, etc.) live on the consumers that need them,
+// not on this concept.
+template <typename T>
+concept ArrayType = detail::is_array<std::remove_cvref_t<T>>::value;
+
+// -- Slice types --------------------------------------------------------------
+
+namespace detail {
+
+constexpr void subsequence_check(Range parent, Range child) {
+    if (!is_subsequence(parent, child)) {
+        throw std::invalid_argument("Range is not a valid sub-range of the parent");
+    }
+}
+
+}  // namespace detail
 
 template <typename ArrayT>
 class ArraySlice;
@@ -134,22 +152,10 @@ class ArraySlice {
 
 namespace detail {
 
-// Opt-in trait that array types specialize to participate in the generic
-// std::formatter<ArrayType> below (and in any future array-only generic
-// machinery). Specialized for ArraySlice here; each owning array type
-// (DynArray, Array) specializes it in its own header so the trait
-// visibility tracks the type's visibility.
-template <typename T>
-struct is_array : std::false_type {};
-
 template <typename ArrayT>
 struct is_array<ArraySlice<ArrayT>> : std::true_type {};
 
-// Any type that opts into the array machinery via is_array. Element-type
-// constraints (formattability, etc.) live on the consumers that need them,
-// not on this concept.
-template <typename T>
-concept ArrayType = is_array<std::remove_cvref_t<T>>::value;
+// -- Formatter ----------------------------------------------------------------
 
 // Walks a RangedSequence, emitting "[range]{elem, elem, ...}" via the formatter
 // for each element type. Used by the generic Array/Slice formatter.
@@ -178,7 +184,7 @@ OutIt format_array(ArrayT const& arr, OutIt out) {
 // arrays of Logic/Bit (via constraint conjunction) and produces the terse
 // "Logic[range]{0, 1, X}" form instead.
 template <typename T>
-    requires coconext::types::detail::ArrayType<T>
+    requires coconext::types::ArrayType<T>
           && coconext::types::detail::Formattable<std::ranges::range_value_t<T>>
 struct std::formatter<T> {
     constexpr auto parse(std::format_parse_context& ctx) {
