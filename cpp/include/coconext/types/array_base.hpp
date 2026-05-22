@@ -37,12 +37,19 @@ concept RangedSequence = std::ranges::random_access_range<T> && requires(T& t) {
     { t.range() } -> std::convertible_to<Range>;
 };
 
-// A RangedSequence whose range is known at compile time, exposed as a static
-// member. Lets generic code fold offsets into the owner against a constexpr
-// range instead of recomputing them at runtime via find()/distance().
+// Customization point. A type opts into StaticRangedSequence by specializing
+// this trait so that ::value is a Range constant expression. Specialize this
+// instead of requiring an intrusive member, so external/wrapper types can
+// participate without modification.
+template <typename T>
+struct static_range_of;
+
+// A RangedSequence whose range is known at compile time, exposed via the
+// static_range_of trait. Lets generic code fold offsets into the owner against
+// a constexpr range instead of recomputing them at runtime via find()/distance().
 template <typename T>
 concept StaticRangedSequence = RangedSequence<T> && requires {
-    { std::remove_cvref_t<T>::static_range } -> std::convertible_to<Range>;
+    { static_range_of<std::remove_cvref_t<T>>::value } -> std::convertible_to<Range>;
 };
 
 // Any type that opts into the array machinery via is_array. Element-type
