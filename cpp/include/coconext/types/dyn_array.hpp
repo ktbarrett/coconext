@@ -208,6 +208,10 @@ static_assert(RangedSequence<DynArray<int> const>);
 static_assert(RangedSequence<ArraySlice<DynArray<int>>>);
 static_assert(RangedSequence<ArraySlice<DynArray<int> const>>);
 
+// Neither DynArray nor a runtime-ranged slice exposes static_range.
+static_assert(!StaticRangedSequence<DynArray<int>>);
+static_assert(!StaticRangedSequence<ArraySlice<DynArray<int>>>);
+
 }  // namespace coconext::types
 
 template <typename T>

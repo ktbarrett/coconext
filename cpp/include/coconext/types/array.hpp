@@ -188,6 +188,12 @@ static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}> const>);
 static_assert(RangedSequence<ArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
 static_assert(RangedSequence<ArraySlice<Array<int, Range{0, Direction::TO, 7}> const>>);
 
+// Array's range is part of its type, so it matches; a runtime slice (even
+// over a static Array) does not.
+static_assert(StaticRangedSequence<Array<int, Range{0, Direction::TO, 7}>>);
+static_assert(StaticRangedSequence<Array<int, Range{0, Direction::TO, 7}> const>);
+static_assert(!StaticRangedSequence<ArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
+
 }  // namespace detail
 
 // Static-bounded array. Range is built from the trailing NTTPs:
