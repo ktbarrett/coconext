@@ -135,7 +135,7 @@ class ArraySlice {
 namespace detail {
 
 // Opt-in trait that array types specialize to participate in the generic
-// std::formatter<ArrayLike> below (and in any future array-only generic
+// std::formatter<ArrayType> below (and in any future array-only generic
 // machinery). Specialized for ArraySlice here; each owning array type
 // (DynArray, Array) specializes it in its own header so the trait
 // visibility tracks the type's visibility.
@@ -149,7 +149,7 @@ struct is_array<ArraySlice<ArrayT>> : std::true_type {};
 // constraints (formattability, etc.) live on the consumers that need them,
 // not on this concept.
 template <typename T>
-concept ArrayLike = is_array<std::remove_cvref_t<T>>::value;
+concept ArrayType = is_array<std::remove_cvref_t<T>>::value;
 
 // Walks a RangedSequence, emitting "[range]{elem, elem, ...}" via the formatter
 // for each element type. Used by the generic Array/Slice formatter.
@@ -178,13 +178,13 @@ OutIt format_array(ArrayT const& arr, OutIt out) {
 // arrays of Logic/Bit (via constraint conjunction) and produces the terse
 // "Logic[range]{0, 1, X}" form instead.
 template <typename T>
-    requires coconext::types::detail::ArrayLike<T>
+    requires coconext::types::detail::ArrayType<T>
           && coconext::types::detail::Formattable<std::ranges::range_value_t<T>>
 struct std::formatter<T> {
     constexpr auto parse(std::format_parse_context& ctx) {
         auto it = ctx.begin();
         if (it != ctx.end() && *it != '}') {
-            throw std::format_error("ArrayLike formatter takes no format spec");
+            throw std::format_error("ArrayType formatter takes no format spec");
         }
         return it;
     }
