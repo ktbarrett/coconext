@@ -37,6 +37,14 @@ concept RangedSequence = std::ranges::random_access_range<T> && requires(T& t) {
     { t.range() } -> std::convertible_to<Range>;
 };
 
+// A RangedSequence whose range is known at compile time, exposed as a static
+// member. Lets generic code fold offsets into the owner against a constexpr
+// range instead of recomputing them at runtime via find()/distance().
+template <typename T>
+concept StaticRangedSequence = RangedSequence<T> && requires {
+    { std::remove_cvref_t<T>::static_range } -> std::convertible_to<Range>;
+};
+
 // Any type that opts into the array machinery via is_array. Element-type
 // constraints (formattability, etc.) live on the consumers that need them,
 // not on this concept.
