@@ -1,14 +1,50 @@
 // LCOV_EXCL_BR_START -- gtest macros generate noisy uncovered branches
 #include <gtest/gtest.h>
 
+#include <array>
 #include <coconext/types.hpp>
 #include <format>
 #include <functional>
 #include <numeric>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
 #include <vector>
+
+// -- Post-hoc adaptation of foreign types via range_of / static_range_of ---
+//
+// Demonstrates the customization points: any type can participate in
+// RangedSequence / StaticRangedSequence without modifying its definition.
+// For static-range adapters (std::array, fixed-extent std::span), only
+// static_range_of is specialized; the default range_of partial specialization
+// picks it up automatically.
+
+namespace coconext::types {
+
+template <typename T, size_t N>
+struct static_range_of<std::array<T, N>> {
+    static constexpr Range value = Range(N);
+};
+
+template <typename T, size_t N>
+struct static_range_of<std::span<T, N>> {
+    static constexpr Range value = Range(N);
+};
+
+template <typename T, typename A>
+struct range_of<std::vector<T, A>> {
+    static constexpr Range get(std::vector<T, A> const& v) { return Range(v.size()); }
+};
+
+template <typename C, typename Tr, typename A>
+struct range_of<std::basic_string<C, Tr, A>> {
+    static constexpr Range get(std::basic_string<C, Tr, A> const& s) {
+        return Range(s.size());
+    }
+};
+
+}  // namespace coconext::types
 
 using namespace coconext::types;
 
@@ -696,5 +732,51 @@ TEST(TestDynArraySlice, StaticSliceConstReturnsConstSlice) {
     static_assert(std::is_same_v<decltype(s[2]), int const&>);
     EXPECT_EQ(s[2], 30);
     EXPECT_EQ(s[3], 40);
+}
+
+// -- range_of / static_range_of customization-point adaptation -------------
+
+// std::array<T, N>: size is part of the type, so only static_range_of is
+// specialized; range_of falls through to it.
+static_assert(RangedSequence<std::array<int, 8>>);
+static_assert(StaticRangedSequence<std::array<int, 8>>);
+static_assert(static_range_of<std::array<int, 8>>::value == Range(8));
+
+TEST(TestRangeOf, AdaptStdArray) {
+    std::array<int, 4> a{10, 20, 30, 40};
+    EXPECT_EQ((range_of<std::array<int, 4>>::get(a)), Range(4));
+}
+
+// std::span<T, Extent>: the fixed-extent form carries Extent in its type, so
+// it also models StaticRangedSequence via static_range_of alone.
+static_assert(RangedSequence<std::span<int, 5>>);
+static_assert(StaticRangedSequence<std::span<int, 5>>);
+static_assert(static_range_of<std::span<int, 5>>::value == Range(5));
+
+TEST(TestRangeOf, AdaptStdSpanFixedExtent) {
+    int data[6] = {1, 2, 3, 4, 5, 6};
+    std::span<int, 6> s{data};
+    EXPECT_EQ((range_of<std::span<int, 6>>::get(s)), Range(6));
+}
+
+// std::vector<T>: size is runtime; specialize range_of only. The type must
+// NOT satisfy StaticRangedSequence.
+static_assert(RangedSequence<std::vector<int>>);
+static_assert(!StaticRangedSequence<std::vector<int>>);
+
+TEST(TestRangeOf, AdaptStdVector) {
+    std::vector<int> v{10, 20, 30};
+    EXPECT_EQ((range_of<std::vector<int>>::get(v)), Range(3));
+    v.push_back(40);
+    EXPECT_EQ((range_of<std::vector<int>>::get(v)), Range(4));
+}
+
+// std::string: same shape as std::vector -- runtime size, range_of only.
+static_assert(RangedSequence<std::string>);
+static_assert(!StaticRangedSequence<std::string>);
+
+TEST(TestRangeOf, AdaptStdString) {
+    std::string s = "hello";
+    EXPECT_EQ((range_of<std::string>::get(s)), Range(5));
 }
 // LCOV_EXCL_BR_STOP
