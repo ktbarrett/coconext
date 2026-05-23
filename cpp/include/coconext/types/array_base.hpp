@@ -91,19 +91,32 @@ class DynArraySlice {
     constexpr DynArraySlice() = delete;
     constexpr DynArraySlice(DynArraySlice const&) = default;
     constexpr DynArraySlice(DynArraySlice&&) = default;
-    constexpr DynArraySlice(ArrayT* arr, Range range) noexcept : arr_(arr), range_(range) {}
+    // begin_ is computed once at construction by walking the owner's range to
+    // locate range.left. Subsequent begin() / end() / operator[] calls are
+    // O(1) and avoid re-projecting on every access. Slice constructors are
+    // expected to have already validated `range` against the owner (via
+    // detail::subsequence_check or operator[](Range r)); we don't re-check.
+    constexpr DynArraySlice(ArrayT* arr, Range range) noexcept
+        : arr_(arr), range_(range), begin_(compute_begin(arr, range)) {}
 
     constexpr Range const& range() const noexcept { return range_; }
 
     // Element access bounds-checks against this slice's range_, not the
     // owner's range. An idx that's valid in the owner but outside the slice
-    // is out-of-range.
+    // is out-of-range. Uses the cached begin_ + direct arithmetic instead of
+    // re-projecting through find()/distance() on every call.
     constexpr reference operator[](index_type idx) const {
-        auto it = find(range_, idx);
-        if (it == range_.end()) {
-            throw std::out_of_range("Index out of bounds");
+        if (range_.direction == Direction::TO) {
+            if (idx < range_.left || idx > range_.right) {
+                throw std::out_of_range("Index out of bounds");
+            }
+            return *(begin_ + (idx - range_.left));
+        } else {
+            if (idx > range_.left || idx < range_.right) {
+                throw std::out_of_range("Index out of bounds");
+            }
+            return *(begin_ + (range_.left - idx));
         }
-        return *(begin() + std::distance(range_.begin(), it));
     }
     // Sub-slicing flattens: returns a new DynArraySlice over the same
     // underlying array with a new range. Validity is checked against the
@@ -151,27 +164,30 @@ class DynArraySlice {
         return *this;
     }
 
-    constexpr iterator begin() const noexcept {
-        // Null slices may carry bounds outside the parent's range (the
-        // validity rule allows that). Pin them to the parent's begin so
-        // begin()/end() form a well-formed empty iterator pair.
-        if (range_.length() == 0) {
-            return arr_->begin();
-        }
-        auto start = find(arr_->range(), range_.left);
-        assert(
-            start != arr_->range().end()
-            && "slice range not a sub-range of the owner's range"
-        );
-        return arr_->begin() + std::distance(arr_->range().begin(), start);
-    }
-    constexpr iterator end() const noexcept { return begin() + range_.length(); }
+    constexpr iterator begin() const noexcept { return begin_; }
+    constexpr iterator end() const noexcept { return begin_ + range_.length(); }
     constexpr auto rbegin() const noexcept { return std::reverse_iterator(end()); }
     constexpr auto rend() const noexcept { return std::reverse_iterator(begin()); }
 
   private:
+    static constexpr iterator compute_begin(ArrayT* arr, Range range) noexcept {
+        // Null slices may carry bounds outside the parent's range (the
+        // validity rule allows that). Pin them to the parent's begin so
+        // begin()/end() form a well-formed empty iterator pair.
+        if (range.length() == 0) {
+            return arr->begin();
+        }
+        auto start = find(arr->range(), range.left);
+        assert(
+            start != arr->range().end()
+            && "slice range not a sub-range of the owner's range"
+        );
+        return arr->begin() + std::distance(arr->range().begin(), start);
+    }
+
     ArrayT* arr_;
     Range range_;
+    iterator begin_;
 };
 
 // Compile-time-bounded counterpart to DynArraySlice. R is part of the type,
