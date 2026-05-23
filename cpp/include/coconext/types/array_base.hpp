@@ -32,6 +32,11 @@ concept has_range_member = requires(T const& t) {
     { t.range() } -> std::convertible_to<Range>;
 };
 
+template <typename T>
+concept has_static_range_member = requires {
+    { T::static_range } -> std::convertible_to<Range>;
+};
+
 }  // namespace detail
 
 // Customization point for the runtime range of a sequence. Specialize this
@@ -49,9 +54,16 @@ struct range_of<T> {
 
 // Customization point for the compile-time range. Specialize so that ::value
 // is a Range constant expression. Non-intrusive: external/wrapper types can
-// participate without modification.
+// participate without modification. A default partial specialization below
+// picks up types that expose a `static constexpr Range static_range` member,
+// so our own array types participate without writing one.
 template <typename T>
 struct static_range_of;
+
+template <detail::has_static_range_member T>
+struct static_range_of<T> {
+    static constexpr Range value = T::static_range;
+};
 
 // Fallback range_of for types that opt into static_range_of but lack a
 // .range() member (e.g. std::array<T, N>). Picks up the compile-time range
@@ -330,11 +342,6 @@ class ArraySlice {
 
   private:
     ArrayT* arr_;
-};
-
-template <typename ArrayT, Range R>
-struct static_range_of<ArraySlice<ArrayT, R>> {
-    static constexpr Range value = R;
 };
 
 namespace detail {
