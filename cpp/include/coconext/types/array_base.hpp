@@ -153,7 +153,7 @@ class DynArraySlice {
     template <typename T>
         requires(!std::is_const_v<ArrayT>) && std::convertible_to<T, value_type>
     constexpr DynArraySlice const& operator=(std::initializer_list<T> init) const {
-        if (init.size() != static_cast<size_t>(range_.length())) {
+        if (init.size() != range_.length()) {
             throw std::invalid_argument(
                 "Initializer list of size " + std::to_string(init.size())
                 + " cannot be assigned to array slice of length "
