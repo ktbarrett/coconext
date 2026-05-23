@@ -6,7 +6,6 @@
 #include <coconext/types/concepts.hpp>
 #include <coconext/types/range.hpp>
 #include <concepts>
-#include <cstddef>
 #include <format>
 #include <initializer_list>
 #include <iterator>
@@ -28,21 +27,50 @@ concept sized_input_range = std::ranges::sized_range<R> && std::ranges::input_ra
 template <typename T>
 struct is_array : std::false_type {};
 
-}  // namespace detail
-
-// The minimum a type must expose so that index() and slice() can be
-// implemented for it externally.
 template <typename T>
-concept RangedSequence = std::ranges::random_access_range<T> && requires(T& t) {
+concept has_range_member = requires(T const& t) {
     { t.range() } -> std::convertible_to<Range>;
 };
 
-// Customization point. A type opts into StaticRangedSequence by specializing
-// this trait so that ::value is a Range constant expression. Specialize this
-// instead of requiring an intrusive member, so external/wrapper types can
+}  // namespace detail
+
+// Customization point for the runtime range of a sequence. Specialize this
+// for external/wrapper types that can't or don't expose t.range() directly
+// (e.g. std::vector, std::span, std::string). A default partial specialization
+// below picks up types that already provide t.range(), so our own array types
+// participate without writing one.
+template <typename T>
+struct range_of;
+
+template <detail::has_range_member T>
+struct range_of<T> {
+    static constexpr Range get(T const& t) { return t.range(); }
+};
+
+// Customization point for the compile-time range. Specialize so that ::value
+// is a Range constant expression. Non-intrusive: external/wrapper types can
 // participate without modification.
 template <typename T>
 struct static_range_of;
+
+// Fallback range_of for types that opt into static_range_of but lack a
+// .range() member (e.g. std::array<T, N>). Picks up the compile-time range
+// so a single static_range_of specialization is enough.
+template <typename T>
+    requires(!detail::has_range_member<T>) && requires {
+        { static_range_of<T>::value } -> std::convertible_to<Range>;
+    }
+struct range_of<T> {
+    static constexpr Range get(T const&) { return static_range_of<T>::value; }
+};
+
+// The minimum a type must expose so that index() and slice() can be
+// implemented for it externally. Satisfied either via an intrusive .range()
+// member or via a range_of specialization.
+template <typename T>
+concept RangedSequence = std::ranges::random_access_range<T> && requires(T const& t) {
+    { range_of<std::remove_cvref_t<T>>::get(t) } -> std::convertible_to<Range>;
+};
 
 // A RangedSequence whose range is known at compile time, exposed via the
 // static_range_of trait. Lets generic code fold offsets into the owner against
@@ -324,7 +352,7 @@ struct is_array<ArraySlice<ArrayT, R>> : std::true_type {};
 template <RangedSequence ArrayT, typename OutIt>
     requires Formattable<std::ranges::range_value_t<ArrayT>>
 OutIt format_array(ArrayT const& arr, OutIt out) {
-    out = std::format_to(out, "{}{{", arr.range());
+    out = std::format_to(out, "{}{{", range_of<std::remove_cvref_t<ArrayT>>::get(arr));
     bool first = true;
     for (auto const& elem : arr) {
         if (!first) {
