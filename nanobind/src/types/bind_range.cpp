@@ -138,6 +138,58 @@ void register_range(nb::module_& m) {
             nb::arg().noconvert()
         )
         .def(
+            "index",
+            [](Range const& self, int32_t value, int32_t start) {
+                auto len = static_cast<int32_t>(self.length());
+
+                start = std::clamp(start, int32_t(0), len);
+
+                if (start >= len) {
+                    throw nb::value_error("Value not found in range");
+                }
+
+                auto sliced = self(start, len);
+
+                auto it = find(sliced, value);
+
+                if (it == sliced.end()) {
+                    throw nb::value_error("Value not found in range");
+                }
+
+                return start + std::distance(sliced.begin(), it);
+            },
+            nb::arg().noconvert(),
+            nb::arg().noconvert()
+        )
+        .def(
+            "index",
+            [](Range const& self, int32_t value, int32_t start, int32_t stop) {
+                auto len = static_cast<int32_t>(self.length());
+
+                // Python-compatible clamping
+                start = std::clamp(start, int32_t(0), len);
+                stop = std::clamp(stop, int32_t(0), len);
+
+                // Empty search region
+                if (start >= stop) {
+                    throw nb::value_error("Value not found in range");
+                }
+
+                auto sliced = self(start, stop);
+
+                auto it = find(sliced, value);
+
+                if (it == sliced.end()) {
+                    throw nb::value_error("Value not found in range");
+                }
+
+                return start + std::distance(sliced.begin(), it);
+            },
+            nb::arg().noconvert(),
+            nb::arg().noconvert(),
+            nb::arg().noconvert()
+        )
+        .def(
             "count",
             [](Range const& self, int32_t value) noexcept {
                 // TODO Handle the fact that non-integer values should return 0

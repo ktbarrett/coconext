@@ -1,3 +1,8 @@
+.PHONY: clean_coverage
+clean_coverage:
+	find . -name ".coverage*" -delete
+	find . -name "*.gcda" -delete
+
 # Defaults to dev so environments are shifting back and forth locally,
 # but set to "tests" in CI to avoid installing unnecessary dependencies.
 DEV_BUILD_DEP_GROUP ?= dev
@@ -23,24 +28,29 @@ CPP_TESTS_BUILD_DIR ?= build/tests
 
 .PHONY: dev_tests
 dev_tests: dev_build
-	find . -name ".coverage" -delete
-	COCOTB_USER_COVERAGE=1 pytest --cov=coconext --cov-report=
+	COCOTB_USER_COVERAGE=1 pytest --cov=coconext --cov-branch --cov-report= tests/
 	cmake -S tests/cpp -B "$(CPP_TESTS_BUILD_DIR)" \
 	    -DCMAKE_PREFIX_PATH="$$(python -c 'import coconext_tools; print(coconext_tools.cmake_prefix_path())')" \
 	    -DCMAKE_EXE_LINKER_FLAGS=--coverage
 	cmake --build "$(CPP_TESTS_BUILD_DIR)"
 	ctest --output-on-failure --test-dir "$(CPP_TESTS_BUILD_DIR)"
-	find . -name ".coverage" | xargs coverage combine
+	find . -name ".coverage*" | xargs coverage combine
+
+# explicitly specify cocotb directory location on local
+# CI clones cocotb in this directory hence it defaults to point to ./cocotb/
+COCOTB_DIR_PATH ?= $(PWD)/cocotb
+
+.PHONY: integration_tests
+integration_tests: dev_build
+	COCOTB_DIR_PATH="$(COCOTB_DIR_PATH)" \
+	pytest --cov=coconext --cov-branch --cov-append --cov-report= tests/integration_tests/
+
+.PHONY: generate_report
+generate_report:
 	coverage xml -o .python-coverage.xml
 	gcovr build/ --gcov-executable='$(GCOV_EXECUTABLE)' --cobertura -o .cpp-coverage.xml
 	coverage report
 	gcovr build/ --gcov-executable='$(GCOV_EXECUTABLE)' --print-summary
-
-.PHONY: integration_tests
-COCOTB_DIR_PATH ?= $(PWD)/cocotb
-integration_tests:
-	COCOTB_DIR_PATH="$(COCOTB_DIR_PATH)" \
-	pytest tests/integration_tests/test_patched_cocotb.py
 
 .PHONY: clean
 clean:
