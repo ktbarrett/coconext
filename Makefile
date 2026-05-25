@@ -30,7 +30,7 @@ CPP_TESTS_BUILD_DIR ?= build/tests
 dev_tests: dev_build
 	COCOTB_USER_COVERAGE=1 pytest --cov=coconext --cov-branch --cov-report= tests/
 	cmake -S tests/cpp -B "$(CPP_TESTS_BUILD_DIR)" \
-	    -DCMAKE_PREFIX_PATH="$$(python -c 'import coconext_tools; print(coconext_tools.cmake_prefix_path())')" \
+	    -DCMAKE_PREFIX_PATH="$$(coconext-config --cmake-prefix)" \
 	    -DCMAKE_EXE_LINKER_FLAGS=--coverage
 	cmake --build "$(CPP_TESTS_BUILD_DIR)"
 	ctest --output-on-failure --test-dir "$(CPP_TESTS_BUILD_DIR)"

@@ -34,6 +34,9 @@ Repository = "https://github.com/ktbarrett/coconext.git"
 provider = "scikit_build_core.metadata.regex"
 input = "python/coconext/__init__.py"
 
+[project.scripts]
+coconext-config = "coconext_tools.config:main"
+
 [tool.ruff.lint]
 select = [
     "E",    # pycodestyle errors
