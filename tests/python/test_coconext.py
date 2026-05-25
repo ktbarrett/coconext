@@ -7,6 +7,9 @@ from typing import Any
 import pytest
 from cocotb_tools.runner import Runner, get_runner
 
+# required for pytest
+import coconext  # noqa: F401
+
 
 @pytest.fixture
 def runner() -> Runner:
