@@ -1,7 +1,6 @@
-.PHONY: clean_coverage
-clean_coverage:
-	find . -name ".coverage*" -delete
-	find . -name "*.gcda" -delete
+# explicitly specify cocotb directory location while testing locally
+# CI clones cocotb in this directory hence it defaults to point to ./cocotb/
+COCOTB_DIR_PATH ?= $(PWD)/cocotb
 
 # Defaults to dev so environments are shifting back and forth locally,
 # but set to "tests" in CI to avoid installing unnecessary dependencies.
@@ -27,8 +26,8 @@ GCOV_EXECUTABLE ?= gcov
 CPP_TESTS_BUILD_DIR ?= build/tests
 
 .PHONY: dev_tests
-dev_tests: dev_build
-	COCOTB_USER_COVERAGE=1 pytest --cov=coconext --cov-branch --cov-report= tests/
+dev_tests:
+	COCOTB_USER_COVERAGE=1 pytest --cov=coconext --cov-branch --cov-report= tests/python/
 	cmake -S tests/cpp -B "$(CPP_TESTS_BUILD_DIR)" \
 	    -DCMAKE_PREFIX_PATH="$$(coconext-config --cmake-prefix)" \
 	    -DCMAKE_EXE_LINKER_FLAGS=--coverage
@@ -36,12 +35,8 @@ dev_tests: dev_build
 	ctest --output-on-failure --test-dir "$(CPP_TESTS_BUILD_DIR)"
 	find . -name ".coverage*" | xargs coverage combine
 
-# explicitly specify cocotb directory location on local
-# CI clones cocotb in this directory hence it defaults to point to ./cocotb/
-COCOTB_DIR_PATH ?= $(PWD)/cocotb
-
 .PHONY: integration_tests
-integration_tests: dev_build
+integration_tests:
 	COCOTB_DIR_PATH="$(COCOTB_DIR_PATH)" \
 	pytest --cov=coconext --cov-branch --cov-append --cov-report= tests/integration_tests/
 
@@ -63,3 +58,11 @@ docs:
 	uv sync --dev --no-install-project
 	sphinx-build docs/ '$(DOCS_OUTDIR)/' --color -b html
 	@echo "Documentation built at $(DOCS_OUTDIR)/index.html"
+
+
+.PHONY: ci_tests
+ci_tests:
+	$(MAKE) dev_build
+	$(MAKE) dev_tests
+	$(MAKE) integration_tests
+	$(MAKE) generate_report
