@@ -26,7 +26,7 @@ GCOV_EXECUTABLE ?= gcov
 CPP_TESTS_BUILD_DIR ?= build/tests
 
 .PHONY: dev_tests
-dev_tests:
+dev_tests: dev_build
 	COCOTB_USER_COVERAGE=1 pytest --cov=coconext --cov-branch --cov-report= tests/python/
 	cmake -S tests/cpp -B "$(CPP_TESTS_BUILD_DIR)" \
 	    -DCMAKE_PREFIX_PATH="$$(coconext-config --cmake-prefix)" \
@@ -36,7 +36,7 @@ dev_tests:
 	find . -name ".coverage*" | xargs coverage combine
 
 .PHONY: integration_tests
-integration_tests:
+integration_tests: dev_build
 	COCOTB_DIR_PATH="$(COCOTB_DIR_PATH)" \
 	pytest --cov=coconext --cov-branch --cov-append --cov-report= tests/integration_tests/
 
@@ -58,11 +58,3 @@ docs:
 	uv sync --dev --no-install-project
 	sphinx-build docs/ '$(DOCS_OUTDIR)/' --color -b html
 	@echo "Documentation built at $(DOCS_OUTDIR)/index.html"
-
-
-.PHONY: ci_tests
-ci_tests:
-	$(MAKE) dev_build
-	$(MAKE) dev_tests
-	$(MAKE) integration_tests
-	$(MAKE) generate_report
