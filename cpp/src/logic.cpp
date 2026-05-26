@@ -1,4 +1,5 @@
 #include <coconext/random.hpp>
+#include <coconext/types/int_base.hpp>
 #include <coconext/types/logic.hpp>
 #include <random>
 

@@ -13,4 +13,4 @@ set_target_properties(coconext PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
 install(TARGETS coconext
     EXPORT coconextTargets
     ARCHIVE DESTINATION coconext/lib)
-install(DIRECTORY include/coconext DESTINATION coconext/include)
+install(DIRECTORY include/ DESTINATION coconext/include)
