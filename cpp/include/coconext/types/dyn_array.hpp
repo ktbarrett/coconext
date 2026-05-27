@@ -8,7 +8,6 @@
 #include <coconext/types/range.hpp>
 #include <concepts>
 #include <cstddef>
-#include <format>
 #include <initializer_list>
 #include <iterator>
 #include <memory>
@@ -50,20 +49,12 @@ class DynArray {
         std::ranges::copy(other, data_.get());
     }
 
-    // Weird but valid. const on members is semantically different than const on
-    // the whole object. Assignment is not valid on const variables (storage),
-    // but const on members (not storage, semantics) really just describes the
-    // behavioral intent and derived constness when operating on those fields,
-    // so assignment is still sound and the language lets us do this. The
-    // const_cast is required because libc++ insists on a non-const pointer
-    // for std::destroy_at / std::construct_at.
     COCONEXT_DYN_ARRAY_CONSTEXPR DynArray& operator=(DynArray const& other) {
         if (this != &other) {
             auto buf = std::make_unique_for_overwrite<value_type[]>(other.range_.length());
             std::ranges::copy(other, buf.get());
             data_ = std::move(buf);
-            std::destroy_at(const_cast<Range*>(&range_));
-            std::construct_at(const_cast<Range*>(&range_), other.range_);
+            range_ = other.range_;
         }
         return *this;
     }
@@ -71,8 +62,7 @@ class DynArray {
     COCONEXT_DYN_ARRAY_CONSTEXPR DynArray& operator=(DynArray&& other) noexcept {
         if (this != &other) {
             data_ = std::move(other.data_);
-            std::destroy_at(const_cast<Range*>(&range_));
-            std::construct_at(const_cast<Range*>(&range_), other.range_);
+            range_ = other.range_;
         }
         return *this;
     }
@@ -191,8 +181,13 @@ class DynArray {
     }
 
     std::unique_ptr<value_type[]> data_;
-    Range const range_;
+    Range range_;
 };
+
+static_assert(
+    std::is_same_v<decltype(std::declval<DynArray<int>>().range()), Range const&>,
+    "DynArray::range() must return Range const& to preserve the range/storage invariant"
+);
 
 template <typename ValueT>
     requires std::equality_comparable<ValueT>
