@@ -76,19 +76,19 @@ struct range_of<T> {
     static constexpr Range get(T const&) { return static_range_of<T>::value; }
 };
 
-// The minimum a type must expose so that index() and slice() can be
-// implemented for it externally. Satisfied either via an intrusive .range()
-// member or via a range_of specialization.
+// A random-access range with a runtime range (via range_of).
+// Designed to match any Array-like type and support adaption of STL containers such
+// as std::vector and std::string.
 template <typename T>
 concept RangedSequence = std::ranges::random_access_range<T> && requires(T const& t) {
     { range_of<std::remove_cvref_t<T>>::get(t) } -> std::convertible_to<Range>;
 };
 
-// A RangedSequence whose range is known at compile time, exposed via the
-// static_range_of trait. Lets generic code fold offsets into the owner against
-// a constexpr range instead of recomputing them at runtime via find()/distance().
+// A random-access range with a compile-time range (via static_range_of).
+// Designed to match any Array-like type and support adaption of STL containers with
+// compile-time bounds such as std::array and fixed-extent std::span.
 template <typename T>
-concept StaticRangedSequence = RangedSequence<T> && requires {
+concept StaticRangedSequence = std::ranges::random_access_range<T> && requires {
     { static_range_of<std::remove_cvref_t<T>>::value } -> std::convertible_to<Range>;
 };
 
