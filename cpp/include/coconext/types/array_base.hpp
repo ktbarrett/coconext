@@ -39,19 +39,6 @@ concept has_static_range_member = requires {
 
 }  // namespace detail
 
-// Customization point for the runtime range of a sequence. Specialize this
-// for external/wrapper types that can't or don't expose t.range() directly
-// (e.g. std::vector, std::span, std::string). A default partial specialization
-// below picks up types that already provide t.range(), so our own array types
-// participate without writing one.
-template <typename T>
-struct range_of;
-
-template <detail::has_range_member T>
-struct range_of<T> {
-    static constexpr Range get(T const& t) { return t.range(); }
-};
-
 // Customization point for the compile-time range. Specialize so that ::value
 // is a Range constant expression. Non-intrusive: external/wrapper types can
 // participate without modification. A default partial specialization below
@@ -65,30 +52,44 @@ struct static_range_of<T> {
     static constexpr Range value = T::static_range;
 };
 
-// Fallback range_of for types that opt into static_range_of but lack a
-// .range() member (e.g. std::array<T, N>). Picks up the compile-time range
-// so a single static_range_of specialization is enough.
+// Customization point for the runtime range of a sequence. Specialize this
+// for external/wrapper types that can't or don't expose t.range() directly
+// (e.g. std::vector, std::string). The default partial specialization below
+// picks up any type that has either a t.range() member or a static_range_of
+// specialization, so our own array types and static-range adapters (e.g.
+// std::array, fixed-extent std::span) participate without writing one.
 template <typename T>
-    requires(!detail::has_range_member<T>) && requires {
+struct range_of;
+
+template <typename T>
+    requires detail::has_range_member<T> || requires {
         { static_range_of<T>::value } -> std::convertible_to<Range>;
     }
 struct range_of<T> {
-    static constexpr Range get(T const&) { return static_range_of<T>::value; }
+    static constexpr Range get(T const& t) {
+        if constexpr (detail::has_range_member<T>) {
+            return t.range();
+        } else {
+            return static_range_of<T>::value;
+        }
+    }
 };
 
-// The minimum a type must expose so that index() and slice() can be
-// implemented for it externally. Satisfied either via an intrusive .range()
-// member or via a range_of specialization.
+// A random-access range with a runtime range (via range_of).
+// Designed to match any Array-like type and support adaption of STL containers such
+// as std::vector and std::string.
 template <typename T>
 concept RangedSequence = std::ranges::random_access_range<T> && requires(T const& t) {
     { range_of<std::remove_cvref_t<T>>::get(t) } -> std::convertible_to<Range>;
 };
 
-// A RangedSequence whose range is known at compile time, exposed via the
-// static_range_of trait. Lets generic code fold offsets into the owner against
-// a constexpr range instead of recomputing them at runtime via find()/distance().
+// A random-access range with a compile-time range (via static_range_of).
+// Designed to match any Array-like type and support adaption of STL containers with
+// compile-time bounds such as std::array and fixed-extent std::span.
 template <typename T>
 concept StaticRangedSequence = RangedSequence<T> && requires {
+    // This is a refinement of RangedSequence so StaticRangedSequence takes priority in
+    // overload resolution when both concepts are satisfied.
     { static_range_of<std::remove_cvref_t<T>>::value } -> std::convertible_to<Range>;
 };
 
