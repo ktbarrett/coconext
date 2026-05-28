@@ -155,14 +155,16 @@ TEST(TestRange, RangeIsHashable) {
     EXPECT_EQ(different.size(), 2U);
 }
 
-// -- is_subsequence ---------------------------------------------------------
+// -- is_subsequence_of ------------------------------------------------------
 
 TEST(TestRange, IsSubsequenceLengthZero) {
     // A length-0 child is a subsequence of any parent, regardless of bounds
     // or direction.
-    EXPECT_TRUE(is_subsequence(Range{0, Direction::TO, 4}, Range{99, Direction::TO, 50}));
     EXPECT_TRUE(
-        is_subsequence(Range{0, Direction::TO, 4}, Range{50, Direction::DOWNTO, 99})
+        (Range{99, Direction::TO, 50}).is_subsequence_of(Range{0, Direction::TO, 4})
+    );
+    EXPECT_TRUE(
+        (Range{50, Direction::DOWNTO, 99}).is_subsequence_of(Range{0, Direction::TO, 4})
     );
 }
 
@@ -170,35 +172,35 @@ TEST(TestRange, IsSubsequenceLengthOneDirectionAgnostic) {
     // A length-1 child is valid iff its single value is in the parent;
     // direction is irrelevant for one element.
     Range parent{0, Direction::TO, 4};
-    EXPECT_TRUE(is_subsequence(parent, Range{2, Direction::TO, 2}));
-    EXPECT_TRUE(is_subsequence(parent, Range{2, Direction::DOWNTO, 2}));
-    EXPECT_FALSE(is_subsequence(parent, Range{99, Direction::TO, 99}));
+    EXPECT_TRUE((Range{2, Direction::TO, 2}).is_subsequence_of(parent));
+    EXPECT_TRUE((Range{2, Direction::DOWNTO, 2}).is_subsequence_of(parent));
+    EXPECT_FALSE((Range{99, Direction::TO, 99}).is_subsequence_of(parent));
 }
 
 TEST(TestRange, IsSubsequenceLengthTwoPlus) {
     Range parent{0, Direction::TO, 4};
-    EXPECT_TRUE(is_subsequence(parent, Range{1, Direction::TO, 3}));
-    EXPECT_FALSE(is_subsequence(parent, Range{1, Direction::DOWNTO, 0}));  // dir
-    EXPECT_FALSE(is_subsequence(parent, Range{99, Direction::TO, 100}));   // left
-    EXPECT_FALSE(is_subsequence(parent, Range{0, Direction::TO, 99}));     // right
+    EXPECT_TRUE((Range{1, Direction::TO, 3}).is_subsequence_of(parent));
+    EXPECT_FALSE((Range{1, Direction::DOWNTO, 0}).is_subsequence_of(parent));  // dir
+    EXPECT_FALSE((Range{99, Direction::TO, 100}).is_subsequence_of(parent));   // left
+    EXPECT_FALSE((Range{0, Direction::TO, 99}).is_subsequence_of(parent));     // right
 }
 
 TEST(TestRange, IsSubsequenceDOWNTOParent) {
     // Exercise the DOWNTO branch of the in_parent helper, mirrored from the
     // TO test above.
     Range parent{4, Direction::DOWNTO, 0};
-    EXPECT_TRUE(is_subsequence(parent, Range{3, Direction::DOWNTO, 1}));
-    EXPECT_FALSE(is_subsequence(parent, Range{1, Direction::TO, 3}));  // dir
-    EXPECT_FALSE(is_subsequence(parent, Range{99, Direction::DOWNTO, 1}));
-    EXPECT_FALSE(is_subsequence(parent, Range{3, Direction::DOWNTO, -99}));
+    EXPECT_TRUE((Range{3, Direction::DOWNTO, 1}).is_subsequence_of(parent));
+    EXPECT_FALSE((Range{1, Direction::TO, 3}).is_subsequence_of(parent));  // dir
+    EXPECT_FALSE((Range{99, Direction::DOWNTO, 1}).is_subsequence_of(parent));
+    EXPECT_FALSE((Range{3, Direction::DOWNTO, -99}).is_subsequence_of(parent));
 }
 
 TEST(TestRange, IsSubsequenceConstexpr) {
     // Usable in constant evaluation; downstream slice<R>() forms rely on this
     // for their static_assert.
-    static_assert(is_subsequence(Range{0, Direction::TO, 4}, Range{1, Direction::TO, 3}));
+    static_assert(Range{1, Direction::TO, 3}.is_subsequence_of(Range{0, Direction::TO, 4}));
     static_assert(
-        !is_subsequence(Range{0, Direction::TO, 4}, Range{1, Direction::DOWNTO, 0})
+        !Range{1, Direction::DOWNTO, 0}.is_subsequence_of(Range{0, Direction::TO, 4})
     );
 }
 // LCOV_EXCL_BR_STOP
