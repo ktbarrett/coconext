@@ -1,144 +1,128 @@
-// Next work:
-// SInt and UInt only support all operation for bitwdith < 64/128.
-// We must support a subset of operations for APInts.
-// We need to add shifting and bitwise operators, equality
-// and formatting (decimal, hex, binary, octal).
+#ifndef COCONEXT_INT_BASE
+#define COCONEXT_INT_BASE
+
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <type_traits>
+
+#ifdef COCONEXT_USE_APINT
+#include <llvm/ADT/APInt.h>
+#endif
+
+namespace coconext::types::detail {
+
+#ifdef COCONEXT_USE_APINT
+
+using BigIntType = llvm::APInt;
+static constexpr bool using_llvm_apint = true;
+
+#else
+
+// This class can handle arbitrary precision integer's
+// basic essential arithmetic E.g. shifting, bitwise operations,
+// formatting(decimal, hex, binary, octal), equality e.t.c. For
+// complete arithmetic operations, we fall back to APInt
+
+// TODO
 // Shifting shouldn't override >> operator, but instead we should have free
 // functions so we can choose between signed extending or 0 extending shifts.
-
-#ifndef COCONEXT_INT_BASE_HPP
-#define COCONEXT_INT_BASE_HPP
-
-#include <cocoint/cocoint_lib.hpp>
-
-// +, -, *, /, &, |, ^, <<, >>
-#define COCONEXT_DEFINE_BINARY_OP(CLASS_TYPE, OP)                                          \
-    constexpr CLASS_TYPE operator OP(const CLASS_TYPE& rhs) const                          \
-        requires(!std::is_same_v<                                                          \
-                 typename cocoint::Storage<Bits, is_signed>::StorageType,                  \
-                 cocoint::detail::APInt>)                                                  \
-    {                                                                                      \
-        auto native_result = this->storage.raw() OP rhs.storage.raw();                     \
-        return CLASS_TYPE(cocoint::Storage<Bits, is_signed>(native_result));               \
-    }
-
-// ~
-#define COCONEXT_DEFINE_UNARY_OP(CLASS_TYPE, OP)                                           \
-    constexpr CLASS_TYPE operator OP() const                                               \
-        requires(!std::is_same_v<                                                          \
-                 typename cocoint::Storage<Bits, is_signed>::StorageType,                  \
-                 cocoint::detail::APInt>)                                                  \
-    {                                                                                      \
-        auto native_result = OP this->storage.raw();                                       \
-        return CLASS_TYPE(cocoint::Storage<Bits, is_signed>(native_result));               \
-    }
-
-// ==, !=, <, >, <=, >=
-#define COCONEXT_DEFINE_COMPARE_OP(CLASS_TYPE, OP)                                         \
-    constexpr bool operator OP(const CLASS_TYPE& rhs) const                                \
-        requires(!std::is_same_v<                                                          \
-                 typename cocoint::Storage<Bits, is_signed>::StorageType,                  \
-                 cocoint::detail::APInt>)                                                  \
-    {                                                                                      \
-        return this->storage.raw() OP rhs.storage.raw();                                   \
-    }
-
-namespace coconext::types {
-
-template <size_t Bits>
-class UInt {
+class BigInt {
   public:
-    static constexpr size_t num_bits = Bits;
-    static constexpr bool is_signed = false;
+    using WordType = uint64_t;
 
-  private:
-    [[no_unique_address]] cocoint::Storage<Bits, is_signed> storage;
+    unsigned BitWidth;
+    bool is_signed;
 
-    constexpr UInt(cocoint::Storage<Bits, is_signed> const& result_storage)
-        : storage(result_storage) {}
-
-  public:
-    constexpr UInt() = default;
-
-    constexpr UInt(typename cocoint::Storage<Bits, is_signed>::StorageType val)
-        requires(!std::is_same_v<
-                 typename cocoint::Storage<Bits, is_signed>::StorageType,
-                 cocoint::detail::APInt>)
-        : storage(val) {}
-
-    COCONEXT_DEFINE_BINARY_OP(UInt, +)
-    COCONEXT_DEFINE_BINARY_OP(UInt, -)
-    COCONEXT_DEFINE_BINARY_OP(UInt, *)
-    COCONEXT_DEFINE_BINARY_OP(UInt, /)
-    COCONEXT_DEFINE_BINARY_OP(UInt, %)
-    COCONEXT_DEFINE_BINARY_OP(UInt, &)
-    COCONEXT_DEFINE_BINARY_OP(UInt, |)
-    COCONEXT_DEFINE_BINARY_OP(UInt, ^)
-    COCONEXT_DEFINE_BINARY_OP(UInt, <<)
-    COCONEXT_DEFINE_BINARY_OP(UInt, >>)
-
-    COCONEXT_DEFINE_UNARY_OP(UInt, ~)
-
-    COCONEXT_DEFINE_COMPARE_OP(UInt, ==)
-    COCONEXT_DEFINE_COMPARE_OP(UInt, !=)
-    COCONEXT_DEFINE_COMPARE_OP(UInt, <)
-    COCONEXT_DEFINE_COMPARE_OP(UInt, >)
-    COCONEXT_DEFINE_COMPARE_OP(UInt, <=)
-    COCONEXT_DEFINE_COMPARE_OP(UInt, >=)
-
-    // All common features for BitArray, Unsigned, Signed, Ufixed, and Sfixed
-    // TODO
+    BigInt() {}
 };
 
-template <size_t Bits>
-class SInt {
-  public:
-    static constexpr size_t num_bits = Bits;
-    static constexpr bool is_signed = true;
+using BigIntType = BigInt;
+static constexpr bool using_llvm_apint = false;
 
-  private:
-    [[no_unique_address]] cocoint::Storage<Bits, is_signed> storage;
+#endif  // COCONEXT_USE_APINT
 
-    constexpr SInt(cocoint::Storage<Bits, is_signed> const& result_storage)
-        : storage(result_storage) {}
+struct EmptyStorage {};
 
-  public:
-    constexpr SInt() = default;
+// This helps deciding the data type to use at compile time
+template <unsigned Bits, bool Signed>
+struct StorageSelector {
+    using type = std::conditional_t<
+        Bits == 0,
+        EmptyStorage,
 
-    constexpr SInt(typename cocoint::Storage<Bits, is_signed>::StorageType val)
-        requires(!std::is_same_v<
-                 typename cocoint::Storage<Bits, is_signed>::StorageType,
-                 cocoint::detail::APInt>)
-        : storage(val) {}
+        std::conditional_t<
+            Bits <= 8,
+            std::conditional_t<Signed, int8_t, uint8_t>,
 
-    COCONEXT_DEFINE_BINARY_OP(SInt, +)
-    COCONEXT_DEFINE_BINARY_OP(SInt, -)
-    COCONEXT_DEFINE_BINARY_OP(SInt, *)
-    COCONEXT_DEFINE_BINARY_OP(SInt, /)
-    COCONEXT_DEFINE_BINARY_OP(SInt, %)
-    COCONEXT_DEFINE_BINARY_OP(SInt, &)
-    COCONEXT_DEFINE_BINARY_OP(SInt, |)
-    COCONEXT_DEFINE_BINARY_OP(SInt, ^)
-    COCONEXT_DEFINE_BINARY_OP(SInt, <<)
-    COCONEXT_DEFINE_BINARY_OP(SInt, >>)
+            std::conditional_t<
+                Bits <= 16,
+                std::conditional_t<Signed, int16_t, uint16_t>,
 
-    COCONEXT_DEFINE_UNARY_OP(SInt, ~)
+                std::conditional_t<
+                    Bits <= 32,
+                    std::conditional_t<Signed, int32_t, uint32_t>,
 
-    COCONEXT_DEFINE_COMPARE_OP(SInt, ==)
-    COCONEXT_DEFINE_COMPARE_OP(SInt, !=)
-    COCONEXT_DEFINE_COMPARE_OP(SInt, <)
-    COCONEXT_DEFINE_COMPARE_OP(SInt, >)
-    COCONEXT_DEFINE_COMPARE_OP(SInt, <=)
-    COCONEXT_DEFINE_COMPARE_OP(SInt, >=)
+                    std::conditional_t<
+                        Bits <= 64,
+                        std::conditional_t<Signed, int64_t, uint64_t>,
 
-    // All common features for BitArray, Unsigned, Signed, Ufixed, and Sfixed
-    // TODO
+#if defined(__SIZEOF_INT128__)
+                        std::conditional_t<
+                            Bits <= 128,
+                            std::conditional_t<Signed, __int128_t, __uint128_t>,
+
+                            BigIntType>
+#else
+                        BigIntType
+#endif
+                        >>>>>;
 };
 
-}  // namespace coconext::types
+// Unified wrapper to abstract away APInt semantics and switch between
+// native ints, internal BigInt, or LLVM APInt.
+template <unsigned _numBits, bool _is_signed>
+class Storage {
+  public:
+    static constexpr unsigned num_bits = _numBits;
+    static constexpr bool is_signed = _is_signed;
 
-#undef COCONEXT_DEFINE_BINARY_OP
-#undef COCONEXT_DEFINE_UNARY_OP
-#undef COCONEXT_DEFINE_COMPARE_OP
+    using StorageType = typename StorageSelector<_numBits, _is_signed>::type;
+
+  private:
+    [[no_unique_address]] StorageType _storage;
+
+  public:
+    // Native ints
+    constexpr Storage()
+        requires(!std::is_same_v<StorageType, BigIntType>)
+    = default;
+
+    constexpr Storage(StorageType val)
+        requires(!std::is_same_v<StorageType, BigIntType>)
+        : _storage(val) {}
+
+    // BigInt
+    constexpr Storage()
+        requires(std::is_same_v<StorageType, BigIntType> && !using_llvm_apint)
+        : _storage() {}
+
+    constexpr Storage(StorageType val)
+        requires(std::is_same_v<StorageType, BigIntType> && !using_llvm_apint)
+        : _storage() {}
+
+    // APInt
+    constexpr Storage()
+        requires(std::is_same_v<StorageType, BigIntType> && using_llvm_apint)
+        : _storage(_numBits, 0, _is_signed) {}
+
+    constexpr Storage(StorageType val)
+        requires(std::is_same_v<StorageType, BigIntType> && using_llvm_apint)
+        : _storage(_numBits, val, _is_signed) {}
+
+    constexpr StorageType const& raw() const { return _storage; }
+};
+
+}  // namespace coconext::types::detail
 
 #endif
