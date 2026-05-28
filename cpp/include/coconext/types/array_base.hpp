@@ -16,7 +16,7 @@
 
 namespace coconext::types {
 
-// -- Concepts and traits ------------------------------------------------------
+// -- Concepts -----------------------------------------------------------------
 
 namespace detail {
 
@@ -27,70 +27,24 @@ concept sized_input_range = std::ranges::sized_range<R> && std::ranges::input_ra
 template <typename T>
 struct is_array : std::false_type {};
 
-template <typename T>
-concept has_range_member = requires(T const& t) {
-    { t.range() } -> std::convertible_to<Range>;
-};
-
-template <typename T>
-concept has_static_range_member = requires {
-    { T::static_range } -> std::convertible_to<Range>;
-};
+// Helper to force a value into a constant-expression context.
+template <auto V>
+struct require_constant {};
 
 }  // namespace detail
 
-// Customization point for the compile-time range. Specialize so that ::value
-// is a Range constant expression. Non-intrusive: external/wrapper types can
-// participate without modification. A default partial specialization below
-// picks up types that expose a `static constexpr Range static_range` member,
-// so our own array types participate without writing one.
-template <typename T>
-struct static_range_of;
-
-template <detail::has_static_range_member T>
-struct static_range_of<T> {
-    static constexpr Range value = T::static_range;
-};
-
-// Customization point for the runtime range of a sequence. Specialize this
-// for external/wrapper types that can't or don't expose t.range() directly
-// (e.g. std::vector, std::string). The default partial specialization below
-// picks up any type that has either a t.range() member or a static_range_of
-// specialization, so our own array types and static-range adapters (e.g.
-// std::array, fixed-extent std::span) participate without writing one.
-template <typename T>
-struct range_of;
-
-template <typename T>
-    requires detail::has_range_member<T> || requires {
-        { static_range_of<T>::value } -> std::convertible_to<Range>;
-    }
-struct range_of<T> {
-    static constexpr Range get(T const& t) {
-        if constexpr (detail::has_range_member<T>) {
-            return t.range();
-        } else {
-            return static_range_of<T>::value;
-        }
-    }
-};
-
-// A random-access range with a runtime range (via range_of).
-// Designed to match any Array-like type and support adaption of STL containers such
-// as std::vector and std::string.
+// A random-access range whose range is queryable via `obj.range()`.
 template <typename T>
 concept RangedSequence = std::ranges::random_access_range<T> && requires(T const& t) {
-    { range_of<std::remove_cvref_t<T>>::get(t) } -> std::convertible_to<Range>;
+    { t.range() } -> std::convertible_to<Range>;
 };
 
-// A random-access range with a compile-time range (via static_range_of).
-// Designed to match any Array-like type and support adaption of STL containers with
-// compile-time bounds such as std::array and fixed-extent std::span.
+// A RangedSequence whose range is also a compile-time constant -- i.e., T
+// exposes `range()` as a static method returning a constant expression.
+// Refines RangedSequence so overload resolution prefers it when both match.
 template <typename T>
 concept StaticRangedSequence = RangedSequence<T> && requires {
-    // This is a refinement of RangedSequence so StaticRangedSequence takes priority in
-    // overload resolution when both concepts are satisfied.
-    { static_range_of<std::remove_cvref_t<T>>::value } -> std::convertible_to<Range>;
+    typename detail::require_constant<std::remove_cvref_t<T>::range()>;
 };
 
 // Any type that opts into the array machinery via is_array. Element-type
@@ -260,14 +214,12 @@ class ArraySlice {
     using iterator = std::ranges::iterator_t<ArrayT>;
     static_assert(!std::is_reference_v<value_type>);
 
-    static constexpr Range static_range = R;
-
     constexpr ArraySlice() = delete;
     constexpr ArraySlice(ArraySlice const&) = default;
     constexpr ArraySlice(ArraySlice&&) = default;
     constexpr explicit ArraySlice(ArrayT* arr) noexcept : arr_(arr) {}
 
-    constexpr Range const& range() const noexcept { return static_range; }
+    static constexpr Range range() noexcept { return R; }
 
     constexpr reference operator[](index_type idx) const {
         if constexpr (R.direction == Direction::TO) {
@@ -316,7 +268,7 @@ class ArraySlice {
     constexpr ArraySlice const& operator=(Rng const& obj) const {
         if constexpr (StaticRangedSequence<Rng>) {
             static_assert(
-                static_range_of<std::remove_cvref_t<Rng>>::value.length() == R.length(),
+                std::remove_cvref_t<Rng>::range().length() == R.length(),
                 "static-length RHS does not match the slice length"
             );
         } else if (std::ranges::size(obj) != R.length()) {
@@ -353,7 +305,7 @@ class ArraySlice {
         } else if constexpr (StaticRangedSequence<ArrayT>) {
             // Parent's range is a compile-time constant; fold the offset to
             // a constant instead of recomputing it via find()/distance().
-            constexpr auto parent = static_range_of<std::remove_cvref_t<ArrayT>>::value;
+            constexpr auto parent = std::remove_cvref_t<ArrayT>::range();
             constexpr auto offset = parent.direction == Direction::TO
                                       ? R.left - parent.left
                                       : parent.left - R.left;
@@ -390,7 +342,7 @@ struct is_array<ArraySlice<ArrayT, R>> : std::true_type {};
 template <RangedSequence ArrayT, typename OutIt>
     requires Formattable<std::ranges::range_value_t<ArrayT>>
 OutIt format_array(ArrayT const& arr, OutIt out) {
-    out = std::format_to(out, "{}{{", range_of<std::remove_cvref_t<ArrayT>>::get(arr));
+    out = std::format_to(out, "{}{{", arr.range());
     bool first = true;
     for (auto const& elem : arr) {
         if (!first) {

@@ -23,9 +23,7 @@ constexpr std::string_view logic_type_name() {
 // tag.
 template <RangedSequence ArrayT, typename OutIt>
 OutIt format_typed_array(std::string_view type_name, ArrayT const& arr, OutIt out) {
-    out = std::format_to(
-        out, "{}{}{{", type_name, range_of<std::remove_cvref_t<ArrayT>>::get(arr)
-    );
+    out = std::format_to(out, "{}{}{{", type_name, arr.range());
     bool first = true;
     for (auto const& elem : arr) {
         if (!first) {
