@@ -564,6 +564,17 @@ TEST(TestDynArrayStaticSlice, SliceAssignWrongLength) {
     EXPECT_THROW((s = std::vector<int>{1, 2, 3, 4}), std::invalid_argument);
 }
 
+TEST(TestDynArrayStaticSlice, SliceAssignFromStaticRangedSequence) {
+    DynArray<int> a({1, 2, 3, 4, 5});
+    auto s = a.slice<Range{1, 3}>();
+    DynArray<int> rhs_owner({70, 80, 90});
+    auto rhs = rhs_owner.slice<Range{0, 2}>();  // static slice, length 3
+    s = rhs;
+    EXPECT_EQ(a[1], 70);
+    EXPECT_EQ(a[2], 80);
+    EXPECT_EQ(a[3], 90);
+}
+
 TEST(TestDynArrayStaticSlice, SliceOutOfRangeRuntime) {
     DynArray<int> a({1, 2, 3});
     EXPECT_THROW((void)(a.slice<Range{99, 100}>()), std::invalid_argument);

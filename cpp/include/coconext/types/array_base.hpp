@@ -314,7 +314,12 @@ class ArraySlice {
         requires(!std::is_const_v<ArrayT>)
              && std::convertible_to<std::ranges::range_value_t<Rng>, value_type>
     constexpr ArraySlice const& operator=(Rng const& obj) const {
-        if (std::ranges::size(obj) != R.length()) {
+        if constexpr (StaticRangedSequence<Rng>) {
+            static_assert(
+                static_range_of<std::remove_cvref_t<Rng>>::value.length() == R.length(),
+                "static-length RHS does not match the slice length"
+            );
+        } else if (std::ranges::size(obj) != R.length()) {
             throw std::invalid_argument(
                 "Value of length " + std::to_string(std::ranges::size(obj))
                 + " cannot be assigned to array slice of length "
