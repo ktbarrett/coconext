@@ -176,6 +176,22 @@ class DynArraySlice {
         return ArraySlice<ArrayT, R>(arr_);
     }
 
+    // Explicitly define a DynArraySlice assignment since the implicitly created one is a
+    // variable assignment and not an element-wise assignment to the underlying storage.
+    constexpr DynArraySlice const& operator=(DynArraySlice const& other) const
+        requires(!std::is_const_v<ArrayT>)
+    {
+        if (other.range_.length() != range_.length()) {
+            throw std::invalid_argument(
+                "Value of length " + std::to_string(other.range_.length())
+                + " cannot be assigned to array slice of length "
+                + std::to_string(range_.length())
+            );
+        }
+        std::ranges::copy(other, begin());
+        return *this;
+    }
+
     template <detail::sized_input_range R>
         requires(!std::is_const_v<ArrayT>)
              && std::convertible_to<std::ranges::range_value_t<R>, value_type>
@@ -283,6 +299,15 @@ class ArraySlice {
     constexpr DynArraySlice<ArrayT> operator[](Range r) const {
         detail::subsequence_check(R, r);
         return DynArraySlice<ArrayT>(arr_, r);
+    }
+
+    // Explicitly define a ArraySlice assignment since the implicitly created one is a
+    // variable assignment and not an element-wise assignment to the underlying storage.
+    constexpr ArraySlice const& operator=(ArraySlice const& other) const
+        requires(!std::is_const_v<ArrayT>)
+    {
+        std::ranges::copy(other, begin());
+        return *this;
     }
 
     template <detail::sized_input_range Rng>
