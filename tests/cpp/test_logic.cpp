@@ -95,24 +95,24 @@ TEST(TestBit, BitConversions) {
 // Test Logic bool conversions
 TEST(TestLogic, LogicBoolConversions) {
     // Convertible to true
-    EXPECT_EQ(is_01('1'_l), true);
-    EXPECT_EQ(is_01('H'_l), true);
+    EXPECT_EQ(is_resolvable('1'_l), true);
+    EXPECT_EQ(is_resolvable('H'_l), true);
 
     // Convertible to false
-    EXPECT_EQ(is_01('0'_l), true);
-    EXPECT_EQ(is_01('L'_l), true);
+    EXPECT_EQ(is_resolvable('0'_l), true);
+    EXPECT_EQ(is_resolvable('L'_l), true);
 
     // Non-convertible values
-    EXPECT_EQ(is_01('X'_l), false);
-    EXPECT_EQ(is_01('Z'_l), false);
-    EXPECT_EQ(is_01('U'_l), false);
-    EXPECT_EQ(is_01('W'_l), false);
-    EXPECT_EQ(is_01('-'_l), false);
+    EXPECT_EQ(is_resolvable('X'_l), false);
+    EXPECT_EQ(is_resolvable('Z'_l), false);
+    EXPECT_EQ(is_resolvable('U'_l), false);
+    EXPECT_EQ(is_resolvable('W'_l), false);
+    EXPECT_EQ(is_resolvable('-'_l), false);
 }
 
 TEST(TestBit, BitBoolConversions) {
-    EXPECT_EQ(is_01('0'_b), true);
-    EXPECT_EQ(is_01('1'_b), true);
+    EXPECT_EQ(is_resolvable('0'_b), true);
+    EXPECT_EQ(is_resolvable('1'_b), true);
 }
 
 // Test Logic string conversions
@@ -330,23 +330,23 @@ TEST(TestLogic, RuntimeIntAndBitConversions) {
     EXPECT_EQ(resolve(bits[1], ResolveMethod::ZEROS), '1'_b);
 }
 
-// Test Logic is_resolvable (checked via is_01)
+// Test Logic is_resolvable
 TEST(TestLogic, LogicIsResolvable) {
-    EXPECT_TRUE(is_01(Logic::_0));
-    EXPECT_TRUE(is_01(Logic::_1));
-    EXPECT_TRUE(is_01('L'_l));
-    EXPECT_TRUE(is_01('H'_l));
+    EXPECT_TRUE(is_resolvable(Logic::_0));
+    EXPECT_TRUE(is_resolvable(Logic::_1));
+    EXPECT_TRUE(is_resolvable('L'_l));
+    EXPECT_TRUE(is_resolvable('H'_l));
 
-    EXPECT_FALSE(is_01('U'_l));
-    EXPECT_FALSE(is_01('X'_l));
-    EXPECT_FALSE(is_01('Z'_l));
-    EXPECT_FALSE(is_01('W'_l));
-    EXPECT_FALSE(is_01('-'_l));
+    EXPECT_FALSE(is_resolvable('U'_l));
+    EXPECT_FALSE(is_resolvable('X'_l));
+    EXPECT_FALSE(is_resolvable('Z'_l));
+    EXPECT_FALSE(is_resolvable('W'_l));
+    EXPECT_FALSE(is_resolvable('-'_l));
 }
 
 TEST(TestBit, BitIsResolvable) {
-    EXPECT_TRUE(is_01('0'_b));
-    EXPECT_TRUE(is_01('1'_b));
+    EXPECT_TRUE(is_resolvable('0'_b));
+    EXPECT_TRUE(is_resolvable('1'_b));
 }
 
 TEST(TestLogic, LogicIsHashable) {

@@ -124,7 +124,7 @@ void register_logic(nb::module_& m) {
             "__xor__", [](Logic const& a, Bit const& b) { return a ^ b; }, nb::is_operator()
         )
         .def("__invert__", nb::overload_cast<Logic const&>(&operator~), nb::is_operator())
-        .def_prop_ro("is_resolvable", nb::overload_cast<Logic const&>(&is_01))
+        .def_prop_ro("is_resolvable", nb::overload_cast<Logic const&>(&is_resolvable))
         .def(
             "resolve",
             [](Logic const& value, std::string_view method) {
