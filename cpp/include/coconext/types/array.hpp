@@ -95,8 +95,6 @@ class Array {
     using iterator = typename std::array<value_type, R.length()>::iterator;
     using const_iterator = typename std::array<value_type, R.length()>::const_iterator;
 
-    static constexpr Range static_range = R;
-
     constexpr Array()
         requires std::default_initializable<value_type>
         : data_{} {}
@@ -131,18 +129,18 @@ class Array {
         std::ranges::copy(obj, data_.begin());
     }
 
-    constexpr Range range() const noexcept { return R; }
+    static constexpr Range range() noexcept { return R; }
 
     constexpr reference operator[](index_type idx) { return access_(*this, idx); }
     constexpr const_reference operator[](index_type idx) const {
         return access_(*this, idx);
     }
     constexpr DynArraySlice<Array> operator[](Range r) {
-        detail::subsequence_check(static_range, r);
+        detail::subsequence_check(R, r);
         return DynArraySlice<Array>(this, r);
     }
     constexpr DynArraySlice<Array const> operator[](Range r) const {
-        detail::subsequence_check(static_range, r);
+        detail::subsequence_check(R, r);
         return DynArraySlice<Array const>(this, r);
     }
 
@@ -201,15 +199,6 @@ constexpr bool operator==(Array<T, R> const& lhs, Array<T, R> const& rhs) noexce
 
 template <typename T, Range R>
 struct is_array<Array<T, R>> : std::true_type {};
-
-}  // namespace detail
-
-template <typename T, Range R>
-struct static_range_of<detail::Array<T, R>> {
-    static constexpr Range value = R;
-};
-
-namespace detail {
 
 static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}>>);
 static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}> const>);
