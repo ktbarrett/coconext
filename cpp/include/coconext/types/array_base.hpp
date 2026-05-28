@@ -104,7 +104,7 @@ concept ArrayType = detail::is_array<std::remove_cvref_t<T>>::value;
 namespace detail {
 
 constexpr void subsequence_check(Range parent, Range child) {
-    if (!is_subsequence(parent, child)) {
+    if (!child.is_subsequence_of(parent)) {
         throw std::invalid_argument("Range is not a valid sub-range of the parent");
     }
 }
@@ -288,7 +288,7 @@ class ArraySlice {
     template <Range R2>
     constexpr ArraySlice<ArrayT, R2> slice() const {
         static_assert(
-            is_subsequence(R, R2),
+            R2.is_subsequence_of(R),
             "static sub-slice range is not a sub-range of the parent slice"
         );
         return ArraySlice<ArrayT, R2>(arr_);

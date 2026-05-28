@@ -151,7 +151,7 @@ class Array {
     template <Range R2>
     constexpr ArraySlice<Array, R2> slice() {
         static_assert(
-            is_subsequence(R, R2),
+            R2.is_subsequence_of(R),
             "static sub-slice range is not a sub-range of the parent Array"
         );
         return ArraySlice<Array, R2>(this);
@@ -159,7 +159,7 @@ class Array {
     template <Range R2>
     constexpr ArraySlice<Array const, R2> slice() const {
         static_assert(
-            is_subsequence(R, R2),
+            R2.is_subsequence_of(R),
             "static sub-slice range is not a sub-range of the parent Array"
         );
         return ArraySlice<Array const, R2>(this);
