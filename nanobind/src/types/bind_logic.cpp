@@ -124,17 +124,14 @@ void register_logic(nb::module_& m) {
             "__xor__", [](Logic const& a, Bit const& b) { return a ^ b; }, nb::is_operator()
         )
         .def("__invert__", nb::overload_cast<Logic const&>(&operator~), nb::is_operator())
-        .def_prop_ro("is_resolvable", nb::overload_cast<Logic const&>(&is_resolvable))
+        .def_prop_ro("is_resolvable", &Logic::is_resolvable)
         .def(
             "resolve",
-            [](Logic const& value, std::string_view method) {
-                return resolve(value, string_to_resolve_method(method));
+            [](Logic const& self, std::string_view method) {
+                return self.resolve(string_to_resolve_method(method));
             }
         )
-        .def(
-            "resolve",
-            [](Logic const& self, ResolveMethod method) { return resolve(self, method); }
-        )
+        .def("resolve", &Logic::resolve)
         .def("__copy__", [](Logic const& self) { return Logic(self); })
         .def("__deepcopy__", [](Logic const& self, nb::dict /* memo */) {
             return Logic(self);
@@ -226,17 +223,14 @@ void register_logic(nb::module_& m) {
         .def(
             "__invert__", [](Bit const& self) { return ~self; }, nb::is_operator()
         )
-        .def_prop_ro("is_resolvable", [](Bit const&) { return true; })
+        .def_prop_ro("is_resolvable", &Bit::is_resolvable)
         .def(
             "resolve",
-            [](Bit const& value, std::string_view method) {
-                return resolve(value, string_to_resolve_method(method));
+            [](Bit const& self, std::string_view method) {
+                return self.resolve(string_to_resolve_method(method));
             }
         )
-        .def(
-            "resolve",
-            [](Bit const& self, ResolveMethod method) { return resolve(self, method); }
-        )
+        .def("resolve", &Bit::resolve)
         .def("__copy__", [](Bit const& self) { return Bit(self); })
         .def("__deepcopy__", [](Bit const& self, nb::dict /* memo */) {
             return Bit(self);
