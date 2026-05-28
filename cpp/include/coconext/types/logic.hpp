@@ -292,12 +292,12 @@ constexpr Bit operator~(Bit const& value) noexcept {
     return value.value() == Bit::_0 ? Bit::_1 : Bit::_0;
 }
 
-constexpr bool is_01(Logic const& value) noexcept {
+constexpr bool is_resolvable(Logic const& value) noexcept {
     return value == Logic::_0 || value == Logic::_1 || value == Logic::L
         || value == Logic::H;
 }
 
-constexpr bool is_01(Bit const&) noexcept { return true; }
+constexpr bool is_resolvable(Bit const&) noexcept { return true; }
 
 enum class ResolveMethod {
     ERROR,
