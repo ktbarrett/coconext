@@ -14,6 +14,15 @@ using namespace nb::literals;
 
 using namespace coconext::types;
 
+Range slice_range(Range const& r, size_t start, size_t stop) {
+    if (stop > r.length()) {
+        throw std::out_of_range("Stop index out of range");
+    }
+    auto new_left = r[start];
+    auto new_right = r[stop - 1];
+    return Range(new_left, r.direction, new_right);
+}
+
 void register_range(nb::module_& m) {
     nb::object range_func = nb::module_::import_("builtins").attr("range");
 
@@ -112,7 +121,7 @@ void register_range(nb::module_& m) {
                 if (step != 1) {
                     throw std::invalid_argument("Slicing with step is not supported");
                 }
-                return self(start, stop);
+                return slice_range(self, start, stop);
             },
             nb::arg().noconvert()
         )
@@ -148,7 +157,7 @@ void register_range(nb::module_& m) {
                     throw nb::value_error("Value not found in range");
                 }
 
-                auto sliced = self(start, len);
+                auto sliced = slice_range(self, start, len);
 
                 auto it = find(sliced, value);
 
@@ -175,7 +184,7 @@ void register_range(nb::module_& m) {
                     throw nb::value_error("Value not found in range");
                 }
 
-                auto sliced = self(start, stop);
+                auto sliced = slice_range(self, start, stop);
 
                 auto it = find(sliced, value);
 
