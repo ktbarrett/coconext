@@ -15,35 +15,53 @@
 namespace coconext::types {
 
 struct Range {
-    using value_type = int32_t;
+    using value_type = int64_t;
     using iterator = CountIterator<value_type>;
 
     constexpr Range() noexcept = default;
 
-    constexpr Range(value_type l, Direction d, value_type r) noexcept
-        : left(l), direction(d), right(r) {}
+    constexpr Range(value_type l, Direction d, value_type r)
+        : left(l), right(r), direction(d) {
+        check_length_overflow_();
+    }
 
-    constexpr Range(value_type l, value_type r) noexcept
-        : left(l), direction(l > r ? Direction::DOWNTO : Direction::TO), right(r) {}
+    constexpr Range(value_type l, value_type r)
+        : left(l), right(r), direction(l > r ? Direction::DOWNTO : Direction::TO) {
+        check_length_overflow_();
+    }
 
     explicit constexpr Range(size_t length)
-        : left(0), direction(Direction::TO), right(static_cast<value_type>(length) - 1) {
+        : left(0), right(static_cast<value_type>(length) - 1), direction(Direction::TO) {
         if (length > static_cast<size_t>(std::numeric_limits<value_type>::max())) {
             throw std::length_error("Range length overflows value_type");
         }
     }
 
     value_type left = 0;
-    Direction direction = Direction::TO;
     value_type right = -1;
+    Direction direction = Direction::TO;
 
     constexpr size_t length() const noexcept {
-        int64_t len = direction == Direction::TO ? static_cast<int64_t>(right) - left + 1
-                                                 : static_cast<int64_t>(left) - right + 1;
-        if (len < 0) {
+        // Compute right - left (or left - right for DOWNTO) in uint64_t.
+        // Signed-to-unsigned conversion is well-defined as modular reduction,
+        // and the unsigned subtraction returns the correct difference when
+        // endpoints are in the expected order. The constructors reject the
+        // single pair (full int64_t domain) where the +1 would wrap size_t,
+        // so this is always safe for any constructible Range.
+        if (direction == Direction::TO) {
+            if (right < left) {
+                return 0;
+            }
+            return static_cast<size_t>(
+                static_cast<uint64_t>(right) - static_cast<uint64_t>(left) + 1
+            );
+        }
+        if (left < right) {
             return 0;
         }
-        return static_cast<size_t>(len);
+        return static_cast<size_t>(
+            static_cast<uint64_t>(left) - static_cast<uint64_t>(right) + 1
+        );
     }
 
     constexpr iterator begin() const noexcept { return iterator(left, direction); }
@@ -160,6 +178,25 @@ struct Range {
         // since the range only contains one value and that's the left endpoint
         // we already checked.
         return true;
+    }
+
+  private:
+    // Reject the single (left, right) pair where length() would mathematically
+    // be 2^64 -- it doesn't fit in size_t and would silently wrap to 0.
+    // Direction/endpoint mismatches (e.g., Range(5, TO, 3)) are intentionally
+    // allowed and treated as empty (length 0); only the full-domain span is
+    // rejected.
+    constexpr void check_length_overflow_() const {
+        constexpr value_type lo = std::numeric_limits<value_type>::min();
+        constexpr value_type hi = std::numeric_limits<value_type>::max();
+        bool const full_to = direction == Direction::TO && left == lo && right == hi;
+        bool const full_downto =
+            direction == Direction::DOWNTO && left == hi && right == lo;
+        if (full_to || full_downto) {
+            throw std::length_error(
+                "Range spans the full value_type domain; length overflows size_t"
+            );
+        }
     }
 };
 

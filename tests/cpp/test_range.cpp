@@ -203,4 +203,56 @@ TEST(TestRange, IsSubsequenceConstexpr) {
         !Range{1, Direction::DOWNTO, 0}.is_subsequence_of(Range{0, Direction::TO, 4})
     );
 }
+
+// -- Length overflow protection --------------------------------------------
+//
+// A Range spanning the full int64_t domain (INT64_MIN..INT64_MAX in TO, or
+// reversed in DOWNTO) would mathematically have length 2^64 -- doesn't fit
+// in size_t. The constructors reject this single pathological case so
+// length() always returns a valid size_t.
+
+TEST(TestRange, ConstructFullSpanTOThrows) {
+    constexpr auto lo = std::numeric_limits<Range::value_type>::min();
+    constexpr auto hi = std::numeric_limits<Range::value_type>::max();
+    EXPECT_THROW((Range{lo, Direction::TO, hi}), std::length_error);
+    // Two-arg auto-direction picks TO since lo < hi -- same rejection.
+    EXPECT_THROW((Range{lo, hi}), std::length_error);
+}
+
+TEST(TestRange, ConstructFullSpanDOWNTOThrows) {
+    constexpr auto lo = std::numeric_limits<Range::value_type>::min();
+    constexpr auto hi = std::numeric_limits<Range::value_type>::max();
+    EXPECT_THROW((Range{hi, Direction::DOWNTO, lo}), std::length_error);
+    // Two-arg auto-direction picks DOWNTO since hi > lo -- same rejection.
+    EXPECT_THROW((Range{hi, lo}), std::length_error);
+}
+
+TEST(TestRange, NearMaxLengthIsValid) {
+    // One step short of the full span: max representable length (SIZE_MAX
+    // on a 64-bit platform). Constructs fine and length() returns the right
+    // value via uint64_t arithmetic.
+    constexpr auto lo = std::numeric_limits<Range::value_type>::min();
+    constexpr auto hi = std::numeric_limits<Range::value_type>::max();
+    Range r1{lo, Direction::TO, hi - 1};
+    EXPECT_EQ(r1.length(), std::numeric_limits<size_t>::max());
+    Range r2{lo + 1, Direction::TO, hi};
+    EXPECT_EQ(r2.length(), std::numeric_limits<size_t>::max());
+}
+
+TEST(TestRange, LargeNegativeToPositiveLength) {
+    // Endpoints straddling zero with a large gap -- naive signed subtraction
+    // (right - left) would overflow int64_t even though the unsigned diff
+    // fits. The uint64_t-based length() handles this correctly.
+    Range r{-1'000'000'000LL, Direction::TO, 1'000'000'000LL};
+    EXPECT_EQ(r.length(), 2'000'000'001U);
+}
+
+TEST(TestRange, DirectionMismatchStillEmpty) {
+    // TO direction with right < left, or DOWNTO with left < right, remains
+    // a valid (empty) range -- used intentionally for null slices.
+    Range r1{5, Direction::TO, 3};
+    EXPECT_EQ(r1.length(), 0U);
+    Range r2{3, Direction::DOWNTO, 5};
+    EXPECT_EQ(r2.length(), 0U);
+}
 // LCOV_EXCL_BR_STOP
