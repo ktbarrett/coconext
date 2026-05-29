@@ -195,6 +195,40 @@ auto logic_binop(LHS const& lhs, RHS const& rhs, Op op) {
     }
 }
 
+// Scalar broadcast: per-element op(elem, scalar). Same static/dynamic dispatch
+// shape as logic_binop, but no length-check branch (a scalar fits any array).
+template <RangedSequence Arr, LogicType Scalar, typename Op>
+    requires LogicType<std::ranges::range_value_t<Arr>>
+auto logic_binop_scalar(Arr const& arr, Scalar const& s, Op op) {
+    using result_elem = decltype(op(
+        std::declval<std::ranges::range_value_t<Arr>>(), std::declval<Scalar>()
+    ));
+    if constexpr (StaticRangedSequence<Arr>) {
+        constexpr auto AR = std::remove_cvref_t<Arr>::range();
+        Array<
+            result_elem,
+            Range{static_cast<Range::value_type>(AR.length()) - 1, Direction::DOWNTO, 0}>
+            result{};
+        std::transform(
+            std::ranges::begin(arr),
+            std::ranges::end(arr),
+            result.begin(),
+            [&s, &op](auto const& v) { return op(v, s); }
+        );
+        return result;
+    } else {
+        auto const n = static_cast<Range::value_type>(arr.range().length());
+        DynArray<result_elem> result(Range{n - 1, Direction::DOWNTO, 0});
+        std::transform(
+            std::ranges::begin(arr),
+            std::ranges::end(arr),
+            result.begin(),
+            [&s, &op](auto const& v) { return op(v, s); }
+        );
+        return result;
+    }
+}
+
 }  // namespace detail
 
 template <RangedSequence LHS, RangedSequence RHS>
@@ -218,6 +252,56 @@ template <RangedSequence LHS, RangedSequence RHS>
 auto operator^(LHS const& lhs, RHS const& rhs) {
     return detail::logic_binop(lhs, rhs, [](auto const& a, auto const& b) {
         return a ^ b;
+    });
+}
+
+// Scalar-on-left broadcasts a single Bit/Logic across an array.
+template <LogicType Scalar, RangedSequence Arr>
+    requires LogicArrayType<Arr>
+auto operator&(Scalar const& s, Arr const& arr) {
+    return detail::logic_binop_scalar(arr, s, [](auto const& v, auto const& sc) {
+        return sc & v;
+    });
+}
+
+template <LogicType Scalar, RangedSequence Arr>
+    requires LogicArrayType<Arr>
+auto operator|(Scalar const& s, Arr const& arr) {
+    return detail::logic_binop_scalar(arr, s, [](auto const& v, auto const& sc) {
+        return sc | v;
+    });
+}
+
+template <LogicType Scalar, RangedSequence Arr>
+    requires LogicArrayType<Arr>
+auto operator^(Scalar const& s, Arr const& arr) {
+    return detail::logic_binop_scalar(arr, s, [](auto const& v, auto const& sc) {
+        return sc ^ v;
+    });
+}
+
+// Scalar-on-right mirror.
+template <RangedSequence Arr, LogicType Scalar>
+    requires LogicArrayType<Arr>
+auto operator&(Arr const& arr, Scalar const& s) {
+    return detail::logic_binop_scalar(arr, s, [](auto const& v, auto const& sc) {
+        return v & sc;
+    });
+}
+
+template <RangedSequence Arr, LogicType Scalar>
+    requires LogicArrayType<Arr>
+auto operator|(Arr const& arr, Scalar const& s) {
+    return detail::logic_binop_scalar(arr, s, [](auto const& v, auto const& sc) {
+        return v | sc;
+    });
+}
+
+template <RangedSequence Arr, LogicType Scalar>
+    requires LogicArrayType<Arr>
+auto operator^(Arr const& arr, Scalar const& s) {
+    return detail::logic_binop_scalar(arr, s, [](auto const& v, auto const& sc) {
+        return v ^ sc;
     });
 }
 
