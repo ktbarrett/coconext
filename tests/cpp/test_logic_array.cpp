@@ -159,6 +159,98 @@ TEST(TestLogicArray, MixedLogicBitXor) {
     EXPECT_EQ(c[0], 'X'_l);
 }
 
+// -- Bitwise scalar+array broadcasts ----------------------------------------
+
+TEST(TestLogicArray, AndScalarLHSDynArray) {
+    DynArray<Logic> a({'1'_l, '0'_l, 'X'_l, '1'_l});
+    auto c = '1'_l & a;
+    static_assert(std::is_same_v<decltype(c), DynArray<Logic>>);
+    EXPECT_EQ(c.range(), Range(3, Direction::DOWNTO, 0));
+    EXPECT_EQ(c[3], '1'_l);
+    EXPECT_EQ(c[2], '0'_l);
+    EXPECT_EQ(c[1], 'X'_l);
+    EXPECT_EQ(c[0], '1'_l);
+}
+
+TEST(TestLogicArray, AndScalarRHSDynArray) {
+    DynArray<Logic> a({'1'_l, '0'_l, 'X'_l, '1'_l});
+    auto c = a & '0'_l;
+    static_assert(std::is_same_v<decltype(c), DynArray<Logic>>);
+    EXPECT_EQ(c[3], '0'_l);
+    EXPECT_EQ(c[2], '0'_l);
+    EXPECT_EQ(c[1], '0'_l);
+    EXPECT_EQ(c[0], '0'_l);
+}
+
+TEST(TestLogicArray, OrScalarLHSDynArray) {
+    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l, '0'_l});
+    auto c = '0'_l | a;
+    EXPECT_EQ(c[3], '0'_l);
+    EXPECT_EQ(c[2], '1'_l);
+    EXPECT_EQ(c[1], 'X'_l);
+    EXPECT_EQ(c[0], '0'_l);
+}
+
+TEST(TestLogicArray, OrScalarRHSDynArray) {
+    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l, '0'_l});
+    auto c = a | '1'_l;
+    EXPECT_EQ(c[3], '1'_l);
+    EXPECT_EQ(c[2], '1'_l);
+    EXPECT_EQ(c[1], '1'_l);
+    EXPECT_EQ(c[0], '1'_l);
+}
+
+TEST(TestLogicArray, XorScalarLHSDynArray) {
+    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l, '0'_l});
+    auto c = '1'_l ^ a;
+    EXPECT_EQ(c[3], '1'_l);
+    EXPECT_EQ(c[2], '0'_l);
+    EXPECT_EQ(c[1], 'X'_l);
+    EXPECT_EQ(c[0], '1'_l);
+}
+
+TEST(TestLogicArray, XorScalarRHSDynArray) {
+    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l, '0'_l});
+    auto c = a ^ '0'_l;
+    EXPECT_EQ(c[3], '0'_l);
+    EXPECT_EQ(c[2], '1'_l);
+    EXPECT_EQ(c[1], 'X'_l);
+    EXPECT_EQ(c[0], '0'_l);
+}
+
+TEST(TestLogicArray, ScalarBitwiseStaticReturnsStatic) {
+    Array<Logic, 4> a({'0'_l, '1'_l, 'X'_l, '1'_l});
+    auto c = a & '1'_l;
+    static_assert(
+        std::is_same_v<decltype(c), Array<Logic, Range{3, Direction::DOWNTO, 0}>>
+    );
+    EXPECT_EQ(c[3], '0'_l);
+    EXPECT_EQ(c[2], '1'_l);
+    EXPECT_EQ(c[1], 'X'_l);
+    EXPECT_EQ(c[0], '1'_l);
+}
+
+TEST(TestLogicArray, ScalarBitwiseMixedBitScalarLogicArray) {
+    // Bit scalar combined with a Logic array: result element type follows the
+    // op's deduced return (Logic, since Bit & Logic -> Logic).
+    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l});
+    auto c = '1'_b & a;
+    static_assert(std::is_same_v<decltype(c), DynArray<Logic>>);
+    EXPECT_EQ(c[2], '0'_l);
+    EXPECT_EQ(c[1], '1'_l);
+    EXPECT_EQ(c[0], 'X'_l);
+}
+
+TEST(TestLogicArray, ScalarBitwiseOnSlice) {
+    DynArray<Logic> a({'0'_l, '1'_l, '1'_l, '0'_l});
+    auto s = a[{1, 2}];
+    auto c = s | '1'_l;
+    static_assert(std::is_same_v<decltype(c), DynArray<Logic>>);
+    EXPECT_EQ(c.range(), Range(1, Direction::DOWNTO, 0));
+    EXPECT_EQ(c[1], '1'_l);
+    EXPECT_EQ(c[0], '1'_l);
+}
+
 // -- to_logic_array from string ---------------------------------------------
 
 TEST(TestLogicArray, ToLogicArray) {
