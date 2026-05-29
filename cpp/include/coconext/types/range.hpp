@@ -15,27 +15,27 @@
 namespace coconext::types {
 
 struct Range {
-    using value_type = int32_t;
+    using value_type = int64_t;
     using iterator = CountIterator<value_type>;
 
     constexpr Range() noexcept = default;
 
     constexpr Range(value_type l, Direction d, value_type r) noexcept
-        : left(l), direction(d), right(r) {}
+        : left(l), right(r), direction(d) {}
 
     constexpr Range(value_type l, value_type r) noexcept
-        : left(l), direction(l > r ? Direction::DOWNTO : Direction::TO), right(r) {}
+        : left(l), right(r), direction(l > r ? Direction::DOWNTO : Direction::TO) {}
 
     explicit constexpr Range(size_t length)
-        : left(0), direction(Direction::TO), right(static_cast<value_type>(length) - 1) {
+        : left(0), right(static_cast<value_type>(length) - 1), direction(Direction::TO) {
         if (length > static_cast<size_t>(std::numeric_limits<value_type>::max())) {
             throw std::length_error("Range length overflows value_type");
         }
     }
 
     value_type left = 0;
-    Direction direction = Direction::TO;
     value_type right = -1;
+    Direction direction = Direction::TO;
 
     constexpr size_t length() const noexcept {
         int64_t len = direction == Direction::TO ? static_cast<int64_t>(right) - left + 1
