@@ -191,4 +191,93 @@ TEST(TestRange, IsSubsequenceConstexpr) {
         !Range{1, Direction::DOWNTO, 0}.is_subsequence_of(Range{0, Direction::TO, 4})
     );
 }
+
+// -- Length overflow protection --------------------------------------------
+//
+// A Range spanning the full int64_t domain (INT64_MIN..INT64_MAX in TO, or
+// reversed in DOWNTO) would mathematically have length 2^64 -- doesn't fit
+// in size_t. length() is the only place this check can live: Range's fields
+// are public and a Range can be mutated into the full-span state after
+// construction, so a construction-time check would be bypassable. Throws
+// std::length_error when invoked on such a Range.
+
+TEST(TestRange, LengthFullSpanTOThrows) {
+    constexpr auto lo = std::numeric_limits<Range::value_type>::min();
+    constexpr auto hi = std::numeric_limits<Range::value_type>::max();
+    Range r1{lo, Direction::TO, hi};
+    EXPECT_THROW((void)r1.length(), std::length_error);
+    // Two-arg auto-direction picks TO since lo < hi -- same behavior.
+    Range r2{lo, hi};
+    EXPECT_THROW((void)r2.length(), std::length_error);
+}
+
+TEST(TestRange, LengthFullSpanDOWNTOThrows) {
+    constexpr auto lo = std::numeric_limits<Range::value_type>::min();
+    constexpr auto hi = std::numeric_limits<Range::value_type>::max();
+    Range r1{hi, Direction::DOWNTO, lo};
+    EXPECT_THROW((void)r1.length(), std::length_error);
+    // Two-arg auto-direction picks DOWNTO since hi > lo -- same behavior.
+    Range r2{hi, lo};
+    EXPECT_THROW((void)r2.length(), std::length_error);
+}
+
+TEST(TestRange, LengthAfterPostConstructionMutationThrows) {
+    // Confirms that the check fires when fields are mutated into the full-
+    // span state after construction (the case construction-time checks
+    // can't catch).
+    Range r{0, Direction::TO, 5};
+    EXPECT_EQ(r.length(), 6U);  // sanity
+    r.left = std::numeric_limits<Range::value_type>::min();
+    r.right = std::numeric_limits<Range::value_type>::max();
+    EXPECT_THROW((void)r.length(), std::length_error);
+}
+
+TEST(TestRange, NearMaxLengthIsValidTO) {
+    // One step short of the full span: max representable length (SIZE_MAX
+    // on a 64-bit platform). Constructs fine and length() returns the right
+    // value via uint64_t arithmetic.
+    constexpr auto lo = std::numeric_limits<Range::value_type>::min();
+    constexpr auto hi = std::numeric_limits<Range::value_type>::max();
+    Range r1{lo, Direction::TO, hi - 1};
+    EXPECT_EQ(r1.length(), std::numeric_limits<size_t>::max());
+    Range r2{lo + 1, Direction::TO, hi};
+    EXPECT_EQ(r2.length(), std::numeric_limits<size_t>::max());
+}
+
+TEST(TestRange, NearMaxLengthIsValidDOWNTO) {
+    // DOWNTO mirror of NearMaxLengthIsValidTO. Without this, the validation
+    // path `left != hi && right == lo` (DOWNTO with one endpoint at the
+    // extreme but not the other) wasn't exercised directly, and length()'s
+    // DOWNTO branch wasn't tested at SIZE_MAX.
+    constexpr auto lo = std::numeric_limits<Range::value_type>::min();
+    constexpr auto hi = std::numeric_limits<Range::value_type>::max();
+    Range r1{hi, Direction::DOWNTO, lo + 1};
+    EXPECT_EQ(r1.length(), std::numeric_limits<size_t>::max());
+    Range r2{hi - 1, Direction::DOWNTO, lo};
+    EXPECT_EQ(r2.length(), std::numeric_limits<size_t>::max());
+}
+
+TEST(TestRange, LargeNegativeToPositiveLengthTO) {
+    // Endpoints straddling zero with a large gap -- naive signed subtraction
+    // (right - left) would overflow int64_t even though the unsigned diff
+    // fits. The uint64_t-based length() handles this correctly.
+    Range r{-1'000'000'000LL, Direction::TO, 1'000'000'000LL};
+    EXPECT_EQ(r.length(), 2'000'000'001U);
+}
+
+TEST(TestRange, LargeNegativeToPositiveLengthDOWNTO) {
+    // DOWNTO mirror -- exercises the uint64_t arithmetic in the DOWNTO
+    // branch of length() for endpoints straddling zero.
+    Range r{1'000'000'000LL, Direction::DOWNTO, -1'000'000'000LL};
+    EXPECT_EQ(r.length(), 2'000'000'001U);
+}
+
+TEST(TestRange, DirectionMismatchStillEmpty) {
+    // TO direction with right < left, or DOWNTO with left < right, remains
+    // a valid (empty) range -- used intentionally for null slices.
+    Range r1{5, Direction::TO, 3};
+    EXPECT_EQ(r1.length(), 0U);
+    Range r2{3, Direction::DOWNTO, 5};
+    EXPECT_EQ(r2.length(), 0U);
+}
 // LCOV_EXCL_BR_STOP

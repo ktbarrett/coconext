@@ -18,6 +18,22 @@ struct Range {
     using value_type = int64_t;
     using iterator = CountIterator<value_type>;
 
+    // length() requires size_t to be at least as wide as value_type. This
+    // implies two things at once:
+    //   (a) `static_cast<size_t>(value_type_negative)` is well-defined
+    //       modular reduction over 2^width(size_t); combined with C++20's
+    //       mandated two's complement representation, the resulting bit
+    //       pattern (or its sign-extended form for wider size_t) makes
+    //       the unsigned subtraction `static_cast<size_t>(right) -
+    //       static_cast<size_t>(left)` produce the correct mathematical
+    //       difference when endpoints are in the expected order.
+    //   (b) the +1 on a maximum-valid difference (one short of the full
+    //       value_type domain) fits in size_t without wrapping.
+    static_assert(
+        sizeof(size_t) >= sizeof(value_type),
+        "Range::length() requires size_t to be at least as wide as value_type"
+    );
+
     constexpr Range() noexcept = default;
 
     constexpr Range(value_type l, Direction d, value_type r) noexcept
@@ -37,13 +53,38 @@ struct Range {
     value_type right = -1;
     Direction direction = Direction::TO;
 
-    constexpr size_t length() const noexcept {
-        int64_t len = direction == Direction::TO ? static_cast<int64_t>(right) - left + 1
-                                                 : static_cast<int64_t>(left) - right + 1;
-        if (len < 0) {
+    // length() is the only safe place to enforce the size_t-overflow check:
+    // the fields are public, so a Range can be mutated into the full-domain
+    // span after construction.
+    //
+    // Throws std::length_error if the range spans the full value_type domain
+    // (mathematical length 2^width(value_type), doesn't fit in size_t).
+    //
+    // The arithmetic is in size_t. See the static_assert above for why direct
+    // signed-to-size_t casts give us the correct unsigned difference. Without
+    // the full-span check below, the +1 on a SIZE_MAX-1 difference would wrap
+    // silently to 0.
+    constexpr size_t length() const {
+        constexpr value_type lo = std::numeric_limits<value_type>::min();
+        constexpr value_type hi = std::numeric_limits<value_type>::max();
+        bool const full_to = direction == Direction::TO && left == lo && right == hi;
+        bool const full_downto =
+            direction == Direction::DOWNTO && left == hi && right == lo;
+        if (full_to || full_downto) {
+            throw std::length_error(
+                "Range spans the full value_type domain; length overflows size_t"
+            );
+        }
+        if (direction == Direction::TO) {
+            if (right < left) {
+                return 0;
+            }
+            return static_cast<size_t>(right) - static_cast<size_t>(left) + 1;
+        }
+        if (left < right) {
             return 0;
         }
-        return static_cast<size_t>(len);
+        return static_cast<size_t>(left) - static_cast<size_t>(right) + 1;
     }
 
     constexpr iterator begin() const noexcept { return iterator(left, direction); }
