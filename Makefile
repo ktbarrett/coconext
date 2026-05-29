@@ -6,6 +6,8 @@ COCOTB_DIR_PATH ?= $(PWD)/cocotb
 # but set to "tests" in CI to avoid installing unnecessary dependencies.
 DEV_BUILD_DEP_GROUP ?= dev
 
+CXX_STANDARD ?= 20
+
 .PHONY: dev_build
 dev_build:
 	uv sync --no-default-groups --group=$(DEV_BUILD_DEP_GROUP) --no-install-project
@@ -15,6 +17,7 @@ dev_build:
 	CXXFLAGS="$$CXXFLAGS --coverage -g -Og" \
 	CFLAGS="$$CFLAGS --coverage -g -Og" \
 	LDFLAGS="$$LDFLAGS --coverage" \
+	CMAKE_CXX_STANDARD=$(CXX_STANDARD) \
 	uv pip install --no-build-isolation --no-deps --force-reinstall -e .
 
 	cp "$$(python -c 'import _coconext, os; print(os.path.join(os.path.dirname(_coconext.__file__), "_coconext.pyi"))')" python/_coconext.pyi
@@ -30,6 +33,7 @@ dev_tests: dev_build
 	COCOTB_USER_COVERAGE=1 pytest --cov=coconext --cov-branch --cov-report= tests/python/
 	cmake -S tests/cpp -B "$(CPP_TESTS_BUILD_DIR)" \
 	    -DCMAKE_PREFIX_PATH="$$(coconext-config --cmake-prefix)" \
+	    -DCMAKE_CXX_STANDARD=$(CXX_STANDARD) \
 	    -DCMAKE_EXE_LINKER_FLAGS=--coverage
 	cmake --build "$(CPP_TESTS_BUILD_DIR)"
 	ctest --output-on-failure --test-dir "$(CPP_TESTS_BUILD_DIR)"

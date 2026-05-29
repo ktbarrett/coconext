@@ -14,12 +14,13 @@ on:
 
 jobs:
   tests:
-    name: Tests (Python ${{matrix.python-version}} | ${{matrix.simulator}}${{ matrix.cc != '' && format(' | {0}', matrix.cc) || '' }}${{ !startsWith(matrix.os, 'ubuntu') && format(' | {0}', matrix.os) || '' }})
+    name: Tests (Python ${{matrix.python-version}} | ${{matrix.simulator}}${{matrix.cxx-standard != '20' && format(' | C++{0}', matrix.cxx-standard) || '' }}${{ matrix.cc != '' && format(' | {0}', matrix.cc) || '' }}${{ !startsWith(matrix.os, 'ubuntu') && format(' | {0}', matrix.os) || '' }})
     runs-on: ${{matrix.os}}
 
     env:
       SIM: ${{ matrix.simulator }}
       TOPLEVEL_LANG: ${{ matrix.toplevel_lang }}
+      CXX_STANDARD: ${{ matrix.cxx-standard }}
 
     strategy:
       fail-fast: false
@@ -29,6 +30,7 @@ jobs:
         os: [ubuntu-24.04]
         nvc-version: ["1.20.1"]
         toplevel_lang: [vhdl]
+        cxx-standard: ["20"]
         include:
           # Ubuntu with Clang
           - python-version: "3.13"
@@ -39,15 +41,25 @@ jobs:
             cc: "clang"
             cxx: "clang++"
             gcov: "llvm-cov gcov"
+            cxx-standard: "20"
           # MacOS ARM and Intel
           - python-version: "3.13"
             simulator: "icarus"
             toplevel_lang: "verilog"
             os: "macos-26"
+            cxx-standard: "20"
           - python-version: "3.13"
             simulator: "icarus"
             toplevel_lang: "verilog"
             os: "macos-15-intel"
+            cxx-standard: "20"
+          # Other C++ standards with GCC
+          - python-version: "3.13"
+            nvc-version: "1.20.1"
+            os: "ubuntu-24.04"
+            simulator: "nvc"
+            toplevel_lang: "vhdl"
+            cxx-standard: "23"
 
     steps:
     - uses: actions/checkout@v6
@@ -94,6 +106,7 @@ jobs:
         CC: ${{ matrix.cc || 'gcc' }}
         CXX: ${{ matrix.cxx || 'g++' }}
         GCOV_EXECUTABLE: ${{ matrix.gcov || 'gcov' }}
+        CXX_STANDARD: ${{ matrix.cxx-standard }}
         DEV_BUILD_DEP_GROUP: dev_tests
       run: |
         make dev_tests integration_tests generate_report
