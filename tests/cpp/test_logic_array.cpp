@@ -20,10 +20,10 @@ TEST(TestLogicArray, FindLogicElement) {
 // -- Bitwise array operations: AND ------------------------------------------
 
 TEST(TestLogicArray, AndLogic) {
-    DynArray<Logic> a({'1'_l, '0'_l, 'X'_l, '1'_l});
-    DynArray<Logic> b({'1'_l, '1'_l, '1'_l, '0'_l});
+    Vector<Logic> a({'1'_l, '0'_l, 'X'_l, '1'_l});
+    Vector<Logic> b({'1'_l, '1'_l, '1'_l, '0'_l});
     auto c = a & b;
-    static_assert(std::is_same_v<decltype(c), DynArray<Logic>>);
+    static_assert(std::is_same_v<decltype(c), Vector<Logic>>);
     EXPECT_EQ(c.range(), Range(3, Direction::DOWNTO, 0));
     EXPECT_EQ(c[3], '1'_l);
     EXPECT_EQ(c[2], '0'_l);
@@ -34,8 +34,8 @@ TEST(TestLogicArray, AndLogic) {
 // -- Bitwise array operations: OR -------------------------------------------
 
 TEST(TestLogicArray, OrLogic) {
-    DynArray<Logic> a({'1'_l, '0'_l, 'X'_l, '0'_l});
-    DynArray<Logic> b({'0'_l, '0'_l, '1'_l, '0'_l});
+    Vector<Logic> a({'1'_l, '0'_l, 'X'_l, '0'_l});
+    Vector<Logic> b({'0'_l, '0'_l, '1'_l, '0'_l});
     auto c = a | b;
     EXPECT_EQ(c[3], '1'_l);
     EXPECT_EQ(c[2], '0'_l);
@@ -46,8 +46,8 @@ TEST(TestLogicArray, OrLogic) {
 // -- Bitwise array operations: XOR ------------------------------------------
 
 TEST(TestLogicArray, XorLogic) {
-    DynArray<Logic> a({'1'_l, '0'_l, '1'_l, '0'_l});
-    DynArray<Logic> b({'1'_l, '1'_l, '0'_l, '0'_l});
+    Vector<Logic> a({'1'_l, '0'_l, '1'_l, '0'_l});
+    Vector<Logic> b({'1'_l, '1'_l, '0'_l, '0'_l});
     auto c = a ^ b;
     EXPECT_EQ(c[3], '0'_l);
     EXPECT_EQ(c[2], '1'_l);
@@ -58,9 +58,9 @@ TEST(TestLogicArray, XorLogic) {
 // -- Bitwise array operations: NOT ------------------------------------------
 
 TEST(TestLogicArray, NotLogic) {
-    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
+    Vector<Logic> a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
     auto c = ~a;
-    static_assert(std::is_same_v<decltype(c), DynArray<Logic>>);
+    static_assert(std::is_same_v<decltype(c), Vector<Logic>>);
     EXPECT_EQ(c.range(), Range(3, Direction::DOWNTO, 0));
     EXPECT_EQ(c[3], '1'_l);
     EXPECT_EQ(c[2], '0'_l);
@@ -69,9 +69,9 @@ TEST(TestLogicArray, NotLogic) {
 }
 
 TEST(TestLogicArray, NotBit) {
-    DynArray<Bit> a({'0'_b, '1'_b, '0'_b, '1'_b});
+    Vector<Bit> a({'0'_b, '1'_b, '0'_b, '1'_b});
     auto c = ~a;
-    static_assert(std::is_same_v<decltype(c), DynArray<Bit>>);
+    static_assert(std::is_same_v<decltype(c), Vector<Bit>>);
     EXPECT_EQ(c.range(), Range(3, Direction::DOWNTO, 0));
     EXPECT_EQ(c[3], '1'_b);
     EXPECT_EQ(c[2], '0'_b);
@@ -82,23 +82,23 @@ TEST(TestLogicArray, NotBit) {
 // -- Bitwise operations: edge cases -----------------------------------------
 
 TEST(TestLogicArray, BitwiseLengthMismatch) {
-    DynArray<Logic> a({'0'_l, '1'_l});
-    DynArray<Logic> b({'0'_l, '1'_l, 'X'_l});
+    Vector<Logic> a({'0'_l, '1'_l});
+    Vector<Logic> b({'0'_l, '1'_l, 'X'_l});
     EXPECT_THROW((void)(a & b), std::invalid_argument);
     EXPECT_THROW((void)(a | b), std::invalid_argument);
     EXPECT_THROW((void)(a ^ b), std::invalid_argument);
 }
 
 TEST(TestLogicArray, BitwiseEmpty) {
-    DynArray<Logic> a({});
-    DynArray<Logic> b({});
+    Vector<Logic> a({});
+    Vector<Logic> b({});
     auto c = a & b;
     EXPECT_EQ(c.range().length(), 0U);
 }
 
 TEST(TestLogicArray, BitwiseResultRange) {
-    DynArray<Logic> a({'0'_l, '1'_l, '1'_l}, Range(5, Direction::DOWNTO, 3));
-    DynArray<Logic> b({'1'_l, '1'_l, '0'_l});
+    Vector<Logic> a({'0'_l, '1'_l, '1'_l}, Range(5, Direction::DOWNTO, 3));
+    Vector<Logic> b({'1'_l, '1'_l, '0'_l});
     auto c = a & b;
     EXPECT_EQ(c.range(), Range(2, Direction::DOWNTO, 0));
     EXPECT_EQ(c[2], '0'_l);
@@ -107,11 +107,11 @@ TEST(TestLogicArray, BitwiseResultRange) {
 }
 
 TEST(TestLogicArray, BitwiseOnSlice) {
-    DynArray<Logic> a({'0'_l, '1'_l, '1'_l, '0'_l});
-    DynArray<Logic> b({'1'_l, '0'_l});
+    Vector<Logic> a({'0'_l, '1'_l, '1'_l, '0'_l});
+    Vector<Logic> b({'1'_l, '0'_l});
     auto s = a[{1, 2}];
     auto c = s & b;
-    static_assert(std::is_same_v<decltype(c), DynArray<Logic>>);
+    static_assert(std::is_same_v<decltype(c), Vector<Logic>>);
     EXPECT_EQ(c.range(), Range(1, Direction::DOWNTO, 0));
     EXPECT_EQ(c[1], '1'_l);
     EXPECT_EQ(c[0], '0'_l);
@@ -123,37 +123,37 @@ TEST(TestLogicArray, BitwiseOnStaticArraySlice) {
     auto sa = a[{1, 2}];
     auto sb = b[{1, 2}];
     auto c = sa & sb;
-    static_assert(std::is_same_v<decltype(c), DynArray<Logic>>);
+    static_assert(std::is_same_v<decltype(c), Vector<Logic>>);
     EXPECT_EQ(c.range(), Range(1, Direction::DOWNTO, 0));
     EXPECT_EQ(c[1], '0'_l);
     EXPECT_EQ(c[0], '1'_l);
 }
 
 TEST(TestLogicArray, MixedLogicBitAnd) {
-    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l});
-    DynArray<Bit> b({'1'_b, '1'_b, '1'_b});
+    Vector<Logic> a({'0'_l, '1'_l, 'X'_l});
+    Vector<Bit> b({'1'_b, '1'_b, '1'_b});
     auto c = a & b;
-    static_assert(std::is_same_v<decltype(c), DynArray<Logic>>);
+    static_assert(std::is_same_v<decltype(c), Vector<Logic>>);
     EXPECT_EQ(c[2], '0'_l);
     EXPECT_EQ(c[1], '1'_l);
     EXPECT_EQ(c[0], 'X'_l);
 }
 
 TEST(TestLogicArray, MixedLogicBitOr) {
-    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l});
-    DynArray<Bit> b({'0'_b, '0'_b, '1'_b});
+    Vector<Logic> a({'0'_l, '1'_l, 'X'_l});
+    Vector<Bit> b({'0'_b, '0'_b, '1'_b});
     auto c = a | b;
-    static_assert(std::is_same_v<decltype(c), DynArray<Logic>>);
+    static_assert(std::is_same_v<decltype(c), Vector<Logic>>);
     EXPECT_EQ(c[2], '0'_l);
     EXPECT_EQ(c[1], '1'_l);
     EXPECT_EQ(c[0], '1'_l);
 }
 
 TEST(TestLogicArray, MixedLogicBitXor) {
-    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l});
-    DynArray<Bit> b({'1'_b, '1'_b, '0'_b});
+    Vector<Logic> a({'0'_l, '1'_l, 'X'_l});
+    Vector<Bit> b({'1'_b, '1'_b, '0'_b});
     auto c = a ^ b;
-    static_assert(std::is_same_v<decltype(c), DynArray<Logic>>);
+    static_assert(std::is_same_v<decltype(c), Vector<Logic>>);
     EXPECT_EQ(c[2], '1'_l);
     EXPECT_EQ(c[1], '0'_l);
     EXPECT_EQ(c[0], 'X'_l);
@@ -275,7 +275,7 @@ TEST(TestLogicArray, ResolveStaticReturnsStaticArray) {
 // -- Slice resolvability ---------------------------------------------------
 //
 // The constrained partial specs of ArraySlice and DynArraySlice inherit the
-// LogicArrayMixin too, so slices of LogicArray/BitArray/DynLogicArray/etc
+// LogicArrayMixin too, so slices of LogicArray/BitArray/LogicVector/etc
 // have is_resolvable() and resolve(method) members. Sub-slicing preserves
 // the mixin via outer-name resolution in the slice impl.
 
@@ -293,7 +293,7 @@ TEST(TestLogicArray, DynSliceResolveReturnsDynArray) {
     auto a = to_logic_array("01XZ");
     auto s = a[{3, 0}];
     auto r = s.resolve(ResolveMethod::ZEROS);
-    static_assert(std::is_same_v<decltype(r), DynArray<Logic>>);
+    static_assert(std::is_same_v<decltype(r), Vector<Logic>>);
     EXPECT_EQ(to_string(r), "0100");
 }
 
@@ -318,17 +318,17 @@ TEST(TestLogicArray, StaticSliceIsResolvable) {
 }
 
 TEST(TestLogicArray, ConstOwnerDynSliceHasMixin) {
-    // Exercises DynArraySlice<const DynArray<Logic>> -- the constrained partial
+    // Exercises DynArraySlice<const Vector<Logic>> -- the constrained partial
     // spec must trigger for const-qualified Logic/Bit owners too. Without this
-    // test a regression where range_value_t<const DynArray<Logic>> doesn't reduce
+    // test a regression where range_value_t<const Vector<Logic>> doesn't reduce
     // to Logic would leave const slices on the non-Logic primary shell and lose
     // the mixin. The check is structural (the call has to compile and return a
     // bool), not the value -- a const slice over a resolvable Logic array.
-    DynArray<Logic> const a = to_logic_array("01LH");
+    Vector<Logic> const a = to_logic_array("01LH");
     auto s = a[{3, 0}];
     static_assert(
-        std::same_as<decltype(s), DynArraySlice<DynArray<Logic> const>>,
-        "const Logic owner must produce DynArraySlice<const DynArray<Logic>>"
+        std::same_as<decltype(s), DynArraySlice<Vector<Logic> const>>,
+        "const Logic owner must produce DynArraySlice<const Vector<Logic>>"
     );
     EXPECT_TRUE(s.is_resolvable());  // all elements are 0/1/L/H
     auto r = s.resolve(ResolveMethod::WEAK);
@@ -386,7 +386,7 @@ TEST(TestLogicArray, UdlLogicAllUnderscores) {
 
 TEST(TestLogicArray, FormatterStatic) {
     // The LogicType-constrained std::formatter spec in logic_array.hpp must
-    // pick up static LogicArray, not just DynLogicArray (the latter is covered
+    // pick up static LogicArray, not just LogicVector (the latter is covered
     // in test_array.cpp). Verifies the partial spec matches at the static
     // owner type and produces the "Logic[range]{...}" form.
     auto a = "01XZ"_l;  // LogicArray<Range{3, DOWNTO, 0}>
@@ -419,17 +419,17 @@ TEST(TestLogicArray, UdlBitwiseOps) {
 }
 
 TEST(TestLogicArray, BitwiseOpsMixedYieldsDynamic) {
-    // One static operand and one dynamic operand -> DynArray result.
+    // One static operand and one dynamic operand -> Vector result.
     auto lhs = "0101"_l;  // static LogicArray<4>
-    DynLogicArray rhs({'1'_l, '1'_l, '0'_l, '0'_l});
+    LogicVector rhs({'1'_l, '1'_l, '0'_l, '0'_l});
     auto a = lhs & rhs;
-    static_assert(std::is_same_v<decltype(a), DynLogicArray>);
+    static_assert(std::is_same_v<decltype(a), LogicVector>);
     EXPECT_EQ(a.range(), (Range{3, Direction::DOWNTO, 0}));
     EXPECT_EQ(a[3], '0'_l);
     EXPECT_EQ(a[0], '0'_l);
 
     auto b = ~rhs;
-    static_assert(std::is_same_v<decltype(b), DynLogicArray>);
+    static_assert(std::is_same_v<decltype(b), LogicVector>);
     EXPECT_EQ(b[3], '0'_l);
     EXPECT_EQ(b[0], '1'_l);
 }
@@ -439,15 +439,15 @@ TEST(TestLogicArray, BitwiseOpsMixedYieldsDynamic) {
 static_assert(std::is_same_v<
               BitArray<Range{3, Direction::DOWNTO, 0}>,
               Array<Bit, Range{3, Direction::DOWNTO, 0}>>);
-static_assert(std::is_same_v<DynBitArray, DynArray<Bit>>);
+static_assert(std::is_same_v<BitVector, Vector<Bit>>);
 
 // -- Bit-only bitwise operations -------------------------------------------
 
 TEST(TestBitArray, AndBit) {
-    DynBitArray a({'1'_b, '0'_b, '1'_b, '0'_b});
-    DynBitArray b({'1'_b, '1'_b, '0'_b, '0'_b});
+    BitVector a({'1'_b, '0'_b, '1'_b, '0'_b});
+    BitVector b({'1'_b, '1'_b, '0'_b, '0'_b});
     auto c = a & b;
-    static_assert(std::is_same_v<decltype(c), DynBitArray>);
+    static_assert(std::is_same_v<decltype(c), BitVector>);
     EXPECT_EQ(c.range(), Range(3, Direction::DOWNTO, 0));
     EXPECT_EQ(c[3], '1'_b);
     EXPECT_EQ(c[2], '0'_b);
@@ -456,10 +456,10 @@ TEST(TestBitArray, AndBit) {
 }
 
 TEST(TestBitArray, OrBit) {
-    DynBitArray a({'1'_b, '0'_b, '0'_b, '0'_b});
-    DynBitArray b({'0'_b, '0'_b, '1'_b, '0'_b});
+    BitVector a({'1'_b, '0'_b, '0'_b, '0'_b});
+    BitVector b({'0'_b, '0'_b, '1'_b, '0'_b});
     auto c = a | b;
-    static_assert(std::is_same_v<decltype(c), DynBitArray>);
+    static_assert(std::is_same_v<decltype(c), BitVector>);
     EXPECT_EQ(c.range(), Range(3, Direction::DOWNTO, 0));
     EXPECT_EQ(c[3], '1'_b);
     EXPECT_EQ(c[2], '0'_b);
@@ -468,10 +468,10 @@ TEST(TestBitArray, OrBit) {
 }
 
 TEST(TestBitArray, XorBit) {
-    DynBitArray a({'1'_b, '0'_b, '1'_b, '0'_b});
-    DynBitArray b({'1'_b, '1'_b, '0'_b, '0'_b});
+    BitVector a({'1'_b, '0'_b, '1'_b, '0'_b});
+    BitVector b({'1'_b, '1'_b, '0'_b, '0'_b});
     auto c = a ^ b;
-    static_assert(std::is_same_v<decltype(c), DynBitArray>);
+    static_assert(std::is_same_v<decltype(c), BitVector>);
     EXPECT_EQ(c.range(), Range(3, Direction::DOWNTO, 0));
     EXPECT_EQ(c[3], '0'_b);
     EXPECT_EQ(c[2], '1'_b);
@@ -543,10 +543,10 @@ TEST(TestBitArray, StaticBitBitStaysBit) {
 }
 
 TEST(TestBitArray, DynLogicBitAndPromotesToLogic) {
-    DynLogicArray l({'0'_l, '1'_l, 'X'_l, '0'_l});
-    DynBitArray b({'1'_b, '1'_b, '1'_b, '0'_b});
+    LogicVector l({'0'_l, '1'_l, 'X'_l, '0'_l});
+    BitVector b({'1'_b, '1'_b, '1'_b, '0'_b});
     auto c = l & b;
-    static_assert(std::is_same_v<decltype(c), DynLogicArray>);
+    static_assert(std::is_same_v<decltype(c), LogicVector>);
     EXPECT_EQ(c[3], '0'_l);
     EXPECT_EQ(c[2], '1'_l);
     EXPECT_EQ(c[1], 'X'_l);
@@ -555,10 +555,10 @@ TEST(TestBitArray, DynLogicBitAndPromotesToLogic) {
 
 TEST(TestBitArray, DynBitLogicOrPromotesToLogic) {
     // BitArray on LHS, LogicArray on RHS -- promotion still happens.
-    DynBitArray b({'0'_b, '0'_b, '1'_b, '0'_b});
-    DynLogicArray l({'1'_l, '0'_l, '0'_l, 'X'_l});
+    BitVector b({'0'_b, '0'_b, '1'_b, '0'_b});
+    LogicVector l({'1'_l, '0'_l, '0'_l, 'X'_l});
     auto c = b | l;
-    static_assert(std::is_same_v<decltype(c), DynLogicArray>);
+    static_assert(std::is_same_v<decltype(c), LogicVector>);
     EXPECT_EQ(c[3], '1'_l);
     EXPECT_EQ(c[2], '0'_l);
     EXPECT_EQ(c[1], '1'_l);
@@ -566,21 +566,21 @@ TEST(TestBitArray, DynBitLogicOrPromotesToLogic) {
 }
 
 TEST(TestBitArray, StaticDynMixedYieldsDynLogic) {
-    // Static LogicArray + dynamic BitArray -- dynamic operand forces DynArray,
+    // Static LogicArray + dynamic BitArray -- dynamic operand forces Vector,
     // and Logic wins for the element type.
     auto l = "0101"_l;
-    DynBitArray b({'1'_b, '1'_b, '0'_b, '0'_b});
+    BitVector b({'1'_b, '1'_b, '0'_b, '0'_b});
     auto c = l & b;
-    static_assert(std::is_same_v<decltype(c), DynLogicArray>);
+    static_assert(std::is_same_v<decltype(c), LogicVector>);
     EXPECT_EQ(c[3], '0'_l);
     EXPECT_EQ(c[0], '0'_l);
 }
 
 TEST(TestBitArray, DynBitStaticLogicAndPromotesToDynLogic) {
-    DynBitArray b({'1'_b, '1'_b, '0'_b, '0'_b});
+    BitVector b({'1'_b, '1'_b, '0'_b, '0'_b});
     auto l = "0101"_l;
     auto c = b & l;
-    static_assert(std::is_same_v<decltype(c), DynLogicArray>);
+    static_assert(std::is_same_v<decltype(c), LogicVector>);
     EXPECT_EQ(c[3], '0'_l);
     EXPECT_EQ(c[2], '1'_l);
     EXPECT_EQ(c[1], '0'_l);
@@ -589,9 +589,9 @@ TEST(TestBitArray, DynBitStaticLogicAndPromotesToDynLogic) {
 
 TEST(TestBitArray, StaticBitDynLogicOrPromotesToDynLogic) {
     auto b = "0010"_b;
-    DynLogicArray l({'1'_l, '0'_l, '0'_l, 'X'_l});
+    LogicVector l({'1'_l, '0'_l, '0'_l, 'X'_l});
     auto c = b | l;
-    static_assert(std::is_same_v<decltype(c), DynLogicArray>);
+    static_assert(std::is_same_v<decltype(c), LogicVector>);
     EXPECT_EQ(c[3], '1'_l);
     EXPECT_EQ(c[2], '0'_l);
     EXPECT_EQ(c[1], '1'_l);
@@ -631,7 +631,7 @@ TEST(TestBitArray, ToBitArrayInvalidChar) {
 TEST(TestBitArray, ToBitArrayFromLogicRange) {
     auto a = to_logic_array("01LH");
     auto b = to_bit_array(a);
-    static_assert(std::is_same_v<decltype(b), DynBitArray>);
+    static_assert(std::is_same_v<decltype(b), BitVector>);
     EXPECT_EQ(b.range(), Range(3, Direction::DOWNTO, 0));
     EXPECT_EQ(b[3], '0'_b);
     EXPECT_EQ(b[2], '1'_b);
@@ -654,7 +654,7 @@ TEST(TestBitArray, ToBitArrayFromStdVector) {
     // coconext-array form above.
     std::vector<Logic> const v{'0'_l, '1'_l, 'L'_l, 'H'_l};
     auto b = to_bit_array(v);
-    static_assert(std::is_same_v<decltype(b), DynBitArray>);
+    static_assert(std::is_same_v<decltype(b), BitVector>);
     EXPECT_EQ(b.range(), Range(3, Direction::DOWNTO, 0));
     EXPECT_EQ(b[3], '0'_b);
     EXPECT_EQ(b[2], '1'_b);
@@ -670,7 +670,7 @@ TEST(TestBitArray, ToBitArrayFromStdVectorNonResolvable) {
 TEST(TestBitArray, ToBitArrayFromStaticLogicArray) {
     auto a = "01LH"_l;
     auto b = to_bit_array(a);
-    static_assert(std::is_same_v<decltype(b), DynBitArray>);
+    static_assert(std::is_same_v<decltype(b), BitVector>);
     EXPECT_EQ(to_string(b), "0101");
 }
 
@@ -699,7 +699,7 @@ TEST(TestBitArray, IsResolvableAlwaysTrue) {
 
 TEST(TestBitArray, ResolveBitIsIdentity) {
     auto a = to_bit_array("0110");
-    static_assert(std::is_same_v<decltype(a.resolve(ResolveMethod::ZEROS)), DynBitArray>);
+    static_assert(std::is_same_v<decltype(a.resolve(ResolveMethod::ZEROS)), BitVector>);
     for (auto method :
          {ResolveMethod::ZEROS,
           ResolveMethod::ONES,

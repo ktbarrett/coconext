@@ -3,9 +3,9 @@
 
 #include <algorithm>
 #include <coconext/types/array.hpp>
-#include <coconext/types/dyn_array.hpp>
 #include <coconext/types/logic.hpp>
 #include <coconext/types/string_literal.hpp>
+#include <coconext/types/vector.hpp>
 #include <cstddef>
 #include <format>
 #include <limits>
@@ -18,7 +18,7 @@ namespace coconext::types {
 namespace detail {
 
 // CRTP mixin providing the Logic/Bit-specific query and resolution members.
-// Inherited by the Logic/Bit specializations of Array, DynArray, ArraySlice,
+// Inherited by the Logic/Bit specializations of Array, Vector, ArraySlice,
 // and DynArraySlice below. The non-Logic/Bit primaries do NOT inherit this,
 // so `Array<int, R>::is_resolvable()` and friends don't exist.
 template <typename Self>
@@ -37,7 +37,7 @@ struct LogicArrayMixin {
     }
 
     // Element-wise resolve. Returns a static `Array<Elem, R>` when Self has a
-    // compile-time range, a heap-allocated `DynArray<Elem>` otherwise. The
+    // compile-time range, a heap-allocated `Vector<Elem>` otherwise. The
     // returned array preserves Self's range (an owner returns the same shape;
     // a slice returns an owner sized like the slice's range).
     auto resolve(ResolveMethod method) const {
@@ -50,7 +50,7 @@ struct LogicArrayMixin {
             });
             return result;
         } else {
-            ::coconext::types::DynArray<Elem> result(self.range());
+            ::coconext::types::Vector<Elem> result(self.range());
             std::ranges::transform(self, result.begin(), [method](auto const& v) {
                 return v.resolve(method);
             });
@@ -64,7 +64,7 @@ struct LogicArrayMixin {
 // -- Logic/Bit specializations ---------------------------------------------
 //
 // These specializations make `Array<Logic, R>`, `Array<Bit, R>`,
-// `DynArray<Logic>`, `DynArray<Bit>`, and slices over Logic/Bit owners
+// `Vector<Logic>`, `Vector<Bit>`, and slices over Logic/Bit owners
 // inherit `LogicArrayMixin`, gaining `is_resolvable()` and `resolve(method)`
 // as members. The primary templates remain unchanged for non-Logic element
 // types -- e.g., `Array<int, R>` has no `is_resolvable()`.
@@ -89,24 +89,24 @@ class Array<Bit, R> : public ArrayImpl<Bit, R>, public LogicArrayMixin<Array<Bit
 }  // namespace detail
 
 template <>
-class DynArray<Logic> : public detail::DynArrayImpl<Logic>,
-                        public detail::LogicArrayMixin<DynArray<Logic>> {
+class Vector<Logic> : public detail::VectorImpl<Logic>,
+                      public detail::LogicArrayMixin<Vector<Logic>> {
   public:
-    using detail::DynArrayImpl<Logic>::DynArrayImpl;
-    using detail::DynArrayImpl<Logic>::operator=;
+    using detail::VectorImpl<Logic>::VectorImpl;
+    using detail::VectorImpl<Logic>::operator=;
 };
 
 template <>
-class DynArray<Bit> : public detail::DynArrayImpl<Bit>,
-                      public detail::LogicArrayMixin<DynArray<Bit>> {
+class Vector<Bit> : public detail::VectorImpl<Bit>,
+                    public detail::LogicArrayMixin<Vector<Bit>> {
   public:
-    using detail::DynArrayImpl<Bit>::DynArrayImpl;
-    using detail::DynArrayImpl<Bit>::operator=;
+    using detail::VectorImpl<Bit>::VectorImpl;
+    using detail::VectorImpl<Bit>::operator=;
 };
 
 // Constrained partial specs that pick up any slice whose owner's element
 // type is Logic or Bit, regardless of whether the owner is Array<...>,
-// DynArray<...>, or const-qualified.
+// Vector<...>, or const-qualified.
 template <typename ArrayT>
     requires LogicType<std::ranges::range_value_t<ArrayT>>
 class DynArraySlice<ArrayT> : public detail::DynArraySliceImpl<ArrayT>,
@@ -125,8 +125,8 @@ class ArraySlice<ArrayT, R> : public detail::ArraySliceImpl<ArrayT, R>,
     using detail::ArraySliceImpl<ArrayT, R>::operator=;
 };
 
-using DynLogicArray = DynArray<Logic>;
-using DynBitArray = DynArray<Bit>;
+using LogicVector = Vector<Logic>;
+using BitVector = Vector<Bit>;
 
 template <auto... Args>
 using LogicArray = Array<Logic, Args...>;
@@ -152,7 +152,7 @@ auto logic_binop(LHS const& lhs, RHS const& rhs, Op op) {
     ));
     // When both sides have compile-time-known ranges, fold the length check
     // into a static_assert and return a stack-allocated static Array. A
-    // runtime range on either side forces a heap-allocated DynArray.
+    // runtime range on either side forces a heap-allocated Vector.
     if constexpr (StaticRangedSequence<LHS> && StaticRangedSequence<RHS>) {
         constexpr auto LR = std::remove_cvref_t<LHS>::range();
         constexpr auto RR = std::remove_cvref_t<RHS>::range();
@@ -183,7 +183,7 @@ auto logic_binop(LHS const& lhs, RHS const& rhs, Op op) {
         // lhs.range() was constructed validly so its length already fits in
         // Range::value_type.
         auto const n = static_cast<Range::value_type>(lhs.range().length());
-        DynArray<result_elem> result(Range{n - 1, Direction::DOWNTO, 0});
+        Vector<result_elem> result(Range{n - 1, Direction::DOWNTO, 0});
         std::transform(
             std::ranges::begin(lhs),
             std::ranges::end(lhs),
@@ -243,7 +243,7 @@ auto operator~(T const& arr) {
         // arr.range() was constructed validly so its length already fits in
         // Range::value_type.
         auto const n = static_cast<Range::value_type>(arr.range().length());
-        DynArray<elem_t> result(Range{n - 1, Direction::DOWNTO, 0});
+        Vector<elem_t> result(Range{n - 1, Direction::DOWNTO, 0});
         std::transform(
             std::ranges::begin(arr),
             std::ranges::end(arr),
@@ -268,7 +268,7 @@ constexpr std::string_view logic_type_name() {
 }
 
 template <typename ElemT, typename CharToElem>
-DynArray<ElemT> parse_logic_string(std::string_view s, CharToElem char_to_elem) {
+Vector<ElemT> parse_logic_string(std::string_view s, CharToElem char_to_elem) {
     size_t count = 0;
     for (char c : s) {
         if (c != '_') {
@@ -279,7 +279,7 @@ DynArray<ElemT> parse_logic_string(std::string_view s, CharToElem char_to_elem) 
         throw std::length_error("logic string too long for Range::value_type");
     }
     auto const n = static_cast<Range::value_type>(count);
-    DynArray<ElemT> result(Range{n - 1, Direction::DOWNTO, 0});
+    Vector<ElemT> result(Range{n - 1, Direction::DOWNTO, 0});
     size_t j = 0;
     for (char c : s) {
         if (c != '_') {
@@ -328,27 +328,27 @@ std::string to_string(T const& arr) {
     return result;
 }
 
-inline DynArray<Logic> to_logic_array(std::string_view s) {
+inline Vector<Logic> to_logic_array(std::string_view s) {
     return detail::parse_logic_string<Logic>(s, [](char c) { return to_logic(c); });
 }
 
-inline DynArray<Bit> to_bit_array(std::string_view s) {
+inline Vector<Bit> to_bit_array(std::string_view s) {
     return detail::parse_logic_string<Bit>(s, [](char c) { return to_bit(c); });
 }
 
-// Convert a range of Logic to a DynArray<Bit>. Throws if any element is not
+// Convert a range of Logic to a Vector<Bit>. Throws if any element is not
 // 0/1/L/H (i.e. every element must be resolvable). Constrained to sized_range
 // so the result can be sized up-front from std::ranges::size in O(1) and the
 // resolvability check can be fused with the fill into a single pass.
 template <std::ranges::sized_range R>
     requires std::same_as<std::ranges::range_value_t<R>, Logic>
-DynArray<Bit> to_bit_array(R const& range) {
+Vector<Bit> to_bit_array(R const& range) {
     auto const sz = std::ranges::size(range);
     if (sz > static_cast<size_t>(std::numeric_limits<Range::value_type>::max())) {
         throw std::length_error("range too long for Range::value_type");
     }
     auto const n = static_cast<Range::value_type>(sz);
-    DynArray<Bit> result(Range{n - 1, Direction::DOWNTO, 0});
+    Vector<Bit> result(Range{n - 1, Direction::DOWNTO, 0});
     auto out = result.begin();
     for (Logic const& v : range) {
         if (!v.is_resolvable()) {
@@ -402,7 +402,7 @@ constexpr auto operator""_b() {
 }  // namespace coconext::types
 
 // One LogicType-constrained formatter for every array type that opts into
-// is_array (DynArray, Array, DynArraySlice, ArraySlice). The constraint is a
+// is_array (Vector, Array, DynArraySlice, ArraySlice). The constraint is a
 // conjunction of the generic ArrayType constraint plus a LogicType check on
 // the element type, so it subsumes the generic std::formatter<ArrayType T> in
 // array_base.hpp via C++20 partial specialization ordering with constraints.

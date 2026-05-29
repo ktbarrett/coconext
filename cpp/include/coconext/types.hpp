@@ -6,10 +6,10 @@
 #include "./types/array_base.hpp"
 #include "./types/concepts.hpp"
 #include "./types/direction.hpp"
-#include "./types/dyn_array.hpp"
 #include "./types/logic.hpp"
 #include "./types/logic_array.hpp"
 #include "./types/range.hpp"
+#include "./types/vector.hpp"
 // NOLINTEND(unused-includes)
 
 #endif  // COCONEXT_TYPES_HPP

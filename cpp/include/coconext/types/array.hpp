@@ -74,7 +74,7 @@ class ArrayImpl {
         std::ranges::copy(obj, data_.begin());
     }
 
-    // Deliberately similar to DynArray's instance range() so that generic code can query
+    // Deliberately similar to Vector's instance range() so that generic code can query
     // the range with instance access pattern: `obj.range()`.
     static constexpr Range range() noexcept { return R; }
 
