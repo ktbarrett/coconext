@@ -96,32 +96,6 @@ struct Range {
         return left - index;
     }
 
-    constexpr Range operator()(size_t start, size_t stop) const {
-        if (stop > length()) {
-            throw std::out_of_range("Stop index out of range");
-        }
-        if (start > stop) {
-            throw std::invalid_argument(
-                "Start index must be less than or equal to stop index"
-            );
-        }
-        auto const from_start = static_cast<int64_t>(start);
-        auto const from_last = static_cast<int64_t>(stop) - 1;
-        auto const new_left = static_cast<value_type>(
-            direction == Direction::TO ? left + from_start : left - from_start
-        );
-        auto const new_right = static_cast<value_type>(
-            direction == Direction::TO ? left + from_last : left - from_last
-        );
-        return Range(new_left, direction, new_right);
-    }
-
-#if __cplusplus >= 202302L
-    constexpr Range operator[](size_t start, size_t stop) const {
-        return this->operator()(start, stop);
-    }
-#endif
-
     // This range is a valid subsequence of `parent` iff every value in this
     // range appears (in order) in parent. The rule collapses to:
     //   - length 0:   always a subsequence (any direction, any bounds)
