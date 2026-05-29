@@ -257,7 +257,9 @@ class ArraySliceImpl {
     constexpr DynArraySlice<ArrayT> operator[](
         Range::value_type left, Range::value_type right
     ) const {
-        return (*this)[Range{left, range_.direction, right}];
+        // ArraySliceImpl has a compile-time range R, not a runtime range_ member,
+        // so the direction comes from the template parameter.
+        return (*this)[Range{left, R.direction, right}];
     }
     constexpr DynArraySlice<ArrayT> operator[](
         Range::value_type left, Direction dir, Range::value_type right

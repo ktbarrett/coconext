@@ -722,4 +722,97 @@ TEST(TestDynArraySlice, StaticSliceConstReturnsConstSlice) {
     EXPECT_EQ(s[3], 40);
 }
 
+// -- C++23 multi-subscript operator ----------------------------------------
+//
+// C++23 (P2128) introduces `arr[a, b]` as a true multi-argument subscript
+// (pre-C++23 the comma is a comma-expression, so `arr[a, b]` is `arr[b]`).
+// Array/DynArray/ArraySlice/DynArraySlice provide multi-subscript overloads
+// that build a Range from the arguments. Without these tests, breakage in
+// the C++23-gated overloads would only surface when downstream code compiles
+// against C++23 -- the C++20 build can't catch it.
+#if __cplusplus >= 202302L
+
+TEST(TestCxx23MultiSubscript, DynArraySliceImplicitDirection) {
+    DynArray<int> a({1, 2, 3, 4, 5});
+    auto s = a[1, 4];  // implicit direction (auto-detected by Range(l, r))
+    EXPECT_EQ(s.range(), Range(1, Direction::TO, 4));
+    EXPECT_EQ(s[1], 2);
+    EXPECT_EQ(s[4], 5);
+}
+
+TEST(TestCxx23MultiSubscript, DynArraySliceExplicitDirection) {
+    DynArray<int> a(std::vector<int>{1, 2, 3, 4, 5}, Range(4, Direction::DOWNTO, 0));
+    auto s = a[3, Direction::DOWNTO, 1];
+    EXPECT_EQ(s.range(), Range(3, Direction::DOWNTO, 1));
+}
+
+TEST(TestCxx23MultiSubscript, DynArrayConstSlice) {
+    // Exercises the const overload of multi-subscript (regression: it was
+    // missing the `const` qualifier in an earlier revision, so const objects
+    // couldn't call it).
+    DynArray<int> const a({1, 2, 3, 4, 5});
+    auto s = a[1, 3];
+    static_assert(std::is_same_v<decltype(s), DynArraySlice<DynArray<int> const>>);
+    EXPECT_EQ(s[2], 3);
+}
+
+TEST(TestCxx23MultiSubscript, StaticArraySlice) {
+    Array<int, Range{0, Direction::TO, 4}> a({10, 20, 30, 40, 50});
+    auto s = a[1, 3];
+    EXPECT_EQ(s.range(), Range(1, Direction::TO, 3));
+    EXPECT_EQ(s[1], 20);
+    EXPECT_EQ(s[3], 40);
+}
+
+TEST(TestCxx23MultiSubscript, DynArraySliceSubSlice) {
+    DynArray<int> a({1, 2, 3, 4, 5, 6});
+    auto dyn = a[0, 5];
+    auto sub = dyn[1, 4];
+    EXPECT_EQ(sub.range(), Range(1, Direction::TO, 4));
+    EXPECT_EQ(sub[1], 2);
+}
+
+TEST(TestCxx23MultiSubscript, ArraySliceSubSlice) {
+    // ArraySliceImpl's multi-subscript was the one that referenced range_
+    // (which doesn't exist on static slices) instead of R.direction.
+    Array<int, Range{0, Direction::TO, 4}> a({10, 20, 30, 40, 50});
+    auto stat = a.slice<Range{1, 3}>();
+    auto sub = stat[1, 3];
+    EXPECT_EQ(sub.range(), Range(1, Direction::TO, 3));
+    EXPECT_EQ(sub[1], 20);
+}
+
+// -- Constexpr DynArray (C++23 P2273 constexpr unique_ptr) -----------------
+//
+// COCONEXT_DYN_ARRAY_CONSTEXPR expands to `constexpr` under C++23 and to
+// nothing under C++20. Under C++23 the DynArray ctors / operator[] / range()
+// should be evaluable in a constant-expression context. Without a test that
+// actually constant-evaluates one, a regression that makes the body non-
+// constexpr would silently downgrade the C++23 build without anyone noticing.
+
+constexpr int constexpr_dyn_array_sum() {
+    DynArray<int> a({10, 20, 30, 40});
+    int sum = 0;
+    for (auto v : a) {
+        sum += v;
+    }
+    return sum;
+}
+
+constexpr Range constexpr_dyn_array_range() {
+    DynArray<int> a(Range(5, Direction::DOWNTO, 0));
+    return a.range();
+}
+
+constexpr int constexpr_dyn_array_indexing() {
+    DynArray<int> a({100, 200, 300});
+    return a[1];
+}
+
+static_assert(constexpr_dyn_array_sum() == 100);
+static_assert(constexpr_dyn_array_range() == Range(5, Direction::DOWNTO, 0));
+static_assert(constexpr_dyn_array_indexing() == 200);
+
+#endif
+
 // LCOV_EXCL_BR_STOP

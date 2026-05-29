@@ -99,10 +99,20 @@ class ArrayImpl {
 #if __cplusplus >= 202302L
     constexpr DynArraySlice<Array<T, R>> operator[](
         Range::value_type left, Range::value_type right
-    ) const {
+    ) {
         return (*this)[Range{left, R.direction, right}];
     }
     constexpr DynArraySlice<Array<T, R>> operator[](
+        Range::value_type left, Direction dir, Range::value_type right
+    ) {
+        return (*this)[Range{left, dir, right}];
+    }
+    constexpr DynArraySlice<Array<T, R> const> operator[](
+        Range::value_type left, Range::value_type right
+    ) const {
+        return (*this)[Range{left, R.direction, right}];
+    }
+    constexpr DynArraySlice<Array<T, R> const> operator[](
         Range::value_type left, Direction dir, Range::value_type right
     ) const {
         return (*this)[Range{left, dir, right}];

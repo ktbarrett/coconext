@@ -158,12 +158,12 @@ class DynArrayImpl {
 #if __cplusplus >= 202302L
     COCONEXT_DYN_ARRAY_CONSTEXPR DynArraySlice<DynArray<ValueT> const> operator[](
         Range::value_type left, Range::value_type right
-    ) {
+    ) const {
         return operator[](Range{left, right});
     }
     COCONEXT_DYN_ARRAY_CONSTEXPR DynArraySlice<DynArray<ValueT> const> operator[](
         Range::value_type left, Direction dir, Range::value_type right
-    ) {
+    ) const {
         return operator[](Range{left, dir, right});
     }
 #endif
