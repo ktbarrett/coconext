@@ -57,6 +57,40 @@ struct LogicArrayMixin {
             return result;
         }
     }
+
+    // Reductions: fold over the array with the corresponding bitwise op.
+    // Empty arrays return the operation's identity (1 for AND, 0 for OR/XOR),
+    // matching the standard math definition and VHDL std_logic_1164's
+    // and_reduce/or_reduce/xor_reduce.
+    auto and_reduce() const {
+        auto const& self = *static_cast<Self const*>(this);
+        using Elem = std::ranges::range_value_t<Self>;
+        Elem result{Elem::_1};
+        for (auto const& v : self) {
+            result = result & v;
+        }
+        return result;
+    }
+
+    auto or_reduce() const {
+        auto const& self = *static_cast<Self const*>(this);
+        using Elem = std::ranges::range_value_t<Self>;
+        Elem result{Elem::_0};
+        for (auto const& v : self) {
+            result = result | v;
+        }
+        return result;
+    }
+
+    auto xor_reduce() const {
+        auto const& self = *static_cast<Self const*>(this);
+        using Elem = std::ranges::range_value_t<Self>;
+        Elem result{Elem::_0};
+        for (auto const& v : self) {
+            result = result ^ v;
+        }
+        return result;
+    }
 };
 
 }  // namespace detail

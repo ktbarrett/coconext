@@ -437,6 +437,91 @@ TEST(TestLogicArray, SubSlicePreservesMixin) {
     EXPECT_FALSE(sub.is_resolvable());
 }
 
+// -- Reductions: and_reduce / or_reduce / xor_reduce -----------------------
+
+TEST(TestLogicArray, AndReduceAllOnes) {
+    auto a = "1111"_l;
+    EXPECT_EQ(a.and_reduce(), '1'_l);
+}
+
+TEST(TestLogicArray, AndReduceWithZero) {
+    auto a = "1101"_l;
+    EXPECT_EQ(a.and_reduce(), '0'_l);
+}
+
+TEST(TestLogicArray, AndReduceWithX) {
+    auto a = "11X1"_l;
+    EXPECT_EQ(a.and_reduce(), 'X'_l);
+}
+
+TEST(TestLogicArray, AndReduceEmpty) {
+    DynArray<Logic> a({});
+    EXPECT_EQ(a.and_reduce(), '1'_l);  // identity for AND
+}
+
+TEST(TestLogicArray, OrReduceAllZeros) {
+    auto a = "0000"_l;
+    EXPECT_EQ(a.or_reduce(), '0'_l);
+}
+
+TEST(TestLogicArray, OrReduceWithOne) {
+    auto a = "0010"_l;
+    EXPECT_EQ(a.or_reduce(), '1'_l);
+}
+
+TEST(TestLogicArray, OrReduceWithX) {
+    auto a = "00X0"_l;
+    EXPECT_EQ(a.or_reduce(), 'X'_l);
+}
+
+TEST(TestLogicArray, OrReduceEmpty) {
+    DynArray<Logic> a({});
+    EXPECT_EQ(a.or_reduce(), '0'_l);  // identity for OR
+}
+
+TEST(TestLogicArray, XorReduceEvenOnes) {
+    auto a = "1100"_l;
+    EXPECT_EQ(a.xor_reduce(), '0'_l);
+}
+
+TEST(TestLogicArray, XorReduceOddOnes) {
+    auto a = "1110"_l;
+    EXPECT_EQ(a.xor_reduce(), '1'_l);
+}
+
+TEST(TestLogicArray, XorReduceWithX) {
+    auto a = "1X1"_l;
+    EXPECT_EQ(a.xor_reduce(), 'X'_l);
+}
+
+TEST(TestLogicArray, XorReduceEmpty) {
+    DynArray<Logic> a({});
+    EXPECT_EQ(a.xor_reduce(), '0'_l);  // identity for XOR
+}
+
+TEST(TestBitArray, ReductionsReturnBit) {
+    auto a = "1010"_b;
+    static_assert(std::is_same_v<decltype(a.and_reduce()), Bit>);
+    EXPECT_EQ(a.and_reduce(), '0'_b);
+    EXPECT_EQ(a.or_reduce(), '1'_b);
+    EXPECT_EQ(a.xor_reduce(), '0'_b);
+}
+
+TEST(TestLogicArray, ReductionsOnDynArray) {
+    DynArray<Logic> a({'1'_l, '0'_l, '1'_l});
+    EXPECT_EQ(a.and_reduce(), '0'_l);
+    EXPECT_EQ(a.or_reduce(), '1'_l);
+    EXPECT_EQ(a.xor_reduce(), '0'_l);
+}
+
+TEST(TestLogicArray, ReductionsOnSlice) {
+    auto a = "1110"_l;
+    auto s = a[{3, 1}];  // "111"
+    EXPECT_EQ(s.and_reduce(), '1'_l);
+    EXPECT_EQ(s.or_reduce(), '1'_l);
+    EXPECT_EQ(s.xor_reduce(), '1'_l);
+}
+
 // -- String-literal UDL ----------------------------------------------------
 
 TEST(TestLogicArray, UdlLogic) {
