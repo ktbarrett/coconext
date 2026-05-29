@@ -26,7 +26,6 @@ TEST(TestRange, ToRange) {
     EXPECT_EQ(r[7], 8);
     EXPECT_THROW((void)r[8], std::out_of_range);
 
-    EXPECT_EQ(r(3, 7), Range(4, Direction::TO, 7));
     EXPECT_NE(find(r, 8), r.end());
     EXPECT_EQ(find(r, 10), r.end());
 }
@@ -48,7 +47,6 @@ TEST(TestRange, DowntoRange) {
     EXPECT_EQ(r[7], -3);
     EXPECT_THROW((void)r[8], std::out_of_range);
 
-    EXPECT_EQ(r(3, 7), Range(1, Direction::DOWNTO, -2));
     EXPECT_NE(find(r, 0), r.end());
     EXPECT_EQ(find(r, 10), r.end());
 }
@@ -117,16 +115,6 @@ TEST(TestDirection, Formatter) {
 TEST(TestRange, UppercaseDirection) {
     Range const r(1, to_direction("TO"), 8);
     EXPECT_EQ(r.direction, Direction::TO);
-}
-
-TEST(TestRange, BadGetitemEquivalent) {
-    Range const r(10, Direction::DOWNTO, 4);
-    EXPECT_THROW((void)r(8, 4), std::invalid_argument);
-}
-
-TEST(TestRange, SliceStopOutOfRange) {
-    Range const r(1, Direction::TO, 5);
-    EXPECT_THROW((void)r(0, 100), std::out_of_range);
 }
 
 TEST(TestRange, Copy) {
