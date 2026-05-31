@@ -1,5 +1,5 @@
-#ifndef COCONEXT_INT_BASE
-#define COCONEXT_INT_BASE
+#ifndef COCONEXT_INT_BASE_HPP
+#define COCONEXT_INT_BASE_HPP
 
 #include <cassert>
 #include <cstddef>
@@ -30,11 +30,23 @@ static constexpr bool using_llvm_apint = true;
 class BigInt {
   public:
     using WordType = uint64_t;
+    static constexpr unsigned word_width = 64;
 
     unsigned BitWidth;
     bool is_signed;
+    unsigned num_of_words;
+    std::vector<WordType> data;
 
     BigInt() {}
+
+    BigInt(unsigned num_bits, bool _is_signed)
+        : BitWidth(num_bits), is_signed(_is_signed),
+          num_of_words((num_bits + word_width - 1) / word_width), data(num_of_words, 0) {}
+
+    BigInt(unsigned num_bits, bool _is_signed, WordType val)
+        : BigInt(num_bits, _is_signed) {
+        data[0] = val;
+    }
 };
 
 using BigIntType = BigInt;
@@ -93,7 +105,7 @@ class Storage {
     [[no_unique_address]] StorageType _storage;
 
   public:
-    // Native ints
+    // Literal Int
     constexpr Storage()
         requires(!std::is_same_v<StorageType, BigIntType>)
     = default;
@@ -109,7 +121,7 @@ class Storage {
 
     constexpr Storage(StorageType val)
         requires(std::is_same_v<StorageType, BigIntType> && !using_llvm_apint)
-        : _storage() {}
+        : _storage(val) {}
 
     // APInt
     constexpr Storage()

@@ -7,7 +7,7 @@
 #include "./types/concepts.hpp"
 #include "./types/direction.hpp"
 #include "./types/dyn_array.hpp"
-#include "./types/int_base.hpp"
+#include "./types/int.hpp"
 #include "./types/logic.hpp"
 #include "./types/logic_array.hpp"
 #include "./types/range.hpp"
