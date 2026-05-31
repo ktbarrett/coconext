@@ -473,30 +473,30 @@ TEST(TestDynArray, FormatterEmpty) {
 
 TEST(TestDynArray, FormatterLogic) {
     DynArray<Logic> a({'0'_l, '1'_l, 'X'_l});
-    EXPECT_EQ(std::format("{}", a), "Logic[0 to 2]{0, 1, X}");
+    EXPECT_EQ(std::format("{}", a), "Logic[2 downto 0]{0, 1, X}");
 }
 
 TEST(TestDynArray, FormatterBit) {
     DynArray<Bit> a({'0'_b, '1'_b, '0'_b, '1'_b});
-    EXPECT_EQ(std::format("{}", a), "Bit[0 to 3]{0, 1, 0, 1}");
+    EXPECT_EQ(std::format("{}", a), "Bit[3 downto 0]{0, 1, 0, 1}");
 }
 
 TEST(TestDynArray, FormatterLogicSlice) {
     DynArray<Logic> a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
-    auto s = a[Range(1, 2)];
-    EXPECT_EQ(std::format("{}", s), "Logic[1 to 2]{1, X}");
+    auto s = a[Range(2, 1)];
+    EXPECT_EQ(std::format("{}", s), "Logic[2 downto 1]{1, X}");
 }
 
 TEST(TestDynArray, FormatterLogicConstSlice) {
     DynArray<Logic> const a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
-    auto s = a[Range(1, 2)];
-    EXPECT_EQ(std::format("{}", s), "Logic[1 to 2]{1, X}");
+    auto s = a[Range(2, 1)];
+    EXPECT_EQ(std::format("{}", s), "Logic[2 downto 1]{1, X}");
 }
 
 TEST(TestDynArray, FormatterBitSlice) {
     DynArray<Bit> a({'0'_b, '1'_b, '0'_b, '1'_b});
-    auto s = a[Range(1, 2)];
-    EXPECT_EQ(std::format("{}", s), "Bit[1 to 2]{1, 0}");
+    auto s = a[Range(2, 1)];
+    EXPECT_EQ(std::format("{}", s), "Bit[2 downto 1]{1, 0}");
 }
 
 // -- Static slice of DynArray (compile-time-bounded view) -----------------
