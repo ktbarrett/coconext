@@ -109,7 +109,7 @@ TEST(TestLogicArray, BitwiseResultRange) {
 TEST(TestLogicArray, BitwiseOnSlice) {
     DynArray<Logic> a({'0'_l, '1'_l, '1'_l, '0'_l});
     DynArray<Logic> b({'1'_l, '0'_l});
-    auto s = a[{1, 2}];
+    auto s = a[{2, 1}];
     auto c = s & b;
     static_assert(std::is_same_v<decltype(c), DynArray<Logic>>);
     EXPECT_EQ(c.range(), Range(1, Direction::DOWNTO, 0));
@@ -243,7 +243,7 @@ TEST(TestLogicArray, ScalarBitwiseMixedBitScalarLogicArray) {
 
 TEST(TestLogicArray, ScalarBitwiseOnSlice) {
     DynArray<Logic> a({'0'_l, '1'_l, '1'_l, '0'_l});
-    auto s = a[{1, 2}];
+    auto s = a[{2, 1}];
     auto c = s | '1'_l;
     static_assert(std::is_same_v<decltype(c), DynArray<Logic>>);
     EXPECT_EQ(c.range(), Range(1, Direction::DOWNTO, 0));
@@ -520,6 +520,91 @@ TEST(TestLogicArray, ReductionsOnSlice) {
     EXPECT_EQ(s.and_reduce(), '1'_l);
     EXPECT_EQ(s.or_reduce(), '1'_l);
     EXPECT_EQ(s.xor_reduce(), '1'_l);
+}
+
+// -- DOWNTO defaults for length-only construction --------------------------
+
+TEST(TestLogicArray, DynArrayLengthCtorDefaultsToDowntoLogic) {
+    DynArray<Logic> a(5);
+    EXPECT_EQ(a.range(), (Range{4, Direction::DOWNTO, 0}));
+}
+
+TEST(TestBitArray, DynArrayLengthCtorDefaultsToDowntoBit) {
+    DynArray<Bit> a(5);
+    EXPECT_EQ(a.range(), (Range{4, Direction::DOWNTO, 0}));
+}
+
+TEST(TestLogicArray, DynArrayInitListDefaultsToDowntoLogic) {
+    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l});
+    EXPECT_EQ(a.range(), (Range{2, Direction::DOWNTO, 0}));
+    EXPECT_EQ(a[2], '0'_l);  // HDL coord 2 == first element (high bit)
+    EXPECT_EQ(a[0], 'X'_l);  // HDL coord 0 == last element (low bit)
+}
+
+TEST(TestLogicArray, DynArraySizedRangeDefaultsToDowntoLogic) {
+    std::vector<Logic> v{'0'_l, '1'_l, 'X'_l};
+    DynArray<Logic> a(v);
+    EXPECT_EQ(a.range(), (Range{2, Direction::DOWNTO, 0}));
+}
+
+TEST(TestLogicArray, DynArrayEmptyInitListDowntoLogic) {
+    DynArray<Logic> a({});
+    EXPECT_EQ(a.range().length(), 0U);
+}
+
+TEST(TestLogicArray, LogicArrayAliasLengthDefaultsToDownto) {
+    // LogicArray<N>/BitArray<N> aliases use DOWNTO for length-only forms.
+    static_assert(
+        std::is_same_v<LogicArray<4>, detail::Array<Logic, Range{3, Direction::DOWNTO, 0}>>
+    );
+    static_assert(
+        std::is_same_v<BitArray<8>, detail::Array<Bit, Range{7, Direction::DOWNTO, 0}>>
+    );
+    LogicArray<4> a{};
+    EXPECT_EQ(a.range(), (Range{3, Direction::DOWNTO, 0}));
+}
+
+TEST(TestLogicArray, LogicArrayAliasExplicitRangePreserved) {
+    // Explicit Range NTTP is passed through unchanged.
+    static_assert(std::is_same_v<
+                  LogicArray<Range{0, Direction::TO, 7}>,
+                  detail::Array<Logic, Range{0, Direction::TO, 7}>>);
+}
+
+TEST(TestLogicArray, LogicArrayAliasTwoArgFormDirection) {
+    // 2-arg form auto-detects direction, with one tweak: L == R picks DOWNTO
+    // (rather than TO as the generic auto-direction would) to match the 1-arg
+    // length-only convention.
+    static_assert(std::is_same_v<
+                  LogicArray<7, 0>,
+                  detail::Array<Logic, Range{7, Direction::DOWNTO, 0}>>);
+    static_assert(std::is_same_v<
+                  LogicArray<3, 3>,
+                  detail::Array<Logic, Range{3, Direction::DOWNTO, 3}>>);
+    // L < R keeps the generic TO auto-direction.
+    static_assert(
+        std::is_same_v<LogicArray<0, 7>, detail::Array<Logic, Range{0, Direction::TO, 7}>>
+    );
+    static_assert(
+        std::is_same_v<BitArray<15, 0>, detail::Array<Bit, Range{15, Direction::DOWNTO, 0}>>
+    );
+}
+
+TEST(TestLogicArray, LogicArrayAliasThreeArgFormRespectsDirection) {
+    // 3-arg (L, D, H) form lets the user override the default DOWNTO.
+    static_assert(std::is_same_v<
+                  LogicArray<0, Direction::TO, 7>,
+                  detail::Array<Logic, Range{0, Direction::TO, 7}>>);
+    static_assert(std::is_same_v<
+                  BitArray<7, Direction::DOWNTO, 0>,
+                  detail::Array<Bit, Range{7, Direction::DOWNTO, 0}>>);
+}
+
+TEST(TestLogicArray, GenericArraySugarStillTo) {
+    // `Array<Logic, N>` (generic sugar, not LogicArray) keeps generic TO
+    // defaults -- users wanting HDL conventions should prefer LogicArray.
+    Array<Logic, 4> a{};
+    EXPECT_EQ(a.range(), (Range{0, Direction::TO, 3}));
 }
 
 // -- String-literal UDL ----------------------------------------------------

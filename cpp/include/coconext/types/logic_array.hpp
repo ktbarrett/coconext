@@ -13,9 +13,70 @@
 #include <stdexcept>
 #include <string>
 
+// The Logic/Bit DynArray ctors below delegate to DynArrayImpl ctors that are
+// only constexpr in C++23 (gated by COCONEXT_DYN_ARRAY_CONSTEXPR inside
+// dyn_array.hpp, which #undefs the macro at its end). Mirror the gating here
+// so clang doesn't diagnose "constexpr ctor never produces a constant
+// expression" under C++20.
+#if __cplusplus >= 202302L
+#define COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR constexpr
+#else
+#define COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR
+#endif
+
 namespace coconext::types {
 
 namespace detail {
+
+// Build a {N-1 DOWNTO 0} range from a length, matching HDL bit-vector
+// convention. Used by Logic/Bit array constructors and the LogicArray/BitArray
+// template aliases.
+constexpr Range logic_downto_range(size_t n) {
+    if (n > static_cast<size_t>(std::numeric_limits<Range::value_type>::max())) {
+        throw std::length_error("logic array length overflows Range::value_type");
+    }
+    return Range{static_cast<Range::value_type>(n) - 1, Direction::DOWNTO, 0};
+}
+
+// Like make_static_range, but the length-only form defaults to DOWNTO, and
+// the (L, H) form picks DOWNTO for L == R (where the generic auto-direction
+// would pick TO). Used by LogicArray<>/BitArray<> aliases so:
+//   `LogicArray<8>`      -> {7 DOWNTO 0}   (instead of {0 TO 7})
+//   `LogicArray<7, 0>`   -> {7 DOWNTO 0}   (auto-direction; unchanged)
+//   `LogicArray<3, 3>`   -> {3 DOWNTO 3}   (instead of {3 TO 3} -- the only
+//                                           2-arg case that differs from the
+//                                           generic auto-direction rule)
+//   `LogicArray<0, 7>`   -> {0 TO 7}       (auto-direction; unchanged)
+// The 3-arg `(L, D, H)` form still respects the user's explicit direction.
+template <auto... Args>
+constexpr Range make_logic_static_range() {
+    if constexpr (sizeof...(Args) == 1) {
+        constexpr auto first = std::get<0>(std::tuple{Args...});
+        using First = std::remove_cvref_t<decltype(first)>;
+        if constexpr (std::integral<First>) {
+            static_assert(
+                first >= 0, "LogicArray<N>/BitArray<N>: N (length) must be non-negative"
+            );
+            static_assert(
+                static_cast<long long>(first)
+                    <= std::numeric_limits<Range::value_type>::max(),
+                "LogicArray<N>/BitArray<N>: N overflows Range::value_type"
+            );
+            return Range{static_cast<Range::value_type>(first) - 1, Direction::DOWNTO, 0};
+        } else {
+            return make_static_range<Args...>();
+        }
+    } else if constexpr (sizeof...(Args) == 2) {
+        constexpr auto r = make_static_range<Args...>();
+        if constexpr (r.left == r.right) {
+            return Range{r.left, Direction::DOWNTO, r.right};
+        } else {
+            return r;
+        }
+    } else {
+        return make_static_range<Args...>();
+    }
+}
 
 // CRTP mixin providing the Logic/Bit-specific query and resolution members.
 // Inherited by the Logic/Bit specializations of Array, DynArray, ArraySlice,
@@ -128,6 +189,24 @@ class DynArray<Logic> : public detail::DynArrayImpl<Logic>,
   public:
     using detail::DynArrayImpl<Logic>::DynArrayImpl;
     using detail::DynArrayImpl<Logic>::operator=;
+
+    // Length-only constructors default to DOWNTO (HDL bit-vector convention).
+    // The base ctors default to TO; these specializations override that for
+    // logic arrays so `DynArray<Logic>({...})` and friends produce ranges that
+    // match what HDL code expects.
+    explicit COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR DynArray(size_t length)
+        : detail::DynArrayImpl<Logic>(detail::logic_downto_range(length)) {}
+
+    COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR DynArray(std::initializer_list<Logic> init)
+        : detail::DynArrayImpl<Logic>(init, detail::logic_downto_range(init.size())) {}
+
+    template <std::ranges::sized_range R>
+        requires std::convertible_to<std::ranges::range_value_t<R>, Logic>
+              && (!std::derived_from<std::remove_cvref_t<R>, detail::DynArrayImpl<Logic>>)
+    explicit COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR DynArray(R const& obj)
+        : detail::DynArrayImpl<Logic>(
+              obj, detail::logic_downto_range(std::ranges::size(obj))
+          ) {}
 };
 
 template <>
@@ -136,6 +215,20 @@ class DynArray<Bit> : public detail::DynArrayImpl<Bit>,
   public:
     using detail::DynArrayImpl<Bit>::DynArrayImpl;
     using detail::DynArrayImpl<Bit>::operator=;
+
+    explicit COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR DynArray(size_t length)
+        : detail::DynArrayImpl<Bit>(detail::logic_downto_range(length)) {}
+
+    COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR DynArray(std::initializer_list<Bit> init)
+        : detail::DynArrayImpl<Bit>(init, detail::logic_downto_range(init.size())) {}
+
+    template <std::ranges::sized_range R>
+        requires std::convertible_to<std::ranges::range_value_t<R>, Bit>
+              && (!std::derived_from<std::remove_cvref_t<R>, detail::DynArrayImpl<Bit>>)
+    explicit COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR DynArray(R const& obj)
+        : detail::DynArrayImpl<Bit>(
+              obj, detail::logic_downto_range(std::ranges::size(obj))
+          ) {}
 };
 
 // Constrained partial specs that pick up any slice whose owner's element
@@ -162,11 +255,15 @@ class ArraySlice<ArrayT, R> : public detail::ArraySliceImpl<ArrayT, R>,
 using DynLogicArray = DynArray<Logic>;
 using DynBitArray = DynArray<Bit>;
 
+// LogicArray<N> / BitArray<N> default to {N-1 DOWNTO 0} for the length-only
+// form (HDL bit-vector convention). Explicit-Range and (L, [D,] H) forms pass
+// through unchanged. The generic `Array<Logic, N>` sugar still produces TO --
+// users wanting HDL conventions should prefer these aliases.
 template <auto... Args>
-using LogicArray = Array<Logic, Args...>;
+using LogicArray = detail::Array<Logic, detail::make_logic_static_range<Args...>()>;
 
 template <auto... Args>
-using BitArray = Array<Bit, Args...>;
+using BitArray = detail::Array<Bit, detail::make_logic_static_range<Args...>()>;
 
 template <typename T>
 concept LogicArrayType =
@@ -547,5 +644,7 @@ struct std::formatter<T> {
         );
     }
 };
+
+#undef COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR
 
 #endif  // COCONEXT_LOGIC_ARRAY_HPP
