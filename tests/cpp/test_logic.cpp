@@ -95,24 +95,24 @@ TEST(TestBit, BitConversions) {
 // Test Logic bool conversions
 TEST(TestLogic, LogicBoolConversions) {
     // Convertible to true
-    EXPECT_EQ(is_01('1'_l), true);
-    EXPECT_EQ(is_01('H'_l), true);
+    EXPECT_EQ('1'_l.is_resolvable(), true);
+    EXPECT_EQ('H'_l.is_resolvable(), true);
 
     // Convertible to false
-    EXPECT_EQ(is_01('0'_l), true);
-    EXPECT_EQ(is_01('L'_l), true);
+    EXPECT_EQ('0'_l.is_resolvable(), true);
+    EXPECT_EQ('L'_l.is_resolvable(), true);
 
     // Non-convertible values
-    EXPECT_EQ(is_01('X'_l), false);
-    EXPECT_EQ(is_01('Z'_l), false);
-    EXPECT_EQ(is_01('U'_l), false);
-    EXPECT_EQ(is_01('W'_l), false);
-    EXPECT_EQ(is_01('-'_l), false);
+    EXPECT_EQ('X'_l.is_resolvable(), false);
+    EXPECT_EQ('Z'_l.is_resolvable(), false);
+    EXPECT_EQ('U'_l.is_resolvable(), false);
+    EXPECT_EQ('W'_l.is_resolvable(), false);
+    EXPECT_EQ('-'_l.is_resolvable(), false);
 }
 
 TEST(TestBit, BitBoolConversions) {
-    EXPECT_EQ(is_01('0'_b), true);
-    EXPECT_EQ(is_01('1'_b), true);
+    EXPECT_EQ('0'_b.is_resolvable(), true);
+    EXPECT_EQ('1'_b.is_resolvable(), true);
 }
 
 // Test Logic string conversions
@@ -227,89 +227,100 @@ TEST(TestBit, BitInvert) {
 // Test Logic resolve with different methods
 TEST(TestLogic, LogicResolve) {
     // Test WEAK resolution
-    EXPECT_EQ(resolve('U'_l, ResolveMethod::WEAK), 'U'_l);
-    EXPECT_EQ(resolve('X'_l, ResolveMethod::WEAK), 'X'_l);
-    EXPECT_EQ(resolve('0'_l, ResolveMethod::WEAK), '0'_l);
-    EXPECT_EQ(resolve('1'_l, ResolveMethod::WEAK), '1'_l);
-    EXPECT_EQ(resolve('Z'_l, ResolveMethod::WEAK), 'Z'_l);
-    EXPECT_EQ(resolve('W'_l, ResolveMethod::WEAK), 'X'_l);
-    EXPECT_EQ(resolve('L'_l, ResolveMethod::WEAK), '0'_l);
-    EXPECT_EQ(resolve('H'_l, ResolveMethod::WEAK), '1'_l);
-    EXPECT_EQ(resolve('-'_l, ResolveMethod::WEAK), '-'_l);
+    EXPECT_EQ('U'_l.resolve(ResolveMethod::WEAK), 'U'_l);
+    EXPECT_EQ('X'_l.resolve(ResolveMethod::WEAK), 'X'_l);
+    EXPECT_EQ('0'_l.resolve(ResolveMethod::WEAK), '0'_l);
+    EXPECT_EQ('1'_l.resolve(ResolveMethod::WEAK), '1'_l);
+    EXPECT_EQ('Z'_l.resolve(ResolveMethod::WEAK), 'Z'_l);
+    EXPECT_EQ('W'_l.resolve(ResolveMethod::WEAK), 'X'_l);
+    EXPECT_EQ('L'_l.resolve(ResolveMethod::WEAK), '0'_l);
+    EXPECT_EQ('H'_l.resolve(ResolveMethod::WEAK), '1'_l);
+    EXPECT_EQ('-'_l.resolve(ResolveMethod::WEAK), '-'_l);
 
     // Test ZEROS resolution
-    EXPECT_EQ(resolve('U'_l, ResolveMethod::ZEROS), '0'_l);
-    EXPECT_EQ(resolve('X'_l, ResolveMethod::ZEROS), '0'_l);
-    EXPECT_EQ(resolve('0'_l, ResolveMethod::ZEROS), '0'_l);
-    EXPECT_EQ(resolve('1'_l, ResolveMethod::ZEROS), '1'_l);
-    EXPECT_EQ(resolve('Z'_l, ResolveMethod::ZEROS), '0'_l);
-    EXPECT_EQ(resolve('W'_l, ResolveMethod::ZEROS), '0'_l);
-    EXPECT_EQ(resolve('L'_l, ResolveMethod::ZEROS), '0'_l);
-    EXPECT_EQ(resolve('H'_l, ResolveMethod::ZEROS), '1'_l);
-    EXPECT_EQ(resolve('-'_l, ResolveMethod::ZEROS), '0'_l);
+    EXPECT_EQ('U'_l.resolve(ResolveMethod::ZEROS), '0'_l);
+    EXPECT_EQ('X'_l.resolve(ResolveMethod::ZEROS), '0'_l);
+    EXPECT_EQ('0'_l.resolve(ResolveMethod::ZEROS), '0'_l);
+    EXPECT_EQ('1'_l.resolve(ResolveMethod::ZEROS), '1'_l);
+    EXPECT_EQ('Z'_l.resolve(ResolveMethod::ZEROS), '0'_l);
+    EXPECT_EQ('W'_l.resolve(ResolveMethod::ZEROS), '0'_l);
+    EXPECT_EQ('L'_l.resolve(ResolveMethod::ZEROS), '0'_l);
+    EXPECT_EQ('H'_l.resolve(ResolveMethod::ZEROS), '1'_l);
+    EXPECT_EQ('-'_l.resolve(ResolveMethod::ZEROS), '0'_l);
 
     // Test ONES resolution
-    EXPECT_EQ(resolve('U'_l, ResolveMethod::ONES), '1'_l);
-    EXPECT_EQ(resolve('X'_l, ResolveMethod::ONES), '1'_l);
-    EXPECT_EQ(resolve('0'_l, ResolveMethod::ONES), '0'_l);
-    EXPECT_EQ(resolve('1'_l, ResolveMethod::ONES), '1'_l);
-    EXPECT_EQ(resolve('Z'_l, ResolveMethod::ONES), '1'_l);
-    EXPECT_EQ(resolve('W'_l, ResolveMethod::ONES), '1'_l);
-    EXPECT_EQ(resolve('L'_l, ResolveMethod::ONES), '0'_l);
-    EXPECT_EQ(resolve('H'_l, ResolveMethod::ONES), '1'_l);
-    EXPECT_EQ(resolve('-'_l, ResolveMethod::ONES), '1'_l);
+    EXPECT_EQ('U'_l.resolve(ResolveMethod::ONES), '1'_l);
+    EXPECT_EQ('X'_l.resolve(ResolveMethod::ONES), '1'_l);
+    EXPECT_EQ('0'_l.resolve(ResolveMethod::ONES), '0'_l);
+    EXPECT_EQ('1'_l.resolve(ResolveMethod::ONES), '1'_l);
+    EXPECT_EQ('Z'_l.resolve(ResolveMethod::ONES), '1'_l);
+    EXPECT_EQ('W'_l.resolve(ResolveMethod::ONES), '1'_l);
+    EXPECT_EQ('L'_l.resolve(ResolveMethod::ONES), '0'_l);
+    EXPECT_EQ('H'_l.resolve(ResolveMethod::ONES), '1'_l);
+    EXPECT_EQ('-'_l.resolve(ResolveMethod::ONES), '1'_l);
 
     // Test RANDOM resolution
-    auto resolved_u = resolve('U'_l, ResolveMethod::RANDOM);
+    auto resolved_u = 'U'_l.resolve(ResolveMethod::RANDOM);
     EXPECT_TRUE(resolved_u == '0'_l || resolved_u == '1'_l);
 
-    auto resolved_x = resolve('X'_l, ResolveMethod::RANDOM);
+    auto resolved_x = 'X'_l.resolve(ResolveMethod::RANDOM);
     EXPECT_TRUE(resolved_x == '0'_l || resolved_x == '1'_l);
 
-    EXPECT_EQ(resolve('0'_l, ResolveMethod::RANDOM), '0'_l);
-    EXPECT_EQ(resolve('1'_l, ResolveMethod::RANDOM), '1'_l);
+    EXPECT_EQ('0'_l.resolve(ResolveMethod::RANDOM), '0'_l);
+    EXPECT_EQ('1'_l.resolve(ResolveMethod::RANDOM), '1'_l);
 
-    auto resolved_z = resolve('Z'_l, ResolveMethod::RANDOM);
+    auto resolved_z = 'Z'_l.resolve(ResolveMethod::RANDOM);
     EXPECT_TRUE(resolved_z == '0'_l || resolved_z == '1'_l);
 
-    auto resolved_w = resolve('W'_l, ResolveMethod::RANDOM);
+    auto resolved_w = 'W'_l.resolve(ResolveMethod::RANDOM);
     EXPECT_TRUE(resolved_w == '0'_l || resolved_w == '1'_l);
 
-    EXPECT_EQ(resolve('L'_l, ResolveMethod::RANDOM), '0'_l);
-    EXPECT_EQ(resolve('H'_l, ResolveMethod::RANDOM), '1'_l);
+    EXPECT_EQ('L'_l.resolve(ResolveMethod::RANDOM), '0'_l);
+    EXPECT_EQ('H'_l.resolve(ResolveMethod::RANDOM), '1'_l);
 
-    auto resolved_dc = resolve('-'_l, ResolveMethod::RANDOM);
+    auto resolved_dc = '-'_l.resolve(ResolveMethod::RANDOM);
     EXPECT_TRUE(resolved_dc == '0'_l || resolved_dc == '1'_l);
 
     // Test ERROR resolution
-    EXPECT_EQ(resolve('0'_l, ResolveMethod::ERROR), '0'_l);
-    EXPECT_EQ(resolve('1'_l, ResolveMethod::ERROR), '1'_l);
-    EXPECT_THROW((void)resolve('U'_l, ResolveMethod::ERROR), std::invalid_argument);
-    EXPECT_THROW((void)resolve('X'_l, ResolveMethod::ERROR), std::invalid_argument);
-    EXPECT_THROW((void)resolve('Z'_l, ResolveMethod::ERROR), std::invalid_argument);
-    EXPECT_THROW((void)resolve('W'_l, ResolveMethod::ERROR), std::invalid_argument);
-    EXPECT_THROW((void)resolve('L'_l, ResolveMethod::ERROR), std::invalid_argument);
-    EXPECT_THROW((void)resolve('H'_l, ResolveMethod::ERROR), std::invalid_argument);
-    EXPECT_THROW((void)resolve('-'_l, ResolveMethod::ERROR), std::invalid_argument);
+    EXPECT_EQ('0'_l.resolve(ResolveMethod::ERROR), '0'_l);
+    EXPECT_EQ('1'_l.resolve(ResolveMethod::ERROR), '1'_l);
+    EXPECT_THROW((void)'U'_l.resolve(ResolveMethod::ERROR), std::invalid_argument);
+    EXPECT_THROW((void)'X'_l.resolve(ResolveMethod::ERROR), std::invalid_argument);
+    EXPECT_THROW((void)'Z'_l.resolve(ResolveMethod::ERROR), std::invalid_argument);
+    EXPECT_THROW((void)'W'_l.resolve(ResolveMethod::ERROR), std::invalid_argument);
+    EXPECT_THROW((void)'L'_l.resolve(ResolveMethod::ERROR), std::invalid_argument);
+    EXPECT_THROW((void)'H'_l.resolve(ResolveMethod::ERROR), std::invalid_argument);
+    EXPECT_THROW((void)'-'_l.resolve(ResolveMethod::ERROR), std::invalid_argument);
 
     // Out-of-range ResolveMethod hits the outer `default:` arm.
     EXPECT_THROW(
-        (void)resolve('0'_l, static_cast<ResolveMethod>(99)), std::invalid_argument
+        (void)'0'_l.resolve(static_cast<ResolveMethod>(99)), std::invalid_argument
     );
 }
 
 TEST(TestBit, BitResolve) {
-    EXPECT_EQ(resolve('0'_b, ResolveMethod::WEAK), '0'_b);
-    EXPECT_EQ(resolve('1'_b, ResolveMethod::WEAK), '1'_b);
+    // Every Bit value is resolvable, so resolve() is a no-op regardless of
+    // method -- including ERROR (which throws on Logic for non-binary values)
+    // and out-of-range method values.
+    EXPECT_EQ('0'_b.resolve(ResolveMethod::ERROR), '0'_b);
+    EXPECT_EQ('1'_b.resolve(ResolveMethod::ERROR), '1'_b);
 
-    EXPECT_EQ(resolve('0'_b, ResolveMethod::ZEROS), '0'_b);
-    EXPECT_EQ(resolve('1'_b, ResolveMethod::ZEROS), '1'_b);
+    EXPECT_EQ('0'_b.resolve(ResolveMethod::WEAK), '0'_b);
+    EXPECT_EQ('1'_b.resolve(ResolveMethod::WEAK), '1'_b);
 
-    EXPECT_EQ(resolve('0'_b, ResolveMethod::ONES), '0'_b);
-    EXPECT_EQ(resolve('1'_b, ResolveMethod::ONES), '1'_b);
+    EXPECT_EQ('0'_b.resolve(ResolveMethod::ZEROS), '0'_b);
+    EXPECT_EQ('1'_b.resolve(ResolveMethod::ZEROS), '1'_b);
 
-    EXPECT_EQ(resolve('0'_b, ResolveMethod::RANDOM), '0'_b);
-    EXPECT_EQ(resolve('1'_b, ResolveMethod::RANDOM), '1'_b);
+    EXPECT_EQ('0'_b.resolve(ResolveMethod::ONES), '0'_b);
+    EXPECT_EQ('1'_b.resolve(ResolveMethod::ONES), '1'_b);
+
+    EXPECT_EQ('0'_b.resolve(ResolveMethod::RANDOM), '0'_b);
+    EXPECT_EQ('1'_b.resolve(ResolveMethod::RANDOM), '1'_b);
+
+    // Out-of-range method values are silently accepted (Bit::resolve is
+    // noexcept and ignores its argument).
+    EXPECT_EQ('0'_b.resolve(static_cast<ResolveMethod>(99)), '0'_b);
+    EXPECT_EQ('1'_b.resolve(static_cast<ResolveMethod>(99)), '1'_b);
 }
 
 // Stores values in std::vector to force runtime evaluation of conversions.
@@ -326,27 +337,27 @@ TEST(TestLogic, RuntimeIntAndBitConversions) {
     std::vector<Bit> const bits{'0'_b, '1'_b};
     EXPECT_EQ(to_logic(bits[0]), '0'_l);
     EXPECT_EQ(to_logic(bits[1]), '1'_l);
-    EXPECT_EQ(resolve(bits[0], ResolveMethod::WEAK), '0'_b);
-    EXPECT_EQ(resolve(bits[1], ResolveMethod::ZEROS), '1'_b);
+    EXPECT_EQ(bits[0].resolve(ResolveMethod::WEAK), '0'_b);
+    EXPECT_EQ(bits[1].resolve(ResolveMethod::ZEROS), '1'_b);
 }
 
-// Test Logic is_resolvable (checked via is_01)
+// Test Logic is_resolvable
 TEST(TestLogic, LogicIsResolvable) {
-    EXPECT_TRUE(is_01(Logic::_0));
-    EXPECT_TRUE(is_01(Logic::_1));
-    EXPECT_TRUE(is_01('L'_l));
-    EXPECT_TRUE(is_01('H'_l));
+    EXPECT_TRUE('0'_l.is_resolvable());
+    EXPECT_TRUE('1'_l.is_resolvable());
+    EXPECT_TRUE('L'_l.is_resolvable());
+    EXPECT_TRUE('H'_l.is_resolvable());
 
-    EXPECT_FALSE(is_01('U'_l));
-    EXPECT_FALSE(is_01('X'_l));
-    EXPECT_FALSE(is_01('Z'_l));
-    EXPECT_FALSE(is_01('W'_l));
-    EXPECT_FALSE(is_01('-'_l));
+    EXPECT_FALSE('U'_l.is_resolvable());
+    EXPECT_FALSE('X'_l.is_resolvable());
+    EXPECT_FALSE('Z'_l.is_resolvable());
+    EXPECT_FALSE('W'_l.is_resolvable());
+    EXPECT_FALSE('-'_l.is_resolvable());
 }
 
 TEST(TestBit, BitIsResolvable) {
-    EXPECT_TRUE(is_01('0'_b));
-    EXPECT_TRUE(is_01('1'_b));
+    EXPECT_TRUE('0'_b.is_resolvable());
+    EXPECT_TRUE('1'_b.is_resolvable());
 }
 
 TEST(TestLogic, LogicIsHashable) {

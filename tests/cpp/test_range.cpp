@@ -26,7 +26,6 @@ TEST(TestRange, ToRange) {
     EXPECT_EQ(r[7], 8);
     EXPECT_THROW((void)r[8], std::out_of_range);
 
-    EXPECT_EQ(r(3, 7), Range(4, Direction::TO, 7));
     EXPECT_NE(find(r, 8), r.end());
     EXPECT_EQ(find(r, 10), r.end());
 }
@@ -48,7 +47,6 @@ TEST(TestRange, DowntoRange) {
     EXPECT_EQ(r[7], -3);
     EXPECT_THROW((void)r[8], std::out_of_range);
 
-    EXPECT_EQ(r(3, 7), Range(1, Direction::DOWNTO, -2));
     EXPECT_NE(find(r, 0), r.end());
     EXPECT_EQ(find(r, 10), r.end());
 }
@@ -119,16 +117,6 @@ TEST(TestRange, UppercaseDirection) {
     EXPECT_EQ(r.direction, Direction::TO);
 }
 
-TEST(TestRange, BadGetitemEquivalent) {
-    Range const r(10, Direction::DOWNTO, 4);
-    EXPECT_THROW((void)r(8, 4), std::invalid_argument);
-}
-
-TEST(TestRange, SliceStopOutOfRange) {
-    Range const r(1, Direction::TO, 5);
-    EXPECT_THROW((void)r(0, 100), std::out_of_range);
-}
-
 TEST(TestRange, Copy) {
     Range const r(-2, Direction::TO, 1);
     Range const copy_constructed(r);
@@ -155,14 +143,16 @@ TEST(TestRange, RangeIsHashable) {
     EXPECT_EQ(different.size(), 2U);
 }
 
-// -- is_subsequence ---------------------------------------------------------
+// -- is_subsequence_of ------------------------------------------------------
 
 TEST(TestRange, IsSubsequenceLengthZero) {
     // A length-0 child is a subsequence of any parent, regardless of bounds
     // or direction.
-    EXPECT_TRUE(is_subsequence(Range{0, Direction::TO, 4}, Range{99, Direction::TO, 50}));
     EXPECT_TRUE(
-        is_subsequence(Range{0, Direction::TO, 4}, Range{50, Direction::DOWNTO, 99})
+        (Range{99, Direction::TO, 50}).is_subsequence_of(Range{0, Direction::TO, 4})
+    );
+    EXPECT_TRUE(
+        (Range{50, Direction::DOWNTO, 99}).is_subsequence_of(Range{0, Direction::TO, 4})
     );
 }
 
@@ -170,35 +160,124 @@ TEST(TestRange, IsSubsequenceLengthOneDirectionAgnostic) {
     // A length-1 child is valid iff its single value is in the parent;
     // direction is irrelevant for one element.
     Range parent{0, Direction::TO, 4};
-    EXPECT_TRUE(is_subsequence(parent, Range{2, Direction::TO, 2}));
-    EXPECT_TRUE(is_subsequence(parent, Range{2, Direction::DOWNTO, 2}));
-    EXPECT_FALSE(is_subsequence(parent, Range{99, Direction::TO, 99}));
+    EXPECT_TRUE((Range{2, Direction::TO, 2}).is_subsequence_of(parent));
+    EXPECT_TRUE((Range{2, Direction::DOWNTO, 2}).is_subsequence_of(parent));
+    EXPECT_FALSE((Range{99, Direction::TO, 99}).is_subsequence_of(parent));
 }
 
 TEST(TestRange, IsSubsequenceLengthTwoPlus) {
     Range parent{0, Direction::TO, 4};
-    EXPECT_TRUE(is_subsequence(parent, Range{1, Direction::TO, 3}));
-    EXPECT_FALSE(is_subsequence(parent, Range{1, Direction::DOWNTO, 0}));  // dir
-    EXPECT_FALSE(is_subsequence(parent, Range{99, Direction::TO, 100}));   // left
-    EXPECT_FALSE(is_subsequence(parent, Range{0, Direction::TO, 99}));     // right
+    EXPECT_TRUE((Range{1, Direction::TO, 3}).is_subsequence_of(parent));
+    EXPECT_FALSE((Range{1, Direction::DOWNTO, 0}).is_subsequence_of(parent));  // dir
+    EXPECT_FALSE((Range{99, Direction::TO, 100}).is_subsequence_of(parent));   // left
+    EXPECT_FALSE((Range{0, Direction::TO, 99}).is_subsequence_of(parent));     // right
 }
 
 TEST(TestRange, IsSubsequenceDOWNTOParent) {
     // Exercise the DOWNTO branch of the in_parent helper, mirrored from the
     // TO test above.
     Range parent{4, Direction::DOWNTO, 0};
-    EXPECT_TRUE(is_subsequence(parent, Range{3, Direction::DOWNTO, 1}));
-    EXPECT_FALSE(is_subsequence(parent, Range{1, Direction::TO, 3}));  // dir
-    EXPECT_FALSE(is_subsequence(parent, Range{99, Direction::DOWNTO, 1}));
-    EXPECT_FALSE(is_subsequence(parent, Range{3, Direction::DOWNTO, -99}));
+    EXPECT_TRUE((Range{3, Direction::DOWNTO, 1}).is_subsequence_of(parent));
+    EXPECT_FALSE((Range{1, Direction::TO, 3}).is_subsequence_of(parent));  // dir
+    EXPECT_FALSE((Range{99, Direction::DOWNTO, 1}).is_subsequence_of(parent));
+    EXPECT_FALSE((Range{3, Direction::DOWNTO, -99}).is_subsequence_of(parent));
 }
 
 TEST(TestRange, IsSubsequenceConstexpr) {
     // Usable in constant evaluation; downstream slice<R>() forms rely on this
     // for their static_assert.
-    static_assert(is_subsequence(Range{0, Direction::TO, 4}, Range{1, Direction::TO, 3}));
+    static_assert(Range{1, Direction::TO, 3}.is_subsequence_of(Range{0, Direction::TO, 4}));
     static_assert(
-        !is_subsequence(Range{0, Direction::TO, 4}, Range{1, Direction::DOWNTO, 0})
+        !Range{1, Direction::DOWNTO, 0}.is_subsequence_of(Range{0, Direction::TO, 4})
     );
+}
+
+// -- Length overflow protection --------------------------------------------
+//
+// A Range spanning the full int64_t domain (INT64_MIN..INT64_MAX in TO, or
+// reversed in DOWNTO) would mathematically have length 2^64 -- doesn't fit
+// in size_t. length() is the only place this check can live: Range's fields
+// are public and a Range can be mutated into the full-span state after
+// construction, so a construction-time check would be bypassable. Throws
+// std::length_error when invoked on such a Range.
+
+TEST(TestRange, LengthFullSpanTOThrows) {
+    constexpr auto lo = std::numeric_limits<Range::value_type>::min();
+    constexpr auto hi = std::numeric_limits<Range::value_type>::max();
+    Range r1{lo, Direction::TO, hi};
+    EXPECT_THROW((void)r1.length(), std::length_error);
+    // Two-arg auto-direction picks TO since lo < hi -- same behavior.
+    Range r2{lo, hi};
+    EXPECT_THROW((void)r2.length(), std::length_error);
+}
+
+TEST(TestRange, LengthFullSpanDOWNTOThrows) {
+    constexpr auto lo = std::numeric_limits<Range::value_type>::min();
+    constexpr auto hi = std::numeric_limits<Range::value_type>::max();
+    Range r1{hi, Direction::DOWNTO, lo};
+    EXPECT_THROW((void)r1.length(), std::length_error);
+    // Two-arg auto-direction picks DOWNTO since hi > lo -- same behavior.
+    Range r2{hi, lo};
+    EXPECT_THROW((void)r2.length(), std::length_error);
+}
+
+TEST(TestRange, LengthAfterPostConstructionMutationThrows) {
+    // Confirms that the check fires when fields are mutated into the full-
+    // span state after construction (the case construction-time checks
+    // can't catch).
+    Range r{0, Direction::TO, 5};
+    EXPECT_EQ(r.length(), 6U);  // sanity
+    r.left = std::numeric_limits<Range::value_type>::min();
+    r.right = std::numeric_limits<Range::value_type>::max();
+    EXPECT_THROW((void)r.length(), std::length_error);
+}
+
+TEST(TestRange, NearMaxLengthIsValidTO) {
+    // One step short of the full span: max representable length (SIZE_MAX
+    // on a 64-bit platform). Constructs fine and length() returns the right
+    // value via uint64_t arithmetic.
+    constexpr auto lo = std::numeric_limits<Range::value_type>::min();
+    constexpr auto hi = std::numeric_limits<Range::value_type>::max();
+    Range r1{lo, Direction::TO, hi - 1};
+    EXPECT_EQ(r1.length(), std::numeric_limits<size_t>::max());
+    Range r2{lo + 1, Direction::TO, hi};
+    EXPECT_EQ(r2.length(), std::numeric_limits<size_t>::max());
+}
+
+TEST(TestRange, NearMaxLengthIsValidDOWNTO) {
+    // DOWNTO mirror of NearMaxLengthIsValidTO. Without this, the validation
+    // path `left != hi && right == lo` (DOWNTO with one endpoint at the
+    // extreme but not the other) wasn't exercised directly, and length()'s
+    // DOWNTO branch wasn't tested at SIZE_MAX.
+    constexpr auto lo = std::numeric_limits<Range::value_type>::min();
+    constexpr auto hi = std::numeric_limits<Range::value_type>::max();
+    Range r1{hi, Direction::DOWNTO, lo + 1};
+    EXPECT_EQ(r1.length(), std::numeric_limits<size_t>::max());
+    Range r2{hi - 1, Direction::DOWNTO, lo};
+    EXPECT_EQ(r2.length(), std::numeric_limits<size_t>::max());
+}
+
+TEST(TestRange, LargeNegativeToPositiveLengthTO) {
+    // Endpoints straddling zero with a large gap -- naive signed subtraction
+    // (right - left) would overflow int64_t even though the unsigned diff
+    // fits. The uint64_t-based length() handles this correctly.
+    Range r{-1'000'000'000LL, Direction::TO, 1'000'000'000LL};
+    EXPECT_EQ(r.length(), 2'000'000'001U);
+}
+
+TEST(TestRange, LargeNegativeToPositiveLengthDOWNTO) {
+    // DOWNTO mirror -- exercises the uint64_t arithmetic in the DOWNTO
+    // branch of length() for endpoints straddling zero.
+    Range r{1'000'000'000LL, Direction::DOWNTO, -1'000'000'000LL};
+    EXPECT_EQ(r.length(), 2'000'000'001U);
+}
+
+TEST(TestRange, DirectionMismatchStillEmpty) {
+    // TO direction with right < left, or DOWNTO with left < right, remains
+    // a valid (empty) range -- used intentionally for null slices.
+    Range r1{5, Direction::TO, 3};
+    EXPECT_EQ(r1.length(), 0U);
+    Range r2{3, Direction::DOWNTO, 5};
+    EXPECT_EQ(r2.length(), 0U);
 }
 // LCOV_EXCL_BR_STOP

@@ -8,66 +8,66 @@ using namespace coconext::types;
 
 namespace coconext::types {
 
-Logic resolve(Logic const& value, ResolveMethod method) {
+Logic Logic::resolve(ResolveMethod method) const {
     switch (method) {
     case ResolveMethod::ERROR:
-        switch (value.value()) {
-        case Logic::_0:
-        case Logic::_1:
-            return value;
+        switch (value_) {
+        case _0:
+        case _1:
+            return *this;
         default:
             throw std::invalid_argument("Logic value is not resolvable");
         }
     case ResolveMethod::WEAK:
-        switch (value.value()) {
-        case Logic::_0:
-        case Logic::_1:
-            return value;
-        case Logic::L:
-            return Logic::_0;
-        case Logic::H:
-            return Logic::_1;
-        case Logic::W:
-            return Logic::X;
+        switch (value_) {
+        case _0:
+        case _1:
+            return *this;
+        case L:
+            return _0;
+        case H:
+            return _1;
+        case W:
+            return X;
         default:
-            return value;
+            return *this;
         }
     case ResolveMethod::ZEROS:
-        switch (value.value()) {
-        case Logic::_0:
-        case Logic::_1:
-            return value;
-        case Logic::L:
-            return Logic::_0;
-        case Logic::H:
-            return Logic::_1;
+        switch (value_) {
+        case _0:
+        case _1:
+            return *this;
+        case L:
+            return _0;
+        case H:
+            return _1;
         default:
-            return Logic::_0;
+            return _0;
         }
     case ResolveMethod::ONES:
-        switch (value.value()) {
-        case Logic::_0:
-        case Logic::_1:
-            return value;
-        case Logic::L:
-            return Logic::_0;
-        case Logic::H:
-            return Logic::_1;
+        switch (value_) {
+        case _0:
+        case _1:
+            return *this;
+        case L:
+            return _0;
+        case H:
+            return _1;
         default:
-            return Logic::_1;
+            return _1;
         }
     case ResolveMethod::RANDOM: {
-        switch (value.value()) {
-        case Logic::_0:
-        case Logic::_1:
-            return value;
-        case Logic::L:
-            return Logic::_0;
-        case Logic::H:
-            return Logic::_1;
+        switch (value_) {
+        case _0:
+        case _1:
+            return *this;
+        case L:
+            return _0;
+        case H:
+            return _1;
         default: {
             auto& rng = get_rng();
-            return (rng() % 2 == 0) ? Logic::_0 : Logic::_1;
+            return (rng() % 2 == 0) ? _0 : _1;
         }
         }
     }

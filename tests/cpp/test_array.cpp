@@ -6,7 +6,6 @@
 #include <functional>
 #include <numeric>
 #include <stdexcept>
-#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -90,6 +89,21 @@ TEST(TestDynArray, IterationConst) {
     DynArray<int> const a({1, 2, 3});
     int sum = std::accumulate(a.begin(), a.end(), 0);
     EXPECT_EQ(sum, 6);
+}
+
+// -- Find -------------------------------------------------------------------
+
+TEST(TestDynArray, FindElement) {
+    DynArray<int> a({10, 20, 30, 40, 50});
+    auto it = std::find(a.begin(), a.end(), 30);
+    ASSERT_NE(it, a.end());
+    EXPECT_EQ(*it, 30);
+    EXPECT_EQ(std::distance(a.begin(), it), 2);
+}
+
+TEST(TestDynArray, FindElementMissing) {
+    DynArray<int> a({10, 20, 30});
+    EXPECT_EQ(std::find(a.begin(), a.end(), 99), a.end());
 }
 
 // -- Indexing ---------------------------------------------------------------
@@ -494,7 +508,7 @@ TEST(TestDynArrayStaticSlice, SliceHappyPath) {
         std::is_same_v<decltype(s), ArraySlice<DynArray<int>, Range{1, 3}>>,
         "DynArray::slice<R>() must return a static ArraySlice"
     );
-    static_assert(decltype(s)::static_range == Range{1, Direction::TO, 3});
+    static_assert(decltype(s)::range() == Range{1, Direction::TO, 3});
     EXPECT_EQ(s.range().length(), 3U);
     EXPECT_EQ(s[1], 20);
     EXPECT_EQ(s[3], 40);
@@ -526,6 +540,17 @@ TEST(TestDynArrayStaticSlice, SliceAssignWrongLength) {
     DynArray<int> a({1, 2, 3, 4, 5});
     auto s = a.slice<Range{1, 3}>();
     EXPECT_THROW((s = std::vector<int>{1, 2, 3, 4}), std::invalid_argument);
+}
+
+TEST(TestDynArrayStaticSlice, SliceAssignFromStaticRangedSequence) {
+    DynArray<int> a({1, 2, 3, 4, 5});
+    auto s = a.slice<Range{1, 3}>();
+    DynArray<int> rhs_owner({70, 80, 90});
+    auto rhs = rhs_owner.slice<Range{0, 2}>();  // static slice, length 3
+    s = rhs;
+    EXPECT_EQ(a[1], 70);
+    EXPECT_EQ(a[2], 80);
+    EXPECT_EQ(a[3], 90);
 }
 
 TEST(TestDynArrayStaticSlice, SliceOutOfRangeRuntime) {
@@ -578,25 +603,24 @@ TEST(TestDynArrayStaticSlice, NullSliceBoundsOutsideParentOK) {
 // -- Compile-time dispatch -------------------------------------------------
 
 // Single integral arg -> length-based static range starting at 0.
-static_assert(Array<int, 8>::static_range == Range{0, Direction::TO, 7});
-static_assert(Array<int, 0>::static_range == Range{0, Direction::TO, -1});
-static_assert(Array<int, 1>::static_range == Range{0, Direction::TO, 0});
+static_assert(Array<int, 8>::range() == Range{0, Direction::TO, 7});
+static_assert(Array<int, 0>::range() == Range{0, Direction::TO, -1});
+static_assert(Array<int, 1>::range() == Range{0, Direction::TO, 0});
 
 // Single Range arg -> direct passthrough.
 static_assert(
-    Array<int, Range{2, Direction::DOWNTO, -5}>::static_range
-    == Range{2, Direction::DOWNTO, -5}
+    Array<int, Range{2, Direction::DOWNTO, -5}>::range() == Range{2, Direction::DOWNTO, -5}
 );
 
 // Two args -> (left, right), direction inferred.
-static_assert(Array<int, 1, 3>::static_range == Range{1, Direction::TO, 3});
-static_assert(Array<int, 4, 0>::static_range == Range{4, Direction::DOWNTO, 0});
-static_assert(Array<int, -3, 4>::static_range == Range{-3, Direction::TO, 4});
+static_assert(Array<int, 1, 3>::range() == Range{1, Direction::TO, 3});
+static_assert(Array<int, 4, 0>::range() == Range{4, Direction::DOWNTO, 0});
+static_assert(Array<int, -3, 4>::range() == Range{-3, Direction::TO, 4});
 
 // Three args -> (left, Direction, right) verbatim.
-static_assert(Array<int, 1, Direction::TO, 3>::static_range == Range{1, Direction::TO, 3});
+static_assert(Array<int, 1, Direction::TO, 3>::range() == Range{1, Direction::TO, 3});
 static_assert(
-    Array<int, 4, Direction::DOWNTO, 0>::static_range == Range{4, Direction::DOWNTO, 0}
+    Array<int, 4, Direction::DOWNTO, 0>::range() == Range{4, Direction::DOWNTO, 0}
 );
 
 // Different spellings of the same static range collapse to the same type:
@@ -607,7 +631,7 @@ static_assert(std::is_same_v<Array<int, 4, 0>, Array<int, 4, Direction::DOWNTO, 
 
 // Forwarding the static_range of one Array into the alias of another.
 using A_1_to_4 = Array<int, 1, 4>;
-static_assert(std::is_same_v<Array<int, A_1_to_4::static_range>, Array<int, 1, 4>>);
+static_assert(std::is_same_v<Array<int, A_1_to_4::range()>, Array<int, 1, 4>>);
 
 // -- Runtime: verify the static Array alias works -------------------------
 
@@ -651,7 +675,7 @@ TEST(TestArray, StaticThreeArgViaAlias) {
 TEST(TestArray, StaticFromForeignStaticRange) {
     using Src = Array<int, 1, 3>;
     Src src({10, 20, 30});
-    Array<int, Src::static_range> dst({100, 200, 300});
+    Array<int, Src::range()> dst({100, 200, 300});
     EXPECT_EQ(dst.range(), src.range());
     EXPECT_EQ(dst[1], 100);
     EXPECT_EQ(dst[3], 300);
@@ -697,4 +721,98 @@ TEST(TestDynArraySlice, StaticSliceConstReturnsConstSlice) {
     EXPECT_EQ(s[2], 30);
     EXPECT_EQ(s[3], 40);
 }
+
+// -- C++23 multi-subscript operator ----------------------------------------
+//
+// C++23 (P2128) introduces `arr[a, b]` as a true multi-argument subscript
+// (pre-C++23 the comma is a comma-expression, so `arr[a, b]` is `arr[b]`).
+// Array/DynArray/ArraySlice/DynArraySlice provide multi-subscript overloads
+// that build a Range from the arguments. Without these tests, breakage in
+// the C++23-gated overloads would only surface when downstream code compiles
+// against C++23 -- the C++20 build can't catch it.
+#if __cplusplus >= 202302L
+
+TEST(TestCxx23MultiSubscript, DynArraySliceImplicitDirection) {
+    DynArray<int> a({1, 2, 3, 4, 5});
+    auto s = a[1, 4];  // implicit direction (auto-detected by Range(l, r))
+    EXPECT_EQ(s.range(), Range(1, Direction::TO, 4));
+    EXPECT_EQ(s[1], 2);
+    EXPECT_EQ(s[4], 5);
+}
+
+TEST(TestCxx23MultiSubscript, DynArraySliceExplicitDirection) {
+    DynArray<int> a(std::vector<int>{1, 2, 3, 4, 5}, Range(4, Direction::DOWNTO, 0));
+    auto s = a[3, Direction::DOWNTO, 1];
+    EXPECT_EQ(s.range(), Range(3, Direction::DOWNTO, 1));
+}
+
+TEST(TestCxx23MultiSubscript, DynArrayConstSlice) {
+    // Exercises the const overload of multi-subscript (regression: it was
+    // missing the `const` qualifier in an earlier revision, so const objects
+    // couldn't call it).
+    DynArray<int> const a({1, 2, 3, 4, 5});
+    auto s = a[1, 3];
+    static_assert(std::is_same_v<decltype(s), DynArraySlice<DynArray<int> const>>);
+    EXPECT_EQ(s[2], 3);
+}
+
+TEST(TestCxx23MultiSubscript, StaticArraySlice) {
+    Array<int, Range{0, Direction::TO, 4}> a({10, 20, 30, 40, 50});
+    auto s = a[1, 3];
+    EXPECT_EQ(s.range(), Range(1, Direction::TO, 3));
+    EXPECT_EQ(s[1], 20);
+    EXPECT_EQ(s[3], 40);
+}
+
+TEST(TestCxx23MultiSubscript, DynArraySliceSubSlice) {
+    DynArray<int> a({1, 2, 3, 4, 5, 6});
+    auto dyn = a[0, 5];
+    auto sub = dyn[1, 4];
+    EXPECT_EQ(sub.range(), Range(1, Direction::TO, 4));
+    EXPECT_EQ(sub[1], 2);
+}
+
+TEST(TestCxx23MultiSubscript, ArraySliceSubSlice) {
+    // ArraySliceImpl's multi-subscript was the one that referenced range_
+    // (which doesn't exist on static slices) instead of R.direction.
+    Array<int, Range{0, Direction::TO, 4}> a({10, 20, 30, 40, 50});
+    auto stat = a.slice<Range{1, 3}>();
+    auto sub = stat[1, 3];
+    EXPECT_EQ(sub.range(), Range(1, Direction::TO, 3));
+    EXPECT_EQ(sub[1], 20);
+}
+
+// -- Constexpr DynArray (C++23 P2273 constexpr unique_ptr) -----------------
+//
+// COCONEXT_DYN_ARRAY_CONSTEXPR expands to `constexpr` under C++23 and to
+// nothing under C++20. Under C++23 the DynArray ctors / operator[] / range()
+// should be evaluable in a constant-expression context. Without a test that
+// actually constant-evaluates one, a regression that makes the body non-
+// constexpr would silently downgrade the C++23 build without anyone noticing.
+
+constexpr int constexpr_dyn_array_sum() {
+    DynArray<int> a({10, 20, 30, 40});
+    int sum = 0;
+    for (auto v : a) {
+        sum += v;
+    }
+    return sum;
+}
+
+constexpr Range constexpr_dyn_array_range() {
+    DynArray<int> a(Range(5, Direction::DOWNTO, 0));
+    return a.range();
+}
+
+constexpr int constexpr_dyn_array_indexing() {
+    DynArray<int> a({100, 200, 300});
+    return a[1];
+}
+
+static_assert(constexpr_dyn_array_sum() == 100);
+static_assert(constexpr_dyn_array_range() == Range(5, Direction::DOWNTO, 0));
+static_assert(constexpr_dyn_array_indexing() == 200);
+
+#endif
+
 // LCOV_EXCL_BR_STOP

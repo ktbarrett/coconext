@@ -15,35 +15,76 @@
 namespace coconext::types {
 
 struct Range {
-    using value_type = int32_t;
+    using value_type = int64_t;
     using iterator = CountIterator<value_type>;
+
+    // length() requires size_t to be at least as wide as value_type. This
+    // implies two things at once:
+    //   (a) `static_cast<size_t>(value_type_negative)` is well-defined
+    //       modular reduction over 2^width(size_t); combined with C++20's
+    //       mandated two's complement representation, the resulting bit
+    //       pattern (or its sign-extended form for wider size_t) makes
+    //       the unsigned subtraction `static_cast<size_t>(right) -
+    //       static_cast<size_t>(left)` produce the correct mathematical
+    //       difference when endpoints are in the expected order.
+    //   (b) the +1 on a maximum-valid difference (one short of the full
+    //       value_type domain) fits in size_t without wrapping.
+    static_assert(
+        sizeof(size_t) >= sizeof(value_type),
+        "Range::length() requires size_t to be at least as wide as value_type"
+    );
 
     constexpr Range() noexcept = default;
 
     constexpr Range(value_type l, Direction d, value_type r) noexcept
-        : left(l), direction(d), right(r) {}
+        : left(l), right(r), direction(d) {}
 
     constexpr Range(value_type l, value_type r) noexcept
-        : left(l), direction(l > r ? Direction::DOWNTO : Direction::TO), right(r) {}
+        : left(l), right(r), direction(l > r ? Direction::DOWNTO : Direction::TO) {}
 
     explicit constexpr Range(size_t length)
-        : left(0), direction(Direction::TO), right(static_cast<value_type>(length) - 1) {
+        : left(0), right(static_cast<value_type>(length) - 1), direction(Direction::TO) {
         if (length > static_cast<size_t>(std::numeric_limits<value_type>::max())) {
             throw std::length_error("Range length overflows value_type");
         }
     }
 
     value_type left = 0;
-    Direction direction = Direction::TO;
     value_type right = -1;
+    Direction direction = Direction::TO;
 
-    constexpr size_t length() const noexcept {
-        int64_t len = direction == Direction::TO ? static_cast<int64_t>(right) - left + 1
-                                                 : static_cast<int64_t>(left) - right + 1;
-        if (len < 0) {
+    // length() is the only safe place to enforce the size_t-overflow check:
+    // the fields are public, so a Range can be mutated into the full-domain
+    // span after construction.
+    //
+    // Throws std::length_error if the range spans the full value_type domain
+    // (mathematical length 2^width(value_type), doesn't fit in size_t).
+    //
+    // The arithmetic is in size_t. See the static_assert above for why direct
+    // signed-to-size_t casts give us the correct unsigned difference. Without
+    // the full-span check below, the +1 on a SIZE_MAX-1 difference would wrap
+    // silently to 0.
+    constexpr size_t length() const {
+        constexpr value_type lo = std::numeric_limits<value_type>::min();
+        constexpr value_type hi = std::numeric_limits<value_type>::max();
+        bool const full_to = direction == Direction::TO && left == lo && right == hi;
+        bool const full_downto =
+            direction == Direction::DOWNTO && left == hi && right == lo;
+        if (full_to || full_downto) {
+            throw std::length_error(
+                "Range spans the full value_type domain; length overflows size_t"
+            );
+        }
+        if (direction == Direction::TO) {
+            if (right < left) {
+                return 0;
+            }
+            return static_cast<size_t>(right) - static_cast<size_t>(left) + 1;
+        }
+        if (left < right) {
             return 0;
         }
-        return static_cast<size_t>(len);
+        return static_cast<size_t>(left) - static_cast<size_t>(right) + 1;
     }
 
     constexpr iterator begin() const noexcept { return iterator(left, direction); }
@@ -78,31 +119,41 @@ struct Range {
         return left - index;
     }
 
-    constexpr Range operator()(size_t start, size_t stop) const {
-        if (stop > length()) {
-            throw std::out_of_range("Stop index out of range");
+    // This range is a valid subsequence of `parent` iff every value in this
+    // range appears (in order) in parent. The rule collapses to:
+    //   - length 0:   always a subsequence (any direction, any bounds)
+    //   - length 1:   the single value must exist in parent; this range's
+    //                 direction is irrelevant (a one-element ordering is the
+    //                 same either way)
+    //   - length 2+:  this range's direction must match parent's (otherwise
+    //                 the values appear in parent but in reversed order,
+    //                 which isn't a subsequence) and both endpoints must
+    //                 exist in parent
+    //
+    // constexpr-evaluable, so callers can static_assert it at compile time as
+    // well as use it as a runtime predicate.
+    constexpr bool is_subsequence_of(Range parent) const noexcept {
+        auto const in_parent = [&](value_type v) {
+            if (parent.direction == Direction::TO) {
+                return v >= parent.left && v <= parent.right;
+            }
+            return v <= parent.left && v >= parent.right;
+        };
+        auto const len = length();
+        if (len == 0) {
+            return true;
         }
-        if (start > stop) {
-            throw std::invalid_argument(
-                "Start index must be less than or equal to stop index"
-            );
+        if (!in_parent(left)) {
+            return false;
         }
-        auto const from_start = static_cast<int64_t>(start);
-        auto const from_last = static_cast<int64_t>(stop) - 1;
-        auto const new_left = static_cast<value_type>(
-            direction == Direction::TO ? left + from_start : left - from_start
-        );
-        auto const new_right = static_cast<value_type>(
-            direction == Direction::TO ? left + from_last : left - from_last
-        );
-        return Range(new_left, direction, new_right);
+        if (len == 1) {
+            return true;
+        }
+        if (direction != parent.direction) {
+            return false;
+        }
+        return in_parent(right);
     }
-
-#if __cplusplus >= 202302L
-    constexpr Range operator[](size_t start, size_t stop) const {
-        return this->operator()(start, stop);
-    }
-#endif
 
     friend constexpr bool operator==(Range const& lhs, Range const& rhs) noexcept {
         auto left_len = lhs.length();
@@ -126,45 +177,6 @@ struct Range {
         return true;
     }
 };
-
-// A child range is a valid subsequence of a parent range iff every value in
-// the child appears (in order) in the parent. The rule collapses to:
-//   - length 0:   always a subsequence (any direction, any bounds)
-//   - length 1:   the single value must exist in the parent; the child's
-//                 direction is irrelevant (a one-element ordering is the same
-//                 either way)
-//   - length 2+:  the child's direction must match the parent's (otherwise
-//                 the child's values appear in the parent but in reversed
-//                 order, which isn't a subsequence) and both endpoints must
-//                 exist in the parent
-//
-// constexpr-evaluable, so callers can static_assert it at compile time as
-// well as use it as a runtime predicate.
-constexpr bool is_subsequence(Range parent, Range child) noexcept {
-    auto const in_parent = [&](Range::value_type v) {
-        if (parent.direction == Direction::TO) {
-            return v >= parent.left && v <= parent.right;
-        }
-        return v <= parent.left && v >= parent.right;
-    };
-    // This follows similar logic to operator==, but with in_parent predicate,
-    // and we aren't checking for equality of length, so we have
-    // to check for direction and right endpoint for length >= 2 cases.
-    auto const len = child.length();
-    if (len == 0) {
-        return true;
-    }
-    if (!in_parent(child.left)) {
-        return false;
-    }
-    if (len == 1) {
-        return true;
-    }
-    if (child.direction != parent.direction) {
-        return false;
-    }
-    return in_parent(child.right);
-}
 
 // more optimal implementation of std::ranges::find for Range
 constexpr Range::iterator find(Range const& range, Range::value_type value) {
