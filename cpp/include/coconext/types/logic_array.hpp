@@ -436,6 +436,93 @@ auto operator^(Arr const& arr, Scalar const& s) {
     });
 }
 
+// -- Concatenation ---------------------------------------------------------
+
+namespace detail {
+
+template <typename T>
+concept ConcatOperand = LogicType<std::remove_cvref_t<T>> || LogicArrayType<T>;
+
+template <typename T>
+struct concat_elem_type {
+    using type = std::remove_cvref_t<T>;
+};
+
+template <typename T>
+    requires LogicArrayType<T>
+struct concat_elem_type<T> {
+    using type = std::ranges::range_value_t<std::remove_cvref_t<T>>;
+};
+
+template <typename T>
+using concat_elem_t = typename concat_elem_type<T>::type;
+
+template <typename T>
+constexpr size_t concat_static_size() {
+    if constexpr (LogicType<std::remove_cvref_t<T>>) {
+        return 1;
+    } else {
+        return std::remove_cvref_t<T>::range().length();
+    }
+}
+
+template <typename T>
+constexpr size_t concat_runtime_size(T const& t) {
+    if constexpr (LogicType<std::remove_cvref_t<T>>) {
+        return 1;
+    } else {
+        return t.range().length();
+    }
+}
+
+template <typename Elem, typename OutIt, typename T>
+constexpr void concat_copy_one(OutIt& out, T const& t) {
+    if constexpr (LogicType<std::remove_cvref_t<T>>) {
+        *out++ = static_cast<Elem>(t);
+    } else {
+        for (auto const& v : t) {
+            *out++ = static_cast<Elem>(v);
+        }
+    }
+}
+
+}  // namespace detail
+
+// Variadic concat of Logic/Bit scalars and Logic/Bit arrays. First argument
+// occupies the high bits; within each operand, elements are taken in iteration
+// order (begin to end) regardless of the operand's direction. Result is a
+// static `Array<Elem, {N-1 DOWNTO 0}>` when every operand has a compile-time
+// size (scalar or StaticRangedSequence), else a runtime `DynArray<Elem>`.
+// Element type is `std::common_type_t<...>` over the operand element types
+// (Logic if any operand is Logic, else Bit).
+template <typename... Args>
+    requires(sizeof...(Args) >= 1) && (... && detail::ConcatOperand<Args>)
+auto concat(Args const&... args) {
+    using result_elem = std::common_type_t<detail::concat_elem_t<Args>...>;
+    constexpr bool all_static =
+        (... && (LogicType<std::remove_cvref_t<Args>> || StaticRangedSequence<Args>));
+    if constexpr (all_static) {
+        constexpr size_t N = (0 + ... + detail::concat_static_size<Args>());
+        static_assert(
+            N <= static_cast<size_t>(std::numeric_limits<Range::value_type>::max()),
+            "concat result length overflows Range::value_type"
+        );
+        Array<
+            result_elem,
+            Range{static_cast<Range::value_type>(N) - 1, Direction::DOWNTO, 0}>
+            result{};
+        auto out = result.begin();
+        (detail::concat_copy_one<result_elem>(out, args), ...);
+        return result;
+    } else {
+        size_t const total = (size_t{0} + ... + detail::concat_runtime_size(args));
+        DynArray<result_elem> result(total);
+        auto out = result.begin();
+        (detail::concat_copy_one<result_elem>(out, args), ...);
+        return result;
+    }
+}
+
 template <RangedSequence T>
     requires LogicArrayType<T>
 auto operator~(T const& arr) {

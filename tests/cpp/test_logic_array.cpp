@@ -522,6 +522,110 @@ TEST(TestLogicArray, ReductionsOnSlice) {
     EXPECT_EQ(s.xor_reduce(), '1'_l);
 }
 
+// -- Concatenation ---------------------------------------------------------
+
+TEST(TestLogicArray, ConcatTwoArrays) {
+    auto a = "0011"_l;  // {3 DOWNTO 0}: bits 0,0,1,1
+    auto b = "1100"_l;  // {3 DOWNTO 0}: bits 1,1,0,0
+    auto c = concat(a, b);
+    // a first → high 4 bits; b second → low 4 bits. Iteration order MSB-first.
+    EXPECT_EQ(to_string(c), "00111100");
+    static_assert(
+        std::is_same_v<decltype(c), detail::Array<Logic, Range{7, Direction::DOWNTO, 0}>>
+    );
+}
+
+TEST(TestLogicArray, ConcatScalarLeftArrayRight) {
+    auto c = concat('1'_l, "00"_l);
+    EXPECT_EQ(to_string(c), "100");
+    EXPECT_EQ(c.range(), (Range{2, Direction::DOWNTO, 0}));
+}
+
+TEST(TestLogicArray, ConcatArrayLeftScalarRight) {
+    auto c = concat("11"_l, '0'_l);
+    EXPECT_EQ(to_string(c), "110");
+}
+
+TEST(TestLogicArray, ConcatThreeArgs) {
+    auto c = concat('1'_l, "010"_l, '0'_l);
+    EXPECT_EQ(to_string(c), "10100");
+}
+
+TEST(TestLogicArray, ConcatMixedBitLogicReturnsLogic) {
+    auto a = "01"_b;
+    auto b = "X1"_l;
+    auto c = concat(a, b);
+    // Bit converts implicitly to Logic; common type is Logic.
+    static_assert(std::same_as<std::ranges::range_value_t<decltype(c)>, Logic>);
+    EXPECT_EQ(to_string(c), "01X1");
+}
+
+TEST(TestLogicArray, ConcatAllStaticReturnsStatic) {
+    LogicArray<3> a({'1'_l, '0'_l, '1'_l});
+    LogicArray<2> b({'0'_l, '1'_l});
+    auto c = concat(a, b);
+    static_assert(
+        std::is_same_v<decltype(c), detail::Array<Logic, Range{4, Direction::DOWNTO, 0}>>
+    );
+    EXPECT_EQ(to_string(c), "10101");
+}
+
+TEST(TestLogicArray, ConcatDynamicReturnsDynamic) {
+    DynArray<Logic> a({'1'_l, '0'_l, '1'_l});
+    LogicArray<2> b({'0'_l, '1'_l});
+    auto c = concat(a, b);
+    static_assert(std::is_same_v<decltype(c), DynArray<Logic>>);
+    EXPECT_EQ(to_string(c), "10101");
+    EXPECT_EQ(c.range(), (Range{4, Direction::DOWNTO, 0}));
+}
+
+TEST(TestLogicArray, ConcatSingleScalar) {
+    auto c = concat('1'_l);
+    static_assert(
+        std::is_same_v<decltype(c), detail::Array<Logic, Range{0, Direction::DOWNTO, 0}>>
+    );
+    EXPECT_EQ(to_string(c), "1");
+}
+
+TEST(TestLogicArray, ConcatSingleArrayNormalizesToDownto) {
+    // Single-arg concat with a TO array effectively re-normalizes to DOWNTO.
+    // a is TO {0..2}: a[0]='1', a[1]='0', a[2]='X'.
+    Array<Logic, Range{0, Direction::TO, 2}> a({'1'_l, '0'_l, 'X'_l});
+    auto c = concat(a);
+    // Iteration order through a is begin to end = '1', '0', 'X'.
+    // Result is {2 DOWNTO 0}: c[2]='1' (first written), c[0]='X' (last).
+    EXPECT_EQ(c.range(), (Range{2, Direction::DOWNTO, 0}));
+    EXPECT_EQ(to_string(c), "10X");
+}
+
+TEST(TestLogicArray, ConcatEmptyArrays) {
+    DynArray<Logic> a({});
+    DynArray<Logic> b({});
+    auto c = concat(a, b);
+    EXPECT_EQ(c.range().length(), 0U);
+}
+
+TEST(TestLogicArray, ConcatEmptyAndNonEmpty) {
+    DynArray<Logic> empty({});
+    auto c = concat(empty, "1"_l);
+    EXPECT_EQ(to_string(c), "1");
+}
+
+TEST(TestLogicArray, ConcatOnSlice) {
+    auto a = "1100"_l;
+    auto s = a[{3, 2}];  // "11"
+    auto c = concat(s, '0'_l);
+    EXPECT_EQ(to_string(c), "110");
+}
+
+TEST(TestBitArray, ConcatBitArrays) {
+    auto a = "10"_b;
+    auto b = "01"_b;
+    auto c = concat(a, b);
+    static_assert(std::same_as<std::ranges::range_value_t<decltype(c)>, Bit>);
+    EXPECT_EQ(to_string(c), "1001");
+}
+
 // -- DOWNTO defaults for length-only construction --------------------------
 
 TEST(TestLogicArray, DynArrayLengthCtorDefaultsToDowntoLogic) {
