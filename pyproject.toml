@@ -123,7 +123,7 @@ exclude_also = [
 [tool.coverage.run]
 patch = ["subprocess"]
 branch = true
-source = ["coconext"]
+source = ["coconext", "tests"]
 
 [tool.scikit-build]
 build-dir = "build"
