@@ -436,6 +436,115 @@ auto operator^(Arr const& arr, Scalar const& s) {
     });
 }
 
+// -- Compound bitwise assignment -------------------------------------------
+//
+// Free functions taking the LHS by forwarding reference so they bind to both
+// owning arrays (`arr &= mask`) and slice rvalues (`arr[{2, 1}] &= mask`).
+// RHS may be another array (length-checked) or a scalar Bit/Logic (broadcast).
+// Element-type compatibility is enforced by the underlying `v = v <op> rhs`
+// assignment -- e.g. `BitArray &= LogicArray` fails to compile because the
+// elementwise `Bit & Logic` returns Logic and Logic isn't assignable to Bit.
+
+namespace detail {
+
+template <typename LHS, typename Scalar, typename Op>
+constexpr void logic_inplace_scalar(LHS& lhs, Scalar const& s, Op op) {
+    for (auto& v : lhs) {
+        v = op(v, s);
+    }
+}
+
+template <typename LHS, typename RHS, typename Op>
+constexpr void logic_inplace_array(LHS& lhs, RHS const& rhs, Op op) {
+    // When both sides have compile-time-known ranges, fold the length check
+    // into a static_assert -- mismatch becomes a compile error instead of a
+    // runtime throw, and the runtime branch drops out of generated code.
+    if constexpr (StaticRangedSequence<LHS> && StaticRangedSequence<RHS>) {
+        static_assert(
+            std::remove_cvref_t<LHS>::range().length()
+                == std::remove_cvref_t<RHS>::range().length(),
+            "Bitwise compound assignment requires arrays of equal length"
+        );
+    } else if (lhs.range().length() != rhs.range().length()) {
+        throw std::invalid_argument(
+            "Bitwise compound assignment requires arrays of equal length, got "
+            + std::to_string(lhs.range().length()) + " and "
+            + std::to_string(rhs.range().length())
+        );
+    }
+    auto it = std::ranges::begin(rhs);
+    for (auto& v : lhs) {
+        v = op(v, *it++);
+    }
+}
+
+}  // namespace detail
+
+template <typename LHS, LogicType Scalar>
+    requires LogicArrayType<std::remove_cvref_t<LHS>>
+constexpr decltype(auto) operator&=(LHS&& lhs, Scalar const& rhs) {
+    detail::logic_inplace_scalar(lhs, rhs, [](auto const& a, auto const& b) {
+        return a & b;
+    });
+    return std::forward<LHS>(lhs);
+}
+
+template <typename LHS, RangedSequence RHS>
+    requires LogicArrayType<std::remove_cvref_t<LHS>> && LogicArrayType<RHS>
+constexpr decltype(auto) operator&=(LHS&& lhs, RHS const& rhs) {
+    detail::logic_inplace_array(lhs, rhs, [](auto const& a, auto const& b) {
+        return a & b;
+    });
+    return std::forward<LHS>(lhs);
+}
+
+template <typename LHS, LogicType Scalar>
+    requires LogicArrayType<std::remove_cvref_t<LHS>>
+constexpr decltype(auto) operator|=(LHS&& lhs, Scalar const& rhs) {
+    detail::logic_inplace_scalar(lhs, rhs, [](auto const& a, auto const& b) {
+        return a | b;
+    });
+    return std::forward<LHS>(lhs);
+}
+
+template <typename LHS, RangedSequence RHS>
+    requires LogicArrayType<std::remove_cvref_t<LHS>> && LogicArrayType<RHS>
+constexpr decltype(auto) operator|=(LHS&& lhs, RHS const& rhs) {
+    detail::logic_inplace_array(lhs, rhs, [](auto const& a, auto const& b) {
+        return a | b;
+    });
+    return std::forward<LHS>(lhs);
+}
+
+template <typename LHS, LogicType Scalar>
+    requires LogicArrayType<std::remove_cvref_t<LHS>>
+constexpr decltype(auto) operator^=(LHS&& lhs, Scalar const& rhs) {
+    detail::logic_inplace_scalar(lhs, rhs, [](auto const& a, auto const& b) {
+        return a ^ b;
+    });
+    return std::forward<LHS>(lhs);
+}
+
+template <typename LHS, RangedSequence RHS>
+    requires LogicArrayType<std::remove_cvref_t<LHS>> && LogicArrayType<RHS>
+constexpr decltype(auto) operator^=(LHS&& lhs, RHS const& rhs) {
+    detail::logic_inplace_array(lhs, rhs, [](auto const& a, auto const& b) {
+        return a ^ b;
+    });
+    return std::forward<LHS>(lhs);
+}
+
+// In-place complement of an array. Like the compound assignment ops, taken by
+// forwarding reference so it binds to slice rvalues too.
+template <typename Arr>
+    requires LogicArrayType<std::remove_cvref_t<Arr>>
+constexpr decltype(auto) inplace_not(Arr&& arr) {
+    for (auto& v : arr) {
+        v = ~v;
+    }
+    return std::forward<Arr>(arr);
+}
+
 // -- Concatenation ---------------------------------------------------------
 
 namespace detail {

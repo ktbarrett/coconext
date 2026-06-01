@@ -522,6 +522,142 @@ TEST(TestLogicArray, ReductionsOnSlice) {
     EXPECT_EQ(s.xor_reduce(), '1'_l);
 }
 
+// -- Compound bitwise assignment -------------------------------------------
+
+TEST(TestLogicArray, CompoundAndArrayArrayDynLogic) {
+    DynArray<Logic> a({'1'_l, '0'_l, 'X'_l, '1'_l});
+    DynArray<Logic> b({'1'_l, '1'_l, '1'_l, '0'_l});
+    a &= b;
+    EXPECT_EQ(to_string(a), "10X0");
+}
+
+TEST(TestLogicArray, CompoundOrArrayArrayDynLogic) {
+    DynArray<Logic> a({'1'_l, '0'_l, 'X'_l, '0'_l});
+    DynArray<Logic> b({'0'_l, '0'_l, '1'_l, '0'_l});
+    a |= b;
+    // X | 1 = 1 per Logic truth table.
+    EXPECT_EQ(to_string(a), "1010");
+}
+
+TEST(TestLogicArray, CompoundXorArrayArrayDynLogic) {
+    DynArray<Logic> a({'1'_l, '0'_l, '1'_l, '0'_l});
+    DynArray<Logic> b({'1'_l, '1'_l, '0'_l, '0'_l});
+    a ^= b;
+    EXPECT_EQ(to_string(a), "0110");
+}
+
+TEST(TestLogicArray, CompoundLengthMismatchThrows) {
+    DynArray<Logic> a({'0'_l, '1'_l});
+    DynArray<Logic> b({'0'_l, '1'_l, 'X'_l});
+    EXPECT_THROW(a &= b, std::invalid_argument);
+}
+
+TEST(TestLogicArray, CompoundAndScalarRHS) {
+    DynArray<Logic> a({'1'_l, '0'_l, 'X'_l, '1'_l});
+    a &= '0'_l;
+    EXPECT_EQ(to_string(a), "0000");
+}
+
+TEST(TestLogicArray, CompoundOrScalarRHS) {
+    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l, '0'_l});
+    a |= '1'_l;
+    EXPECT_EQ(to_string(a), "1111");
+}
+
+TEST(TestLogicArray, CompoundXorScalarRHS) {
+    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l, '0'_l});
+    a ^= '1'_l;
+    EXPECT_EQ(to_string(a), "10X1");
+}
+
+TEST(TestLogicArray, CompoundLogicArrayWithBitArray) {
+    // LogicArray &= BitArray works because Bit -> Logic implicitly.
+    DynArray<Logic> a({'1'_l, '0'_l, 'X'_l});
+    DynArray<Bit> b({'1'_b, '1'_b, '1'_b});
+    a &= b;
+    EXPECT_EQ(to_string(a), "10X");
+}
+
+TEST(TestBitArray, CompoundBitArrayWithBitArray) {
+    DynArray<Bit> a({'1'_b, '0'_b, '1'_b, '1'_b});
+    DynArray<Bit> b({'1'_b, '1'_b, '0'_b, '1'_b});
+    a &= b;
+    EXPECT_EQ(to_string(a), "1001");
+}
+
+TEST(TestLogicArray, CompoundOnSlice) {
+    DynArray<Logic> a({'1'_l, '1'_l, '1'_l, '1'_l});
+    a[{2, 1}] &= '0'_l;
+    EXPECT_EQ(to_string(a), "1001");
+}
+
+TEST(TestLogicArray, CompoundOnStaticArray) {
+    LogicArray<4> a({'1'_l, '0'_l, '1'_l, '1'_l});
+    a |= '0'_l;
+    EXPECT_EQ(to_string(a), "1011");
+}
+
+TEST(TestLogicArray, CompoundStaticArrayWithStaticArray) {
+    // Both sides have static ranges -- length check is a static_assert; a
+    // mismatch would fail compile rather than throw.
+    LogicArray<4> a({'1'_l, '0'_l, '1'_l, '1'_l});
+    LogicArray<4> b({'1'_l, '1'_l, '0'_l, '1'_l});
+    a &= b;
+    EXPECT_EQ(to_string(a), "1001");
+}
+
+TEST(TestLogicArray, CompoundEmptyArrays) {
+    DynArray<Logic> a({});
+    DynArray<Logic> b({});
+    a &= b;  // no-op
+    EXPECT_EQ(a.range().length(), 0U);
+}
+
+TEST(TestLogicArray, CompoundReturnsReference) {
+    // Confirm the compound op returns its LHS so chained writes / use as an
+    // expression work.
+    DynArray<Logic> a({'1'_l, '1'_l});
+    auto& ref = (a &= '0'_l);
+    EXPECT_EQ(&ref, &a);
+    EXPECT_EQ(to_string(a), "00");
+}
+
+TEST(TestLogicArray, InplaceNotDynLogic) {
+    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
+    inplace_not(a);
+    EXPECT_EQ(to_string(a), "10XX");  // ~Z = X
+}
+
+TEST(TestBitArray, InplaceNotDynBit) {
+    DynArray<Bit> a({'0'_b, '1'_b, '0'_b, '1'_b});
+    inplace_not(a);
+    EXPECT_EQ(to_string(a), "1010");
+}
+
+TEST(TestLogicArray, InplaceNotStaticArray) {
+    LogicArray<3> a({'0'_l, '1'_l, 'X'_l});
+    inplace_not(a);
+    EXPECT_EQ(to_string(a), "10X");
+}
+
+TEST(TestLogicArray, InplaceNotOnSlice) {
+    DynArray<Logic> a({'0'_l, '0'_l, '0'_l, '0'_l});
+    inplace_not(a[{2, 1}]);
+    EXPECT_EQ(to_string(a), "0110");
+}
+
+TEST(TestLogicArray, InplaceNotEmpty) {
+    DynArray<Logic> a({});
+    inplace_not(a);
+    EXPECT_EQ(a.range().length(), 0U);
+}
+
+TEST(TestLogicArray, InplaceNotReturnsReference) {
+    DynArray<Logic> a({'1'_l});
+    auto& ref = inplace_not(a);
+    EXPECT_EQ(&ref, &a);
+}
+
 // -- Concatenation ---------------------------------------------------------
 
 TEST(TestLogicArray, ConcatTwoArrays) {
