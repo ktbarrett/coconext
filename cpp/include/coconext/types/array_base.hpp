@@ -33,17 +33,24 @@ struct require_constant {};
 
 }  // namespace detail
 
-// A random-access range whose range is queryable via `obj.range()`.
-template <typename T>
+// A random-access range whose range is queryable via `obj.range()`. The
+// optional `Elem` template parameter constrains the element type: `Elem = void`
+// (the default) matches any element type; a concrete type requires the element
+// to match exactly. So `RangedSequence T` matches any ranged sequence,
+// `RangedSequence<Logic> T` matches only ranged sequences of Logic. Concepts
+// can't be passed as template arguments in C++20, so element-concept
+// constraints (e.g. "any LogicType element") still need a composed concept or
+// a separate requires clause.
+template <typename T, typename Elem = void>
 concept RangedSequence = std::ranges::random_access_range<T> && requires(T const& t) {
     { t.range() } -> std::convertible_to<Range>;
-};
+} && (std::is_void_v<Elem> || std::same_as<std::ranges::range_value_t<T>, Elem>);
 
 // A RangedSequence whose range is also a compile-time constant -- i.e., T
 // exposes `range()` as a static method returning a constant expression.
 // Refines RangedSequence so overload resolution prefers it when both match.
-template <typename T>
-concept StaticRangedSequence = RangedSequence<T> && requires {
+template <typename T, typename Elem = void>
+concept StaticRangedSequence = RangedSequence<T, Elem> && requires {
     typename detail::require_constant<std::remove_cvref_t<T>::range()>;
 };
 

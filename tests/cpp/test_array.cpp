@@ -815,4 +815,24 @@ static_assert(constexpr_dyn_array_indexing() == 200);
 
 #endif
 
+// -- RangedSequence element-type constraint --------------------------------
+
+// One-arg form (default `Elem = void`) matches any element type.
+static_assert(RangedSequence<DynArray<int>>);
+static_assert(RangedSequence<DynArray<float>>);
+static_assert(!RangedSequence<int>);
+
+// Two-arg form pins the element type. Concrete types only -- concepts can't be
+// passed as template arguments in C++20.
+static_assert(RangedSequence<DynArray<int>, int>);
+static_assert(!RangedSequence<DynArray<int>, float>);
+static_assert(RangedSequence<DynArray<float>, float>);
+
+// StaticRangedSequence picks up the same defaulted parameter.
+static_assert(StaticRangedSequence<Array<int, Range{0, Direction::TO, 3}>>);
+static_assert(StaticRangedSequence<Array<int, Range{0, Direction::TO, 3}>, int>);
+static_assert(!StaticRangedSequence<Array<int, Range{0, Direction::TO, 3}>, float>);
+static_assert(!StaticRangedSequence<DynArray<int>>);
+static_assert(!StaticRangedSequence<DynArray<int>, int>);
+
 // LCOV_EXCL_BR_STOP
