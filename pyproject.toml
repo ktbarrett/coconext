@@ -99,7 +99,7 @@ dev_tests = [
     "cmake>=3.20",
     "scikit-build-core",
     "setuptools",
-    "coverage[toml]>=7.2",  # Require 7.2+ for builtin coverage excludes and "exclude_also"
+    "coverage[toml]>=7.10",  # Require 7.2+ for builtin coverage excludes and "exclude_also"
     "pytest-cov",
     "pytest",
     "gcovr>=8.4,!=8.5",  # 8.4 introduced block exclusions, 8.5 was broken
@@ -119,6 +119,11 @@ exclude_also = [
     "@(abc\\.)?abstractmethod",
     "@(typing\\.)?overload",
 ]
+
+[tool.coverage.run]
+patch = ["subprocess"]
+branch = true
+source = ["coconext"]
 
 [tool.scikit-build]
 build-dir = "build"

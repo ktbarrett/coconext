@@ -30,19 +30,18 @@ CPP_TESTS_BUILD_DIR ?= build/tests
 
 .PHONY: dev_tests
 dev_tests: dev_build
-	COCOTB_USER_COVERAGE=1 pytest --cov=coconext --cov-branch --cov-report= tests/python/
+	pytest --cov --cov-report= tests/python/
 	cmake -S tests/cpp -B "$(CPP_TESTS_BUILD_DIR)" \
 	    -DCMAKE_PREFIX_PATH="$$(coconext-config --cmake-prefix)" \
 	    -DCMAKE_CXX_STANDARD=$(CXX_STANDARD) \
 	    -DCMAKE_EXE_LINKER_FLAGS=--coverage
 	cmake --build "$(CPP_TESTS_BUILD_DIR)"
 	ctest --output-on-failure --test-dir "$(CPP_TESTS_BUILD_DIR)"
-	find . -name ".coverage*" | xargs coverage combine
 
 .PHONY: integration_tests
 integration_tests: dev_build
 	COCOTB_DIR_PATH="$(COCOTB_DIR_PATH)" \
-	pytest --cov=coconext --cov-branch --cov-append --cov-report= tests/integration_tests/
+	pytest --cov --cov-append --cov-report= tests/integration_tests/
 
 .PHONY: generate_report
 generate_report:
