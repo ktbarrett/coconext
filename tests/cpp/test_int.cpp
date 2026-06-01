@@ -268,20 +268,159 @@ TEST(TestBigInt, DefaultConstructor) {
     (void)d;
 }
 
+TEST(TestBigIntStorage, Metadata) {
+    static_assert(UInt<347>::num_bits == 347);
+    static_assert(SInt<347>::num_bits == 347);
+}
+
 #if defined(__SIZEOF_INT128__)
 TEST(TestBigInt, JustAbove128) {
     UInt<129> a;
-    SInt<129> b;
     (void)a;
-    (void)b;
+
+    static_assert(std::is_same_v<detail::Storage<129, false>::StorageType, detail::BigInt>);
+
+    static_assert(std::is_same_v<detail::Storage<129, true>::StorageType, detail::BigInt>);
 }
 #else
 TEST(TestBigInt, JustAbove64) {
     UInt<65> a;
-    SInt<65> b;
     (void)a;
-    (void)b;
+
+    static_assert(std::is_same_v<detail::Storage<65, false>::StorageType, detail::BigInt>);
+
+    static_assert(std::is_same_v<detail::Storage<65, true>::StorageType, detail::BigInt>);
 }
 #endif
+
+TEST(TestBigInt, Equality) {
+    SInt<347> a(0x1234);
+    SInt<347> b(0x1234);
+    SInt<347> c(0x5678);
+
+    EXPECT_TRUE(a == b);
+    EXPECT_FALSE(a == c);
+    EXPECT_TRUE(a != c);
+}
+
+// TEST(TestBigInt, BitwiseAnd) {
+//     detail::BigInt a(347, false, 0b10101010);
+//     detail::BigInt b(347, false, 0b11001100);
+
+//     auto result = a & b;
+
+//     EXPECT_EQ(result.data[0], 0b10001000);
+// }
+
+// TEST(TestBigInt, BitwiseOr) {
+//     detail::BigInt a(347, false, 0b10101010);
+//     detail::BigInt b(347, false, 0b11001100);
+
+//     auto result = a | b;
+
+//     EXPECT_EQ(result.data[0], 0b11101110);
+// }
+
+// TEST(TestBigInt, BitwiseXor) {
+//     detail::BigInt a(347, false, 0b10101010);
+//     detail::BigInt b(347, false, 0b11001100);
+
+//     auto result = a ^ b;
+
+//     EXPECT_EQ(result.data[0], 0b01100110);
+// }
+
+// TEST(TestBigInt, BitwiseNot) {
+//     detail::BigInt a(347, false, 0);
+
+//     auto result = ~a;
+
+//     EXPECT_EQ(result.data[0], ~uint64_t(0));
+// }
+
+// TEST(TestBigInt, LogicalShiftRight) {
+//     detail::BigInt a(347, false, 0x80);
+
+//     shift_right_logical(a, 7);
+
+//     EXPECT_EQ(a.data[0], 1);
+// }
+
+// TEST(TestBigInt, LogicalShiftRightAcrossWords) {
+//     detail::BigInt a(347, false);
+
+//     a.data[1] = 1;
+
+//     shift_right_logical(a, 64);
+
+//     EXPECT_EQ(a.data[0], 1);
+//     EXPECT_EQ(a.data[1], 0);
+// }
+
+// TEST(TestBigInt, ShiftLeft) {
+//     detail::BigInt a(347, false, 1);
+
+//     shift_left(a, 8);
+
+//     EXPECT_EQ(a.data[0], 256);
+// }
+
+// TEST(TestBigInt, ShiftLeftAcrossWords) {
+//     detail::BigInt a(347, false, 1);
+
+//     shift_left(a, 64);
+
+//     EXPECT_EQ(a.data[0], 0);
+//     EXPECT_EQ(a.data[1], 1);
+// }
+
+// TEST(TestBigInt, ArithmeticShiftRightPositive) {
+//     detail::BigInt a(347, true, 0x80);
+
+//     shift_right_arith(a, 7);
+
+//     EXPECT_EQ(a.data[0], 1);
+// }
+
+// TEST(TestBigInt, ArithmeticShiftRightNegative) {
+//     detail::BigInt a(347, true);
+
+//     size_t sign_word = (347 - 1) / 64;
+//     size_t sign_bit  = (347 - 1) % 64;
+
+//     a.data[sign_word] |= (uint64_t(1) << sign_bit);
+
+//     shift_right_arith(a, 1);
+
+//     EXPECT_TRUE(
+//         (a.data[sign_word] >> sign_bit) & 1
+//     );
+// }
+
+// TEST(TestBigInt, ShiftRightBeyondWidth) {
+//     detail::BigInt a(347, false, 0x1234);
+
+//     shift_right_logical(a, 500);
+
+//     for (auto word : a.data) {
+//         EXPECT_EQ(word, 0);
+//     }
+// }
+
+// TEST(TestBigInt, MultiwordAnd) {
+//     detail::BigInt a(347, false);
+//     detail::BigInt b(347, false);
+
+//     a.data[0] = 0xFFFFFFFFFFFFFFFFULL;
+//     a.data[1] = 0xAAAAAAAAAAAAAAAAULL;
+
+//     b.data[0] = 0x0F0F0F0F0F0F0F0FULL;
+//     b.data[1] = 0xFFFFFFFFFFFFFFFFULL;
+
+//     auto result = a & b;
+
+//     EXPECT_EQ(result.data[0], 0x0F0F0F0F0F0F0F0FULL);
+//     EXPECT_EQ(result.data[1], 0xAAAAAAAAAAAAAAAAULL);
+// }
 
 // LCOV_EXCL_BR_STOP

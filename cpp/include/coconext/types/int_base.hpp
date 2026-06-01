@@ -39,18 +39,145 @@ class BigInt {
 
     BigInt() {}
 
-    BigInt(unsigned num_bits, bool _is_signed)
-        : BitWidth(num_bits), is_signed(_is_signed),
-          num_of_words((num_bits + word_width - 1) / word_width), data(num_of_words, 0) {}
+    BigInt(unsigned num_bits)
+        : BitWidth(num_bits), num_of_words((num_bits + word_width - 1) / word_width),
+          data(num_of_words, 0) {}
 
-    BigInt(unsigned num_bits, bool _is_signed, WordType val)
-        : BigInt(num_bits, _is_signed) {
-        data[0] = val;
+    BigInt(unsigned num_bits, WordType val) : BigInt(num_bits) { data[0] = val; }
+
+    inline bool operator==(BigInt const& rhs) const {
+        return BitWidth == rhs.BitWidth && is_signed == rhs.is_signed && data == rhs.data;
+    }
+
+    inline bool operator!=(BigInt const& rhs) const { return !(*this == rhs); }
+
+    inline BigInt operator&(BigInt const& rhs) const {
+        assert(BitWidth == rhs.BitWidth);
+
+        BigInt result(BitWidth, is_signed);
+
+        for (unsigned i = 0; i < num_of_words; ++i) {
+            result.data[i] = data[i] & rhs.data[i];
+        }
+
+        return result;
+    }
+
+    inline BigInt operator|(BigInt const& rhs) const {
+        assert(BitWidth == rhs.BitWidth);
+
+        BigInt result(BitWidth, is_signed);
+
+        for (unsigned i = 0; i < num_of_words; ++i) {
+            result.data[i] = data[i] | rhs.data[i];
+        }
+
+        return result;
+    }
+
+    inline BigInt operator^(BigInt const& rhs) const {
+        assert(BitWidth == rhs.BitWidth);
+
+        BigInt result(BitWidth, is_signed);
+
+        for (unsigned i = 0; i < num_of_words; ++i) {
+            result.data[i] = data[i] ^ rhs.data[i];
+        }
+
+        return result;
+    }
+
+    inline BigInt operator~() const {
+        BigInt result(*this);
+
+        for (auto& word : result.data) {
+            word = ~word;
+        }
+
+        return result;
     }
 };
 
 using BigIntType = BigInt;
 static constexpr bool using_llvm_apint = false;
+
+inline void shift_right_logical(BigInt& val, size_t amount) {
+    if (amount >= val.BitWidth) {
+        std::fill(val.data.begin(), val.data.end(), 0);
+        return;
+    }
+
+    size_t const word_shift = amount / 64;
+    size_t const bit_shift = amount % 64;
+
+    std::vector<uint64_t> out(val.num_of_words, 0);
+
+    for (size_t i = 0; i < val.num_of_words; ++i) {
+        if (i + word_shift >= val.num_of_words) {
+            continue;
+        }
+
+        out[i] = val.data[i + word_shift] >> bit_shift;
+
+        if (bit_shift && i + word_shift + 1 < val.num_of_words) {
+            out[i] |= val.data[i + word_shift + 1] << (64 - bit_shift);
+        }
+    }
+
+    val.data.swap(out);
+}
+
+inline bool sign_bit(BigInt const& val) {
+    unsigned const bit = (val.BitWidth - 1) % 64;
+    unsigned const word = (val.BitWidth - 1) / 64;
+
+    return (val.data[word] >> bit) & 1;
+}
+
+inline void shift_right_arith(BigInt& val, size_t amount) {
+    bool sign = sign_bit(val);
+
+    shift_right_logical(val, amount);
+
+    if (!sign) {
+        return;
+    }
+
+    for (size_t i = 0; i < amount && i < val.BitWidth; ++i) {
+        size_t pos = val.BitWidth - 1 - i;
+
+        size_t word = pos / 64;
+        size_t bit = pos % 64;
+
+        val.data[word] |= (uint64_t(1) << bit);
+    }
+}
+
+inline void shift_left(BigInt& val, size_t amount) {
+    if (amount >= val.BitWidth) {
+        std::fill(val.data.begin(), val.data.end(), 0);
+        return;
+    }
+
+    size_t const word_shift = amount / 64;
+    size_t const bit_shift = amount % 64;
+
+    std::vector<uint64_t> out(val.num_of_words, 0);
+
+    for (size_t i = 0; i < val.num_of_words; ++i) {
+        if (i < word_shift) {
+            continue;
+        }
+
+        out[i] = val.data[i - word_shift] << bit_shift;
+
+        if (bit_shift && i > word_shift) {
+            out[i] |= val.data[i - word_shift - 1] >> (64 - bit_shift);
+        }
+    }
+
+    val.data.swap(out);
+}
 
 #endif  // COCONEXT_USE_APINT
 
@@ -105,23 +232,24 @@ class Storage {
     [[no_unique_address]] StorageType _storage;
 
   public:
+    constexpr Storage(StorageType val) : _storage(val) {}
+
     // Literal Int
     constexpr Storage()
         requires(!std::is_same_v<StorageType, BigIntType>)
     = default;
 
-    constexpr Storage(StorageType val)
-        requires(!std::is_same_v<StorageType, BigIntType>)
-        : _storage(val) {}
-
     // BigInt
     constexpr Storage()
         requires(std::is_same_v<StorageType, BigIntType> && !using_llvm_apint)
-        : _storage() {}
+        : _storage(_numBits) {}
 
-    constexpr Storage(StorageType val)
-        requires(std::is_same_v<StorageType, BigIntType> && !using_llvm_apint)
-        : _storage(val) {}
+    template <typename T>
+    constexpr Storage(T val)
+        requires(
+            std::is_same_v<StorageType, BigIntType> && !using_llvm_apint && std::integral<T>
+        )
+        : _storage(_numBits, static_cast<uint64_t>(val)) {}
 
     // APInt
     constexpr Storage()

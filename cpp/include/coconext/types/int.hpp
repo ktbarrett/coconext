@@ -4,12 +4,13 @@
 #include "int_base.hpp"
 #include <coconext/types/int_base.hpp>
 
+// TODO these macros must explicitly
+// deny unimplemented operations for BigInts.
+
 // +, -, *, /, &, |, ^, <<, >>
 #define COCONEXT_DEFINE_BINARY_OP(CLASS_TYPE, OP)                                          \
     constexpr CLASS_TYPE operator OP(const CLASS_TYPE& rhs) const                          \
-        requires(!std::is_same_v<                                                          \
-                 typename detail::Storage<Bits, is_signed>::StorageType,                   \
-                 detail::BigIntType>)                                                      \
+        requires(!detail::using_llvm_apint)                                                \
     {                                                                                      \
         auto native_result = this->storage.raw() OP rhs.storage.raw();                     \
         return CLASS_TYPE(detail::Storage<Bits, is_signed>(native_result));                \
@@ -18,9 +19,7 @@
 // ~
 #define COCONEXT_DEFINE_UNARY_OP(CLASS_TYPE, OP)                                           \
     constexpr CLASS_TYPE operator OP() const                                               \
-        requires(!std::is_same_v<                                                          \
-                 typename detail::Storage<Bits, is_signed>::StorageType,                   \
-                 detail::BigIntType>)                                                      \
+        requires(!detail::using_llvm_apint)                                                \
     {                                                                                      \
         auto native_result = OP this->storage.raw();                                       \
         return CLASS_TYPE(detail::Storage<Bits, is_signed>(native_result));                \
@@ -29,9 +28,7 @@
 // ==, !=, <, >, <=, >=
 #define COCONEXT_DEFINE_COMPARE_OP(CLASS_TYPE, OP)                                         \
     constexpr bool operator OP(const CLASS_TYPE& rhs) const                                \
-        requires(!std::is_same_v<                                                          \
-                 typename detail::Storage<Bits, is_signed>::StorageType,                   \
-                 detail::BigIntType>)                                                      \
+        requires(!detail::using_llvm_apint)                                                \
     {                                                                                      \
         return this->storage.raw() OP rhs.storage.raw();                                   \
     }
@@ -49,6 +46,7 @@ class UInt {
 
   public:
     constexpr UInt() = default;
+
     constexpr UInt(detail::Storage<Bits, is_signed> const& val) : storage(val) {}
 
     COCONEXT_DEFINE_BINARY_OP(UInt, +)
