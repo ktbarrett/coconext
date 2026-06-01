@@ -318,6 +318,28 @@ constexpr Bit operator~(Bit const& value) noexcept {
     return value.value() == Bit::_0 ? Bit::_1 : Bit::_0;
 }
 
+// Compound bitwise assignment. Bit is implicitly convertible to Logic, so the
+// Logic overloads accept `Logic l; l &= bit;`. The reverse (`Bit b; b &= logic;`)
+// has no overload (Logic doesn't convert to Bit), which is the intended behavior:
+// non-resolvable values can't be assigned into a Bit.
+constexpr Logic& operator&=(Logic& lhs, Logic const& rhs) noexcept {
+    return lhs = lhs & rhs;
+}
+constexpr Logic& operator|=(Logic& lhs, Logic const& rhs) noexcept {
+    return lhs = lhs | rhs;
+}
+constexpr Logic& operator^=(Logic& lhs, Logic const& rhs) noexcept {
+    return lhs = lhs ^ rhs;
+}
+constexpr Bit& operator&=(Bit& lhs, Bit const& rhs) noexcept { return lhs = lhs & rhs; }
+constexpr Bit& operator|=(Bit& lhs, Bit const& rhs) noexcept { return lhs = lhs | rhs; }
+constexpr Bit& operator^=(Bit& lhs, Bit const& rhs) noexcept { return lhs = lhs ^ rhs; }
+
+// Free function in-place complement. C++ has no `~=` operator, so this is the
+// in-place counterpart of `operator~`.
+constexpr Logic& inplace_not(Logic& v) noexcept { return v = ~v; }
+constexpr Bit& inplace_not(Bit& v) noexcept { return v = ~v; }
+
 template <typename T>
 struct is_logic : std::false_type {};
 
