@@ -11,6 +11,7 @@
 #include <initializer_list>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <ranges>
 #include <stdexcept>
 #include <string>
@@ -202,6 +203,17 @@ class DynArrayImpl {
     }
     COCONEXT_DYN_ARRAY_CONSTEXPR auto rend() const noexcept {
         return std::reverse_iterator(begin());
+    }
+
+    COCONEXT_DYN_ARRAY_CONSTEXPR std::optional<index_type> index(
+        value_type const& v
+    ) const {
+        return detail::index_in(*this, v);
+    }
+    COCONEXT_DYN_ARRAY_CONSTEXPR std::optional<index_type> rindex(
+        value_type const& v
+    ) const {
+        return detail::rindex_in(*this, v);
     }
 
   private:

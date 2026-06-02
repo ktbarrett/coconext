@@ -106,6 +106,85 @@ TEST(TestDynArray, FindElementMissing) {
     EXPECT_EQ(std::find(a.begin(), a.end(), 99), a.end());
 }
 
+// -- index / rindex ---------------------------------------------------------
+//
+// index(v) returns the first HDL coordinate (from the left in iteration
+// order) whose element equals v; rindex(v) is the same from the right (i.e.
+// the last matching element). Both return nullopt when not found.
+
+TEST(TestDynArray, IndexFoundTO) {
+    DynArray<int> a(std::vector<int>{10, 20, 30, 20}, Range(0, Direction::TO, 3));
+    auto i = a.index(20);
+    ASSERT_TRUE(i.has_value());
+    EXPECT_EQ(*i, 1);  // first 20 is at HDL coord 1
+}
+
+TEST(TestDynArray, IndexFoundDOWNTO) {
+    DynArray<int> a({10, 20, 30});  // default DOWNTO {2..0}: a[2]=10, a[1]=20, a[0]=30
+    auto i = a.index(20);
+    ASSERT_TRUE(i.has_value());
+    EXPECT_EQ(*i, 1);  // 20 is at HDL coord 1 (DOWNTO)
+}
+
+TEST(TestDynArray, IndexNotFound) {
+    DynArray<int> a({10, 20, 30});
+    EXPECT_FALSE(a.index(99).has_value());
+}
+
+TEST(TestDynArray, IndexEmpty) {
+    DynArray<int> a({});
+    EXPECT_FALSE(a.index(0).has_value());
+}
+
+TEST(TestDynArray, RindexFindsLastOccurrenceTO) {
+    DynArray<int> a(std::vector<int>{10, 20, 30, 20}, Range(0, Direction::TO, 3));
+    auto i = a.rindex(20);
+    ASSERT_TRUE(i.has_value());
+    EXPECT_EQ(*i, 3);  // last 20 is at HDL coord 3
+}
+
+TEST(TestDynArray, RindexFindsLastOccurrenceDOWNTO) {
+    DynArray<int> a(std::vector<int>{10, 20, 30, 20}, Range(3, Direction::DOWNTO, 0));
+    // a[3]=10, a[2]=20, a[1]=30, a[0]=20. Last 20 in iteration is at HDL 0.
+    auto i = a.rindex(20);
+    ASSERT_TRUE(i.has_value());
+    EXPECT_EQ(*i, 0);
+}
+
+TEST(TestDynArray, RindexNotFound) {
+    DynArray<int> a({10, 20, 30});
+    EXPECT_FALSE(a.rindex(99).has_value());
+}
+
+TEST(TestDynArray, IndexOnSlice) {
+    // Generic DynArray<int> defaults to TO {0..4}.
+    DynArray<int> a({10, 20, 30, 40, 50});
+    auto s = a[{1, 3}];  // TO slice covering HDL coords 1, 2, 3 -> 20, 30, 40
+    auto i = s.index(30);
+    ASSERT_TRUE(i.has_value());
+    EXPECT_EQ(*i, 2);
+}
+
+TEST(TestStaticArray, IndexAndRindex) {
+    Array<int, Range{0, Direction::TO, 4}> a({10, 20, 30, 20, 50});
+    auto first = a.index(20);
+    auto last = a.rindex(20);
+    ASSERT_TRUE(first.has_value() && last.has_value());
+    EXPECT_EQ(*first, 1);
+    EXPECT_EQ(*last, 3);
+    EXPECT_FALSE(a.index(99).has_value());
+}
+
+TEST(TestDynArrayStaticSlice, IndexAndRindex) {
+    DynArray<int> a({10, 20, 30, 20, 50}, Range(0, Direction::TO, 4));
+    auto s = a.slice<Range{1, Direction::TO, 3}>();  // values 20, 30, 20
+    auto first = s.index(20);
+    auto last = s.rindex(20);
+    ASSERT_TRUE(first.has_value() && last.has_value());
+    EXPECT_EQ(*first, 1);
+    EXPECT_EQ(*last, 3);
+}
+
 // -- Indexing ---------------------------------------------------------------
 
 TEST(TestDynArray, IndexingTO) {
