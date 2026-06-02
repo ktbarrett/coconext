@@ -12,6 +12,7 @@
 #include <initializer_list>
 #include <iterator>
 #include <limits>
+#include <optional>
 #include <ranges>
 #include <stdexcept>
 #include <string>
@@ -144,6 +145,13 @@ class ArrayImpl {
     constexpr auto rbegin() const noexcept { return data_.rbegin(); }
     constexpr auto rend() noexcept { return data_.rend(); }
     constexpr auto rend() const noexcept { return data_.rend(); }
+
+    constexpr std::optional<index_type> index(value_type const& v) const {
+        return detail::index_in(*this, v);
+    }
+    constexpr std::optional<index_type> rindex(value_type const& v) const {
+        return detail::rindex_in(*this, v);
+    }
 
   private:
     template <typename Self>
