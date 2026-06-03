@@ -9,6 +9,7 @@
 #include <format>
 #include <initializer_list>
 #include <iterator>
+#include <optional>
 #include <ranges>
 #include <stdexcept>
 #include <string>
@@ -33,17 +34,24 @@ struct require_constant {};
 
 }  // namespace detail
 
-// A random-access range whose range is queryable via `obj.range()`.
-template <typename T>
+// A random-access range whose range is queryable via `obj.range()`. The
+// optional `Elem` template parameter constrains the element type: `Elem = void`
+// (the default) matches any element type; a concrete type requires the element
+// to match exactly. So `RangedSequence T` matches any ranged sequence,
+// `RangedSequence<Logic> T` matches only ranged sequences of Logic. Concepts
+// can't be passed as template arguments in C++20, so element-concept
+// constraints (e.g. "any LogicType element") still need a composed concept or
+// a separate requires clause.
+template <typename T, typename Elem = void>
 concept RangedSequence = std::ranges::random_access_range<T> && requires(T const& t) {
     { t.range() } -> std::convertible_to<Range>;
-};
+} && (std::is_void_v<Elem> || std::same_as<std::ranges::range_value_t<T>, Elem>);
 
 // A RangedSequence whose range is also a compile-time constant -- i.e., T
 // exposes `range()` as a static method returning a constant expression.
 // Refines RangedSequence so overload resolution prefers it when both match.
-template <typename T>
-concept StaticRangedSequence = RangedSequence<T> && requires {
+template <typename T, typename Elem = void>
+concept StaticRangedSequence = RangedSequence<T, Elem> && requires {
     typename detail::require_constant<std::remove_cvref_t<T>::range()>;
 };
 
@@ -61,6 +69,44 @@ constexpr void subsequence_check(Range parent, Range child) {
     if (!child.is_subsequence_of(parent)) {
         throw std::invalid_argument("Range is not a valid sub-range of the parent");
     }
+}
+
+// Convert a 0-based offset into the data buffer (iteration order) to the
+// corresponding HDL coordinate for the given range's direction.
+constexpr Range::value_type offset_to_hdl_coord(
+    Range r, size_t offset_from_begin
+) noexcept {
+    auto const off = static_cast<Range::value_type>(offset_from_begin);
+    return r.direction == Direction::TO ? r.left + off : r.left - off;
+}
+
+// First HDL coordinate (from the left in iteration order) whose element equals
+// `v`, or nullopt if not found. Used by Array/DynArray/slice members.
+template <RangedSequence S>
+constexpr std::optional<Range::value_type> index_in(
+    S const& s, std::ranges::range_value_t<S> const& v
+) {
+    auto const it = std::ranges::find(s, v);
+    if (it == s.end()) {
+        return std::nullopt;
+    }
+    return offset_to_hdl_coord(
+        s.range(), static_cast<size_t>(std::ranges::distance(s.begin(), it))
+    );
+}
+
+// First HDL coordinate from the right (i.e. the last matching element in
+// iteration order), or nullopt if not found.
+template <RangedSequence S>
+constexpr std::optional<Range::value_type> rindex_in(
+    S const& s, std::ranges::range_value_t<S> const& v
+) {
+    auto const rit = std::find(s.rbegin(), s.rend(), v);
+    if (rit == s.rend()) {
+        return std::nullopt;
+    }
+    auto const off_from_end = static_cast<size_t>(std::distance(s.rbegin(), rit));
+    return offset_to_hdl_coord(s.range(), s.range().length() - 1 - off_from_end);
 }
 
 }  // namespace detail
@@ -184,6 +230,15 @@ class DynArraySliceImpl {
     constexpr iterator end() const noexcept { return begin_ + range_.length(); }
     constexpr auto rbegin() const noexcept { return std::reverse_iterator(end()); }
     constexpr auto rend() const noexcept { return std::reverse_iterator(begin()); }
+
+    // First HDL coordinate (from the left/right respectively) whose element
+    // equals `v`, or nullopt if not found.
+    constexpr std::optional<index_type> index(value_type const& v) const {
+        return detail::index_in(*this, v);
+    }
+    constexpr std::optional<index_type> rindex(value_type const& v) const {
+        return detail::rindex_in(*this, v);
+    }
 
   private:
     // Cache the begin pointer. This is just one stack pointer for a temporary object, and
@@ -340,6 +395,13 @@ class ArraySliceImpl {
     constexpr iterator end() const noexcept { return begin() + R.length(); }
     constexpr auto rbegin() const noexcept { return std::reverse_iterator(end()); }
     constexpr auto rend() const noexcept { return std::reverse_iterator(begin()); }
+
+    constexpr std::optional<index_type> index(value_type const& v) const {
+        return detail::index_in(*this, v);
+    }
+    constexpr std::optional<index_type> rindex(value_type const& v) const {
+        return detail::rindex_in(*this, v);
+    }
 
   private:
     ArrayT* arr_;

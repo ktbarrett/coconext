@@ -109,7 +109,7 @@ TEST(TestLogicArray, BitwiseResultRange) {
 TEST(TestLogicArray, BitwiseOnSlice) {
     DynArray<Logic> a({'0'_l, '1'_l, '1'_l, '0'_l});
     DynArray<Logic> b({'1'_l, '0'_l});
-    auto s = a[{1, 2}];
+    auto s = a[{2, 1}];
     auto c = s & b;
     static_assert(std::is_same_v<decltype(c), DynArray<Logic>>);
     EXPECT_EQ(c.range(), Range(1, Direction::DOWNTO, 0));
@@ -157,6 +157,98 @@ TEST(TestLogicArray, MixedLogicBitXor) {
     EXPECT_EQ(c[2], '1'_l);
     EXPECT_EQ(c[1], '0'_l);
     EXPECT_EQ(c[0], 'X'_l);
+}
+
+// -- Bitwise scalar+array broadcasts ----------------------------------------
+
+TEST(TestLogicArray, AndScalarLHSDynArray) {
+    DynArray<Logic> a({'1'_l, '0'_l, 'X'_l, '1'_l});
+    auto c = '1'_l & a;
+    static_assert(std::is_same_v<decltype(c), DynArray<Logic>>);
+    EXPECT_EQ(c.range(), Range(3, Direction::DOWNTO, 0));
+    EXPECT_EQ(c[3], '1'_l);
+    EXPECT_EQ(c[2], '0'_l);
+    EXPECT_EQ(c[1], 'X'_l);
+    EXPECT_EQ(c[0], '1'_l);
+}
+
+TEST(TestLogicArray, AndScalarRHSDynArray) {
+    DynArray<Logic> a({'1'_l, '0'_l, 'X'_l, '1'_l});
+    auto c = a & '0'_l;
+    static_assert(std::is_same_v<decltype(c), DynArray<Logic>>);
+    EXPECT_EQ(c[3], '0'_l);
+    EXPECT_EQ(c[2], '0'_l);
+    EXPECT_EQ(c[1], '0'_l);
+    EXPECT_EQ(c[0], '0'_l);
+}
+
+TEST(TestLogicArray, OrScalarLHSDynArray) {
+    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l, '0'_l});
+    auto c = '0'_l | a;
+    EXPECT_EQ(c[3], '0'_l);
+    EXPECT_EQ(c[2], '1'_l);
+    EXPECT_EQ(c[1], 'X'_l);
+    EXPECT_EQ(c[0], '0'_l);
+}
+
+TEST(TestLogicArray, OrScalarRHSDynArray) {
+    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l, '0'_l});
+    auto c = a | '1'_l;
+    EXPECT_EQ(c[3], '1'_l);
+    EXPECT_EQ(c[2], '1'_l);
+    EXPECT_EQ(c[1], '1'_l);
+    EXPECT_EQ(c[0], '1'_l);
+}
+
+TEST(TestLogicArray, XorScalarLHSDynArray) {
+    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l, '0'_l});
+    auto c = '1'_l ^ a;
+    EXPECT_EQ(c[3], '1'_l);
+    EXPECT_EQ(c[2], '0'_l);
+    EXPECT_EQ(c[1], 'X'_l);
+    EXPECT_EQ(c[0], '1'_l);
+}
+
+TEST(TestLogicArray, XorScalarRHSDynArray) {
+    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l, '0'_l});
+    auto c = a ^ '0'_l;
+    EXPECT_EQ(c[3], '0'_l);
+    EXPECT_EQ(c[2], '1'_l);
+    EXPECT_EQ(c[1], 'X'_l);
+    EXPECT_EQ(c[0], '0'_l);
+}
+
+TEST(TestLogicArray, ScalarBitwiseStaticReturnsStatic) {
+    Array<Logic, 4> a({'0'_l, '1'_l, 'X'_l, '1'_l});
+    auto c = a & '1'_l;
+    static_assert(
+        std::is_same_v<decltype(c), Array<Logic, Range{3, Direction::DOWNTO, 0}>>
+    );
+    EXPECT_EQ(c[3], '0'_l);
+    EXPECT_EQ(c[2], '1'_l);
+    EXPECT_EQ(c[1], 'X'_l);
+    EXPECT_EQ(c[0], '1'_l);
+}
+
+TEST(TestLogicArray, ScalarBitwiseMixedBitScalarLogicArray) {
+    // Bit scalar combined with a Logic array: result element type follows the
+    // op's deduced return (Logic, since Bit & Logic -> Logic).
+    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l});
+    auto c = '1'_b & a;
+    static_assert(std::is_same_v<decltype(c), DynArray<Logic>>);
+    EXPECT_EQ(c[2], '0'_l);
+    EXPECT_EQ(c[1], '1'_l);
+    EXPECT_EQ(c[0], 'X'_l);
+}
+
+TEST(TestLogicArray, ScalarBitwiseOnSlice) {
+    DynArray<Logic> a({'0'_l, '1'_l, '1'_l, '0'_l});
+    auto s = a[{2, 1}];
+    auto c = s | '1'_l;
+    static_assert(std::is_same_v<decltype(c), DynArray<Logic>>);
+    EXPECT_EQ(c.range(), Range(1, Direction::DOWNTO, 0));
+    EXPECT_EQ(c[1], '1'_l);
+    EXPECT_EQ(c[0], '1'_l);
 }
 
 // -- to_logic_array from string ---------------------------------------------
@@ -343,6 +435,434 @@ TEST(TestLogicArray, SubSlicePreservesMixin) {
     // DynArraySlice<ArrayT> by outer name, which resolves to the constrained
     // partial spec when the element type is Logic.
     EXPECT_FALSE(sub.is_resolvable());
+}
+
+// -- index / rindex on Logic/Bit arrays -----------------------------------
+
+TEST(TestLogicArray, IndexInheritedOnDynLogicArray) {
+    auto a = "10X10"_l;  // DOWNTO {4..0}: a[4]=1, a[3]=0, a[2]=X, a[1]=1, a[0]=0
+    auto first_one = a.index('1'_l);
+    auto last_one = a.rindex('1'_l);
+    ASSERT_TRUE(first_one.has_value() && last_one.has_value());
+    EXPECT_EQ(*first_one, 4);  // first '1' in iteration -> highest HDL coord
+    EXPECT_EQ(*last_one, 1);
+    EXPECT_FALSE(a.index('U'_l).has_value());
+}
+
+TEST(TestBitArray, IndexInheritedOnStaticBitArray) {
+    BitArray<4> a({'1'_b, '0'_b, '1'_b, '0'_b});
+    EXPECT_EQ(*a.index('1'_b), 3);   // DOWNTO {3..0}, first '1' is a[3]
+    EXPECT_EQ(*a.rindex('1'_b), 1);  // last '1' is a[1]
+}
+
+// -- Reductions: and_reduce / or_reduce / xor_reduce -----------------------
+
+TEST(TestLogicArray, AndReduceAllOnes) {
+    auto a = "1111"_l;
+    EXPECT_EQ(a.and_reduce(), '1'_l);
+}
+
+TEST(TestLogicArray, AndReduceWithZero) {
+    auto a = "1101"_l;
+    EXPECT_EQ(a.and_reduce(), '0'_l);
+}
+
+TEST(TestLogicArray, AndReduceWithX) {
+    auto a = "11X1"_l;
+    EXPECT_EQ(a.and_reduce(), 'X'_l);
+}
+
+TEST(TestLogicArray, AndReduceEmpty) {
+    DynArray<Logic> a({});
+    EXPECT_EQ(a.and_reduce(), '1'_l);  // identity for AND
+}
+
+TEST(TestLogicArray, OrReduceAllZeros) {
+    auto a = "0000"_l;
+    EXPECT_EQ(a.or_reduce(), '0'_l);
+}
+
+TEST(TestLogicArray, OrReduceWithOne) {
+    auto a = "0010"_l;
+    EXPECT_EQ(a.or_reduce(), '1'_l);
+}
+
+TEST(TestLogicArray, OrReduceWithX) {
+    auto a = "00X0"_l;
+    EXPECT_EQ(a.or_reduce(), 'X'_l);
+}
+
+TEST(TestLogicArray, OrReduceEmpty) {
+    DynArray<Logic> a({});
+    EXPECT_EQ(a.or_reduce(), '0'_l);  // identity for OR
+}
+
+TEST(TestLogicArray, XorReduceEvenOnes) {
+    auto a = "1100"_l;
+    EXPECT_EQ(a.xor_reduce(), '0'_l);
+}
+
+TEST(TestLogicArray, XorReduceOddOnes) {
+    auto a = "1110"_l;
+    EXPECT_EQ(a.xor_reduce(), '1'_l);
+}
+
+TEST(TestLogicArray, XorReduceWithX) {
+    auto a = "1X1"_l;
+    EXPECT_EQ(a.xor_reduce(), 'X'_l);
+}
+
+TEST(TestLogicArray, XorReduceEmpty) {
+    DynArray<Logic> a({});
+    EXPECT_EQ(a.xor_reduce(), '0'_l);  // identity for XOR
+}
+
+TEST(TestBitArray, ReductionsReturnBit) {
+    auto a = "1010"_b;
+    static_assert(std::is_same_v<decltype(a.and_reduce()), Bit>);
+    EXPECT_EQ(a.and_reduce(), '0'_b);
+    EXPECT_EQ(a.or_reduce(), '1'_b);
+    EXPECT_EQ(a.xor_reduce(), '0'_b);
+}
+
+TEST(TestLogicArray, ReductionsOnDynArray) {
+    DynArray<Logic> a({'1'_l, '0'_l, '1'_l});
+    EXPECT_EQ(a.and_reduce(), '0'_l);
+    EXPECT_EQ(a.or_reduce(), '1'_l);
+    EXPECT_EQ(a.xor_reduce(), '0'_l);
+}
+
+TEST(TestLogicArray, ReductionsOnSlice) {
+    auto a = "1110"_l;
+    auto s = a[{3, 1}];  // "111"
+    EXPECT_EQ(s.and_reduce(), '1'_l);
+    EXPECT_EQ(s.or_reduce(), '1'_l);
+    EXPECT_EQ(s.xor_reduce(), '1'_l);
+}
+
+// -- Compound bitwise assignment -------------------------------------------
+
+TEST(TestLogicArray, CompoundAndArrayArrayDynLogic) {
+    DynArray<Logic> a({'1'_l, '0'_l, 'X'_l, '1'_l});
+    DynArray<Logic> b({'1'_l, '1'_l, '1'_l, '0'_l});
+    a &= b;
+    EXPECT_EQ(to_string(a), "10X0");
+}
+
+TEST(TestLogicArray, CompoundOrArrayArrayDynLogic) {
+    DynArray<Logic> a({'1'_l, '0'_l, 'X'_l, '0'_l});
+    DynArray<Logic> b({'0'_l, '0'_l, '1'_l, '0'_l});
+    a |= b;
+    // X | 1 = 1 per Logic truth table.
+    EXPECT_EQ(to_string(a), "1010");
+}
+
+TEST(TestLogicArray, CompoundXorArrayArrayDynLogic) {
+    DynArray<Logic> a({'1'_l, '0'_l, '1'_l, '0'_l});
+    DynArray<Logic> b({'1'_l, '1'_l, '0'_l, '0'_l});
+    a ^= b;
+    EXPECT_EQ(to_string(a), "0110");
+}
+
+TEST(TestLogicArray, CompoundLengthMismatchThrows) {
+    DynArray<Logic> a({'0'_l, '1'_l});
+    DynArray<Logic> b({'0'_l, '1'_l, 'X'_l});
+    EXPECT_THROW(a &= b, std::invalid_argument);
+}
+
+TEST(TestLogicArray, CompoundAndScalarRHS) {
+    DynArray<Logic> a({'1'_l, '0'_l, 'X'_l, '1'_l});
+    a &= '0'_l;
+    EXPECT_EQ(to_string(a), "0000");
+}
+
+TEST(TestLogicArray, CompoundOrScalarRHS) {
+    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l, '0'_l});
+    a |= '1'_l;
+    EXPECT_EQ(to_string(a), "1111");
+}
+
+TEST(TestLogicArray, CompoundXorScalarRHS) {
+    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l, '0'_l});
+    a ^= '1'_l;
+    EXPECT_EQ(to_string(a), "10X1");
+}
+
+TEST(TestLogicArray, CompoundLogicArrayWithBitArray) {
+    // LogicArray &= BitArray works because Bit -> Logic implicitly.
+    DynArray<Logic> a({'1'_l, '0'_l, 'X'_l});
+    DynArray<Bit> b({'1'_b, '1'_b, '1'_b});
+    a &= b;
+    EXPECT_EQ(to_string(a), "10X");
+}
+
+TEST(TestBitArray, CompoundBitArrayWithBitArray) {
+    DynArray<Bit> a({'1'_b, '0'_b, '1'_b, '1'_b});
+    DynArray<Bit> b({'1'_b, '1'_b, '0'_b, '1'_b});
+    a &= b;
+    EXPECT_EQ(to_string(a), "1001");
+}
+
+TEST(TestLogicArray, CompoundOnSlice) {
+    DynArray<Logic> a({'1'_l, '1'_l, '1'_l, '1'_l});
+    a[{2, 1}] &= '0'_l;
+    EXPECT_EQ(to_string(a), "1001");
+}
+
+TEST(TestLogicArray, CompoundOnStaticArray) {
+    LogicArray<4> a({'1'_l, '0'_l, '1'_l, '1'_l});
+    a |= '0'_l;
+    EXPECT_EQ(to_string(a), "1011");
+}
+
+TEST(TestLogicArray, CompoundStaticArrayWithStaticArray) {
+    // Both sides have static ranges -- length check is a static_assert; a
+    // mismatch would fail compile rather than throw.
+    LogicArray<4> a({'1'_l, '0'_l, '1'_l, '1'_l});
+    LogicArray<4> b({'1'_l, '1'_l, '0'_l, '1'_l});
+    a &= b;
+    EXPECT_EQ(to_string(a), "1001");
+}
+
+TEST(TestLogicArray, CompoundEmptyArrays) {
+    DynArray<Logic> a({});
+    DynArray<Logic> b({});
+    a &= b;  // no-op
+    EXPECT_EQ(a.range().length(), 0U);
+}
+
+TEST(TestLogicArray, CompoundReturnsReference) {
+    // Confirm the compound op returns its LHS so chained writes / use as an
+    // expression work.
+    DynArray<Logic> a({'1'_l, '1'_l});
+    auto& ref = (a &= '0'_l);
+    EXPECT_EQ(&ref, &a);
+    EXPECT_EQ(to_string(a), "00");
+}
+
+TEST(TestLogicArray, InplaceNotDynLogic) {
+    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
+    inplace_not(a);
+    EXPECT_EQ(to_string(a), "10XX");  // ~Z = X
+}
+
+TEST(TestBitArray, InplaceNotDynBit) {
+    DynArray<Bit> a({'0'_b, '1'_b, '0'_b, '1'_b});
+    inplace_not(a);
+    EXPECT_EQ(to_string(a), "1010");
+}
+
+TEST(TestLogicArray, InplaceNotStaticArray) {
+    LogicArray<3> a({'0'_l, '1'_l, 'X'_l});
+    inplace_not(a);
+    EXPECT_EQ(to_string(a), "10X");
+}
+
+TEST(TestLogicArray, InplaceNotOnSlice) {
+    DynArray<Logic> a({'0'_l, '0'_l, '0'_l, '0'_l});
+    inplace_not(a[{2, 1}]);
+    EXPECT_EQ(to_string(a), "0110");
+}
+
+TEST(TestLogicArray, InplaceNotEmpty) {
+    DynArray<Logic> a({});
+    inplace_not(a);
+    EXPECT_EQ(a.range().length(), 0U);
+}
+
+TEST(TestLogicArray, InplaceNotReturnsReference) {
+    DynArray<Logic> a({'1'_l});
+    auto& ref = inplace_not(a);
+    EXPECT_EQ(&ref, &a);
+}
+
+// -- Concatenation ---------------------------------------------------------
+
+TEST(TestLogicArray, ConcatTwoArrays) {
+    auto a = "0011"_l;  // {3 DOWNTO 0}: bits 0,0,1,1
+    auto b = "1100"_l;  // {3 DOWNTO 0}: bits 1,1,0,0
+    auto c = concat(a, b);
+    // a first → high 4 bits; b second → low 4 bits. Iteration order MSB-first.
+    EXPECT_EQ(to_string(c), "00111100");
+    static_assert(
+        std::is_same_v<decltype(c), detail::Array<Logic, Range{7, Direction::DOWNTO, 0}>>
+    );
+}
+
+TEST(TestLogicArray, ConcatScalarLeftArrayRight) {
+    auto c = concat('1'_l, "00"_l);
+    EXPECT_EQ(to_string(c), "100");
+    EXPECT_EQ(c.range(), (Range{2, Direction::DOWNTO, 0}));
+}
+
+TEST(TestLogicArray, ConcatArrayLeftScalarRight) {
+    auto c = concat("11"_l, '0'_l);
+    EXPECT_EQ(to_string(c), "110");
+}
+
+TEST(TestLogicArray, ConcatThreeArgs) {
+    auto c = concat('1'_l, "010"_l, '0'_l);
+    EXPECT_EQ(to_string(c), "10100");
+}
+
+TEST(TestLogicArray, ConcatMixedBitLogicReturnsLogic) {
+    auto a = "01"_b;
+    auto b = "X1"_l;
+    auto c = concat(a, b);
+    // Bit converts implicitly to Logic; common type is Logic.
+    static_assert(std::same_as<std::ranges::range_value_t<decltype(c)>, Logic>);
+    EXPECT_EQ(to_string(c), "01X1");
+}
+
+TEST(TestLogicArray, ConcatAllStaticReturnsStatic) {
+    LogicArray<3> a({'1'_l, '0'_l, '1'_l});
+    LogicArray<2> b({'0'_l, '1'_l});
+    auto c = concat(a, b);
+    static_assert(
+        std::is_same_v<decltype(c), detail::Array<Logic, Range{4, Direction::DOWNTO, 0}>>
+    );
+    EXPECT_EQ(to_string(c), "10101");
+}
+
+TEST(TestLogicArray, ConcatDynamicReturnsDynamic) {
+    DynArray<Logic> a({'1'_l, '0'_l, '1'_l});
+    LogicArray<2> b({'0'_l, '1'_l});
+    auto c = concat(a, b);
+    static_assert(std::is_same_v<decltype(c), DynArray<Logic>>);
+    EXPECT_EQ(to_string(c), "10101");
+    EXPECT_EQ(c.range(), (Range{4, Direction::DOWNTO, 0}));
+}
+
+TEST(TestLogicArray, ConcatSingleScalar) {
+    auto c = concat('1'_l);
+    static_assert(
+        std::is_same_v<decltype(c), detail::Array<Logic, Range{0, Direction::DOWNTO, 0}>>
+    );
+    EXPECT_EQ(to_string(c), "1");
+}
+
+TEST(TestLogicArray, ConcatSingleArrayNormalizesToDownto) {
+    // Single-arg concat with a TO array effectively re-normalizes to DOWNTO.
+    // a is TO {0..2}: a[0]='1', a[1]='0', a[2]='X'.
+    Array<Logic, Range{0, Direction::TO, 2}> a({'1'_l, '0'_l, 'X'_l});
+    auto c = concat(a);
+    // Iteration order through a is begin to end = '1', '0', 'X'.
+    // Result is {2 DOWNTO 0}: c[2]='1' (first written), c[0]='X' (last).
+    EXPECT_EQ(c.range(), (Range{2, Direction::DOWNTO, 0}));
+    EXPECT_EQ(to_string(c), "10X");
+}
+
+TEST(TestLogicArray, ConcatEmptyArrays) {
+    DynArray<Logic> a({});
+    DynArray<Logic> b({});
+    auto c = concat(a, b);
+    EXPECT_EQ(c.range().length(), 0U);
+}
+
+TEST(TestLogicArray, ConcatEmptyAndNonEmpty) {
+    DynArray<Logic> empty({});
+    auto c = concat(empty, "1"_l);
+    EXPECT_EQ(to_string(c), "1");
+}
+
+TEST(TestLogicArray, ConcatOnSlice) {
+    auto a = "1100"_l;
+    auto s = a[{3, 2}];  // "11"
+    auto c = concat(s, '0'_l);
+    EXPECT_EQ(to_string(c), "110");
+}
+
+TEST(TestBitArray, ConcatBitArrays) {
+    auto a = "10"_b;
+    auto b = "01"_b;
+    auto c = concat(a, b);
+    static_assert(std::same_as<std::ranges::range_value_t<decltype(c)>, Bit>);
+    EXPECT_EQ(to_string(c), "1001");
+}
+
+// -- DOWNTO defaults for length-only construction --------------------------
+
+TEST(TestLogicArray, DynArrayLengthCtorDefaultsToDowntoLogic) {
+    DynArray<Logic> a(5);
+    EXPECT_EQ(a.range(), (Range{4, Direction::DOWNTO, 0}));
+}
+
+TEST(TestBitArray, DynArrayLengthCtorDefaultsToDowntoBit) {
+    DynArray<Bit> a(5);
+    EXPECT_EQ(a.range(), (Range{4, Direction::DOWNTO, 0}));
+}
+
+TEST(TestLogicArray, DynArrayInitListDefaultsToDowntoLogic) {
+    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l});
+    EXPECT_EQ(a.range(), (Range{2, Direction::DOWNTO, 0}));
+    EXPECT_EQ(a[2], '0'_l);  // HDL coord 2 == first element (high bit)
+    EXPECT_EQ(a[0], 'X'_l);  // HDL coord 0 == last element (low bit)
+}
+
+TEST(TestLogicArray, DynArraySizedRangeDefaultsToDowntoLogic) {
+    std::vector<Logic> v{'0'_l, '1'_l, 'X'_l};
+    DynArray<Logic> a(v);
+    EXPECT_EQ(a.range(), (Range{2, Direction::DOWNTO, 0}));
+}
+
+TEST(TestLogicArray, DynArrayEmptyInitListDowntoLogic) {
+    DynArray<Logic> a({});
+    EXPECT_EQ(a.range().length(), 0U);
+}
+
+TEST(TestLogicArray, LogicArrayAliasLengthDefaultsToDownto) {
+    // LogicArray<N>/BitArray<N> aliases use DOWNTO for length-only forms.
+    static_assert(
+        std::is_same_v<LogicArray<4>, detail::Array<Logic, Range{3, Direction::DOWNTO, 0}>>
+    );
+    static_assert(
+        std::is_same_v<BitArray<8>, detail::Array<Bit, Range{7, Direction::DOWNTO, 0}>>
+    );
+    LogicArray<4> a{};
+    EXPECT_EQ(a.range(), (Range{3, Direction::DOWNTO, 0}));
+}
+
+TEST(TestLogicArray, LogicArrayAliasExplicitRangePreserved) {
+    // Explicit Range NTTP is passed through unchanged.
+    static_assert(std::is_same_v<
+                  LogicArray<Range{0, Direction::TO, 7}>,
+                  detail::Array<Logic, Range{0, Direction::TO, 7}>>);
+}
+
+TEST(TestLogicArray, LogicArrayAliasTwoArgFormDirection) {
+    // 2-arg form auto-detects direction, with one tweak: L == R picks DOWNTO
+    // (rather than TO as the generic auto-direction would) to match the 1-arg
+    // length-only convention.
+    static_assert(std::is_same_v<
+                  LogicArray<7, 0>,
+                  detail::Array<Logic, Range{7, Direction::DOWNTO, 0}>>);
+    static_assert(std::is_same_v<
+                  LogicArray<3, 3>,
+                  detail::Array<Logic, Range{3, Direction::DOWNTO, 3}>>);
+    // L < R keeps the generic TO auto-direction.
+    static_assert(
+        std::is_same_v<LogicArray<0, 7>, detail::Array<Logic, Range{0, Direction::TO, 7}>>
+    );
+    static_assert(
+        std::is_same_v<BitArray<15, 0>, detail::Array<Bit, Range{15, Direction::DOWNTO, 0}>>
+    );
+}
+
+TEST(TestLogicArray, LogicArrayAliasThreeArgFormRespectsDirection) {
+    // 3-arg (L, D, H) form lets the user override the default DOWNTO.
+    static_assert(std::is_same_v<
+                  LogicArray<0, Direction::TO, 7>,
+                  detail::Array<Logic, Range{0, Direction::TO, 7}>>);
+    static_assert(std::is_same_v<
+                  BitArray<7, Direction::DOWNTO, 0>,
+                  detail::Array<Bit, Range{7, Direction::DOWNTO, 0}>>);
+}
+
+TEST(TestLogicArray, GenericArraySugarStillTo) {
+    // `Array<Logic, N>` (generic sugar, not LogicArray) keeps generic TO
+    // defaults -- users wanting HDL conventions should prefer LogicArray.
+    Array<Logic, 4> a{};
+    EXPECT_EQ(a.range(), (Range{0, Direction::TO, 3}));
 }
 
 // -- String-literal UDL ----------------------------------------------------

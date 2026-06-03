@@ -390,4 +390,75 @@ TEST(TestBit, BitIsHashable) {
     std::unordered_set<Bit> const different{'0'_b, '1'_b};
     EXPECT_EQ(different.size(), 2U);
 }
+
+// -- Compound bitwise assignment -------------------------------------------
+
+TEST(TestLogic, LogicCompoundAssignAnd) {
+    Logic v = '1'_l;
+    v &= '0'_l;
+    EXPECT_EQ(v, '0'_l);
+    v = 'X'_l;
+    v &= '1'_l;
+    EXPECT_EQ(v, 'X'_l);
+}
+
+TEST(TestLogic, LogicCompoundAssignOr) {
+    Logic v = '0'_l;
+    v |= '1'_l;
+    EXPECT_EQ(v, '1'_l);
+}
+
+TEST(TestLogic, LogicCompoundAssignXor) {
+    Logic v = '1'_l;
+    v ^= '1'_l;
+    EXPECT_EQ(v, '0'_l);
+}
+
+TEST(TestLogic, LogicCompoundAssignAcceptsBit) {
+    // Bit implicitly converts to Logic, so `Logic &= Bit` resolves to the
+    // Logic overload.
+    Logic v = '1'_l;
+    v &= '0'_b;
+    EXPECT_EQ(v, '0'_l);
+}
+
+TEST(TestBit, BitCompoundAssignAnd) {
+    Bit v = '1'_b;
+    v &= '0'_b;
+    EXPECT_EQ(v, '0'_b);
+}
+
+TEST(TestBit, BitCompoundAssignOr) {
+    Bit v = '0'_b;
+    v |= '1'_b;
+    EXPECT_EQ(v, '1'_b);
+}
+
+TEST(TestBit, BitCompoundAssignXor) {
+    Bit v = '1'_b;
+    v ^= '1'_b;
+    EXPECT_EQ(v, '0'_b);
+}
+
+TEST(TestLogic, InplaceNotLogic) {
+    Logic v = '1'_l;
+    inplace_not(v);
+    EXPECT_EQ(v, '0'_l);
+    v = 'X'_l;
+    inplace_not(v);
+    EXPECT_EQ(v, 'X'_l);  // ~X = X
+}
+
+TEST(TestBit, InplaceNotBit) {
+    Bit v = '1'_b;
+    inplace_not(v);
+    EXPECT_EQ(v, '0'_b);
+}
+
+TEST(TestLogic, InplaceNotReturnsReference) {
+    Logic v = '1'_l;
+    auto& ref = inplace_not(v);
+    EXPECT_EQ(&ref, &v);
+}
+
 // LCOV_EXCL_BR_STOP

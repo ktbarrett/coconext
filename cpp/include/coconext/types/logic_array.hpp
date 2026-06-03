@@ -13,9 +13,70 @@
 #include <stdexcept>
 #include <string>
 
+// The Logic/Bit DynArray ctors below delegate to DynArrayImpl ctors that are
+// only constexpr in C++23 (gated by COCONEXT_DYN_ARRAY_CONSTEXPR inside
+// dyn_array.hpp, which #undefs the macro at its end). Mirror the gating here
+// so clang doesn't diagnose "constexpr ctor never produces a constant
+// expression" under C++20.
+#if __cplusplus >= 202302L
+#define COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR constexpr
+#else
+#define COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR
+#endif
+
 namespace coconext::types {
 
 namespace detail {
+
+// Build a {N-1 DOWNTO 0} range from a length, matching HDL bit-vector
+// convention. Used by Logic/Bit array constructors and the LogicArray/BitArray
+// template aliases.
+constexpr Range logic_downto_range(size_t n) {
+    if (n > static_cast<size_t>(std::numeric_limits<Range::value_type>::max())) {
+        throw std::length_error("logic array length overflows Range::value_type");
+    }
+    return Range{static_cast<Range::value_type>(n) - 1, Direction::DOWNTO, 0};
+}
+
+// Like make_static_range, but the length-only form defaults to DOWNTO, and
+// the (L, H) form picks DOWNTO for L == R (where the generic auto-direction
+// would pick TO). Used by LogicArray<>/BitArray<> aliases so:
+//   `LogicArray<8>`      -> {7 DOWNTO 0}   (instead of {0 TO 7})
+//   `LogicArray<7, 0>`   -> {7 DOWNTO 0}   (auto-direction; unchanged)
+//   `LogicArray<3, 3>`   -> {3 DOWNTO 3}   (instead of {3 TO 3} -- the only
+//                                           2-arg case that differs from the
+//                                           generic auto-direction rule)
+//   `LogicArray<0, 7>`   -> {0 TO 7}       (auto-direction; unchanged)
+// The 3-arg `(L, D, H)` form still respects the user's explicit direction.
+template <auto... Args>
+constexpr Range make_logic_static_range() {
+    if constexpr (sizeof...(Args) == 1) {
+        constexpr auto first = std::get<0>(std::tuple{Args...});
+        using First = std::remove_cvref_t<decltype(first)>;
+        if constexpr (std::integral<First>) {
+            static_assert(
+                first >= 0, "LogicArray<N>/BitArray<N>: N (length) must be non-negative"
+            );
+            static_assert(
+                static_cast<long long>(first)
+                    <= std::numeric_limits<Range::value_type>::max(),
+                "LogicArray<N>/BitArray<N>: N overflows Range::value_type"
+            );
+            return Range{static_cast<Range::value_type>(first) - 1, Direction::DOWNTO, 0};
+        } else {
+            return make_static_range<Args...>();
+        }
+    } else if constexpr (sizeof...(Args) == 2) {
+        constexpr auto r = make_static_range<Args...>();
+        if constexpr (r.left == r.right) {
+            return Range{r.left, Direction::DOWNTO, r.right};
+        } else {
+            return r;
+        }
+    } else {
+        return make_static_range<Args...>();
+    }
+}
 
 // CRTP mixin providing the Logic/Bit-specific query and resolution members.
 // Inherited by the Logic/Bit specializations of Array, DynArray, ArraySlice,
@@ -57,6 +118,40 @@ struct LogicArrayMixin {
             return result;
         }
     }
+
+    // Reductions: fold over the array with the corresponding bitwise op.
+    // Empty arrays return the operation's identity (1 for AND, 0 for OR/XOR),
+    // matching the standard math definition and VHDL std_logic_1164's
+    // and_reduce/or_reduce/xor_reduce.
+    auto and_reduce() const {
+        auto const& self = *static_cast<Self const*>(this);
+        using Elem = std::ranges::range_value_t<Self>;
+        Elem result{Elem::_1};
+        for (auto const& v : self) {
+            result = result & v;
+        }
+        return result;
+    }
+
+    auto or_reduce() const {
+        auto const& self = *static_cast<Self const*>(this);
+        using Elem = std::ranges::range_value_t<Self>;
+        Elem result{Elem::_0};
+        for (auto const& v : self) {
+            result = result | v;
+        }
+        return result;
+    }
+
+    auto xor_reduce() const {
+        auto const& self = *static_cast<Self const*>(this);
+        using Elem = std::ranges::range_value_t<Self>;
+        Elem result{Elem::_0};
+        for (auto const& v : self) {
+            result = result ^ v;
+        }
+        return result;
+    }
 };
 
 }  // namespace detail
@@ -94,6 +189,24 @@ class DynArray<Logic> : public detail::DynArrayImpl<Logic>,
   public:
     using detail::DynArrayImpl<Logic>::DynArrayImpl;
     using detail::DynArrayImpl<Logic>::operator=;
+
+    // Length-only constructors default to DOWNTO (HDL bit-vector convention).
+    // The base ctors default to TO; these specializations override that for
+    // logic arrays so `DynArray<Logic>({...})` and friends produce ranges that
+    // match what HDL code expects.
+    explicit COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR DynArray(size_t length)
+        : detail::DynArrayImpl<Logic>(detail::logic_downto_range(length)) {}
+
+    COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR DynArray(std::initializer_list<Logic> init)
+        : detail::DynArrayImpl<Logic>(init, detail::logic_downto_range(init.size())) {}
+
+    template <std::ranges::sized_range R>
+        requires std::convertible_to<std::ranges::range_value_t<R>, Logic>
+              && (!std::derived_from<std::remove_cvref_t<R>, detail::DynArrayImpl<Logic>>)
+    explicit COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR DynArray(R const& obj)
+        : detail::DynArrayImpl<Logic>(
+              obj, detail::logic_downto_range(std::ranges::size(obj))
+          ) {}
 };
 
 template <>
@@ -102,6 +215,20 @@ class DynArray<Bit> : public detail::DynArrayImpl<Bit>,
   public:
     using detail::DynArrayImpl<Bit>::DynArrayImpl;
     using detail::DynArrayImpl<Bit>::operator=;
+
+    explicit COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR DynArray(size_t length)
+        : detail::DynArrayImpl<Bit>(detail::logic_downto_range(length)) {}
+
+    COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR DynArray(std::initializer_list<Bit> init)
+        : detail::DynArrayImpl<Bit>(init, detail::logic_downto_range(init.size())) {}
+
+    template <std::ranges::sized_range R>
+        requires std::convertible_to<std::ranges::range_value_t<R>, Bit>
+              && (!std::derived_from<std::remove_cvref_t<R>, detail::DynArrayImpl<Bit>>)
+    explicit COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR DynArray(R const& obj)
+        : detail::DynArrayImpl<Bit>(
+              obj, detail::logic_downto_range(std::ranges::size(obj))
+          ) {}
 };
 
 // Constrained partial specs that pick up any slice whose owner's element
@@ -128,11 +255,15 @@ class ArraySlice<ArrayT, R> : public detail::ArraySliceImpl<ArrayT, R>,
 using DynLogicArray = DynArray<Logic>;
 using DynBitArray = DynArray<Bit>;
 
+// LogicArray<N> / BitArray<N> default to {N-1 DOWNTO 0} for the length-only
+// form (HDL bit-vector convention). Explicit-Range and (L, [D,] H) forms pass
+// through unchanged. The generic `Array<Logic, N>` sugar still produces TO --
+// users wanting HDL conventions should prefer these aliases.
 template <auto... Args>
-using LogicArray = Array<Logic, Args...>;
+using LogicArray = detail::Array<Logic, detail::make_logic_static_range<Args...>()>;
 
 template <auto... Args>
-using BitArray = Array<Bit, Args...>;
+using BitArray = detail::Array<Bit, detail::make_logic_static_range<Args...>()>;
 
 template <typename T>
 concept LogicArrayType =
@@ -195,6 +326,40 @@ auto logic_binop(LHS const& lhs, RHS const& rhs, Op op) {
     }
 }
 
+// Scalar broadcast: per-element op(elem, scalar). Same static/dynamic dispatch
+// shape as logic_binop, but no length-check branch (a scalar fits any array).
+template <RangedSequence Arr, LogicType Scalar, typename Op>
+    requires LogicType<std::ranges::range_value_t<Arr>>
+auto logic_binop_scalar(Arr const& arr, Scalar const& s, Op op) {
+    using result_elem = decltype(op(
+        std::declval<std::ranges::range_value_t<Arr>>(), std::declval<Scalar>()
+    ));
+    if constexpr (StaticRangedSequence<Arr>) {
+        constexpr auto AR = std::remove_cvref_t<Arr>::range();
+        Array<
+            result_elem,
+            Range{static_cast<Range::value_type>(AR.length()) - 1, Direction::DOWNTO, 0}>
+            result{};
+        std::transform(
+            std::ranges::begin(arr),
+            std::ranges::end(arr),
+            result.begin(),
+            [&s, &op](auto const& v) { return op(v, s); }
+        );
+        return result;
+    } else {
+        auto const n = static_cast<Range::value_type>(arr.range().length());
+        DynArray<result_elem> result(Range{n - 1, Direction::DOWNTO, 0});
+        std::transform(
+            std::ranges::begin(arr),
+            std::ranges::end(arr),
+            result.begin(),
+            [&s, &op](auto const& v) { return op(v, s); }
+        );
+        return result;
+    }
+}
+
 }  // namespace detail
 
 template <RangedSequence LHS, RangedSequence RHS>
@@ -219,6 +384,252 @@ auto operator^(LHS const& lhs, RHS const& rhs) {
     return detail::logic_binop(lhs, rhs, [](auto const& a, auto const& b) {
         return a ^ b;
     });
+}
+
+// Scalar-on-left broadcasts a single Bit/Logic across an array.
+template <LogicType Scalar, RangedSequence Arr>
+    requires LogicArrayType<Arr>
+auto operator&(Scalar const& s, Arr const& arr) {
+    return detail::logic_binop_scalar(arr, s, [](auto const& v, auto const& sc) {
+        return sc & v;
+    });
+}
+
+template <LogicType Scalar, RangedSequence Arr>
+    requires LogicArrayType<Arr>
+auto operator|(Scalar const& s, Arr const& arr) {
+    return detail::logic_binop_scalar(arr, s, [](auto const& v, auto const& sc) {
+        return sc | v;
+    });
+}
+
+template <LogicType Scalar, RangedSequence Arr>
+    requires LogicArrayType<Arr>
+auto operator^(Scalar const& s, Arr const& arr) {
+    return detail::logic_binop_scalar(arr, s, [](auto const& v, auto const& sc) {
+        return sc ^ v;
+    });
+}
+
+// Scalar-on-right mirror.
+template <RangedSequence Arr, LogicType Scalar>
+    requires LogicArrayType<Arr>
+auto operator&(Arr const& arr, Scalar const& s) {
+    return detail::logic_binop_scalar(arr, s, [](auto const& v, auto const& sc) {
+        return v & sc;
+    });
+}
+
+template <RangedSequence Arr, LogicType Scalar>
+    requires LogicArrayType<Arr>
+auto operator|(Arr const& arr, Scalar const& s) {
+    return detail::logic_binop_scalar(arr, s, [](auto const& v, auto const& sc) {
+        return v | sc;
+    });
+}
+
+template <RangedSequence Arr, LogicType Scalar>
+    requires LogicArrayType<Arr>
+auto operator^(Arr const& arr, Scalar const& s) {
+    return detail::logic_binop_scalar(arr, s, [](auto const& v, auto const& sc) {
+        return v ^ sc;
+    });
+}
+
+// -- Compound bitwise assignment -------------------------------------------
+//
+// Free functions taking the LHS by forwarding reference so they bind to both
+// owning arrays (`arr &= mask`) and slice rvalues (`arr[{2, 1}] &= mask`).
+// RHS may be another array (length-checked) or a scalar Bit/Logic (broadcast).
+// Element-type compatibility is enforced by the underlying `v = v <op> rhs`
+// assignment -- e.g. `BitArray &= LogicArray` fails to compile because the
+// elementwise `Bit & Logic` returns Logic and Logic isn't assignable to Bit.
+
+namespace detail {
+
+template <typename LHS, typename Scalar, typename Op>
+constexpr void logic_inplace_scalar(LHS& lhs, Scalar const& s, Op op) {
+    for (auto& v : lhs) {
+        v = op(v, s);
+    }
+}
+
+template <typename LHS, typename RHS, typename Op>
+constexpr void logic_inplace_array(LHS& lhs, RHS const& rhs, Op op) {
+    // When both sides have compile-time-known ranges, fold the length check
+    // into a static_assert -- mismatch becomes a compile error instead of a
+    // runtime throw, and the runtime branch drops out of generated code.
+    if constexpr (StaticRangedSequence<LHS> && StaticRangedSequence<RHS>) {
+        static_assert(
+            std::remove_cvref_t<LHS>::range().length()
+                == std::remove_cvref_t<RHS>::range().length(),
+            "Bitwise compound assignment requires arrays of equal length"
+        );
+    } else if (lhs.range().length() != rhs.range().length()) {
+        throw std::invalid_argument(
+            "Bitwise compound assignment requires arrays of equal length, got "
+            + std::to_string(lhs.range().length()) + " and "
+            + std::to_string(rhs.range().length())
+        );
+    }
+    auto it = std::ranges::begin(rhs);
+    for (auto& v : lhs) {
+        v = op(v, *it++);
+    }
+}
+
+}  // namespace detail
+
+template <typename LHS, LogicType Scalar>
+    requires LogicArrayType<std::remove_cvref_t<LHS>>
+constexpr decltype(auto) operator&=(LHS&& lhs, Scalar const& rhs) {
+    detail::logic_inplace_scalar(lhs, rhs, [](auto const& a, auto const& b) {
+        return a & b;
+    });
+    return std::forward<LHS>(lhs);
+}
+
+template <typename LHS, RangedSequence RHS>
+    requires LogicArrayType<std::remove_cvref_t<LHS>> && LogicArrayType<RHS>
+constexpr decltype(auto) operator&=(LHS&& lhs, RHS const& rhs) {
+    detail::logic_inplace_array(lhs, rhs, [](auto const& a, auto const& b) {
+        return a & b;
+    });
+    return std::forward<LHS>(lhs);
+}
+
+template <typename LHS, LogicType Scalar>
+    requires LogicArrayType<std::remove_cvref_t<LHS>>
+constexpr decltype(auto) operator|=(LHS&& lhs, Scalar const& rhs) {
+    detail::logic_inplace_scalar(lhs, rhs, [](auto const& a, auto const& b) {
+        return a | b;
+    });
+    return std::forward<LHS>(lhs);
+}
+
+template <typename LHS, RangedSequence RHS>
+    requires LogicArrayType<std::remove_cvref_t<LHS>> && LogicArrayType<RHS>
+constexpr decltype(auto) operator|=(LHS&& lhs, RHS const& rhs) {
+    detail::logic_inplace_array(lhs, rhs, [](auto const& a, auto const& b) {
+        return a | b;
+    });
+    return std::forward<LHS>(lhs);
+}
+
+template <typename LHS, LogicType Scalar>
+    requires LogicArrayType<std::remove_cvref_t<LHS>>
+constexpr decltype(auto) operator^=(LHS&& lhs, Scalar const& rhs) {
+    detail::logic_inplace_scalar(lhs, rhs, [](auto const& a, auto const& b) {
+        return a ^ b;
+    });
+    return std::forward<LHS>(lhs);
+}
+
+template <typename LHS, RangedSequence RHS>
+    requires LogicArrayType<std::remove_cvref_t<LHS>> && LogicArrayType<RHS>
+constexpr decltype(auto) operator^=(LHS&& lhs, RHS const& rhs) {
+    detail::logic_inplace_array(lhs, rhs, [](auto const& a, auto const& b) {
+        return a ^ b;
+    });
+    return std::forward<LHS>(lhs);
+}
+
+// In-place complement of an array. Like the compound assignment ops, taken by
+// forwarding reference so it binds to slice rvalues too.
+template <typename Arr>
+    requires LogicArrayType<std::remove_cvref_t<Arr>>
+constexpr decltype(auto) inplace_not(Arr&& arr) {
+    for (auto& v : arr) {
+        v = ~v;
+    }
+    return std::forward<Arr>(arr);
+}
+
+// -- Concatenation ---------------------------------------------------------
+
+namespace detail {
+
+template <typename T>
+concept ConcatOperand = LogicType<std::remove_cvref_t<T>> || LogicArrayType<T>;
+
+template <typename T>
+struct concat_elem_type {
+    using type = std::remove_cvref_t<T>;
+};
+
+template <typename T>
+    requires LogicArrayType<T>
+struct concat_elem_type<T> {
+    using type = std::ranges::range_value_t<std::remove_cvref_t<T>>;
+};
+
+template <typename T>
+using concat_elem_t = typename concat_elem_type<T>::type;
+
+template <typename T>
+constexpr size_t concat_static_size() {
+    if constexpr (LogicType<std::remove_cvref_t<T>>) {
+        return 1;
+    } else {
+        return std::remove_cvref_t<T>::range().length();
+    }
+}
+
+template <typename T>
+constexpr size_t concat_runtime_size(T const& t) {
+    if constexpr (LogicType<std::remove_cvref_t<T>>) {
+        return 1;
+    } else {
+        return t.range().length();
+    }
+}
+
+template <typename Elem, typename OutIt, typename T>
+constexpr void concat_copy_one(OutIt& out, T const& t) {
+    if constexpr (LogicType<std::remove_cvref_t<T>>) {
+        *out++ = static_cast<Elem>(t);
+    } else {
+        for (auto const& v : t) {
+            *out++ = static_cast<Elem>(v);
+        }
+    }
+}
+
+}  // namespace detail
+
+// Variadic concat of Logic/Bit scalars and Logic/Bit arrays. First argument
+// occupies the high bits; within each operand, elements are taken in iteration
+// order (begin to end) regardless of the operand's direction. Result is a
+// static `Array<Elem, {N-1 DOWNTO 0}>` when every operand has a compile-time
+// size (scalar or StaticRangedSequence), else a runtime `DynArray<Elem>`.
+// Element type is `std::common_type_t<...>` over the operand element types
+// (Logic if any operand is Logic, else Bit).
+template <typename... Args>
+    requires(sizeof...(Args) >= 1) && (... && detail::ConcatOperand<Args>)
+auto concat(Args const&... args) {
+    using result_elem = std::common_type_t<detail::concat_elem_t<Args>...>;
+    constexpr bool all_static =
+        (... && (LogicType<std::remove_cvref_t<Args>> || StaticRangedSequence<Args>));
+    if constexpr (all_static) {
+        constexpr size_t N = (0 + ... + detail::concat_static_size<Args>());
+        static_assert(
+            N <= static_cast<size_t>(std::numeric_limits<Range::value_type>::max()),
+            "concat result length overflows Range::value_type"
+        );
+        Array<
+            result_elem,
+            Range{static_cast<Range::value_type>(N) - 1, Direction::DOWNTO, 0}>
+            result{};
+        auto out = result.begin();
+        (detail::concat_copy_one<result_elem>(out, args), ...);
+        return result;
+    } else {
+        size_t const total = (size_t{0} + ... + detail::concat_runtime_size(args));
+        DynArray<result_elem> result(total);
+        auto out = result.begin();
+        (detail::concat_copy_one<result_elem>(out, args), ...);
+        return result;
+    }
 }
 
 template <RangedSequence T>
@@ -429,5 +840,7 @@ struct std::formatter<T> {
         );
     }
 };
+
+#undef COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR
 
 #endif  // COCONEXT_LOGIC_ARRAY_HPP
