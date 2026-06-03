@@ -9,27 +9,21 @@
 
 // +, -, *, /, &, |, ^, <<, >>
 #define COCONEXT_DEFINE_BINARY_OP(CLASS_TYPE, OP)                                          \
-    constexpr CLASS_TYPE operator OP(const CLASS_TYPE& rhs) const                          \
-        requires(!detail::using_llvm_apint)                                                \
-    {                                                                                      \
+    constexpr CLASS_TYPE operator OP(const CLASS_TYPE& rhs) const {                        \
         auto native_result = this->storage.raw() OP rhs.storage.raw();                     \
         return CLASS_TYPE(detail::Storage<Bits, is_signed>(native_result));                \
     }
 
 // ~
 #define COCONEXT_DEFINE_UNARY_OP(CLASS_TYPE, OP)                                           \
-    constexpr CLASS_TYPE operator OP() const                                               \
-        requires(!detail::using_llvm_apint)                                                \
-    {                                                                                      \
+    constexpr CLASS_TYPE operator OP() const {                                             \
         auto native_result = OP this->storage.raw();                                       \
         return CLASS_TYPE(detail::Storage<Bits, is_signed>(native_result));                \
     }
 
 // ==, !=, <, >, <=, >=
 #define COCONEXT_DEFINE_COMPARE_OP(CLASS_TYPE, OP)                                         \
-    constexpr bool operator OP(const CLASS_TYPE& rhs) const                                \
-        requires(!detail::using_llvm_apint)                                                \
-    {                                                                                      \
+    constexpr bool operator OP(const CLASS_TYPE& rhs) const {                              \
         return this->storage.raw() OP rhs.storage.raw();                                   \
     }
 
@@ -69,6 +63,7 @@ class UInt {
     COCONEXT_DEFINE_COMPARE_OP(UInt, <=)
     COCONEXT_DEFINE_COMPARE_OP(UInt, >=)
 
+    constexpr detail::Storage<Bits, is_signed> get_backend() { return storage; }
     // All common features for BitArray, Unsigned, Signed, Ufixed, and Sfixed
     // TODO
 };
@@ -107,6 +102,7 @@ class SInt {
     COCONEXT_DEFINE_COMPARE_OP(SInt, <=)
     COCONEXT_DEFINE_COMPARE_OP(SInt, >=)
 
+    constexpr detail::Storage<Bits, is_signed> get_backend() { return storage; }
     // All common features for BitArray, Unsigned, Signed, Ufixed, and Sfixed
     // TODO
 };

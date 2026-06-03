@@ -23,10 +23,6 @@ static constexpr bool using_llvm_apint = true;
 // basic essential arithmetic E.g. shifting, bitwise operations,
 // formatting(decimal, hex, binary, octal), equality e.t.c. For
 // complete arithmetic operations, we fall back to APInt
-
-// TODO
-// Shifting shouldn't override >> operator, but instead we should have free
-// functions so we can choose between signed extending or 0 extending shifts.
 class BigInt {
   public:
     using WordType = uint64_t;
@@ -101,15 +97,16 @@ class BigInt {
 using BigIntType = BigInt;
 static constexpr bool using_llvm_apint = false;
 
-inline void shift_right_logical(BigInt& val, size_t amount) {
+inline BigInt shift_right_logical(BigInt const& val, size_t amount) {
+    BigInt result = val;
+
     if (amount >= val.BitWidth) {
-        std::fill(val.data.begin(), val.data.end(), 0);
-        return;
+        std::fill(result.data.begin(), result.data.end(), 0);
+        return result;
     }
 
     size_t const word_shift = amount / 64;
     size_t const bit_shift = amount % 64;
-
     std::vector<uint64_t> out(val.num_of_words, 0);
 
     for (size_t i = 0; i < val.num_of_words; ++i) {
@@ -124,7 +121,8 @@ inline void shift_right_logical(BigInt& val, size_t amount) {
         }
     }
 
-    val.data.swap(out);
+    result.data = std::move(out);
+    return result;
 }
 
 inline bool sign_bit(BigInt const& val) {
@@ -134,34 +132,37 @@ inline bool sign_bit(BigInt const& val) {
     return (val.data[word] >> bit) & 1;
 }
 
-inline void shift_right_arith(BigInt& val, size_t amount) {
+inline BigInt shift_right_arith(BigInt const& val, size_t amount) {
     bool sign = sign_bit(val);
 
-    shift_right_logical(val, amount);
+    BigInt result = shift_right_logical(val, amount);
 
     if (!sign) {
-        return;
+        return result;
     }
 
-    for (size_t i = 0; i < amount && i < val.BitWidth; ++i) {
-        size_t pos = val.BitWidth - 1 - i;
+    for (size_t i = 0; i < amount && i < result.BitWidth; ++i) {
+        size_t pos = result.BitWidth - 1 - i;
 
         size_t word = pos / 64;
         size_t bit = pos % 64;
 
-        val.data[word] |= (uint64_t(1) << bit);
+        result.data[word] |= (uint64_t(1) << bit);
     }
+
+    return result;
 }
 
-inline void shift_left(BigInt& val, size_t amount) {
+inline BigInt shift_left(BigInt const& val, size_t amount) {
+    BigInt result = val;
+
     if (amount >= val.BitWidth) {
-        std::fill(val.data.begin(), val.data.end(), 0);
-        return;
+        std::fill(result.data.begin(), result.data.end(), 0);
+        return result;
     }
 
     size_t const word_shift = amount / 64;
     size_t const bit_shift = amount % 64;
-
     std::vector<uint64_t> out(val.num_of_words, 0);
 
     for (size_t i = 0; i < val.num_of_words; ++i) {
@@ -176,7 +177,8 @@ inline void shift_left(BigInt& val, size_t amount) {
         }
     }
 
-    val.data.swap(out);
+    result.data = std::move(out);
+    return result;
 }
 
 #endif  // COCONEXT_USE_APINT

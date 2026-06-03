@@ -273,6 +273,14 @@ TEST(TestBigIntStorage, Metadata) {
     static_assert(SInt<347>::num_bits == 347);
 }
 
+#ifdef COCONEXT_USE_APINT
+
+// TODO
+// This is the place to test SInt/UInt
+// with APInt as backend
+
+#else
+
 #if defined(__SIZEOF_INT128__)
 TEST(TestBigInt, JustAbove128) {
     UInt<129> a;
@@ -291,7 +299,7 @@ TEST(TestBigInt, JustAbove64) {
 
     static_assert(std::is_same_v<detail::Storage<65, true>::StorageType, detail::BigInt>);
 }
-#endif
+#endif  // defined(__SIZEOF_INT128__)
 
 TEST(TestBigInt, Equality) {
     SInt<347> a(0x1234);
@@ -303,124 +311,115 @@ TEST(TestBigInt, Equality) {
     EXPECT_TRUE(a != c);
 }
 
-// TEST(TestBigInt, BitwiseAnd) {
-//     detail::BigInt a(347, false, 0b10101010);
-//     detail::BigInt b(347, false, 0b11001100);
+TEST(TestBigInt, BitwiseAnd) {
+    SInt<462> a(0b10101010);
+    SInt<462> b(0b11001100);
+    auto s_result = a & b;
+    SInt<462> s_exp(0b10001000);
 
-//     auto result = a & b;
+    UInt<462> c(0b10101010);
+    UInt<462> d(0b11001100);
+    auto u_result = c & d;
+    UInt<462> u_exp(0b10001000);
 
-//     EXPECT_EQ(result.data[0], 0b10001000);
-// }
+    EXPECT_EQ(s_result, s_exp);
+    EXPECT_EQ(u_result, u_exp);
+}
 
-// TEST(TestBigInt, BitwiseOr) {
-//     detail::BigInt a(347, false, 0b10101010);
-//     detail::BigInt b(347, false, 0b11001100);
+TEST(TestBigInt, BitwiseOr) {
+    SInt<462> a(0b10101010);
+    SInt<462> b(0b11001100);
+    auto s_result = a | b;
+    SInt<462> s_exp(0b11101110);
 
-//     auto result = a | b;
+    UInt<462> c(0b10101010);
+    UInt<462> d(0b11001100);
+    auto u_result = c | d;
+    UInt<462> u_exp(0b11101110);
 
-//     EXPECT_EQ(result.data[0], 0b11101110);
-// }
+    EXPECT_EQ(s_result, s_exp);
+    EXPECT_EQ(u_result, u_exp);
+}
 
-// TEST(TestBigInt, BitwiseXor) {
-//     detail::BigInt a(347, false, 0b10101010);
-//     detail::BigInt b(347, false, 0b11001100);
+TEST(TestBigInt, BitwiseXor) {
+    SInt<462> a(0b10101010);
+    SInt<462> b(0b11001100);
+    auto s_result = a ^ b;
+    SInt<462> s_exp(0b01100110);
 
-//     auto result = a ^ b;
+    UInt<462> c(0b10101010);
+    UInt<462> d(0b11001100);
+    auto u_result = c ^ d;
+    UInt<462> u_exp(0b01100110);
 
-//     EXPECT_EQ(result.data[0], 0b01100110);
-// }
+    EXPECT_EQ(s_result, s_exp);
+    EXPECT_EQ(u_result, u_exp);
+}
 
-// TEST(TestBigInt, BitwiseNot) {
-//     detail::BigInt a(347, false, 0);
+TEST(TestBigInt, BitwiseNot) {
+    SInt<277> a(0);
+    auto s_result = ~a;
+    auto s_exp = ~SInt<277>(0);
+    EXPECT_EQ(s_result, s_exp);
 
-//     auto result = ~a;
+    UInt<277> b(0);
+    auto u_result = ~b;
+    auto u_exp = ~UInt<277>(0);
+    EXPECT_EQ(u_result, u_exp);
+}
 
-//     EXPECT_EQ(result.data[0], ~uint64_t(0));
-// }
+TEST(TestBigInt, LogicalShiftRight) {
+    SInt<344> a(0x80);
+    auto s_result_backend = detail::shift_right_logical(a.get_backend().raw(), 7);
+    SInt<344> s_result(s_result_backend);
+    SInt<344> s_exp(1);
+    EXPECT_EQ(s_result, s_exp);
 
-// TEST(TestBigInt, LogicalShiftRight) {
-//     detail::BigInt a(347, false, 0x80);
+    UInt<344> b(0x80);
+    auto u_result_backend = detail::shift_right_logical(b.get_backend().raw(), 7);
+    UInt<344> u_result(u_result_backend);
+    UInt<344> u_exp(1);
+    EXPECT_EQ(u_result, u_exp);
+}
 
-//     shift_right_logical(a, 7);
+TEST(TestBigInt, ShiftLeft) {
+    SInt<347> a(1);
+    auto s_result_backend = detail::shift_left(a.get_backend().raw(), 8);
+    SInt<347> s_result(s_result_backend);
+    SInt<347> s_exp(256);
+    EXPECT_EQ(s_result, s_exp);
 
-//     EXPECT_EQ(a.data[0], 1);
-// }
+    UInt<347> b(1);
+    auto u_result_backend = detail::shift_left(b.get_backend().raw(), 8);
+    UInt<347> u_result(u_result_backend);
+    UInt<347> u_exp(256);
+    EXPECT_EQ(u_result, u_exp);
+}
 
-// TEST(TestBigInt, LogicalShiftRightAcrossWords) {
-//     detail::BigInt a(347, false);
+TEST(TestBigInt, ArithmeticShiftRightPositive) {
+    SInt<347> a(0x80);
 
-//     a.data[1] = 1;
+    auto s_result_backend = detail::shift_right_arith(a.get_backend().raw(), 7);
+    SInt<347> s_result(s_result_backend);
+    SInt<347> s_exp(1);
 
-//     shift_right_logical(a, 64);
+    EXPECT_EQ(s_result, s_exp);
+}
 
-//     EXPECT_EQ(a.data[0], 1);
-//     EXPECT_EQ(a.data[1], 0);
-// }
+TEST(TestBigInt, ShiftRightBeyondWidth) {
+    SInt<347> a(0x1234);
+    auto s_result_backend = detail::shift_right_logical(a.get_backend().raw(), 500);
+    SInt<347> s_result(s_result_backend);
+    SInt<347> s_exp(0);
+    EXPECT_EQ(s_result, s_exp);
 
-// TEST(TestBigInt, ShiftLeft) {
-//     detail::BigInt a(347, false, 1);
+    UInt<347> b(0x1234);
+    auto u_result_backend = detail::shift_right_logical(b.get_backend().raw(), 500);
+    UInt<347> u_result(u_result_backend);
+    UInt<347> u_exp(0);
+    EXPECT_EQ(u_result, u_exp);
+}
 
-//     shift_left(a, 8);
-
-//     EXPECT_EQ(a.data[0], 256);
-// }
-
-// TEST(TestBigInt, ShiftLeftAcrossWords) {
-//     detail::BigInt a(347, false, 1);
-
-//     shift_left(a, 64);
-
-//     EXPECT_EQ(a.data[0], 0);
-//     EXPECT_EQ(a.data[1], 1);
-// }
-
-// TEST(TestBigInt, ArithmeticShiftRightPositive) {
-//     detail::BigInt a(347, true, 0x80);
-
-//     shift_right_arith(a, 7);
-
-//     EXPECT_EQ(a.data[0], 1);
-// }
-
-// TEST(TestBigInt, ArithmeticShiftRightNegative) {
-//     detail::BigInt a(347, true);
-
-//     size_t sign_word = (347 - 1) / 64;
-//     size_t sign_bit  = (347 - 1) % 64;
-
-//     a.data[sign_word] |= (uint64_t(1) << sign_bit);
-
-//     shift_right_arith(a, 1);
-
-//     EXPECT_TRUE(
-//         (a.data[sign_word] >> sign_bit) & 1
-//     );
-// }
-
-// TEST(TestBigInt, ShiftRightBeyondWidth) {
-//     detail::BigInt a(347, false, 0x1234);
-
-//     shift_right_logical(a, 500);
-
-//     for (auto word : a.data) {
-//         EXPECT_EQ(word, 0);
-//     }
-// }
-
-// TEST(TestBigInt, MultiwordAnd) {
-//     detail::BigInt a(347, false);
-//     detail::BigInt b(347, false);
-
-//     a.data[0] = 0xFFFFFFFFFFFFFFFFULL;
-//     a.data[1] = 0xAAAAAAAAAAAAAAAAULL;
-
-//     b.data[0] = 0x0F0F0F0F0F0F0F0FULL;
-//     b.data[1] = 0xFFFFFFFFFFFFFFFFULL;
-
-//     auto result = a & b;
-
-//     EXPECT_EQ(result.data[0], 0x0F0F0F0F0F0F0F0FULL);
-//     EXPECT_EQ(result.data[1], 0xAAAAAAAAAAAAAAAAULL);
-// }
+#endif  // COCONEXT_USE_APINT
 
 // LCOV_EXCL_BR_STOP
