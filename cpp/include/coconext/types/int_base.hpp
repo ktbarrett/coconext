@@ -35,11 +35,13 @@ class BigInt {
 
     BigInt() {}
 
-    BigInt(unsigned num_bits)
+    BigInt(unsigned num_bits, bool _signed)
         : BitWidth(num_bits), num_of_words((num_bits + word_width - 1) / word_width),
-          data(num_of_words, 0) {}
+          is_signed(_signed), data(num_of_words, 0) {}
 
-    BigInt(unsigned num_bits, WordType val) : BigInt(num_bits) { data[0] = val; }
+    BigInt(unsigned num_bits, bool _signed, WordType val) : BigInt(num_bits, _signed) {
+        data[0] = val;
+    }
 
     inline bool operator==(BigInt const& rhs) const {
         return BitWidth == rhs.BitWidth && is_signed == rhs.is_signed && data == rhs.data;
@@ -244,14 +246,14 @@ class Storage {
     // BigInt
     constexpr Storage()
         requires(std::is_same_v<StorageType, BigIntType> && !using_llvm_apint)
-        : _storage(_numBits) {}
+        : _storage(_numBits, _is_signed) {}
 
     template <typename T>
     constexpr Storage(T val)
         requires(
             std::is_same_v<StorageType, BigIntType> && !using_llvm_apint && std::integral<T>
         )
-        : _storage(_numBits, static_cast<uint64_t>(val)) {}
+        : _storage(_numBits, _is_signed, static_cast<uint64_t>(val)) {}
 
     // APInt
     constexpr Storage()
