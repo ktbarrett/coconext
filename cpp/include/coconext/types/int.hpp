@@ -1,7 +1,6 @@
 #ifndef COCONEXT_INT_HPP
 #define COCONEXT_INT_HPP
 
-#include "int_base.hpp"
 #include <coconext/types/int_base.hpp>
 
 // TODO these macros must explicitly

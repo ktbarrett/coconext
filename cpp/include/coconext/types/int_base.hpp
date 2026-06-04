@@ -1,7 +1,6 @@
 #ifndef COCONEXT_INT_BASE_HPP
 #define COCONEXT_INT_BASE_HPP
 
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
@@ -32,25 +31,80 @@ class BigInt {
     bool is_signed;
     unsigned num_of_words;
     std::vector<WordType> data;
-
-    BigInt() {}
+    WordType last_word_mask;
 
     BigInt(unsigned num_bits, bool _signed)
         : BitWidth(num_bits), num_of_words((num_bits + word_width - 1) / word_width),
-          is_signed(_signed), data(num_of_words, 0) {}
+          is_signed(_signed), data(num_of_words, 0) {
+        uint8_t valid_bits = BitWidth % 64;
+        if (valid_bits == 0) {
+            last_word_mask = ~WordType(0);
+        } else {
+            last_word_mask = (WordType(1) << valid_bits) - 1;
+        }
+    }
 
     BigInt(unsigned num_bits, bool _signed, WordType val) : BigInt(num_bits, _signed) {
         data[0] = val;
+        if (is_signed && static_cast<int64_t>(val) < 0) {
+            for (unsigned i = 1; i < num_of_words; ++i) {
+                data[i] = ~WordType(0);
+            }
+        } else {
+            for (unsigned i = 1; i < num_of_words; ++i) {
+                data[i] = WordType(0);
+            }
+        }
+
+        data.back() &= last_word_mask;
+    }
+
+    bool isNegative() const {
+        unsigned sign_bit = (BitWidth - 1) % 64;
+        return (data.back() >> sign_bit) & 1;
     }
 
     inline bool operator==(BigInt const& rhs) const {
-        return BitWidth == rhs.BitWidth && is_signed == rhs.is_signed && data == rhs.data;
+        return BitWidth == rhs.BitWidth && is_signed == rhs.is_signed && data == rhs.data
+            && last_word_mask == rhs.last_word_mask;
     }
 
     inline bool operator!=(BigInt const& rhs) const { return !(*this == rhs); }
 
+    inline bool operator<(BigInt const& rhs) const {
+        if (BitWidth != rhs.BitWidth) {
+            throw std::invalid_argument("Bit widths must match for operations.");
+        }
+
+        if (is_signed) {
+            bool lhs_neg = isNegative();
+            bool rhs_neg = rhs.isNegative();
+
+            if (lhs_neg != rhs_neg) {
+                return lhs_neg;
+            }
+
+            for (int i = num_of_words - 1; i >= 0; --i) {
+                if (data[i] != rhs.data[i]) {
+                    if (lhs_neg) {
+                        return data[i] > rhs.data[i];
+                    } else {
+                        return data[i] < rhs.data[i];
+                    }
+                }
+            }
+            return false;
+        }
+    }
+
+    inline bool operator>(BigInt const& rhs) const { return rhs < *this; }
+    inline bool operator<=(BigInt const& rhs) const { return !(rhs < *this); }
+    inline bool operator>=(BigInt const& rhs) const { return !(*this < rhs); }
+
     inline BigInt operator&(BigInt const& rhs) const {
-        assert(BitWidth == rhs.BitWidth);
+        if (BitWidth != rhs.BitWidth) {
+            throw std::invalid_argument("Bit widths must match for operations.");
+        }
 
         BigInt result(BitWidth, is_signed);
 
@@ -58,11 +112,14 @@ class BigInt {
             result.data[i] = data[i] & rhs.data[i];
         }
 
+        result.data.back() &= last_word_mask;
         return result;
     }
 
     inline BigInt operator|(BigInt const& rhs) const {
-        assert(BitWidth == rhs.BitWidth);
+        if (BitWidth != rhs.BitWidth) {
+            throw std::invalid_argument("Bit widths must match for operations.");
+        }
 
         BigInt result(BitWidth, is_signed);
 
@@ -70,11 +127,14 @@ class BigInt {
             result.data[i] = data[i] | rhs.data[i];
         }
 
+        result.data.back() &= last_word_mask;
         return result;
     }
 
     inline BigInt operator^(BigInt const& rhs) const {
-        assert(BitWidth == rhs.BitWidth);
+        if (BitWidth != rhs.BitWidth) {
+            throw std::invalid_argument("Bit widths must match for operations.");
+        }
 
         BigInt result(BitWidth, is_signed);
 
@@ -82,6 +142,7 @@ class BigInt {
             result.data[i] = data[i] ^ rhs.data[i];
         }
 
+        result.data.back() &= last_word_mask;
         return result;
     }
 
@@ -92,6 +153,7 @@ class BigInt {
             word = ~word;
         }
 
+        result.data.back() &= last_word_mask;
         return result;
     }
 };

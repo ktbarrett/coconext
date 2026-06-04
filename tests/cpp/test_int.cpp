@@ -6,6 +6,47 @@
 
 using namespace coconext::types;
 
+TEST(TestIntStorage, wrapTest) {
+    EXPECT_EQ(UInt<7>(127) + UInt<7>(1), UInt<7>(0));
+    EXPECT_EQ(UInt<2>(3) + UInt<2>(1), UInt<2>(0));
+}
+
+TEST(TestIntStorage, completeWidthOperations) {
+    // a = 0x[23 unused bits]4F33[48 0s]9FF0[48 0s]BD73[48 0s]9AF0[25 0s]
+    // b = 0x[23 unused bits]A6D2[48 0s]73C1[48 0s]E84F[48 0s]15B9[25 0s]
+    // c = 0x[23 unused bits]0612[48 0s]13C0[48 0s]A843[48 0s]10B0[25 0s]
+
+    UInt<233> a(0x4F33);
+    a = UInt<233>(detail::shift_left(a.get_backend().raw(), 48));
+    a = a | UInt<233>(0x9FF0);
+    a = UInt<233>(detail::shift_left(a.get_backend().raw(), 48));
+    a = a | UInt<233>(0xBD73);
+    a = UInt<233>(detail::shift_left(a.get_backend().raw(), 48));
+    a = a | UInt<233>(0x9AF0);
+    a = UInt<233>(detail::shift_left(a.get_backend().raw(), 25));
+
+    UInt<233> b(0xA6D2);
+    b = UInt<233>(detail::shift_left(b.get_backend().raw(), 48));
+    b = b | UInt<233>(0x73C1);
+    b = UInt<233>(detail::shift_left(b.get_backend().raw(), 48));
+    b = b | UInt<233>(0xE84F);
+    b = UInt<233>(detail::shift_left(b.get_backend().raw(), 48));
+    b = b | UInt<233>(0x15B9);
+    b = UInt<233>(detail::shift_left(b.get_backend().raw(), 25));
+
+    UInt<233> c(0x0612);
+    c = UInt<233>(detail::shift_left(c.get_backend().raw(), 48));
+    c = c | UInt<233>(0x13C0);
+    c = UInt<233>(detail::shift_left(c.get_backend().raw(), 48));
+    c = c | UInt<233>(0xA843);
+    c = UInt<233>(detail::shift_left(c.get_backend().raw(), 48));
+    c = c | UInt<233>(0x10B0);
+    c = UInt<233>(detail::shift_left(c.get_backend().raw(), 25));
+
+    UInt<233> result = a & b;
+    EXPECT_EQ(result, c);
+}
+
 TEST(TestIntStorage, SizeMatchesNativeType) {
     static_assert(sizeof(UInt<8>) == sizeof(uint8_t));
     static_assert(sizeof(UInt<16>) == sizeof(uint16_t));
