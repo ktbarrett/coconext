@@ -36,7 +36,7 @@ jobs:
       with:
         python-version: "3.13"
 
-    - uses: astral-sh/setup-uv@v7
+    - uses: astral-sh/setup-uv@v8.1.0
 
     - name: Build sdist
       run: uv build --sdist --out-dir dist
@@ -98,7 +98,7 @@ jobs:
       if: matrix.simulator == 'icarus' && startsWith(matrix.os, 'macos')
       run: brew install icarus-verilog
 
-    - uses: astral-sh/setup-uv@v7
+    - uses: astral-sh/setup-uv@v8.1.0
       with:
         activate-environment: "true"
 
@@ -176,7 +176,7 @@ jobs:
       if: matrix.simulator == 'icarus' && startsWith(matrix.os, 'macos')
       run: brew install icarus-verilog
 
-    - uses: astral-sh/setup-uv@v7
+    - uses: astral-sh/setup-uv@v8.1.0
       with:
         activate-environment: "true"
 
