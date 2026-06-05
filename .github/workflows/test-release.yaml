@@ -16,7 +16,7 @@ jobs:
         os: [ubuntu-24.04, macos-26, macos-15-intel]
 
     steps:
-    - uses: actions/checkout@v6.0.2
+    - uses: actions/checkout@v6
 
     - uses: pypa/cibuildwheel@v3
 
@@ -30,13 +30,13 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-    - uses: actions/checkout@v6.0.2
+    - uses: actions/checkout@v6
 
     - uses: actions/setup-python@v6
       with:
         python-version: "3.13"
 
-    - uses: astral-sh/setup-uv@v8.1.0
+    - uses: astral-sh/setup-uv@v7
 
     - name: Build sdist
       run: uv build --sdist --out-dir dist
@@ -81,7 +81,7 @@ jobs:
             os: "macos-15-intel"
 
     steps:
-    - uses: actions/checkout@v6.0.2
+    - uses: actions/checkout@v6
 
     - uses: actions/setup-python@v6
       with:
@@ -98,7 +98,7 @@ jobs:
       if: matrix.simulator == 'icarus' && startsWith(matrix.os, 'macos')
       run: brew install icarus-verilog
 
-    - uses: astral-sh/setup-uv@v8.1.0
+    - uses: astral-sh/setup-uv@v7
       with:
         activate-environment: "true"
 
@@ -159,7 +159,7 @@ jobs:
             os: "macos-15-intel"
 
     steps:
-    - uses: actions/checkout@v6.0.2
+    - uses: actions/checkout@v6
 
     - uses: actions/setup-python@v6
       with:
@@ -176,7 +176,7 @@ jobs:
       if: matrix.simulator == 'icarus' && startsWith(matrix.os, 'macos')
       run: brew install icarus-verilog
 
-    - uses: astral-sh/setup-uv@v8.1.0
+    - uses: astral-sh/setup-uv@v7
       with:
         activate-environment: "true"
 
@@ -197,29 +197,43 @@ jobs:
         uv sync --no-default-groups --group=tests --no-install-project
         uv pip install coconext --find-links dist --no-index
         pytest
-        cmake -S tests/cpp -B build/tests \
+        cmake -S tests/cpp -build/tests \
           -DCMAKE_PREFIX_PATH="$(coconext-config --cmake-prefix)"
         cmake --build build/tests
-        ctest --output-on-failure --test-dir build/tests
+        ctest --output-on-failure --test-dir build/testsB
 
-  publish:
-    name: Publish to PyPI
-    needs: [test-wheels, test-sdist]
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-24.04
-    permissions:
-      id-token: write
 
-    steps:
-    - uses: actions/download-artifact@v8
-      with:
-        pattern: wheels-*
-        path: dist
-        merge-multiple: true
+# name: Release
 
-    - uses: actions/download-artifact@v8
-      with:
-        name: sdist
-        path: dist
+# on:
+#   workflow_dispatch:
+#   push:
+#     branches:
+#       - dev
+#     tags:
+#       - '*'
 
-    - uses: pypa/gh-action-pypi-publish@release/v1
+# jobs:
+
+
+# publish:
+#   name: Publish to PyPI
+#   needs: [test-wheels, test-sdist]
+#   if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+#   runs-on: ubuntu-24.04
+#   permissions:
+#     id-token: write
+
+#   steps:
+#   - uses: actions/download-artifact@v8
+#     with:
+#       pattern: wheels-*
+#       path: dist
+#       merge-multiple: true
+
+#   - uses: actions/download-artifact@v8
+#     with:
+#       name: sdist
+#       path: dist
+
+#   - uses: pypa/gh-action-pypi-publish@release/v1

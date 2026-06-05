@@ -1,0 +1,26 @@
+name: CI
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number }}-${{ github.event.ref }}
+  cancel-in-progress: ${{ !contains(github.ref, 'dev') }}
+
+on:
+  push:
+    branches:
+      - dev
+    paths-ignore:
+      - 'docs/dev/**'
+  pull_request:
+    branches:
+      - dev
+    paths-ignore:
+      - 'docs/dev/**'
+
+
+jobs:
+  test_dev_cpp:
+    name: Regression Tests
+    uses: ./.github/workflows/regression-tests.yaml
+    with:
+      test_task: dev_test
+      collect_coverage: true
