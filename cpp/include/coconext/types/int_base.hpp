@@ -76,25 +76,28 @@ class BigInt {
             throw std::invalid_argument("Bit widths must match for operations.");
         }
 
+        bool lhs_neg = false;
+
         if (is_signed) {
-            bool lhs_neg = isNegative();
+            lhs_neg = isNegative();
             bool rhs_neg = rhs.isNegative();
 
             if (lhs_neg != rhs_neg) {
                 return lhs_neg;
             }
+        }
 
-            for (int i = num_of_words - 1; i >= 0; --i) {
-                if (data[i] != rhs.data[i]) {
-                    if (lhs_neg) {
-                        return data[i] > rhs.data[i];
-                    } else {
-                        return data[i] < rhs.data[i];
-                    }
+        for (int i = num_of_words - 1; i >= 0; --i) {
+            if (data[i] != rhs.data[i]) {
+                if (lhs_neg) {
+                    return data[i] > rhs.data[i];
+                } else {
+                    return data[i] < rhs.data[i];
                 }
             }
-            return false;
         }
+
+        return false;
     }
 
     inline bool operator>(BigInt const& rhs) const { return rhs < *this; }
@@ -297,8 +300,26 @@ class Storage {
   private:
     [[no_unique_address]] StorageType _storage;
 
+    static constexpr StorageType truncate(StorageType val) {
+        if constexpr (!std::integral<StorageType>) {
+            return val;
+        } else {
+            constexpr unsigned storage_bits = sizeof(StorageType) * 8;
+
+            if constexpr (_numBits == storage_bits) {
+                return val;
+            } else {
+                using UnsignedT = std::make_unsigned_t<StorageType>;
+
+                constexpr UnsignedT mask = (UnsignedT(1) << _numBits) - 1;
+
+                return static_cast<StorageType>(static_cast<UnsignedT>(val) & mask);
+            }
+        }
+    }
+
   public:
-    constexpr Storage(StorageType val) : _storage(val) {}
+    constexpr Storage(StorageType val) : _storage(truncate(val)) {}
 
     // Literal Int
     constexpr Storage()

@@ -7,8 +7,9 @@
 using namespace coconext::types;
 
 TEST(TestIntStorage, wrapTest) {
-    // EXPECT_EQ(UInt<7>(127) + UInt<7>(1), UInt<7>(0));
-    // EXPECT_EQ(UInt<2>(3) + UInt<2>(1), UInt<2>(0));
+    EXPECT_EQ(UInt<7>(127) + UInt<7>(1), UInt<7>(0));
+    EXPECT_EQ(UInt<2>(3) + UInt<2>(1), UInt<2>(0));
+    EXPECT_EQ(SInt<7>(127), SInt<7>(-1));
 }
 
 TEST(TestIntStorage, completeWidthOperations) {
