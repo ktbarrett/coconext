@@ -46,6 +46,9 @@ TEST(TestIntStorage, completeWidthOperations) {
 
     UInt<233> result = a & b;
     EXPECT_EQ(result, c);
+
+    bool check = b >= a && b > a && c < a && c <= a;
+    EXPECT_EQ(check, true);
 }
 
 TEST(TestIntStorage, SizeMatchesNativeType) {
