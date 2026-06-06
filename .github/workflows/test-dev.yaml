@@ -8,17 +8,21 @@ on:
   push:
     branches:
       - dev
-    paths-ignore:
-      - 'docs/dev/**'
   pull_request:
     branches:
       - dev
     paths-ignore:
       - 'docs/dev/**'
-
-
+      - '.clang-format'
+      - '.clangd'
+      - '.gitignore'
+      - '.pre-commit-config.yaml'
+      - '.readthedocs.yml'
+      - 'DEVELOPING.md'
+      - 'LICENSE'
+      - 'README.md'
 jobs:
-  test_dev_cpp:
+  test_dev:
     name: Regression Tests
     uses: ./.github/workflows/regression-tests.yaml
     with:
