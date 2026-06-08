@@ -63,12 +63,14 @@ class Array<Bit, R> {
     constexpr Array(std::initializer_list<U> init) : value_(init) {}
 
     constexpr auto begin() { return value_.begin(); }
+    constexpr auto rbegin() { return value_.rbegin(); }
+    constexpr auto begin() const { return value_.begin(); }
+    constexpr auto rbegin() const { return value_.rbegin(); }
 
     constexpr auto end() { return value_.end(); }
-
-    constexpr auto begin() const { return value_.begin(); }
-
+    constexpr auto rend() { return value_.rend(); }
     constexpr auto end() const { return value_.end(); }
+    constexpr auto rend() const { return value_.rend(); }
 
     constexpr auto operator[](Range::value_type idx) {
         auto const offset = offset_of(R, idx);
@@ -136,11 +138,19 @@ class Array<Bit, R> {
     template <StringLiteral S>
     friend constexpr auto coconext::types::operator""_b();
 
+    template <Range R2>
+    friend class Unsigned;
+    template <Range R2>
+    friend class Signed;
+
   private:
     constexpr Array(Bits<R.length()> const& packed_val) : value_(packed_val) {}
 
     Bits<R.length()> value_;
 };
+
+template <Range R>
+inline constexpr bool uses_Bits<Array<Bit, R>> = true;
 
 constexpr Range::value_type offset_to_hdl_coord(
     Range r, size_t offset_from_begin

@@ -5,11 +5,13 @@
 #include "./types/array.hpp"
 #include "./types/concepts.hpp"
 #include "./types/direction.hpp"
-#include "./types/int.hpp"
 #include "./types/logic.hpp"
 #include "./types/logic_array.hpp"
 #include "./types/range.hpp"
+#include "./types/resize_mode.hpp"
 #include "./types/reverse.hpp"
+#include "./types/signed.hpp"
+#include "./types/unsigned.hpp"
 #include "./types/vector.hpp"
 // NOLINTEND(unused-includes)
 
