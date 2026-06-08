@@ -26,7 +26,7 @@ repos:
     additional_dependencies:
     - tomli
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: "v0.15.15"
+  rev: "v0.15.16"
   hooks:
     - id: "ruff"
       args:
@@ -51,7 +51,7 @@ repos:
     exclude: "^src/cocotb/share/include/(sv_vpi|vhpi|vpi)_user(_ext)?.h"
     types_or: [c, c++]
 - repo: https://github.com/astral-sh/uv-pre-commit
-  rev: 0.11.18
+  rev: 0.11.19
   hooks:
     - id: uv-lock
 
