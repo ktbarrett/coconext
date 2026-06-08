@@ -954,6 +954,33 @@ TEST(TestLogicArray, UdlLogicEmpty) {
     EXPECT_EQ(a.begin(), a.end());
 }
 
+TEST(TestBitArray, ReverseIterators) {
+    auto a = "0111001"_b;
+
+    auto rit = a.rbegin();
+    ASSERT_NE(rit, a.rend());
+    EXPECT_EQ(*rit++, '1'_b);
+    EXPECT_EQ(*rit++, '0'_b);
+    EXPECT_EQ(*rit++, '0'_b);
+    EXPECT_EQ(*rit++, '1'_b);
+    EXPECT_EQ(*rit++, '1'_b);
+    EXPECT_EQ(*rit++, '1'_b);
+    EXPECT_EQ(*rit++, '0'_b);
+    EXPECT_EQ(rit, a.rend());
+
+    auto const& ca = a;
+    auto crit = ca.rbegin();
+    ASSERT_NE(crit, ca.rend());
+    EXPECT_EQ(*crit++, '1'_b);
+    EXPECT_EQ(*crit++, '0'_b);
+    EXPECT_EQ(*crit++, '0'_b);
+    EXPECT_EQ(*crit++, '1'_b);
+    EXPECT_EQ(*crit++, '1'_b);
+    EXPECT_EQ(*crit++, '1'_b);
+    EXPECT_EQ(*crit++, '0'_b);
+    EXPECT_EQ(crit, ca.rend());
+}
+
 TEST(TestLogicArray, UdlLogicAllUnderscores) {
     // All-underscore literal strips to a zero-length array just like the empty
     // literal.

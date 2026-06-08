@@ -69,7 +69,15 @@ concept Hashable = requires(T a) {
     { std::hash<T>{}(a) } -> std::convertible_to<std::size_t>;
 };
 
-// C++20 substitute for std::formattable (C++23).
+template <typename T>
+inline constexpr bool is_coconext_unsigned_v = false;
+
+template <typename T>
+inline constexpr bool is_coconext_signed_v = false;
+
+template <typename T>
+inline constexpr bool uses_Bits = false;
+
 template <typename T>
 concept Formattable = std::semiregular<std::formatter<std::remove_cvref_t<T>, char>>;
 
