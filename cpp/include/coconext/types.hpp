@@ -12,6 +12,7 @@
 #include "./types/logic.hpp"
 #include "./types/logic_array.hpp"
 #include "./types/range.hpp"
+#include "./types/signed.hpp"
 #include "./types/unsigned.hpp"
 // NOLINTEND(unused-includes)
 

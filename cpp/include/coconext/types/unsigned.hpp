@@ -196,9 +196,6 @@ constexpr Unsigned<R> make_unsigned(uint64_t bits) noexcept {
     return Unsigned<R>(typename Unsigned<R>::raw_tag{}, bits);
 }
 
-template <size_t A, size_t B>
-inline constexpr size_t max_width = A > B ? A : B;
-
 }  // namespace detail
 
 // User-facing alias: accepts the same NTTP forms as Array<T, ...>, with HDL
