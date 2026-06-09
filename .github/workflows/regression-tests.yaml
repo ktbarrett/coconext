@@ -104,6 +104,8 @@ jobs:
 
       - name: Run tests
         env:
+          CC: ${{ matrix.cc || 'gcc' }}
+          CXX: ${{ matrix.cxx || 'g++' }}
           GCOV_EXECUTABLE: ${{ matrix.gcov || 'gcov' }}
           CXX_STANDARD: ${{ matrix.cxx-standard }}
           DEV_BUILD_DEP_GROUP: dev_tests

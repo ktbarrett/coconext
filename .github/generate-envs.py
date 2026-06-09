@@ -25,6 +25,8 @@ ENVS = [
         "os": "ubuntu-24.04",
         "simulator": "nvc",
         "toplevel_lang": "vhdl",
+        "cc": "clang",
+        "cxx": "clang++",
         "gcov": "llvm-cov gcov",
         "cxx-standard": "20",
     },
@@ -66,12 +68,6 @@ for ver in python_versions:
     ]
 
 
-def append_str_val(listref, my_list, key) -> None:
-    if key not in my_list:
-        return
-    listref.append(str(my_list[key]))
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-format", choices=("gha", "json"), default="json")
@@ -87,14 +83,16 @@ def main() -> int:
 
     for env in selected_envs:
         # Assemble the human-readable name of the job.
-        name_parts = []
-        append_str_val(name_parts, env, "simulator")
-        append_str_val(name_parts, env, "os")
-        append_str_val(name_parts, env, "python-version")
+        name_parts = [f"Python {env['python-version']}", env["simulator"]]
 
         if int(env["cxx-standard"]) != 20:
-            cpp_ver = env["cxx-standard"]
-            name_parts.append(f"C++{cpp_ver}")
+            name_parts.append(f"C++{env['cxx-standard']}")
+
+        if "cc" in env:
+            name_parts.append(env["cc"])
+
+        if not env["os"].startswith("ubuntu"):
+            name_parts.append(env["os"])
 
         if env.get("may-fail-dev") is not None:
             name_parts.append("May fail")
