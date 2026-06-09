@@ -34,7 +34,7 @@ TEST(TestIntStorage, SignExtension) {
 
     EXPECT_LT(a, b);
 
-    EXPECT_EQ(a.get_backend().raw(), static_cast<int8_t>(-1));
+    EXPECT_EQ(static_cast<int8_t>(a.get_backend().raw()), static_cast<int8_t>(-1));
 }
 
 TEST(TestIntStorage, completeWidthOperations) {

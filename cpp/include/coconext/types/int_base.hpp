@@ -257,29 +257,20 @@ struct StorageSelector {
     using type = std::conditional_t<
         Bits == 0,
         EmptyStorage,
-
         std::conditional_t<
             Bits <= 8,
-            std::conditional_t<Signed, int8_t, uint8_t>,
-
+            uint8_t,
             std::conditional_t<
                 Bits <= 16,
-                std::conditional_t<Signed, int16_t, uint16_t>,
-
+                uint16_t,
                 std::conditional_t<
                     Bits <= 32,
-                    std::conditional_t<Signed, int32_t, uint32_t>,
-
+                    uint32_t,
                     std::conditional_t<
                         Bits <= 64,
-                        std::conditional_t<Signed, int64_t, uint64_t>,
-
+                        uint64_t,
 #if defined(__SIZEOF_INT128__)
-                        std::conditional_t<
-                            Bits <= 128,
-                            std::conditional_t<Signed, __int128_t, __uint128_t>,
-
-                            BigIntType>
+                        std::conditional_t<Bits <= 128, __uint128_t, BigIntType>
 #else
                         BigIntType
 #endif
@@ -305,23 +296,26 @@ class Storage {
         } else {
             constexpr unsigned storage_bits = sizeof(StorageType) * 8;
 
-            if constexpr (_numBits == storage_bits) {
+            if constexpr (_numBits >= storage_bits) {
                 return val;
             } else {
-                using UnsignedT = std::make_unsigned_t<StorageType>;
-                constexpr UnsignedT mask = (static_cast<UnsignedT>(1) << _numBits) - 1;
-                UnsignedT unsigned_val = static_cast<UnsignedT>(val) & mask;
+                constexpr unsigned safe_shift = (_numBits >= storage_bits) ? 0 : _numBits;
+                constexpr StorageType mask = (StorageType(1) << safe_shift) - 1;
+
+                StorageType unsigned_val = val & mask;
 
                 if constexpr (_is_signed) {
-                    constexpr UnsignedT sign_bit = static_cast<UnsignedT>(1)
-                                                << (_numBits - 1);
+                    constexpr unsigned sign_shift =
+                        (_numBits >= storage_bits) ? 0 : (_numBits - 1);
+                    constexpr StorageType sign_bit = StorageType(1) << sign_shift;
+
                     if (unsigned_val & sign_bit) {
-                        constexpr UnsignedT sign_extend_mask = ~mask;
+                        constexpr StorageType sign_extend_mask = ~mask;
                         unsigned_val |= sign_extend_mask;
                     }
                 }
 
-                return static_cast<StorageType>(unsigned_val);
+                return unsigned_val;
             }
         }
     }

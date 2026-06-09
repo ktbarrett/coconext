@@ -9,8 +9,20 @@
 // +, -, *, /, &, |, ^, <<, >>
 #define COCONEXT_DEFINE_BINARY_OP(CLASS_TYPE, OP)                                          \
     constexpr CLASS_TYPE operator OP(const CLASS_TYPE& rhs) const {                        \
-        auto native_result = this->storage.raw() OP rhs.storage.raw();                     \
-        return CLASS_TYPE(detail::Storage<Bits, is_signed>(native_result));                \
+        using RawT = std::decay_t<decltype(this->storage.raw())>;                          \
+        if constexpr (CLASS_TYPE::is_signed && std::is_integral_v<RawT>) {                 \
+            using SignedT = std::make_signed_t<RawT>;                                      \
+            auto native_result = static_cast<SignedT>(this->storage.raw())                 \
+                OP static_cast<SignedT>(rhs.storage.raw());                                \
+            return CLASS_TYPE(                                                             \
+                detail::Storage<Bits, CLASS_TYPE::is_signed>(native_result)                \
+            );                                                                             \
+        } else {                                                                           \
+            auto native_result = this->storage.raw() OP rhs.storage.raw();                 \
+            return CLASS_TYPE(                                                             \
+                detail::Storage<Bits, CLASS_TYPE::is_signed>(native_result)                \
+            );                                                                             \
+        }                                                                                  \
     }
 
 // ~
@@ -23,7 +35,14 @@
 // ==, !=, <, >, <=, >=
 #define COCONEXT_DEFINE_COMPARE_OP(CLASS_TYPE, OP)                                         \
     constexpr bool operator OP(const CLASS_TYPE& rhs) const {                              \
-        return this->storage.raw() OP rhs.storage.raw();                                   \
+        using RawT = std::decay_t<decltype(this->storage.raw())>;                          \
+        if constexpr (CLASS_TYPE::is_signed && std::is_integral_v<RawT>) {                 \
+            using SignedT = std::make_signed_t<RawT>;                                      \
+            return static_cast<SignedT>(this->storage.raw())                               \
+                OP static_cast<SignedT>(rhs.storage.raw());                                \
+        } else {                                                                           \
+            return this->storage.raw() OP rhs.storage.raw();                               \
+        }                                                                                  \
     }
 
 namespace coconext::types {
