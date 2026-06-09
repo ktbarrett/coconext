@@ -1,11 +1,11 @@
 #include <nanobind/nanobind.h>
-#include <nanobind/operators.h>        // Required for operator overloading
-#include <nanobind/stl/string.h>       // Required for std::string conversions
-#include <nanobind/stl/string_view.h>  // Required for std::string_view conversions
+#include <nanobind/stl/string.h>       // IWYU pragma: keep -- std::string caster
+#include <nanobind/stl/string_view.h>  // IWYU pragma: keep -- std::string_view caster
 
-#include <coconext/types/concepts.hpp>
 #include <coconext/types/logic.hpp>
-#include <type_traits>
+#include <stdexcept>
+#include <string>
+#include <string_view>
 
 namespace nb = nanobind;
 using namespace nb::literals;

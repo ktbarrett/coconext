@@ -1,13 +1,17 @@
-#include <nanobind/make_iterator.h>  // Required for making iterators
 #include <nanobind/nanobind.h>
 #include <nanobind/operators.h>        // Required for operator overloading
-#include <nanobind/stl/string.h>       // Required for std::string conversions
-#include <nanobind/stl/string_view.h>  // Required for std::string_view conversions
+#include <nanobind/stl/string.h>       // IWYU pragma: keep -- std::string caster
+#include <nanobind/stl/string_view.h>  // IWYU pragma: keep -- std::string_view caster
 
-#include <coconext/types/concepts.hpp>
+#include <algorithm>
+#include <coconext/types/direction.hpp>
 #include <coconext/types/range.hpp>
+#include <cstddef>
 #include <cstdint>
 #include <format>
+#include <iterator>
+#include <stdexcept>
+#include <string_view>
 
 namespace nb = nanobind;
 using namespace nb::literals;
