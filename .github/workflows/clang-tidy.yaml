@@ -1,0 +1,41 @@
+name: clang-tidy
+
+on:
+  push:
+    branches:
+    - dev
+    paths-ignore:
+    - 'docs/dev/**'
+  pull_request:
+    branches:
+    - dev
+    paths-ignore:
+    - 'docs/dev/**'
+
+jobs:
+  clang-tidy:
+    name: clang-tidy
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v6.0.2
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v8.1.0
+      with:
+        activate-environment: "true"
+
+    - name: Install build and analysis dependencies
+      run: |
+        sudo apt install -y make libgtest-dev clang-tidy
+
+    - name: Build and run clang-tidy
+      env:
+        DEV_BUILD_DEP_GROUP: dev_tests
+      run: |
+        make clang_tidy
+
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !contains(github.ref, 'dev') }}
