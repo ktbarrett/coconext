@@ -18,10 +18,9 @@ static constexpr bool using_llvm_apint = true;
 
 #else
 
-// This class can handle arbitrary precision integer's
-// basic essential arithmetic E.g. shifting, bitwise operations,
-// formatting(decimal, hex, binary, octal), equality e.t.c. For
-// complete arithmetic operations, we fall back to APInt
+// This class can handle arbitrary precision integer's basic essential
+// arithmetic E.g. shifting, bitwise operations, equality e.t.c. For complete arithmetic
+// operations, we fall back to APInt
 class BigInt {
   public:
     using WordType = uint64_t;
@@ -310,10 +309,19 @@ class Storage {
                 return val;
             } else {
                 using UnsignedT = std::make_unsigned_t<StorageType>;
+                constexpr UnsignedT mask = (static_cast<UnsignedT>(1) << _numBits) - 1;
+                UnsignedT unsigned_val = static_cast<UnsignedT>(val) & mask;
 
-                constexpr UnsignedT mask = (UnsignedT(1) << _numBits) - 1;
+                if constexpr (_is_signed) {
+                    constexpr UnsignedT sign_bit = static_cast<UnsignedT>(1)
+                                                << (_numBits - 1);
+                    if (unsigned_val & sign_bit) {
+                        constexpr UnsignedT sign_extend_mask = ~mask;
+                        unsigned_val |= sign_extend_mask;
+                    }
+                }
 
-                return static_cast<StorageType>(static_cast<UnsignedT>(val) & mask);
+                return static_cast<StorageType>(unsigned_val);
             }
         }
     }
@@ -339,13 +347,7 @@ class Storage {
         : _storage(_numBits, _is_signed, static_cast<uint64_t>(val)) {}
 
     // APInt
-    constexpr Storage()
-        requires(std::is_same_v<StorageType, BigIntType> && using_llvm_apint)
-        : _storage(_numBits, 0, _is_signed) {}
-
-    constexpr Storage(StorageType val)
-        requires(std::is_same_v<StorageType, BigIntType> && using_llvm_apint)
-        : _storage(_numBits, val, _is_signed) {}
+    // TODO
 
     constexpr StorageType const& raw() const { return _storage; }
 };

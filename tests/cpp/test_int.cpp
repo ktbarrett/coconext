@@ -7,9 +7,34 @@
 using namespace coconext::types;
 
 TEST(TestIntStorage, wrapTest) {
-    EXPECT_EQ(UInt<7>(127) + UInt<7>(1), UInt<7>(0));
     EXPECT_EQ(UInt<2>(3) + UInt<2>(1), UInt<2>(0));
+    EXPECT_EQ(UInt<7>(127) + UInt<7>(1), UInt<7>(0));
+    EXPECT_EQ(UInt<11>(2047) + UInt<11>(1), UInt<11>(0));
+    EXPECT_EQ(UInt<37>(137438953471) + UInt<37>(1), UInt<37>(0));
+
+    EXPECT_EQ(SInt<2>(3) + SInt<2>(1), SInt<2>(0));
+    EXPECT_EQ(SInt<7>(127) + SInt<7>(1), SInt<7>(0));
+    EXPECT_EQ(SInt<11>(2047) + SInt<11>(1), SInt<11>(0));
+    EXPECT_EQ(SInt<37>(137438953471) + SInt<37>(1), SInt<37>(0));
+
+    EXPECT_EQ(UInt<2>(3), UInt<2>(-1));
+    EXPECT_EQ(UInt<7>(127), UInt<7>(-1));
+    EXPECT_EQ(UInt<11>(2047), UInt<11>(-1));
+    EXPECT_EQ(UInt<37>(137438953471), UInt<37>(-1));
+
+    EXPECT_EQ(SInt<2>(3), SInt<2>(-1));
     EXPECT_EQ(SInt<7>(127), SInt<7>(-1));
+    EXPECT_EQ(SInt<11>(2047), SInt<11>(-1));
+    EXPECT_EQ(SInt<37>(137438953471), SInt<37>(-1));
+}
+
+TEST(TestIntStorage, SignExtension) {
+    SInt<7> a(-1);
+    SInt<7> b(0);
+
+    EXPECT_LT(a, b);
+
+    EXPECT_EQ(a.get_backend().raw(), static_cast<int8_t>(-1));
 }
 
 TEST(TestIntStorage, completeWidthOperations) {

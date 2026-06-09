@@ -62,7 +62,9 @@ class UInt {
     COCONEXT_DEFINE_COMPARE_OP(UInt, <=)
     COCONEXT_DEFINE_COMPARE_OP(UInt, >=)
 
-    constexpr detail::Storage<Bits, is_signed> get_backend() { return storage; }
+    constexpr detail::Storage<Bits, is_signed> const& get_backend() const noexcept {
+        return storage;
+    }
     // All common features for BitArray, Unsigned, Signed, Ufixed, and Sfixed
     // TODO
 };
@@ -101,7 +103,10 @@ class SInt {
     COCONEXT_DEFINE_COMPARE_OP(SInt, <=)
     COCONEXT_DEFINE_COMPARE_OP(SInt, >=)
 
-    constexpr detail::Storage<Bits, is_signed> get_backend() { return storage; }
+    constexpr detail::Storage<Bits, is_signed> const& get_backend() const noexcept {
+        return storage;
+    }
+
     // All common features for BitArray, Unsigned, Signed, Ufixed, and Sfixed
     // TODO
 };
