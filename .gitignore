@@ -6,7 +6,6 @@ dist/
 wheels/
 
 # Project development files
-.nox/
 .mypy_cache/
 .ruff_cache/
 sim_build/
@@ -18,3 +17,6 @@ compile_commands.json
 .htmlcov/
 .python-coverage.xml
 .cpp-coverage.xml
+.vscode/
+.reviews/
+.claude/
