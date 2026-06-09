@@ -3,15 +3,18 @@ name: Regression Tests
 on:
   workflow_call:
     inputs:
-      test_task:
+      make_targets:
         required: true
         type: string
-        default: dev_test
       collect_coverage:
         required: false
         type: boolean
         default: false
-      download_artifacts:
+      download_sdist_artifacts:
+        required: false
+        type: boolean
+        default: false
+      download_wheel_artifacts:
         required: false
         type: boolean
         default: false
@@ -22,7 +25,7 @@ jobs:
       name: Generate a list of environments to run tests against
       steps:
       - uses: actions/checkout@v6
-      - run: ./.github/generate-envs.py --output-format=gha --gha-output-file="$GITHUB_OUTPUT" --group="${{inputs.group}}"
+      - run: ./.github/generate-envs.py --output-format=gha --gha-output-file="$GITHUB_OUTPUT"
         id: run_generate_script
       outputs:
         envs: ${{ steps.run_generate_script.outputs.envs }}
@@ -52,6 +55,20 @@ jobs:
           # A fetch depth of 2 provides enough information without fetching the entire history.
           fetch-depth: 2
 
+      - name: Download Wheel Artifacts
+        if: inputs.download_wheel_artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: wheels-${{ matrix.os }}
+          path: dist
+
+      - name: Download Sdist Artifacts
+        if: inputs.download_sdist_artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: sdist
+          path: dist
+
       - uses: actions/setup-python@v6
         with:
           python-version: ${{matrix.python-version}}
@@ -61,7 +78,7 @@ jobs:
         uses: nickg/setup-nvc@v1
         if: matrix.simulator == 'nvc'
         with:
-          version: ${{matrix.nvc-version}}
+          version: ${{matrix.simulator-version}}
 
       - name: Setup Icarus (MacOS)
         if: matrix.simulator == 'icarus' && startsWith(matrix.os, 'macos')
@@ -79,6 +96,7 @@ jobs:
           sudo apt install -y make libgtest-dev llvm
 
       - name: Checkout cocotb
+        if: contains(inputs.make_targets, 'integration_tests')
         uses: actions/checkout@v6
         with:
           repository: cocotb/cocotb
@@ -86,20 +104,18 @@ jobs:
 
       - name: Run tests
         env:
-          CC: ${{ matrix.cc || 'gcc' }}
-          CXX: ${{ matrix.cxx || 'g++' }}
           GCOV_EXECUTABLE: ${{ matrix.gcov || 'gcov' }}
           CXX_STANDARD: ${{ matrix.cxx-standard }}
           DEV_BUILD_DEP_GROUP: dev_tests
         run: |
-          make dev_tests integration_tests generate_report
+          make ${{ inputs.make_targets }}
 
       - name: Check stubs haven't diverged
         run: |
           git diff --exit-code -- python/_coconext.pyi
 
       - name: Upload coverage reports to Codecov
-        if: github.repository == 'ktbarrett/coconext'
+        if: github.repository == 'ktbarrett/coconext' && inputs.collect_coverage
         uses: codecov/codecov-action@v6
         with:
           disable_search: true

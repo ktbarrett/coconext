@@ -26,5 +26,5 @@ jobs:
     name: Regression Tests
     uses: ./.github/workflows/regression-tests.yaml
     with:
-      test_task: dev_test
+      make_targets: dev_tests integration_tests generate_report
       collect_coverage: true

@@ -3,7 +3,7 @@
 COCOTB_DIR_PATH ?= $(PWD)/cocotb
 
 # Defaults to dev so environments are shifting back and forth locally,
-# but set to "tests" in CI to avoid installing unnecessary dependencies.
+# but set to "dev_tests" in CI to avoid installing unnecessary dependencies.
 DEV_BUILD_DEP_GROUP ?= dev
 
 CXX_STANDARD ?= 20
@@ -31,10 +31,21 @@ CPP_TESTS_BUILD_DIR ?= build/tests
 .PHONY: dev_tests
 dev_tests: dev_build
 	pytest --cov --cov-report= tests/python/
+	pytest tests/integration_tests/
 	cmake -S tests/cpp -B "$(CPP_TESTS_BUILD_DIR)" \
 	    -DCMAKE_PREFIX_PATH="$$(coconext-config --cmake-prefix)" \
 	    -DCMAKE_CXX_STANDARD=$(CXX_STANDARD) \
 	    -DCMAKE_EXE_LINKER_FLAGS=--coverage
+	cmake --build "$(CPP_TESTS_BUILD_DIR)"
+	ctest --output-on-failure --test-dir "$(CPP_TESTS_BUILD_DIR)"
+
+release_test:
+	uv sync --no-default-groups --no-install-project
+	uv pip install coconext --find-links dist --no-index
+	pytest tests/python/
+	cmake -S tests/cpp -B "$(CPP_TESTS_BUILD_DIR)" \
+		-DCMAKE_PREFIX_PATH="$$(coconext-config --cmake-prefix)" \
+		-DCMAKE_CXX_STANDARD=$(CXX_STANDARD)
 	cmake --build "$(CPP_TESTS_BUILD_DIR)"
 	ctest --output-on-failure --test-dir "$(CPP_TESTS_BUILD_DIR)"
 

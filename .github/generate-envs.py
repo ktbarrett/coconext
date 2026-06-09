@@ -3,10 +3,13 @@
 """Generate a list of test environments.
 
 Each environment must contain the following fields:
+TODO
 
 Optional fields:
+TODO
 
 What tests belong in what groups:
+TODO
 """
 
 from __future__ import annotations
@@ -18,12 +21,10 @@ import sys
 ENVS = [
     {
         "python-version": "3.13",
-        "nvc-version": "1.20.1",
+        "simulator-version": "1.20.1",
         "os": "ubuntu-24.04",
         "simulator": "nvc",
         "toplevel_lang": "vhdl",
-        "cc": "clang",
-        "cxx": "clang++",
         "gcov": "llvm-cov gcov",
         "cxx-standard": "20",
     },
@@ -43,7 +44,7 @@ ENVS = [
     },
     {
         "python-version": "3.13",
-        "nvc-version": "1.20.1",
+        "simulator-version": "1.20.1",
         "os": "ubuntu-24.04",
         "simulator": "nvc",
         "toplevel_lang": "vhdl",
@@ -51,14 +52,14 @@ ENVS = [
     },
 ]
 
-python_versions = ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+python_versions = ["3.9", "3.10", "3.11", "3.12", "3.14"]
 for ver in python_versions:
     ENVS += [
         {
             "python-version": ver,
             "simulator": "nvc",
             "os": "ubuntu-24.04",
-            "nvc-version": "1.20.1",
+            "simulator-version": "1.20.1",
             "toplevel_lang": "vhdl",
             "cxx-standard": "20",
         }
@@ -73,7 +74,6 @@ def append_str_val(listref, my_list, key) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--group")
     parser.add_argument("--output-format", choices=("gha", "json"), default="json")
     parser.add_argument(
         "--gha-output-file",
@@ -83,11 +83,7 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    if args.group is not None and args.group != "":
-        selected_envs = [t for t in ENVS if "group" in t and t["group"] == args.group]
-    else:
-        # Return all tasks if no group is selected.
-        selected_envs = ENVS
+    selected_envs = ENVS
 
     for env in selected_envs:
         # Assemble the human-readable name of the job.
@@ -95,10 +91,15 @@ def main() -> int:
         append_str_val(name_parts, env, "simulator")
         append_str_val(name_parts, env, "os")
         append_str_val(name_parts, env, "python-version")
+
+        if int(env["cxx-standard"]) != 20:
+            cpp_ver = env["cxx-standard"]
+            name_parts.append(f"C++{cpp_ver}")
+
         if env.get("may-fail-dev") is not None:
             name_parts.append("May fail")
 
-        env["name"] = "|".join(name_parts)
+        env["name"] = " | ".join(name_parts)
 
     if args.output_format == "gha":
         assert args.gha_output_file is not None
