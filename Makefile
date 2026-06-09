@@ -72,3 +72,12 @@ docs:
 	uv sync --dev --no-install-project
 	sphinx-build docs/ '$(DOCS_OUTDIR)/' --color -b html
 	@echo "Documentation built at $(DOCS_OUTDIR)/index.html"
+
+# This default assumes you are running on a system where run-clang-tidy is fairly new.
+# We require clang-tidy 18 at a minimum to support misc-include-cleaner.
+# you may need to set it to run-clang-tidy-18 or similar.
+RUN_CLANG_TIDY_EXECUTABLE ?= run-clang-tidy
+
+.PHONY: clang_tidy
+clang_tidy: dev_build
+	$(RUN_CLANG_TIDY_EXECUTABLE) -p . -warnings-as-errors='*' -quiet 'coconext/(cpp|nanobind)/src/'
