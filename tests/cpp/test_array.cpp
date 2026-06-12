@@ -71,6 +71,40 @@ TEST(TestDynArray, RangeAccessor) {
     EXPECT_EQ(a.range(), Range(0, Direction::TO, 2));
 }
 
+// -- size() -----------------------------------------------------------------
+//
+// Mirrors range().length(); also makes std::ranges::size(a) discoverable on
+// each Array shape.
+
+TEST(TestDynArray, SizeMember) {
+    DynArray<int> a({10, 20, 30, 40});
+    EXPECT_EQ(a.size(), 4U);
+    EXPECT_EQ(std::ranges::size(a), 4U);
+}
+
+TEST(TestStaticArray, SizeMemberIsStatic) {
+    using A = Array<int, Range{0, Direction::TO, 7}>;
+    static_assert(A::size() == 8U);
+    A a{};
+    EXPECT_EQ(a.size(), 8U);
+    EXPECT_EQ(std::ranges::size(a), 8U);
+}
+
+TEST(TestDynArray, DynSliceSizeMember) {
+    DynArray<int> a({1, 2, 3, 4, 5});
+    auto s = a[{1, 3}];
+    EXPECT_EQ(s.size(), 3U);
+    EXPECT_EQ(std::ranges::size(s), 3U);
+}
+
+TEST(TestDynArrayStaticSlice, StaticSliceSizeIsStatic) {
+    DynArray<int> a({10, 20, 30, 40, 50});
+    using S = ArraySlice<DynArray<int>, Range{1, Direction::TO, 3}>;
+    static_assert(S::size() == 3U);
+    auto s = a.slice<Range{1, Direction::TO, 3}>();
+    EXPECT_EQ(s.size(), 3U);
+}
+
 // -- Iteration --------------------------------------------------------------
 
 TEST(TestDynArray, ForwardIteration) {

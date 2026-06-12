@@ -78,6 +78,7 @@ class ArrayImpl {
     // Deliberately similar to DynArray's instance range() so that generic code can query
     // the range with instance access pattern: `obj.range()`.
     static constexpr Range range() noexcept { return R; }
+    static constexpr size_t size() noexcept { return R.length(); }
 
     constexpr reference operator[](index_type idx) { return access_(*this, idx); }
     constexpr const_reference operator[](index_type idx) const {
@@ -210,6 +211,15 @@ static_assert(StaticRangedSequence<Array<int, Range{0, Direction::TO, 7}> const>
 static_assert(!StaticRangedSequence<DynArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
 static_assert(
     StaticRangedSequence<
+        ArraySlice<Array<int, Range{0, Direction::TO, 7}>, Range{1, Direction::TO, 3}>>
+);
+
+static_assert(std::ranges::sized_range<Array<int, Range{0, Direction::TO, 7}>>);
+static_assert(
+    std::ranges::sized_range<DynArraySlice<Array<int, Range{0, Direction::TO, 7}>>>
+);
+static_assert(
+    std::ranges::sized_range<
         ArraySlice<Array<int, Range{0, Direction::TO, 7}>, Range{1, Direction::TO, 3}>>
 );
 

@@ -138,6 +138,7 @@ class DynArraySliceImpl {
         : arr_(arr), range_(range), begin_(compute_begin(arr, range)) {}
 
     constexpr Range const& range() const noexcept { return range_; }
+    constexpr size_t size() const noexcept { return range_.length(); }
 
     // Element access bounds-checks against this slice's range_, not the owner's range.
     constexpr reference operator[](index_type idx) const {
@@ -280,6 +281,7 @@ class ArraySliceImpl {
     // Deliberately similar to DynArraySlice's instance range() so that generic code can
     // query the range with instance access pattern: `obj.range()`.
     static constexpr Range range() noexcept { return R; }
+    static constexpr size_t size() noexcept { return R.length(); }
 
     constexpr reference operator[](index_type idx) const {
         if constexpr (R.direction == Direction::TO) {
