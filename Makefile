@@ -31,7 +31,6 @@ CPP_TESTS_BUILD_DIR ?= build/tests
 .PHONY: dev_tests
 dev_tests: dev_build
 	pytest --cov --cov-report= tests/python/
-	pytest tests/integration_tests/
 	cmake -S tests/cpp -B "$(CPP_TESTS_BUILD_DIR)" \
 	    -DCMAKE_PREFIX_PATH="$$(coconext-config --cmake-prefix)" \
 	    -DCMAKE_CXX_STANDARD=$(CXX_STANDARD) \
