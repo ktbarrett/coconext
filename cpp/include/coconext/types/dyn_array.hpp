@@ -122,6 +122,7 @@ class DynArrayImpl {
     }
 
     constexpr Range const& range() const noexcept { return range_; }
+    constexpr size_t size() const noexcept { return range_.length(); }
 
     COCONEXT_DYN_ARRAY_CONSTEXPR reference operator[](index_type idx) {
         return access_(*this, idx);
@@ -274,6 +275,12 @@ static_assert(RangedSequence<ArraySlice<DynArray<int> const, Range{0, Direction:
 static_assert(!StaticRangedSequence<DynArray<int>>);
 static_assert(!StaticRangedSequence<DynArraySlice<DynArray<int>>>);
 static_assert(StaticRangedSequence<ArraySlice<DynArray<int>, Range{0, Direction::TO, 3}>>);
+
+static_assert(std::ranges::sized_range<DynArray<int>>);
+static_assert(std::ranges::sized_range<DynArraySlice<DynArray<int>>>);
+static_assert(
+    std::ranges::sized_range<ArraySlice<DynArray<int>, Range{0, Direction::TO, 3}>>
+);
 
 }  // namespace coconext::types
 
