@@ -461,4 +461,33 @@ TEST(TestLogic, InplaceNotReturnsReference) {
     EXPECT_EQ(&ref, &v);
 }
 
+// -- Bit implicit conversions to int and bool ------------------------------
+//
+// Bit is a 2-element numeric domain so the conversions are lossless and
+// implicit. Logic has no such conversions because they can fail on metavalues.
+
+TEST(TestBit, BitImplicitToInt) {
+    int x = '1'_b;
+    EXPECT_EQ(x, 1);
+    int y = '0'_b;
+    EXPECT_EQ(y, 0);
+}
+
+TEST(TestBit, BitImplicitToBool) {
+    // `operator bool` is explicit, but contextual conversion in `if`/`while`/
+    // logical operators still accepts it.
+    if (!('1'_b)) {
+        FAIL() << "Bit('1') should convert to true";
+    }
+    if ('0'_b) {
+        FAIL() << "Bit('0') should convert to false";
+    }
+}
+
+TEST(TestBit, BitInArithmeticExpression) {
+    // Bit -> int conversion lets it participate in integer arithmetic.
+    EXPECT_EQ('1'_b + 2, 3);
+    EXPECT_EQ('0'_b + '1'_b, 1);
+}
+
 // LCOV_EXCL_BR_STOP
