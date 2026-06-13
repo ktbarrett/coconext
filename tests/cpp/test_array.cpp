@@ -13,61 +13,61 @@ using namespace coconext::types;
 
 // -- Construction -----------------------------------------------------------
 
-TEST(TestDynArray, ConstructFromInitializerList) {
-    DynArray<int> a({1, 2, 3, 4});
+TEST(TestVector, ConstructFromInitializerList) {
+    Vector<int> a({1, 2, 3, 4});
     EXPECT_EQ(a.range().left, 0);
     EXPECT_EQ(a.range().right, 3);
     EXPECT_EQ(a.range().direction, Direction::TO);
 }
 
-TEST(TestDynArray, ConstructFromInitializerListEmpty) {
-    DynArray<int> a({});
+TEST(TestVector, ConstructFromInitializerListEmpty) {
+    Vector<int> a({});
     EXPECT_EQ(a.range().length(), 0U);
 }
 
-TEST(TestDynArray, ConstructFromInitializerListWithRange) {
-    DynArray<int> a({10, 20, 30, 40}, Range(-2, Direction::TO, 1));
+TEST(TestVector, ConstructFromInitializerListWithRange) {
+    Vector<int> a({10, 20, 30, 40}, Range(-2, Direction::TO, 1));
     EXPECT_EQ(a.range(), Range(-2, Direction::TO, 1));
     EXPECT_EQ(a[-2], 10);
     EXPECT_EQ(a[1], 40);
 }
 
-TEST(TestDynArray, ConstructFromInitializerListWithRangeLengthMismatch) {
+TEST(TestVector, ConstructFromInitializerListWithRangeLengthMismatch) {
     EXPECT_THROW(
-        DynArray<int> a({1, 2, 3}, Range(0, Direction::TO, 7)), std::invalid_argument
+        Vector<int> a({1, 2, 3}, Range(0, Direction::TO, 7)), std::invalid_argument
     );
 }
 
-TEST(TestDynArray, ConstructFromRange) {
-    DynArray<int> a(Range(-2, Direction::TO, 1));
+TEST(TestVector, ConstructFromRange) {
+    Vector<int> a(Range(-2, Direction::TO, 1));
     EXPECT_EQ(a.range(), Range(-2, Direction::TO, 1));
     EXPECT_EQ(a.range().length(), 4U);
 }
 
-TEST(TestDynArray, ConstructFromSizedRange) {
+TEST(TestVector, ConstructFromSizedRange) {
     std::vector<int> src{1, 2, 3};
-    DynArray<int> a(src);
+    Vector<int> a(src);
     EXPECT_EQ(a.range(), Range(0, Direction::TO, 2));
     EXPECT_EQ(a[0], 1);
     EXPECT_EQ(a[2], 3);
 }
 
-TEST(TestDynArray, ConstructFromSizedRangeWithRange) {
+TEST(TestVector, ConstructFromSizedRangeWithRange) {
     std::vector<int> src{10, 20, 30, 40};
-    DynArray<int> a(src, Range(-2, Direction::TO, 1));
+    Vector<int> a(src, Range(-2, Direction::TO, 1));
     EXPECT_EQ(a[-2], 10);
     EXPECT_EQ(a[1], 40);
 }
 
-TEST(TestDynArray, ConstructFromSizedRangeLengthMismatch) {
+TEST(TestVector, ConstructFromSizedRangeLengthMismatch) {
     std::vector<int> src{1, 2, 3};
-    EXPECT_THROW(DynArray<int> a(src, Range(0, Direction::TO, 7)), std::invalid_argument);
+    EXPECT_THROW(Vector<int> a(src, Range(0, Direction::TO, 7)), std::invalid_argument);
 }
 
 // -- range() ----------------------------------------------------------------
 
-TEST(TestDynArray, RangeAccessor) {
-    DynArray<int> a({1, 2, 3});
+TEST(TestVector, RangeAccessor) {
+    Vector<int> a({1, 2, 3});
     EXPECT_EQ(a.range(), Range(0, Direction::TO, 2));
 }
 
@@ -76,8 +76,8 @@ TEST(TestDynArray, RangeAccessor) {
 // Mirrors range().length(); also makes std::ranges::size(a) discoverable on
 // each Array shape.
 
-TEST(TestDynArray, SizeMember) {
-    DynArray<int> a({10, 20, 30, 40});
+TEST(TestVector, SizeMember) {
+    Vector<int> a({10, 20, 30, 40});
     EXPECT_EQ(a.size(), 4U);
     EXPECT_EQ(std::ranges::size(a), 4U);
 }
@@ -90,16 +90,16 @@ TEST(TestStaticArray, SizeMemberIsStatic) {
     EXPECT_EQ(std::ranges::size(a), 8U);
 }
 
-TEST(TestDynArray, DynSliceSizeMember) {
-    DynArray<int> a({1, 2, 3, 4, 5});
+TEST(TestVector, DynSliceSizeMember) {
+    Vector<int> a({1, 2, 3, 4, 5});
     auto s = a[{1, 3}];
     EXPECT_EQ(s.size(), 3U);
     EXPECT_EQ(std::ranges::size(s), 3U);
 }
 
-TEST(TestDynArrayStaticSlice, StaticSliceSizeIsStatic) {
-    DynArray<int> a({10, 20, 30, 40, 50});
-    using S = ArraySlice<DynArray<int>, Range{1, Direction::TO, 3}>;
+TEST(TestVectorStaticSlice, StaticSliceSizeIsStatic) {
+    Vector<int> a({10, 20, 30, 40, 50});
+    using S = StaticArraySlice<Vector<int>, Range{1, Direction::TO, 3}>;
     static_assert(S::static_range.length() == 3U);
     auto s = a.slice<Range{1, Direction::TO, 3}>();
     EXPECT_EQ(s.size(), 3U);
@@ -107,36 +107,36 @@ TEST(TestDynArrayStaticSlice, StaticSliceSizeIsStatic) {
 
 // -- Iteration --------------------------------------------------------------
 
-TEST(TestDynArray, ForwardIteration) {
-    DynArray<int> a({1, 2, 3, 4, 5});
+TEST(TestVector, ForwardIteration) {
+    Vector<int> a({1, 2, 3, 4, 5});
     std::vector<int> seen(a.begin(), a.end());
     EXPECT_EQ(seen, (std::vector<int>{1, 2, 3, 4, 5}));
 }
 
-TEST(TestDynArray, ReverseIteration) {
-    DynArray<int> a({1, 2, 3, 4, 5});
+TEST(TestVector, ReverseIteration) {
+    Vector<int> a({1, 2, 3, 4, 5});
     std::vector<int> seen(a.rbegin(), a.rend());
     EXPECT_EQ(seen, (std::vector<int>{5, 4, 3, 2, 1}));
 }
 
-TEST(TestDynArray, IterationConst) {
-    DynArray<int> const a({1, 2, 3});
+TEST(TestVector, IterationConst) {
+    Vector<int> const a({1, 2, 3});
     int sum = std::accumulate(a.begin(), a.end(), 0);
     EXPECT_EQ(sum, 6);
 }
 
 // -- Find -------------------------------------------------------------------
 
-TEST(TestDynArray, FindElement) {
-    DynArray<int> a({10, 20, 30, 40, 50});
+TEST(TestVector, FindElement) {
+    Vector<int> a({10, 20, 30, 40, 50});
     auto it = std::find(a.begin(), a.end(), 30);
     ASSERT_NE(it, a.end());
     EXPECT_EQ(*it, 30);
     EXPECT_EQ(std::distance(a.begin(), it), 2);
 }
 
-TEST(TestDynArray, FindElementMissing) {
-    DynArray<int> a({10, 20, 30});
+TEST(TestVector, FindElementMissing) {
+    Vector<int> a({10, 20, 30});
     EXPECT_EQ(std::find(a.begin(), a.end(), 99), a.end());
 }
 
@@ -146,53 +146,53 @@ TEST(TestDynArray, FindElementMissing) {
 // order) whose element equals v; rindex(v) is the same from the right (i.e.
 // the last matching element). Both return nullopt when not found.
 
-TEST(TestDynArray, IndexFoundTO) {
-    DynArray<int> a(std::vector<int>{10, 20, 30, 20}, Range(0, Direction::TO, 3));
+TEST(TestVector, IndexFoundTO) {
+    Vector<int> a(std::vector<int>{10, 20, 30, 20}, Range(0, Direction::TO, 3));
     auto i = a.index(20);
     ASSERT_TRUE(i.has_value());
     EXPECT_EQ(*i, 1);  // first 20 is at HDL coord 1
 }
 
-TEST(TestDynArray, IndexFoundDOWNTO) {
-    DynArray<int> a({10, 20, 30});  // default DOWNTO {2..0}: a[2]=10, a[1]=20, a[0]=30
+TEST(TestVector, IndexFoundDOWNTO) {
+    Vector<int> a({10, 20, 30});  // default DOWNTO {2..0}: a[2]=10, a[1]=20, a[0]=30
     auto i = a.index(20);
     ASSERT_TRUE(i.has_value());
     EXPECT_EQ(*i, 1);  // 20 is at HDL coord 1 (DOWNTO)
 }
 
-TEST(TestDynArray, IndexNotFound) {
-    DynArray<int> a({10, 20, 30});
+TEST(TestVector, IndexNotFound) {
+    Vector<int> a({10, 20, 30});
     EXPECT_FALSE(a.index(99).has_value());
 }
 
-TEST(TestDynArray, IndexEmpty) {
-    DynArray<int> a({});
+TEST(TestVector, IndexEmpty) {
+    Vector<int> a({});
     EXPECT_FALSE(a.index(0).has_value());
 }
 
-TEST(TestDynArray, RindexFindsLastOccurrenceTO) {
-    DynArray<int> a(std::vector<int>{10, 20, 30, 20}, Range(0, Direction::TO, 3));
+TEST(TestVector, RindexFindsLastOccurrenceTO) {
+    Vector<int> a(std::vector<int>{10, 20, 30, 20}, Range(0, Direction::TO, 3));
     auto i = a.rindex(20);
     ASSERT_TRUE(i.has_value());
     EXPECT_EQ(*i, 3);  // last 20 is at HDL coord 3
 }
 
-TEST(TestDynArray, RindexFindsLastOccurrenceDOWNTO) {
-    DynArray<int> a(std::vector<int>{10, 20, 30, 20}, Range(3, Direction::DOWNTO, 0));
+TEST(TestVector, RindexFindsLastOccurrenceDOWNTO) {
+    Vector<int> a(std::vector<int>{10, 20, 30, 20}, Range(3, Direction::DOWNTO, 0));
     // a[3]=10, a[2]=20, a[1]=30, a[0]=20. Last 20 in iteration is at HDL 0.
     auto i = a.rindex(20);
     ASSERT_TRUE(i.has_value());
     EXPECT_EQ(*i, 0);
 }
 
-TEST(TestDynArray, RindexNotFound) {
-    DynArray<int> a({10, 20, 30});
+TEST(TestVector, RindexNotFound) {
+    Vector<int> a({10, 20, 30});
     EXPECT_FALSE(a.rindex(99).has_value());
 }
 
-TEST(TestDynArray, IndexOnSlice) {
-    // Generic DynArray<int> defaults to TO {0..4}.
-    DynArray<int> a({10, 20, 30, 40, 50});
+TEST(TestVector, IndexOnSlice) {
+    // Generic Vector<int> defaults to TO {0..4}.
+    Vector<int> a({10, 20, 30, 40, 50});
     auto s = a[{1, 3}];  // TO slice covering HDL coords 1, 2, 3 -> 20, 30, 40
     auto i = s.index(30);
     ASSERT_TRUE(i.has_value());
@@ -209,8 +209,8 @@ TEST(TestStaticArray, IndexAndRindex) {
     EXPECT_FALSE(a.index(99).has_value());
 }
 
-TEST(TestDynArrayStaticSlice, IndexAndRindex) {
-    DynArray<int> a({10, 20, 30, 20, 50}, Range(0, Direction::TO, 4));
+TEST(TestVectorStaticSlice, IndexAndRindex) {
+    Vector<int> a({10, 20, 30, 20, 50}, Range(0, Direction::TO, 4));
     auto s = a.slice<Range{1, Direction::TO, 3}>();  // values 20, 30, 20
     auto first = s.index(20);
     auto last = s.rindex(20);
@@ -221,32 +221,32 @@ TEST(TestDynArrayStaticSlice, IndexAndRindex) {
 
 // -- Indexing ---------------------------------------------------------------
 
-TEST(TestDynArray, IndexingTO) {
-    DynArray<int> a(std::vector<int>{10, 20, 30, 40}, Range(8, Direction::TO, 11));
+TEST(TestVector, IndexingTO) {
+    Vector<int> a(std::vector<int>{10, 20, 30, 40}, Range(8, Direction::TO, 11));
     EXPECT_EQ(a[8], 10);
     EXPECT_EQ(a[11], 40);
 }
 
-TEST(TestDynArray, IndexingDOWNTO) {
-    DynArray<int> a(std::vector<int>{10, 20, 30, 40}, Range(10, Direction::DOWNTO, 7));
+TEST(TestVector, IndexingDOWNTO) {
+    Vector<int> a(std::vector<int>{10, 20, 30, 40}, Range(10, Direction::DOWNTO, 7));
     EXPECT_EQ(a[10], 10);
     EXPECT_EQ(a[7], 40);
 }
 
-TEST(TestDynArray, IndexingMutates) {
-    DynArray<int> a({1, 2, 3, 4});
+TEST(TestVector, IndexingMutates) {
+    Vector<int> a({1, 2, 3, 4});
     a[2] = 99;
     EXPECT_EQ(a[2], 99);
 }
 
-TEST(TestDynArray, IndexingOutOfRange) {
-    DynArray<int> a(std::vector<int>{1, 2, 3}, Range(8, Direction::TO, 10));
+TEST(TestVector, IndexingOutOfRange) {
+    Vector<int> a(std::vector<int>{1, 2, 3}, Range(8, Direction::TO, 10));
     EXPECT_THROW((void)a[0], std::out_of_range);
     EXPECT_THROW((void)a[100], std::out_of_range);
 }
 
-TEST(TestDynArray, IndexingConst) {
-    DynArray<int> const a({1, 2, 3});
+TEST(TestVector, IndexingConst) {
+    Vector<int> const a({1, 2, 3});
     EXPECT_EQ(a[0], 1);
     EXPECT_EQ(a[2], 3);
     static_assert(std::is_same_v<decltype(a[0]), int const&>);
@@ -254,8 +254,8 @@ TEST(TestDynArray, IndexingConst) {
 
 // -- Slicing ----------------------------------------------------------------
 
-TEST(TestDynArray, SliceTO) {
-    DynArray<int> a({1, 2, 3, 4, 5, 6});
+TEST(TestVector, SliceTO) {
+    Vector<int> a({1, 2, 3, 4, 5, 6});
     auto s = a[{1, 4}];
     EXPECT_EQ(s.range(), Range(1, Direction::TO, 4));
     EXPECT_EQ(s.range().length(), 4U);
@@ -263,55 +263,55 @@ TEST(TestDynArray, SliceTO) {
     EXPECT_EQ(s[4], 5);
 }
 
-TEST(TestDynArray, SliceDOWNTO) {
-    DynArray<int> a(std::vector<int>{10, 20, 30, 40}, Range(3, Direction::DOWNTO, 0));
+TEST(TestVector, SliceDOWNTO) {
+    Vector<int> a(std::vector<int>{10, 20, 30, 40}, Range(3, Direction::DOWNTO, 0));
     auto s = a[{2, 1}];
     EXPECT_EQ(s.range().length(), 2U);
     EXPECT_EQ(s[2], 20);
     EXPECT_EQ(s[1], 30);
 }
 
-TEST(TestDynArray, SliceMutatesUnderlying) {
-    DynArray<int> a({10, 20, 30, 40, 50});
+TEST(TestVector, SliceMutatesUnderlying) {
+    Vector<int> a({10, 20, 30, 40, 50});
     auto s = a[{1, 3}];
     s[2] = 99;
     EXPECT_EQ(a[2], 99);
 }
 
-TEST(TestDynArray, SliceAssignFromRange) {
-    DynArray<int> a({1, 2, 3, 4, 5});
+TEST(TestVector, SliceAssignFromRange) {
+    Vector<int> a({1, 2, 3, 4, 5});
     auto s = a[{1, 3}];
     s = std::vector<int>{20, 30, 40};
     EXPECT_EQ(a[1], 20);
     EXPECT_EQ(a[3], 40);
 }
 
-TEST(TestDynArray, SliceAssignFromInitializerList) {
-    DynArray<int> a({1, 2, 3, 4, 5});
+TEST(TestVector, SliceAssignFromInitializerList) {
+    Vector<int> a({1, 2, 3, 4, 5});
     auto s = a[{1, 3}];
     s = {7, 8, 9};
     EXPECT_EQ(a[2], 8);
 }
 
-TEST(TestDynArray, SliceAssignWrongLength) {
-    DynArray<int> a({1, 2, 3, 4, 5});
+TEST(TestVector, SliceAssignWrongLength) {
+    Vector<int> a({1, 2, 3, 4, 5});
     auto s = a[{1, 3}];
     EXPECT_THROW((s = std::vector<int>{1, 2, 3, 4}), std::invalid_argument);
     EXPECT_THROW((s = {1, 2}), std::invalid_argument);
 }
 
-TEST(TestDynArray, SliceStartOutOfRange) {
-    DynArray<int> a({1, 2, 3});
+TEST(TestVector, SliceStartOutOfRange) {
+    Vector<int> a({1, 2, 3});
     EXPECT_THROW((void)(a[{99, 100}]), std::invalid_argument);
 }
 
-TEST(TestDynArray, SliceEndOutOfRange) {
-    DynArray<int> a({1, 2, 3});
+TEST(TestVector, SliceEndOutOfRange) {
+    Vector<int> a({1, 2, 3});
     EXPECT_THROW((void)(a[{0, 99}]), std::invalid_argument);
 }
 
-TEST(TestDynArray, SliceDirectionMismatch) {
-    DynArray<int> a(std::vector<int>{1, 2, 3, 4, 5}, Range(4, Direction::DOWNTO, 0));
+TEST(TestVector, SliceDirectionMismatch) {
+    Vector<int> a(std::vector<int>{1, 2, 3, 4, 5}, Range(4, Direction::DOWNTO, 0));
     // start=0, end=4 walks against the array's DOWNTO direction.
     EXPECT_THROW((void)(a[{0, 4}]), std::invalid_argument);
 }
@@ -321,8 +321,8 @@ TEST(TestDynArray, SliceDirectionMismatch) {
 // A null range (length 0) is always a valid subsequence, so the slice should
 // succeed regardless of bounds or direction.
 
-TEST(TestDynArray, SliceNullDirectionMismatchOK) {
-    DynArray<int> a({1, 2, 3, 4, 5});  // Range(0, TO, 4)
+TEST(TestVector, SliceNullDirectionMismatchOK) {
+    Vector<int> a({1, 2, 3, 4, 5});  // Range(0, TO, 4)
     // Range(3, TO, 1) has length 0; the wrong-direction-vs-owner doesn't
     // matter because there are no values to walk.
     auto s = a[{3, Direction::TO, 1}];
@@ -330,95 +330,94 @@ TEST(TestDynArray, SliceNullDirectionMismatchOK) {
     EXPECT_EQ(s.begin(), s.end());
 }
 
-TEST(TestDynArray, SliceNullOutOfBoundsOK) {
-    DynArray<int> a({1, 2, 3, 4, 5});
+TEST(TestVector, SliceNullOutOfBoundsOK) {
+    Vector<int> a({1, 2, 3, 4, 5});
     // Range(99, TO, 50) has length 0; bounds outside the parent are fine.
     auto s = a[{99, Direction::TO, 50}];
     EXPECT_EQ(s.range().length(), 0U);
 }
 
-TEST(TestDynArray, SliceLengthOneDirectionAgnostic) {
+TEST(TestVector, SliceLengthOneDirectionAgnostic) {
     // Length-1 slice doesn't care about direction; only the single value
     // needs to exist in the parent.
-    DynArray<int> a({10, 20, 30, 40});  // Range(0, TO, 3)
+    Vector<int> a({10, 20, 30, 40});  // Range(0, TO, 3)
     auto s = a[{2, Direction::DOWNTO, 2}];
     EXPECT_EQ(s.range().length(), 1U);
     EXPECT_EQ(s[2], 30);
 }
 
-TEST(TestDynArray, SliceOfSliceFlattens) {
-    DynArray<int> a({1, 2, 3, 4, 5, 6, 7, 8});
+TEST(TestVector, SliceOfSliceFlattens) {
+    Vector<int> a({1, 2, 3, 4, 5, 6, 7, 8});
     auto s1 = a[{1, 6}];
     auto s2 = s1[{2, 4}];
     static_assert(
-        std::is_same_v<decltype(s2), DynArraySlice<DynArray<int>>>,
-        "slice-of-slice must flatten"
+        std::is_same_v<decltype(s2), ArraySlice<Vector<int>>>, "slice-of-slice must flatten"
     );
     EXPECT_EQ(s2[2], 3);
     EXPECT_EQ(s2[4], 5);
 }
 
-TEST(TestDynArray, SliceOfSliceStartOutOfRange) {
-    DynArray<int> a({1, 2, 3, 4, 5, 6, 7, 8});
+TEST(TestVector, SliceOfSliceStartOutOfRange) {
+    Vector<int> a({1, 2, 3, 4, 5, 6, 7, 8});
     auto s1 = a[{1, 6}];
     // 99 is outside s1's range.
     EXPECT_THROW((void)(s1[{99, 100}]), std::invalid_argument);
 }
 
-TEST(TestDynArray, SliceOfSliceEndOutOfRange) {
-    DynArray<int> a({1, 2, 3, 4, 5, 6, 7, 8});
+TEST(TestVector, SliceOfSliceEndOutOfRange) {
+    Vector<int> a({1, 2, 3, 4, 5, 6, 7, 8});
     auto s1 = a[{1, 6}];
     // 1 is in s1's range, 99 isn't.
     EXPECT_THROW((void)(s1[{1, 99}]), std::invalid_argument);
 }
 
-TEST(TestDynArray, SliceOfSliceDirectionMismatch) {
-    DynArray<int> a(std::vector<int>{1, 2, 3, 4, 5}, Range(4, Direction::DOWNTO, 0));
+TEST(TestVector, SliceOfSliceDirectionMismatch) {
+    Vector<int> a(std::vector<int>{1, 2, 3, 4, 5}, Range(4, Direction::DOWNTO, 0));
     auto s1 = a[{4, 1}];  // DOWNTO slice over coords 4..1
     // Asking for start=1, end=4 walks against s1's DOWNTO direction.
     EXPECT_THROW((void)(s1[{1, 4}]), std::invalid_argument);
 }
 
-// Same error paths but on const DynArray / const DynArraySlice; index() and
+// Same error paths but on const Vector / const ArraySlice; index() and
 // slice() are templates, so const and non-const callers instantiate separate
 // specializations and each throw needs to be exercised independently.
-TEST(TestDynArray, IndexingConstOutOfRange) {
-    DynArray<int> const a({1, 2, 3});
+TEST(TestVector, IndexingConstOutOfRange) {
+    Vector<int> const a({1, 2, 3});
     EXPECT_THROW((void)a[100], std::out_of_range);
 }
 
-TEST(TestDynArray, SliceConstStartOutOfRange) {
-    DynArray<int> const a({1, 2, 3});
+TEST(TestVector, SliceConstStartOutOfRange) {
+    Vector<int> const a({1, 2, 3});
     EXPECT_THROW((void)(a[{99, 100}]), std::invalid_argument);
 }
 
-TEST(TestDynArray, SliceConstEndOutOfRange) {
-    DynArray<int> const a({1, 2, 3});
+TEST(TestVector, SliceConstEndOutOfRange) {
+    Vector<int> const a({1, 2, 3});
     EXPECT_THROW((void)(a[{0, 99}]), std::invalid_argument);
 }
 
-TEST(TestDynArray, SliceConstDirectionMismatch) {
-    DynArray<int> mut(std::vector<int>{1, 2, 3, 4, 5}, Range(4, Direction::DOWNTO, 0));
-    DynArray<int> const& a = mut;
+TEST(TestVector, SliceConstDirectionMismatch) {
+    Vector<int> mut(std::vector<int>{1, 2, 3, 4, 5}, Range(4, Direction::DOWNTO, 0));
+    Vector<int> const& a = mut;
     EXPECT_THROW((void)(a[{0, 4}]), std::invalid_argument);
 }
 
-TEST(TestDynArray, ConstSliceErrors) {
-    DynArray<int> const a({1, 2, 3, 4, 5});
+TEST(TestVector, ConstSliceErrors) {
+    Vector<int> const a({1, 2, 3, 4, 5});
     auto s = a[{0, 4}];
     EXPECT_THROW((void)(s[{99, 100}]), std::invalid_argument);
     EXPECT_THROW((void)(s[{0, 99}]), std::invalid_argument);
 }
 
-TEST(TestDynArray, ConstSliceDirectionMismatch) {
-    DynArray<int> mut(std::vector<int>{1, 2, 3, 4, 5}, Range(4, Direction::DOWNTO, 0));
-    DynArray<int> const& a = mut;
+TEST(TestVector, ConstSliceDirectionMismatch) {
+    Vector<int> mut(std::vector<int>{1, 2, 3, 4, 5}, Range(4, Direction::DOWNTO, 0));
+    Vector<int> const& a = mut;
     auto s = a[{4, 0}];
     EXPECT_THROW((void)(s[{0, 4}]), std::invalid_argument);
 }
 
-TEST(TestDynArray, ConstSliceOfConstSlice) {
-    DynArray<int> const a({1, 2, 3, 4, 5});
+TEST(TestVector, ConstSliceOfConstSlice) {
+    Vector<int> const a({1, 2, 3, 4, 5});
     auto outer = a[{0, 4}];
     auto inner = outer[{1, 3}];
     EXPECT_EQ(inner.range().length(), 3U);
@@ -426,32 +425,32 @@ TEST(TestDynArray, ConstSliceOfConstSlice) {
     EXPECT_EQ(inner[3], 4);
 }
 
-TEST(TestDynArray, ConstructLogicFromRange) {
-    DynArray<Logic> a(Range(3));
+TEST(TestVector, ConstructLogicFromRange) {
+    Vector<Logic> a(Range(3));
     EXPECT_EQ(a.range().length(), 3U);
 }
 
-TEST(TestDynArray, ConstSliceOverConstArray) {
-    DynArray<int> const a({10, 20, 30, 40});
+TEST(TestVector, ConstSliceOverConstArray) {
+    Vector<int> const a({10, 20, 30, 40});
     auto s = a[{1, 2}];
-    static_assert(std::is_same_v<decltype(s), DynArraySlice<DynArray<int> const>>);
+    static_assert(std::is_same_v<decltype(s), ArraySlice<Vector<int> const>>);
     EXPECT_EQ(s[1], 20);
     static_assert(std::is_same_v<decltype(s[1]), int const&>);
 }
 
-TEST(TestDynArray, ConstSliceIteration) {
-    DynArray<int> const a({1, 2, 3, 4, 5});
+TEST(TestVector, ConstSliceIteration) {
+    Vector<int> const a({1, 2, 3, 4, 5});
     auto s = a[{1, 3}];
     int sum = std::accumulate(s.begin(), s.end(), 0);
     EXPECT_EQ(sum, 2 + 3 + 4);
 }
 
-TEST(TestDynArray, ConstSliceOverMutableArrayMutates) {
+TEST(TestVector, ConstSliceOverMutableArrayMutates) {
     // std::span-style const propagation: top-level const on the slice does
     // not restrict element access. The slice's own const-ness only fixes the
     // pointer/range; the underlying ArrayT determines element mutability.
-    DynArray<int> a({1, 2, 3, 4});
-    auto const cs = a[{0, 3}];  // const DynArraySlice<DynArray<int>>
+    Vector<int> a({1, 2, 3, 4});
+    auto const cs = a[{0, 3}];  // const ArraySlice<Vector<int>>
     cs[0] = 99;                 // mutation through const slice
     cs = std::vector<int>{10, 20, 30, 40};
     EXPECT_EQ(a[0], 10);
@@ -460,76 +459,76 @@ TEST(TestDynArray, ConstSliceOverMutableArrayMutates) {
 
 // -- Equality ---------------------------------------------------------------
 
-TEST(TestDynArray, EqualityValuesAndRange) {
-    EXPECT_EQ(DynArray<int>({1, 2, 3, 4}), DynArray<int>({1, 2, 3, 4}));
+TEST(TestVector, EqualityValuesAndRange) {
+    EXPECT_EQ(Vector<int>({1, 2, 3, 4}), Vector<int>({1, 2, 3, 4}));
 }
 
-TEST(TestDynArray, InequalityDifferentRange) {
+TEST(TestVector, InequalityDifferentRange) {
     // Arrays with different ranges have different indexing semantics, so they
     // are not substitutable and must not compare equal.
-    DynArray<int> a({1, 2, 3});
-    DynArray<int> b(std::vector<int>{1, 2, 3}, Range(10, Direction::DOWNTO, 8));
+    Vector<int> a({1, 2, 3});
+    Vector<int> b(std::vector<int>{1, 2, 3}, Range(10, Direction::DOWNTO, 8));
     EXPECT_NE(a, b);
 }
 
-TEST(TestDynArray, InequalityDifferentValues) {
-    EXPECT_NE(DynArray<int>({1, 2, 3}), DynArray<int>({1, 2, 4}));
+TEST(TestVector, InequalityDifferentValues) {
+    EXPECT_NE(Vector<int>({1, 2, 3}), Vector<int>({1, 2, 4}));
 }
 
-TEST(TestDynArray, InequalityDifferentLength) {
-    EXPECT_NE(DynArray<int>({1, 2, 3}), DynArray<int>({1, 2}));
+TEST(TestVector, InequalityDifferentLength) {
+    EXPECT_NE(Vector<int>({1, 2, 3}), Vector<int>({1, 2}));
 }
 
-TEST(TestDynArray, EqualityEmptyArrays) {
-    DynArray<int> a({});
-    DynArray<int> b({});
+TEST(TestVector, EqualityEmptyArrays) {
+    Vector<int> a({});
+    Vector<int> b({});
     EXPECT_EQ(a, b);
 }
 
 // -- Hash -------------------------------------------------------------------
 
-TEST(TestDynArray, HashEqualArraysSameRange) {
-    std::hash<DynArray<int>> h;
-    DynArray<int> a({1, 2, 3, 4});
-    DynArray<int> b({1, 2, 3, 4});
+TEST(TestVector, HashEqualArraysSameRange) {
+    std::hash<Vector<int>> h;
+    Vector<int> a({1, 2, 3, 4});
+    Vector<int> b({1, 2, 3, 4});
     EXPECT_EQ(h(a), h(b));
 }
 
-TEST(TestDynArray, HashEmptyArraysWithDifferentBounds) {
-    std::hash<DynArray<int>> h;
-    DynArray<int> a({});
-    DynArray<int> b(std::vector<int>{}, Range(5, Direction::DOWNTO, 8));
+TEST(TestVector, HashEmptyArraysWithDifferentBounds) {
+    std::hash<Vector<int>> h;
+    Vector<int> a({});
+    Vector<int> b(std::vector<int>{}, Range(5, Direction::DOWNTO, 8));
     EXPECT_EQ(a, b);
     EXPECT_EQ(h(a), h(b));
 }
 
-TEST(TestDynArray, HashSingleElementSameLeftDifferentDirection) {
-    std::hash<DynArray<int>> h;
-    DynArray<int> a({42});  // range: 0 TO 0
-    DynArray<int> b(std::vector<int>{42}, Range(0, Direction::DOWNTO, 0));
+TEST(TestVector, HashSingleElementSameLeftDifferentDirection) {
+    std::hash<Vector<int>> h;
+    Vector<int> a({42});  // range: 0 TO 0
+    Vector<int> b(std::vector<int>{42}, Range(0, Direction::DOWNTO, 0));
     EXPECT_EQ(a, b);
     EXPECT_EQ(h(a), h(b));
 }
 
-TEST(TestDynArray, MultiElementDifferentRangeNotEqual) {
-    DynArray<int> a({1, 2, 3});
-    DynArray<int> b(std::vector<int>{1, 2, 3}, Range(10, Direction::DOWNTO, 8));
+TEST(TestVector, MultiElementDifferentRangeNotEqual) {
+    Vector<int> a({1, 2, 3});
+    Vector<int> b(std::vector<int>{1, 2, 3}, Range(10, Direction::DOWNTO, 8));
     EXPECT_NE(a, b);
 }
 
-TEST(TestDynArray, UnorderedSetDistinguishesByRange) {
-    DynArray<int> a({1, 2, 3});
-    DynArray<int> b(std::vector<int>{1, 2, 3}, Range(10, Direction::DOWNTO, 8));
-    std::unordered_set<DynArray<int>> s;
+TEST(TestVector, UnorderedSetDistinguishesByRange) {
+    Vector<int> a({1, 2, 3});
+    Vector<int> b(std::vector<int>{1, 2, 3}, Range(10, Direction::DOWNTO, 8));
+    std::unordered_set<Vector<int>> s;
     s.insert(a);
     s.insert(b);
     EXPECT_EQ(s.size(), 2U);
 }
 
-TEST(TestDynArray, UnorderedSetDeduplicatesEmptyArrays) {
-    DynArray<int> a({});
-    DynArray<int> b(std::vector<int>{}, Range(5, Direction::DOWNTO, 8));
-    std::unordered_set<DynArray<int>> s;
+TEST(TestVector, UnorderedSetDeduplicatesEmptyArrays) {
+    Vector<int> a({});
+    Vector<int> b(std::vector<int>{}, Range(5, Direction::DOWNTO, 8));
+    std::unordered_set<Vector<int>> s;
     s.insert(a);
     s.insert(b);
     EXPECT_EQ(s.size(), 1U);
@@ -537,25 +536,25 @@ TEST(TestDynArray, UnorderedSetDeduplicatesEmptyArrays) {
 
 // -- Copy semantics ---------------------------------------------------------
 
-TEST(TestDynArray, Copy) {
-    DynArray<int> a(std::vector<int>{1, 2, 3, 4}, Range(-2, Direction::TO, 1));
-    DynArray<int> b = a;
+TEST(TestVector, Copy) {
+    Vector<int> a(std::vector<int>{1, 2, 3, 4}, Range(-2, Direction::TO, 1));
+    Vector<int> b = a;
     EXPECT_EQ(a, b);
     EXPECT_EQ(a.range(), b.range());
     b[0] = 99;
     EXPECT_EQ(a[0], 3);  // independent storage
 }
 
-TEST(TestDynArray, Move) {
-    DynArray<int> a({1, 2, 3, 4});
-    DynArray<int> b = std::move(a);
+TEST(TestVector, Move) {
+    Vector<int> a({1, 2, 3, 4});
+    Vector<int> b = std::move(a);
     EXPECT_EQ(b.range().length(), 4U);
     EXPECT_EQ(b[0], 1);
 }
 
-TEST(TestDynArray, CopyAssignReplacesRange) {
-    DynArray<int> a({1, 2, 3});  // range: 0 TO 2
-    DynArray<int> b(std::vector<int>{10, 20, 30, 40}, Range(7, Direction::DOWNTO, 4));
+TEST(TestVector, CopyAssignReplacesRange) {
+    Vector<int> a({1, 2, 3});  // range: 0 TO 2
+    Vector<int> b(std::vector<int>{10, 20, 30, 40}, Range(7, Direction::DOWNTO, 4));
     a = b;
     EXPECT_EQ(a, b);
     EXPECT_EQ(a.range(), Range(7, Direction::DOWNTO, 4));
@@ -563,9 +562,9 @@ TEST(TestDynArray, CopyAssignReplacesRange) {
     EXPECT_EQ(a[4], 40);
 }
 
-TEST(TestDynArray, MoveAssignReplacesRange) {
-    DynArray<int> a({1, 2, 3});
-    DynArray<int> b(std::vector<int>{10, 20, 30, 40}, Range(7, Direction::DOWNTO, 4));
+TEST(TestVector, MoveAssignReplacesRange) {
+    Vector<int> a({1, 2, 3});
+    Vector<int> b(std::vector<int>{10, 20, 30, 40}, Range(7, Direction::DOWNTO, 4));
     a = std::move(b);
     EXPECT_EQ(a.range(), Range(7, Direction::DOWNTO, 4));
     EXPECT_EQ(a[7], 10);
@@ -574,52 +573,52 @@ TEST(TestDynArray, MoveAssignReplacesRange) {
 
 // -- Formatter --------------------------------------------------------------
 
-TEST(TestDynArray, FormatterInt) {
-    DynArray<int> a({1, 2, 3});
+TEST(TestVector, FormatterInt) {
+    Vector<int> a({1, 2, 3});
     EXPECT_EQ(std::format("{}", a), "[0 to 2]{1, 2, 3}");
 }
 
-TEST(TestDynArray, FormatterEmpty) {
-    DynArray<int> a({});
+TEST(TestVector, FormatterEmpty) {
+    Vector<int> a({});
     EXPECT_EQ(std::format("{}", a), "[0 to -1]{}");
 }
 
-TEST(TestDynArray, FormatterLogic) {
-    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l});
+TEST(TestVector, FormatterLogic) {
+    Vector<Logic> a({'0'_l, '1'_l, 'X'_l});
     EXPECT_EQ(std::format("{}", a), "Logic[2 downto 0]{0, 1, X}");
 }
 
-TEST(TestDynArray, FormatterBit) {
-    DynArray<Bit> a({'0'_b, '1'_b, '0'_b, '1'_b});
+TEST(TestVector, FormatterBit) {
+    Vector<Bit> a({'0'_b, '1'_b, '0'_b, '1'_b});
     EXPECT_EQ(std::format("{}", a), "Bit[3 downto 0]{0, 1, 0, 1}");
 }
 
-TEST(TestDynArray, FormatterLogicSlice) {
-    DynArray<Logic> a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
+TEST(TestVector, FormatterLogicSlice) {
+    Vector<Logic> a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
     auto s = a[Range(2, 1)];
     EXPECT_EQ(std::format("{}", s), "Logic[2 downto 1]{1, X}");
 }
 
-TEST(TestDynArray, FormatterLogicConstSlice) {
-    DynArray<Logic> const a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
+TEST(TestVector, FormatterLogicConstSlice) {
+    Vector<Logic> const a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
     auto s = a[Range(2, 1)];
     EXPECT_EQ(std::format("{}", s), "Logic[2 downto 1]{1, X}");
 }
 
-TEST(TestDynArray, FormatterBitSlice) {
-    DynArray<Bit> a({'0'_b, '1'_b, '0'_b, '1'_b});
+TEST(TestVector, FormatterBitSlice) {
+    Vector<Bit> a({'0'_b, '1'_b, '0'_b, '1'_b});
     auto s = a[Range(2, 1)];
     EXPECT_EQ(std::format("{}", s), "Bit[2 downto 1]{1, 0}");
 }
 
-// -- Static slice of DynArray (compile-time-bounded view) -----------------
+// -- Static slice of Vector (compile-time-bounded view) -----------------
 
-TEST(TestDynArrayStaticSlice, SliceHappyPath) {
-    DynArray<int> a({10, 20, 30, 40, 50});
+TEST(TestVectorStaticSlice, SliceHappyPath) {
+    Vector<int> a({10, 20, 30, 40, 50});
     auto s = a.slice<Range{1, 3}>();
     static_assert(
-        std::is_same_v<decltype(s), ArraySlice<DynArray<int>, Range{1, 3}>>,
-        "DynArray::slice<R>() must return a static ArraySlice"
+        std::is_same_v<decltype(s), StaticArraySlice<Vector<int>, Range{1, 3}>>,
+        "Vector::slice<R>() must return a static StaticArraySlice"
     );
     static_assert(decltype(s)::static_range == Range{1, Direction::TO, 3});
     EXPECT_EQ(s.range().length(), 3U);
@@ -627,38 +626,38 @@ TEST(TestDynArrayStaticSlice, SliceHappyPath) {
     EXPECT_EQ(s[3], 40);
 }
 
-TEST(TestDynArrayStaticSlice, SliceMutatesUnderlying) {
-    DynArray<int> a({1, 2, 3, 4, 5});
+TEST(TestVectorStaticSlice, SliceMutatesUnderlying) {
+    Vector<int> a({1, 2, 3, 4, 5});
     auto s = a.slice<Range{1, 3}>();
     s[2] = 99;
     EXPECT_EQ(a[2], 99);
 }
 
-TEST(TestDynArrayStaticSlice, SliceAssignFromRange) {
-    DynArray<int> a({1, 2, 3, 4, 5});
+TEST(TestVectorStaticSlice, SliceAssignFromRange) {
+    Vector<int> a({1, 2, 3, 4, 5});
     auto s = a.slice<Range{1, 3}>();
     s = std::vector<int>{20, 30, 40};
     EXPECT_EQ(a[1], 20);
     EXPECT_EQ(a[3], 40);
 }
 
-TEST(TestDynArrayStaticSlice, SliceAssignFromInitializerList) {
-    DynArray<int> a({1, 2, 3, 4, 5});
+TEST(TestVectorStaticSlice, SliceAssignFromInitializerList) {
+    Vector<int> a({1, 2, 3, 4, 5});
     auto s = a.slice<Range{1, 3}>();
     s = {7, 8, 9};
     EXPECT_EQ(a[2], 8);
 }
 
-TEST(TestDynArrayStaticSlice, SliceAssignWrongLength) {
-    DynArray<int> a({1, 2, 3, 4, 5});
+TEST(TestVectorStaticSlice, SliceAssignWrongLength) {
+    Vector<int> a({1, 2, 3, 4, 5});
     auto s = a.slice<Range{1, 3}>();
     EXPECT_THROW((s = std::vector<int>{1, 2, 3, 4}), std::invalid_argument);
 }
 
-TEST(TestDynArrayStaticSlice, SliceAssignFromStaticRangedSequence) {
-    DynArray<int> a({1, 2, 3, 4, 5});
+TEST(TestVectorStaticSlice, SliceAssignFromStaticRangedSequence) {
+    Vector<int> a({1, 2, 3, 4, 5});
     auto s = a.slice<Range{1, 3}>();
-    DynArray<int> rhs_owner({70, 80, 90});
+    Vector<int> rhs_owner({70, 80, 90});
     auto rhs = rhs_owner.slice<Range{0, 2}>();  // static slice, length 3
     s = rhs;
     EXPECT_EQ(a[1], 70);
@@ -666,48 +665,48 @@ TEST(TestDynArrayStaticSlice, SliceAssignFromStaticRangedSequence) {
     EXPECT_EQ(a[3], 90);
 }
 
-TEST(TestDynArrayStaticSlice, SliceOutOfRangeRuntime) {
-    DynArray<int> a({1, 2, 3});
+TEST(TestVectorStaticSlice, SliceOutOfRangeRuntime) {
+    Vector<int> a({1, 2, 3});
     EXPECT_THROW((void)(a.slice<Range{99, 100}>()), std::invalid_argument);
 }
 
-TEST(TestDynArrayStaticSlice, SliceConstReturnsConstSlice) {
-    DynArray<int> const a({10, 20, 30, 40});
+TEST(TestVectorStaticSlice, SliceConstReturnsConstSlice) {
+    Vector<int> const a({10, 20, 30, 40});
     auto s = a.slice<Range{1, 2}>();
     static_assert(
-        std::is_same_v<decltype(s), ArraySlice<DynArray<int> const, Range{1, 2}>>
+        std::is_same_v<decltype(s), StaticArraySlice<Vector<int> const, Range{1, 2}>>
     );
     static_assert(std::is_same_v<decltype(s[1]), int const&>);
     EXPECT_EQ(s[1], 20);
     EXPECT_EQ(s[2], 30);
 }
 
-TEST(TestDynArrayStaticSlice, RuntimeSubSliceFlattensToDyn) {
-    DynArray<int> a({1, 2, 3, 4, 5, 6});
+TEST(TestVectorStaticSlice, RuntimeSubSliceFlattensToDyn) {
+    Vector<int> a({1, 2, 3, 4, 5, 6});
     auto s = a.slice<Range{1, 4}>();
     auto sub = s[Range{2, 3}];
     static_assert(
-        std::is_same_v<decltype(sub), DynArraySlice<DynArray<int>>>,
-        "runtime sub-slice of a static slice must flatten to DynArraySlice"
+        std::is_same_v<decltype(sub), ArraySlice<Vector<int>>>,
+        "runtime sub-slice of a static slice must flatten to ArraySlice"
     );
     EXPECT_EQ(sub[2], 3);
     EXPECT_EQ(sub[3], 4);
 }
 
-TEST(TestDynArrayStaticSlice, StaticSubSliceFlattensToSameOwner) {
-    DynArray<int> a({1, 2, 3, 4, 5, 6, 7, 8});
+TEST(TestVectorStaticSlice, StaticSubSliceFlattensToSameOwner) {
+    Vector<int> a({1, 2, 3, 4, 5, 6, 7, 8});
     auto s = a.slice<Range{1, 6}>();
     auto sub = s.slice<Range{2, 4}>();
     static_assert(
-        std::is_same_v<decltype(sub), ArraySlice<DynArray<int>, Range{2, 4}>>,
-        "static sub-slice flattens to ArraySlice<owner, R>, not nested slices"
+        std::is_same_v<decltype(sub), StaticArraySlice<Vector<int>, Range{2, 4}>>,
+        "static sub-slice flattens to StaticArraySlice<owner, R>, not nested slices"
     );
     EXPECT_EQ(sub[2], 3);
     EXPECT_EQ(sub[4], 5);
 }
 
-TEST(TestDynArrayStaticSlice, NullSliceBoundsOutsideParentOK) {
-    DynArray<int> a({1, 2, 3, 4, 5});
+TEST(TestVectorStaticSlice, NullSliceBoundsOutsideParentOK) {
+    Vector<int> a({1, 2, 3, 4, 5});
     auto s = a.slice<Range{99, Direction::TO, 50}>();
     EXPECT_EQ(s.range().length(), 0U);
     EXPECT_EQ(s.begin(), s.end());
@@ -795,41 +794,41 @@ TEST(TestArray, StaticFromForeignStaticRange) {
     EXPECT_EQ(dst[3], 300);
 }
 
-// -- DynArraySlice::slice<R> (runtime parent, static sub-slice) ------------
+// -- ArraySlice::slice<R> (runtime parent, static sub-slice) ------------
 
-TEST(TestDynArraySlice, StaticSliceFlattensToOwner) {
-    DynArray<int> a({10, 20, 30, 40, 50, 60});
+TEST(TestVectorSlice, StaticSliceFlattensToOwner) {
+    Vector<int> a({10, 20, 30, 40, 50, 60});
     auto dyn = a[{1, 4}];
     auto s = dyn.slice<Range{2, 3}>();
     static_assert(
-        std::is_same_v<decltype(s), ArraySlice<DynArray<int>, Range{2, 3}>>,
-        "static sub-slice of DynArraySlice flattens to ArraySlice<owner, R>"
+        std::is_same_v<decltype(s), StaticArraySlice<Vector<int>, Range{2, 3}>>,
+        "static sub-slice of ArraySlice flattens to StaticArraySlice<owner, R>"
     );
     EXPECT_EQ(s.range().length(), 2U);
     EXPECT_EQ(s[2], 30);
     EXPECT_EQ(s[3], 40);
 }
 
-TEST(TestDynArraySlice, StaticSliceMutatesUnderlying) {
-    DynArray<int> a({1, 2, 3, 4, 5});
+TEST(TestVectorSlice, StaticSliceMutatesUnderlying) {
+    Vector<int> a({1, 2, 3, 4, 5});
     auto dyn = a[{1, 4}];
     auto s = dyn.slice<Range{2, 3}>();
     s[2] = 99;
     EXPECT_EQ(a[2], 99);
 }
 
-TEST(TestDynArraySlice, StaticSliceOutOfRangeRuntime) {
-    DynArray<int> a({1, 2, 3, 4, 5});
+TEST(TestVectorSlice, StaticSliceOutOfRangeRuntime) {
+    Vector<int> a({1, 2, 3, 4, 5});
     auto dyn = a[{1, 3}];
     EXPECT_THROW((void)(dyn.slice<Range{99, 100}>()), std::invalid_argument);
 }
 
-TEST(TestDynArraySlice, StaticSliceConstReturnsConstSlice) {
-    DynArray<int> const a({10, 20, 30, 40, 50});
+TEST(TestVectorSlice, StaticSliceConstReturnsConstSlice) {
+    Vector<int> const a({10, 20, 30, 40, 50});
     auto dyn = a[{1, 4}];
     auto s = dyn.slice<Range{2, 3}>();
     static_assert(
-        std::is_same_v<decltype(s), ArraySlice<DynArray<int> const, Range{2, 3}>>
+        std::is_same_v<decltype(s), StaticArraySlice<Vector<int> const, Range{2, 3}>>
     );
     static_assert(std::is_same_v<decltype(s[2]), int const&>);
     EXPECT_EQ(s[2], 30);
@@ -840,33 +839,33 @@ TEST(TestDynArraySlice, StaticSliceConstReturnsConstSlice) {
 //
 // C++23 (P2128) introduces `arr[a, b]` as a true multi-argument subscript
 // (pre-C++23 the comma is a comma-expression, so `arr[a, b]` is `arr[b]`).
-// Array/DynArray/ArraySlice/DynArraySlice provide multi-subscript overloads
+// Array/Vector/StaticArraySlice/ArraySlice provide multi-subscript overloads
 // that build a Range from the arguments. Without these tests, breakage in
 // the C++23-gated overloads would only surface when downstream code compiles
 // against C++23 -- the C++20 build can't catch it.
 #if __cplusplus >= 202302L
 
-TEST(TestCxx23MultiSubscript, DynArraySliceImplicitDirection) {
-    DynArray<int> a({1, 2, 3, 4, 5});
+TEST(TestCxx23MultiSubscript, VectorSliceImplicitDirection) {
+    Vector<int> a({1, 2, 3, 4, 5});
     auto s = a[1, 4];  // implicit direction (auto-detected by Range(l, r))
     EXPECT_EQ(s.range(), Range(1, Direction::TO, 4));
     EXPECT_EQ(s[1], 2);
     EXPECT_EQ(s[4], 5);
 }
 
-TEST(TestCxx23MultiSubscript, DynArraySliceExplicitDirection) {
-    DynArray<int> a(std::vector<int>{1, 2, 3, 4, 5}, Range(4, Direction::DOWNTO, 0));
+TEST(TestCxx23MultiSubscript, VectorSliceExplicitDirection) {
+    Vector<int> a(std::vector<int>{1, 2, 3, 4, 5}, Range(4, Direction::DOWNTO, 0));
     auto s = a[3, Direction::DOWNTO, 1];
     EXPECT_EQ(s.range(), Range(3, Direction::DOWNTO, 1));
 }
 
-TEST(TestCxx23MultiSubscript, DynArrayConstSlice) {
+TEST(TestCxx23MultiSubscript, VectorConstSlice) {
     // Exercises the const overload of multi-subscript (regression: it was
     // missing the `const` qualifier in an earlier revision, so const objects
     // couldn't call it).
-    DynArray<int> const a({1, 2, 3, 4, 5});
+    Vector<int> const a({1, 2, 3, 4, 5});
     auto s = a[1, 3];
-    static_assert(std::is_same_v<decltype(s), DynArraySlice<DynArray<int> const>>);
+    static_assert(std::is_same_v<decltype(s), ArraySlice<Vector<int> const>>);
     EXPECT_EQ(s[2], 3);
 }
 
@@ -878,8 +877,8 @@ TEST(TestCxx23MultiSubscript, StaticArraySlice) {
     EXPECT_EQ(s[3], 40);
 }
 
-TEST(TestCxx23MultiSubscript, DynArraySliceSubSlice) {
-    DynArray<int> a({1, 2, 3, 4, 5, 6});
+TEST(TestCxx23MultiSubscript, VectorSliceSubSlice) {
+    Vector<int> a({1, 2, 3, 4, 5, 6});
     auto dyn = a[0, 5];
     auto sub = dyn[1, 4];
     EXPECT_EQ(sub.range(), Range(1, Direction::TO, 4));
@@ -887,7 +886,7 @@ TEST(TestCxx23MultiSubscript, DynArraySliceSubSlice) {
 }
 
 TEST(TestCxx23MultiSubscript, ArraySliceSubSlice) {
-    // ArraySliceImpl's multi-subscript was the one that referenced range_
+    // StaticArraySliceImpl's multi-subscript was the one that referenced range_
     // (which doesn't exist on static slices) instead of R.direction.
     Array<int, Range{0, Direction::TO, 4}> a({10, 20, 30, 40, 50});
     auto stat = a.slice<Range{1, 3}>();
@@ -896,16 +895,16 @@ TEST(TestCxx23MultiSubscript, ArraySliceSubSlice) {
     EXPECT_EQ(sub[1], 20);
 }
 
-// -- Constexpr DynArray (C++23 P2273 constexpr unique_ptr) -----------------
+// -- Constexpr Vector (C++23 P2273 constexpr unique_ptr) -----------------
 //
-// COCONEXT_DYN_ARRAY_CONSTEXPR expands to `constexpr` under C++23 and to
-// nothing under C++20. Under C++23 the DynArray ctors / operator[] / range()
+// COCONEXT_VECTOR_CONSTEXPR expands to `constexpr` under C++23 and to
+// nothing under C++20. Under C++23 the Vector ctors / operator[] / range()
 // should be evaluable in a constant-expression context. Without a test that
 // actually constant-evaluates one, a regression that makes the body non-
 // constexpr would silently downgrade the C++23 build without anyone noticing.
 
-constexpr int constexpr_dyn_array_sum() {
-    DynArray<int> a({10, 20, 30, 40});
+constexpr int constexpr_vector_sum() {
+    Vector<int> a({10, 20, 30, 40});
     int sum = 0;
     for (auto v : a) {
         sum += v;
@@ -913,40 +912,40 @@ constexpr int constexpr_dyn_array_sum() {
     return sum;
 }
 
-constexpr Range constexpr_dyn_array_range() {
-    DynArray<int> a(Range(5, Direction::DOWNTO, 0));
+constexpr Range constexpr_vector_range() {
+    Vector<int> a(Range(5, Direction::DOWNTO, 0));
     return a.range();
 }
 
-constexpr int constexpr_dyn_array_indexing() {
-    DynArray<int> a({100, 200, 300});
+constexpr int constexpr_vector_indexing() {
+    Vector<int> a({100, 200, 300});
     return a[1];
 }
 
-static_assert(constexpr_dyn_array_sum() == 100);
-static_assert(constexpr_dyn_array_range() == Range(5, Direction::DOWNTO, 0));
-static_assert(constexpr_dyn_array_indexing() == 200);
+static_assert(constexpr_vector_sum() == 100);
+static_assert(constexpr_vector_range() == Range(5, Direction::DOWNTO, 0));
+static_assert(constexpr_vector_indexing() == 200);
 
 #endif
 
 // -- RangedSequence element-type constraint --------------------------------
 
 // One-arg form (default `Elem = void`) matches any element type.
-static_assert(RangedSequence<DynArray<int>>);
-static_assert(RangedSequence<DynArray<float>>);
+static_assert(RangedSequence<Vector<int>>);
+static_assert(RangedSequence<Vector<float>>);
 static_assert(!RangedSequence<int>);
 
 // Two-arg form pins the element type. Concrete types only -- concepts can't be
 // passed as template arguments in C++20.
-static_assert(RangedSequence<DynArray<int>, int>);
-static_assert(!RangedSequence<DynArray<int>, float>);
-static_assert(RangedSequence<DynArray<float>, float>);
+static_assert(RangedSequence<Vector<int>, int>);
+static_assert(!RangedSequence<Vector<int>, float>);
+static_assert(RangedSequence<Vector<float>, float>);
 
 // StaticRangedSequence picks up the same defaulted parameter.
 static_assert(StaticRangedSequence<Array<int, Range{0, Direction::TO, 3}>>);
 static_assert(StaticRangedSequence<Array<int, Range{0, Direction::TO, 3}>, int>);
 static_assert(!StaticRangedSequence<Array<int, Range{0, Direction::TO, 3}>, float>);
-static_assert(!StaticRangedSequence<DynArray<int>>);
-static_assert(!StaticRangedSequence<DynArray<int>, int>);
+static_assert(!StaticRangedSequence<Vector<int>>);
+static_assert(!StaticRangedSequence<Vector<int>, int>);
 
 // LCOV_EXCL_BR_STOP

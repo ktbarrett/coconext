@@ -77,7 +77,7 @@ class ArrayImpl {
 
     // The range, exposed two ways: `static_range` for type-level access
     // (`T::static_range`, used by the StaticRangedSequence concept), and a
-    // plain constexpr `range()` member matching DynArray's instance accessor
+    // plain constexpr `range()` member matching Vector's instance accessor
     // so generic code can write `obj.range()` uniformly across both.
     static constexpr Range static_range = R;
     constexpr Range range() const noexcept { return static_range; }
@@ -93,31 +93,31 @@ class ArrayImpl {
     // it, so static_cast safely lands on the most-derived type at every
     // instantiation -- and routes through the Logic/Bit slice partial spec
     // when applicable.
-    constexpr DynArraySlice<Array<T, R>> operator[](Range r) {
+    constexpr ArraySlice<Array<T, R>> operator[](Range r) {
         detail::subsequence_check(R, r);
-        return DynArraySlice<Array<T, R>>(static_cast<Array<T, R>*>(this), r);
+        return ArraySlice<Array<T, R>>(static_cast<Array<T, R>*>(this), r);
     }
-    constexpr DynArraySlice<Array<T, R> const> operator[](Range r) const {
+    constexpr ArraySlice<Array<T, R> const> operator[](Range r) const {
         detail::subsequence_check(R, r);
-        return DynArraySlice<Array<T, R> const>(static_cast<Array<T, R> const*>(this), r);
+        return ArraySlice<Array<T, R> const>(static_cast<Array<T, R> const*>(this), r);
     }
 #if __cplusplus >= 202302L
-    constexpr DynArraySlice<Array<T, R>> operator[](
+    constexpr ArraySlice<Array<T, R>> operator[](
         Range::value_type left, Range::value_type right
     ) {
         return (*this)[Range{left, R.direction, right}];
     }
-    constexpr DynArraySlice<Array<T, R>> operator[](
+    constexpr ArraySlice<Array<T, R>> operator[](
         Range::value_type left, Direction dir, Range::value_type right
     ) {
         return (*this)[Range{left, dir, right}];
     }
-    constexpr DynArraySlice<Array<T, R> const> operator[](
+    constexpr ArraySlice<Array<T, R> const> operator[](
         Range::value_type left, Range::value_type right
     ) const {
         return (*this)[Range{left, R.direction, right}];
     }
-    constexpr DynArraySlice<Array<T, R> const> operator[](
+    constexpr ArraySlice<Array<T, R> const> operator[](
         Range::value_type left, Direction dir, Range::value_type right
     ) const {
         return (*this)[Range{left, dir, right}];
@@ -125,20 +125,22 @@ class ArrayImpl {
 #endif
 
     template <Range R2>
-    constexpr ArraySlice<Array<T, R>, R2> slice() {
+    constexpr StaticArraySlice<Array<T, R>, R2> slice() {
         static_assert(
             R2.is_subsequence_of(R),
             "static sub-slice range is not a sub-range of the parent Array"
         );
-        return ArraySlice<Array<T, R>, R2>(static_cast<Array<T, R>*>(this));
+        return StaticArraySlice<Array<T, R>, R2>(static_cast<Array<T, R>*>(this));
     }
     template <Range R2>
-    constexpr ArraySlice<Array<T, R> const, R2> slice() const {
+    constexpr StaticArraySlice<Array<T, R> const, R2> slice() const {
         static_assert(
             R2.is_subsequence_of(R),
             "static sub-slice range is not a sub-range of the parent Array"
         );
-        return ArraySlice<Array<T, R> const, R2>(static_cast<Array<T, R> const*>(this));
+        return StaticArraySlice<Array<T, R> const, R2>(
+            static_cast<Array<T, R> const*>(this)
+        );
     }
 
     constexpr iterator begin() noexcept { return data_.begin(); }
@@ -199,32 +201,27 @@ struct is_array<Array<T, R>> : std::true_type {};
 
 static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}>>);
 static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}> const>);
-static_assert(RangedSequence<DynArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
-static_assert(RangedSequence<DynArraySlice<Array<int, Range{0, Direction::TO, 7}> const>>);
-static_assert(
-    RangedSequence<
-        ArraySlice<Array<int, Range{0, Direction::TO, 7}>, Range{1, Direction::TO, 3}>>
-);
-static_assert(RangedSequence<ArraySlice<
+static_assert(RangedSequence<ArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
+static_assert(RangedSequence<ArraySlice<Array<int, Range{0, Direction::TO, 7}> const>>);
+static_assert(RangedSequence<StaticArraySlice<
+                  Array<int, Range{0, Direction::TO, 7}>,
+                  Range{1, Direction::TO, 3}>>);
+static_assert(RangedSequence<StaticArraySlice<
                   Array<int, Range{0, Direction::TO, 7}> const,
                   Range{1, Direction::TO, 3}>>);
 
 static_assert(StaticRangedSequence<Array<int, Range{0, Direction::TO, 7}>>);
 static_assert(StaticRangedSequence<Array<int, Range{0, Direction::TO, 7}> const>);
-static_assert(!StaticRangedSequence<DynArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
-static_assert(
-    StaticRangedSequence<
-        ArraySlice<Array<int, Range{0, Direction::TO, 7}>, Range{1, Direction::TO, 3}>>
-);
+static_assert(!StaticRangedSequence<ArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
+static_assert(StaticRangedSequence<StaticArraySlice<
+                  Array<int, Range{0, Direction::TO, 7}>,
+                  Range{1, Direction::TO, 3}>>);
 
 static_assert(std::ranges::sized_range<Array<int, Range{0, Direction::TO, 7}>>);
-static_assert(
-    std::ranges::sized_range<DynArraySlice<Array<int, Range{0, Direction::TO, 7}>>>
-);
-static_assert(
-    std::ranges::sized_range<
-        ArraySlice<Array<int, Range{0, Direction::TO, 7}>, Range{1, Direction::TO, 3}>>
-);
+static_assert(std::ranges::sized_range<ArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
+static_assert(std::ranges::sized_range<StaticArraySlice<
+                  Array<int, Range{0, Direction::TO, 7}>,
+                  Range{1, Direction::TO, 3}>>);
 
 template <auto V>
 constexpr bool fits_range_value_type =
