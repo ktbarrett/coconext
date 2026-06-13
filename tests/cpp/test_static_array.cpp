@@ -123,7 +123,7 @@ TEST(TestStaticArray, IndexingConst) {
     static_assert(std::is_same_v<decltype(a[0]), int const&>);
 }
 
-// -- Slicing (runtime, returns DynArraySlice) ------------------------------
+// -- Slicing (runtime, returns ArraySlice) ------------------------------
 
 TEST(TestStaticArray, SliceTO) {
     Array<int, Range{0, Direction::TO, 4}> a({1, 2, 3, 4, 5});
@@ -308,8 +308,8 @@ TEST(TestStaticArrayStaticSlice, SliceHappyPath) {
     auto s = a.slice<Range{1, 3}>();
     using AT = Array<int, Range{0, Direction::TO, 4}>;
     static_assert(
-        std::is_same_v<decltype(s), ArraySlice<AT, Range{1, 3}>>,
-        "Array::slice<R>() must return ArraySlice<Array, R>"
+        std::is_same_v<decltype(s), StaticArraySlice<AT, Range{1, 3}>>,
+        "Array::slice<R>() must return StaticArraySlice<Array, R>"
     );
     static_assert(decltype(s)::static_range == Range{1, Direction::TO, 3});
     EXPECT_EQ(s.range().length(), 3U);
@@ -343,7 +343,7 @@ TEST(TestStaticArrayStaticSlice, SliceConstReturnsConstSlice) {
     Array<int, Range{0, Direction::TO, 3}> const a({10, 20, 30, 40});
     auto s = a.slice<Range{1, 2}>();
     using AT = Array<int, Range{0, Direction::TO, 3}>;
-    static_assert(std::is_same_v<decltype(s), ArraySlice<AT const, Range{1, 2}>>);
+    static_assert(std::is_same_v<decltype(s), StaticArraySlice<AT const, Range{1, 2}>>);
     static_assert(std::is_same_v<decltype(s[1]), int const&>);
     EXPECT_EQ(s[1], 20);
     EXPECT_EQ(s[2], 30);
@@ -362,8 +362,8 @@ TEST(TestStaticArrayStaticSlice, RuntimeSubSliceFlattensToDyn) {
     auto sub = s[Range{2, 3}];
     using AT = Array<int, Range{0, Direction::TO, 5}>;
     static_assert(
-        std::is_same_v<decltype(sub), DynArraySlice<AT>>,
-        "runtime sub-slice of a static slice must flatten to DynArraySlice"
+        std::is_same_v<decltype(sub), ArraySlice<AT>>,
+        "runtime sub-slice of a static slice must flatten to ArraySlice"
     );
     EXPECT_EQ(sub[2], 3);
     EXPECT_EQ(sub[3], 4);
@@ -375,8 +375,8 @@ TEST(TestStaticArrayStaticSlice, StaticSubSliceFlattensToSameOwner) {
     auto sub = s.slice<Range{2, 4}>();
     using AT = Array<int, Range{0, Direction::TO, 7}>;
     static_assert(
-        std::is_same_v<decltype(sub), ArraySlice<AT, Range{2, 4}>>,
-        "static sub-slice flattens to ArraySlice<owner, R2>, not nested"
+        std::is_same_v<decltype(sub), StaticArraySlice<AT, Range{2, 4}>>,
+        "static sub-slice flattens to StaticArraySlice<owner, R2>, not nested"
     );
     EXPECT_EQ(sub[2], 3);
     EXPECT_EQ(sub[4], 5);
@@ -391,7 +391,7 @@ TEST(TestStaticArrayStaticSlice, NullSliceBoundsOutsideParentOK) {
     EXPECT_EQ(s.begin(), s.end());
 }
 
-// Exercises the DOWNTO branch of ArraySlice::begin()'s static-parent fast
+// Exercises the DOWNTO branch of StaticArraySlice::begin()'s static-parent fast
 // path. The TO branch is covered by the other tests in this suite.
 TEST(TestStaticArrayStaticSlice, SliceDOWNTOParent) {
     Array<int, Range{10, Direction::DOWNTO, 6}> a({1, 2, 3, 4, 5});
@@ -404,7 +404,7 @@ TEST(TestStaticArrayStaticSlice, SliceDOWNTOParent) {
     EXPECT_EQ(a[8], 99);
 }
 
-// -- DynArraySlice::slice<R> over a static Array ---------------------------
+// -- ArraySlice::slice<R> over a static Array ---------------------------
 
 TEST(TestStaticArray, DynSliceStaticSubSliceFlattens) {
     Array<int, Range{0, Direction::TO, 5}> a({10, 20, 30, 40, 50, 60});
@@ -412,9 +412,9 @@ TEST(TestStaticArray, DynSliceStaticSubSliceFlattens) {
     auto s = dyn.slice<Range{2, 3}>();
     using AT = Array<int, Range{0, Direction::TO, 5}>;
     static_assert(
-        std::is_same_v<decltype(s), ArraySlice<AT, Range{2, 3}>>,
-        "static sub-slice of a DynArraySlice over a static Array flattens to "
-        "ArraySlice<owner, R>"
+        std::is_same_v<decltype(s), StaticArraySlice<AT, Range{2, 3}>>,
+        "static sub-slice of a ArraySlice over a static Array flattens to "
+        "StaticArraySlice<owner, R>"
     );
     EXPECT_EQ(s[2], 30);
     EXPECT_EQ(s[3], 40);

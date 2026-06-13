@@ -1,5 +1,5 @@
-#ifndef COCONEXT_DYN_ARRAY_HPP
-#define COCONEXT_DYN_ARRAY_HPP
+#ifndef COCONEXT_VECTOR_HPP
+#define COCONEXT_VECTOR_HPP
 
 #include <algorithm>
 #include <coconext/types/array_base.hpp>
@@ -18,26 +18,26 @@
 #include <type_traits>
 
 // std::unique_ptr's constexpr support landed in C++23 (P2273R3); under C++20
-// the constexpr keyword on DynArray's members is still legal but evaluating
+// the constexpr keyword on Vector's members is still legal but evaluating
 // those members in a constant expression fails. Gate accordingly.
 #if __cplusplus >= 202302L
-#define COCONEXT_DYN_ARRAY_CONSTEXPR constexpr
+#define COCONEXT_VECTOR_CONSTEXPR constexpr
 #else
-#define COCONEXT_DYN_ARRAY_CONSTEXPR
+#define COCONEXT_VECTOR_CONSTEXPR
 #endif
 
 namespace coconext::types {
 
 template <typename ValueT>
-class DynArray;
+class Vector;
 
 namespace detail {
 
 template <typename ValueT>
 
-// The actual DynArray implementation. Separated out so it can be reused for the
-// DynLogicArray specialization.
-class DynArrayImpl {
+// The actual Vector implementation. Separated out so it can be reused for the
+// LogicVector specialization.
+class VectorImpl {
   public:
     using value_type = ValueT;
     static_assert(!std::is_reference_v<value_type>);
@@ -48,17 +48,17 @@ class DynArrayImpl {
     using iterator = value_type*;
     using const_iterator = value_type const*;
 
-    constexpr DynArrayImpl() = delete;  // no default constructor
+    constexpr VectorImpl() = delete;  // no default constructor
 
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArrayImpl(DynArrayImpl&& other) noexcept = default;
+    COCONEXT_VECTOR_CONSTEXPR VectorImpl(VectorImpl&& other) noexcept = default;
 
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArrayImpl(DynArrayImpl const& other)
+    COCONEXT_VECTOR_CONSTEXPR VectorImpl(VectorImpl const& other)
         : data_(std::make_unique_for_overwrite<value_type[]>(other.range_.length())),
           range_(other.range_) {
         std::ranges::copy(other, data_.get());
     }
 
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArrayImpl& operator=(DynArrayImpl const& other) {
+    COCONEXT_VECTOR_CONSTEXPR VectorImpl& operator=(VectorImpl const& other) {
         if (this != &other) {
             auto buf = std::make_unique_for_overwrite<value_type[]>(other.range_.length());
             std::ranges::copy(other, buf.get());
@@ -68,7 +68,7 @@ class DynArrayImpl {
         return *this;
     }
 
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArrayImpl& operator=(DynArrayImpl&& other) noexcept {
+    COCONEXT_VECTOR_CONSTEXPR VectorImpl& operator=(VectorImpl&& other) noexcept {
         if (this != &other) {
             data_ = std::move(other.data_);
             range_ = other.range_;
@@ -76,16 +76,16 @@ class DynArrayImpl {
         return *this;
     }
 
-    explicit COCONEXT_DYN_ARRAY_CONSTEXPR DynArrayImpl(Range range)
+    explicit COCONEXT_VECTOR_CONSTEXPR VectorImpl(Range range)
         : data_(std::make_unique<value_type[]>(range.length())), range_(range) {}
 
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArrayImpl(std::initializer_list<value_type> init)
+    COCONEXT_VECTOR_CONSTEXPR VectorImpl(std::initializer_list<value_type> init)
         : data_(std::make_unique_for_overwrite<value_type[]>(init.size())),
           range_(init.size()) {
         std::ranges::copy(init, data_.get());
     }
 
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArrayImpl(
+    COCONEXT_VECTOR_CONSTEXPR VectorImpl(
         std::initializer_list<value_type> init, Range range
     )
         : range_(range) {
@@ -101,8 +101,8 @@ class DynArrayImpl {
 
     template <std::ranges::sized_range R>
         requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
-                  && (!std::derived_from<std::remove_cvref_t<R>, DynArrayImpl>)
-    explicit COCONEXT_DYN_ARRAY_CONSTEXPR DynArrayImpl(R const& obj)
+                  && (!std::derived_from<std::remove_cvref_t<R>, VectorImpl>)
+    explicit COCONEXT_VECTOR_CONSTEXPR VectorImpl(R const& obj)
         : data_(std::make_unique_for_overwrite<value_type[]>(std::ranges::size(obj))),
           range_(std::ranges::size(obj)) {
         std::ranges::copy(obj, data_.get());
@@ -110,7 +110,7 @@ class DynArrayImpl {
 
     template <std::ranges::sized_range R>
         requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArrayImpl(R const& obj, Range range) : range_(range) {
+    COCONEXT_VECTOR_CONSTEXPR VectorImpl(R const& obj, Range range) : range_(range) {
         if (std::ranges::size(obj) != range.length()) {
             throw std::invalid_argument(
                 "Input of size " + std::to_string(std::ranges::size(obj))
@@ -124,46 +124,44 @@ class DynArrayImpl {
     constexpr Range const& range() const noexcept { return range_; }
     constexpr size_t size() const noexcept { return range_.length(); }
 
-    COCONEXT_DYN_ARRAY_CONSTEXPR reference operator[](index_type idx) {
+    COCONEXT_VECTOR_CONSTEXPR reference operator[](index_type idx) {
         return access_(*this, idx);
     }
-    COCONEXT_DYN_ARRAY_CONSTEXPR const_reference operator[](index_type idx) const {
+    COCONEXT_VECTOR_CONSTEXPR const_reference operator[](index_type idx) const {
         return access_(*this, idx);
     }
 
-    // Slices route through the outer `DynArray<ValueT>` (or const variant)
+    // Slices route through the outer `Vector<ValueT>` (or const variant)
     // so they pick up the Logic/Bit slice spec when applicable.
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArraySlice<DynArray<ValueT>> operator[](Range r) {
+    COCONEXT_VECTOR_CONSTEXPR ArraySlice<Vector<ValueT>> operator[](Range r) {
         detail::subsequence_check(range_, r);
-        return DynArraySlice<DynArray<ValueT>>(static_cast<DynArray<ValueT>*>(this), r);
+        return ArraySlice<Vector<ValueT>>(static_cast<Vector<ValueT>*>(this), r);
     }
 #if __cplusplus >= 202302L
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArraySlice<DynArray<ValueT>> operator[](
+    COCONEXT_VECTOR_CONSTEXPR ArraySlice<Vector<ValueT>> operator[](
         Range::value_type left, Range::value_type right
     ) {
         return operator[](Range{left, right});
     }
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArraySlice<DynArray<ValueT>> operator[](
+    COCONEXT_VECTOR_CONSTEXPR ArraySlice<Vector<ValueT>> operator[](
         Range::value_type left, Direction dir, Range::value_type right
     ) {
         return operator[](Range{left, dir, right});
     }
 #endif
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArraySlice<DynArray<ValueT> const> operator[](
-        Range r
-    ) const {
+    COCONEXT_VECTOR_CONSTEXPR ArraySlice<Vector<ValueT> const> operator[](Range r) const {
         detail::subsequence_check(range_, r);
-        return DynArraySlice<DynArray<ValueT> const>(
-            static_cast<DynArray<ValueT> const*>(this), r
+        return ArraySlice<Vector<ValueT> const>(
+            static_cast<Vector<ValueT> const*>(this), r
         );
     }
 #if __cplusplus >= 202302L
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArraySlice<DynArray<ValueT> const> operator[](
+    COCONEXT_VECTOR_CONSTEXPR ArraySlice<Vector<ValueT> const> operator[](
         Range::value_type left, Range::value_type right
     ) const {
         return operator[](Range{left, right});
     }
-    COCONEXT_DYN_ARRAY_CONSTEXPR DynArraySlice<DynArray<ValueT> const> operator[](
+    COCONEXT_VECTOR_CONSTEXPR ArraySlice<Vector<ValueT> const> operator[](
         Range::value_type left, Direction dir, Range::value_type right
     ) const {
         return operator[](Range{left, dir, right});
@@ -171,55 +169,49 @@ class DynArrayImpl {
 #endif
 
     template <Range R>
-    COCONEXT_DYN_ARRAY_CONSTEXPR ArraySlice<DynArray<ValueT>, R> slice() {
+    COCONEXT_VECTOR_CONSTEXPR StaticArraySlice<Vector<ValueT>, R> slice() {
         detail::subsequence_check(range_, R);
-        return ArraySlice<DynArray<ValueT>, R>(static_cast<DynArray<ValueT>*>(this));
+        return StaticArraySlice<Vector<ValueT>, R>(static_cast<Vector<ValueT>*>(this));
     }
     template <Range R>
-    COCONEXT_DYN_ARRAY_CONSTEXPR ArraySlice<DynArray<ValueT> const, R> slice() const {
+    COCONEXT_VECTOR_CONSTEXPR StaticArraySlice<Vector<ValueT> const, R> slice() const {
         detail::subsequence_check(range_, R);
-        return ArraySlice<DynArray<ValueT> const, R>(
-            static_cast<DynArray<ValueT> const*>(this)
+        return StaticArraySlice<Vector<ValueT> const, R>(
+            static_cast<Vector<ValueT> const*>(this)
         );
     }
 
-    COCONEXT_DYN_ARRAY_CONSTEXPR iterator begin() noexcept { return data_.get(); }
-    COCONEXT_DYN_ARRAY_CONSTEXPR const_iterator begin() const noexcept {
-        return data_.get();
-    }
-    COCONEXT_DYN_ARRAY_CONSTEXPR iterator end() noexcept {
+    COCONEXT_VECTOR_CONSTEXPR iterator begin() noexcept { return data_.get(); }
+    COCONEXT_VECTOR_CONSTEXPR const_iterator begin() const noexcept { return data_.get(); }
+    COCONEXT_VECTOR_CONSTEXPR iterator end() noexcept {
         return data_.get() + range_.length();
     }
-    COCONEXT_DYN_ARRAY_CONSTEXPR const_iterator end() const noexcept {
+    COCONEXT_VECTOR_CONSTEXPR const_iterator end() const noexcept {
         return data_.get() + range_.length();
     }
-    COCONEXT_DYN_ARRAY_CONSTEXPR auto rbegin() noexcept {
+    COCONEXT_VECTOR_CONSTEXPR auto rbegin() noexcept {
         return std::reverse_iterator(end());
     }
-    COCONEXT_DYN_ARRAY_CONSTEXPR auto rbegin() const noexcept {
+    COCONEXT_VECTOR_CONSTEXPR auto rbegin() const noexcept {
         return std::reverse_iterator(end());
     }
-    COCONEXT_DYN_ARRAY_CONSTEXPR auto rend() noexcept {
+    COCONEXT_VECTOR_CONSTEXPR auto rend() noexcept {
         return std::reverse_iterator(begin());
     }
-    COCONEXT_DYN_ARRAY_CONSTEXPR auto rend() const noexcept {
+    COCONEXT_VECTOR_CONSTEXPR auto rend() const noexcept {
         return std::reverse_iterator(begin());
     }
 
-    COCONEXT_DYN_ARRAY_CONSTEXPR std::optional<index_type> index(
-        value_type const& v
-    ) const {
+    COCONEXT_VECTOR_CONSTEXPR std::optional<index_type> index(value_type const& v) const {
         return detail::index_in(*this, v);
     }
-    COCONEXT_DYN_ARRAY_CONSTEXPR std::optional<index_type> rindex(
-        value_type const& v
-    ) const {
+    COCONEXT_VECTOR_CONSTEXPR std::optional<index_type> rindex(value_type const& v) const {
         return detail::rindex_in(*this, v);
     }
 
   private:
     template <typename Self>
-    static COCONEXT_DYN_ARRAY_CONSTEXPR auto& access_(Self& self, index_type idx) {
+    static COCONEXT_VECTOR_CONSTEXPR auto& access_(Self& self, index_type idx) {
         auto it = find(self.range_, idx);
         if (it == self.range_.end()) {
             throw std::out_of_range("Index out of bounds");
@@ -235,17 +227,15 @@ class DynArrayImpl {
 
 // Heap-allocated, runtime-bounded array indexed according to its Range.
 template <typename ValueT>
-class DynArray : public detail::DynArrayImpl<ValueT> {
+class Vector : public detail::VectorImpl<ValueT> {
   public:
-    using detail::DynArrayImpl<ValueT>::DynArrayImpl;
-    using detail::DynArrayImpl<ValueT>::operator=;
+    using detail::VectorImpl<ValueT>::VectorImpl;
+    using detail::VectorImpl<ValueT>::operator=;
 };
 
 template <typename ValueT>
     requires std::equality_comparable<ValueT>
-constexpr bool operator==(
-    DynArray<ValueT> const& lhs, DynArray<ValueT> const& rhs
-) noexcept {
+constexpr bool operator==(Vector<ValueT> const& lhs, Vector<ValueT> const& rhs) noexcept {
     if (lhs.range() != rhs.range()) {
         return false;
     }
@@ -261,32 +251,36 @@ namespace detail {
 
 // Opt into array-specific features such as formatting.
 template <typename T>
-struct is_array<DynArray<T>> : std::true_type {};
+struct is_array<Vector<T>> : std::true_type {};
 
 }  // namespace detail
 
-static_assert(RangedSequence<DynArray<int>>);
-static_assert(RangedSequence<DynArray<int> const>);
-static_assert(RangedSequence<DynArraySlice<DynArray<int>>>);
-static_assert(RangedSequence<DynArraySlice<DynArray<int> const>>);
-static_assert(RangedSequence<ArraySlice<DynArray<int>, Range{0, Direction::TO, 3}>>);
-static_assert(RangedSequence<ArraySlice<DynArray<int> const, Range{0, Direction::TO, 3}>>);
-
-static_assert(!StaticRangedSequence<DynArray<int>>);
-static_assert(!StaticRangedSequence<DynArraySlice<DynArray<int>>>);
-static_assert(StaticRangedSequence<ArraySlice<DynArray<int>, Range{0, Direction::TO, 3}>>);
-
-static_assert(std::ranges::sized_range<DynArray<int>>);
-static_assert(std::ranges::sized_range<DynArraySlice<DynArray<int>>>);
+static_assert(RangedSequence<Vector<int>>);
+static_assert(RangedSequence<Vector<int> const>);
+static_assert(RangedSequence<ArraySlice<Vector<int>>>);
+static_assert(RangedSequence<ArraySlice<Vector<int> const>>);
+static_assert(RangedSequence<StaticArraySlice<Vector<int>, Range{0, Direction::TO, 3}>>);
 static_assert(
-    std::ranges::sized_range<ArraySlice<DynArray<int>, Range{0, Direction::TO, 3}>>
+    RangedSequence<StaticArraySlice<Vector<int> const, Range{0, Direction::TO, 3}>>
+);
+
+static_assert(!StaticRangedSequence<Vector<int>>);
+static_assert(!StaticRangedSequence<ArraySlice<Vector<int>>>);
+static_assert(
+    StaticRangedSequence<StaticArraySlice<Vector<int>, Range{0, Direction::TO, 3}>>
+);
+
+static_assert(std::ranges::sized_range<Vector<int>>);
+static_assert(std::ranges::sized_range<ArraySlice<Vector<int>>>);
+static_assert(
+    std::ranges::sized_range<StaticArraySlice<Vector<int>, Range{0, Direction::TO, 3}>>
 );
 
 }  // namespace coconext::types
 
 template <typename T>
-struct std::hash<coconext::types::DynArray<T>> {
-    size_t operator()(coconext::types::DynArray<T> const& arr) const noexcept {
+struct std::hash<coconext::types::Vector<T>> {
+    size_t operator()(coconext::types::Vector<T> const& arr) const noexcept {
         size_t seed = hash<coconext::types::Range>{}(arr.range());
         for (auto const& elem : arr) {
             seed = coconext::types::detail::hash_combine(seed, elem);
@@ -295,6 +289,6 @@ struct std::hash<coconext::types::DynArray<T>> {
     }
 };
 
-#undef COCONEXT_DYN_ARRAY_CONSTEXPR
+#undef COCONEXT_VECTOR_CONSTEXPR
 
-#endif  // COCONEXT_DYN_ARRAY_HPP
+#endif  // COCONEXT_VECTOR_HPP
