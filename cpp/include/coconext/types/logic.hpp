@@ -68,6 +68,14 @@ class Bit {
         return value_ == _0 ? Logic::_0 : Logic::_1;
     }
 
+    // Bit is a 2-element numeric domain {0, 1}, so conversion to int and bool
+    // is total and lossless -- implicit, unlike the Logic counterparts which
+    // can fail on X/Z/U/W/-. `operator bool` is explicit (matches std::optional
+    // / std::unique_ptr) to keep `if (b)` working while preventing ambiguity
+    // with `operator int` in arithmetic contexts like `b + 2`.
+    constexpr operator int() const noexcept { return value_ == _0 ? 0 : 1; }
+    explicit constexpr operator bool() const noexcept { return value_ != _0; }
+
   private:
     value_type value_ = _0;
 };
