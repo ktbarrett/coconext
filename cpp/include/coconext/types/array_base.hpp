@@ -48,11 +48,11 @@ concept RangedSequence = std::ranges::random_access_range<T> && requires(T const
 } && (std::is_void_v<Elem> || std::same_as<std::ranges::range_value_t<T>, Elem>);
 
 // A RangedSequence whose range is also a compile-time constant -- i.e., T
-// exposes `range()` as a static method returning a constant expression.
+// exposes its Range as a static constexpr `static_range` member.
 // Refines RangedSequence so overload resolution prefers it when both match.
 template <typename T, typename Elem = void>
 concept StaticRangedSequence = RangedSequence<T, Elem> && requires {
-    typename detail::require_constant<std::remove_cvref_t<T>::range()>;
+    typename detail::require_constant<std::remove_cvref_t<T>::static_range>;
 };
 
 // Any type that opts into the array machinery via is_array. Element-type
@@ -278,10 +278,13 @@ class ArraySliceImpl {
     constexpr ArraySliceImpl(ArraySliceImpl&&) = default;
     constexpr explicit ArraySliceImpl(ArrayT* arr) noexcept : arr_(arr) {}
 
-    // Deliberately similar to DynArraySlice's instance range() so that generic code can
-    // query the range with instance access pattern: `obj.range()`.
-    static constexpr Range range() noexcept { return R; }
-    static constexpr size_t size() noexcept { return R.length(); }
+    // The range, exposed two ways: `static_range` for type-level access
+    // (`T::static_range`, used by the StaticRangedSequence concept), and a
+    // plain constexpr `range()` member matching DynArraySlice's instance
+    // accessor so generic code can write `obj.range()` uniformly across both.
+    static constexpr Range static_range = R;
+    constexpr Range range() const noexcept { return static_range; }
+    constexpr size_t size() const noexcept { return static_range.length(); }
 
     constexpr reference operator[](index_type idx) const {
         if constexpr (R.direction == Direction::TO) {
@@ -340,7 +343,7 @@ class ArraySliceImpl {
     constexpr ArraySliceImpl const& operator=(Rng const& obj) const {
         if constexpr (StaticRangedSequence<Rng>) {
             static_assert(
-                std::remove_cvref_t<Rng>::range().length() == R.length(),
+                std::remove_cvref_t<Rng>::static_range.length() == R.length(),
                 "static-length RHS does not match the slice length"
             );
         } else if (std::ranges::size(obj) != R.length()) {
@@ -380,7 +383,7 @@ class ArraySliceImpl {
         } else if constexpr (StaticRangedSequence<ArrayT>) {
             // Parent's range is a compile-time constant; fold the offset to
             // a constant instead of recomputing it via find()/distance().
-            constexpr auto parent = std::remove_cvref_t<ArrayT>::range();
+            constexpr auto parent = std::remove_cvref_t<ArrayT>::static_range;
             constexpr auto offset = parent.direction == Direction::TO
                                       ? R.left - parent.left
                                       : parent.left - R.left;

@@ -105,7 +105,7 @@ struct LogicArrayMixin {
         auto const& self = *static_cast<Self const*>(this);
         using Elem = std::ranges::range_value_t<Self>;
         if constexpr (StaticRangedSequence<Self>) {
-            ::coconext::types::Array<Elem, Self::range()> result{};
+            ::coconext::types::Array<Elem, Self::static_range> result{};
             std::ranges::transform(self, result.begin(), [method](auto const& v) {
                 return v.resolve(method);
             });
@@ -285,8 +285,8 @@ auto logic_binop(LHS const& lhs, RHS const& rhs, Op op) {
     // into a static_assert and return a stack-allocated static Array. A
     // runtime range on either side forces a heap-allocated DynArray.
     if constexpr (StaticRangedSequence<LHS> && StaticRangedSequence<RHS>) {
-        constexpr auto LR = std::remove_cvref_t<LHS>::range();
-        constexpr auto RR = std::remove_cvref_t<RHS>::range();
+        constexpr auto LR = std::remove_cvref_t<LHS>::static_range;
+        constexpr auto RR = std::remove_cvref_t<RHS>::static_range;
         static_assert(
             LR.length() == RR.length(), "Bitwise operation requires arrays of equal length"
         );
@@ -335,7 +335,7 @@ auto logic_binop_scalar(Arr const& arr, Scalar const& s, Op op) {
         std::declval<std::ranges::range_value_t<Arr>>(), std::declval<Scalar>()
     ));
     if constexpr (StaticRangedSequence<Arr>) {
-        constexpr auto AR = std::remove_cvref_t<Arr>::range();
+        constexpr auto AR = std::remove_cvref_t<Arr>::static_range;
         Array<
             result_elem,
             Range{static_cast<Range::value_type>(AR.length()) - 1, Direction::DOWNTO, 0}>
@@ -461,8 +461,8 @@ constexpr void logic_inplace_array(LHS& lhs, RHS const& rhs, Op op) {
     // runtime throw, and the runtime branch drops out of generated code.
     if constexpr (StaticRangedSequence<LHS> && StaticRangedSequence<RHS>) {
         static_assert(
-            std::remove_cvref_t<LHS>::range().length()
-                == std::remove_cvref_t<RHS>::range().length(),
+            std::remove_cvref_t<LHS>::static_range.length()
+                == std::remove_cvref_t<RHS>::static_range.length(),
             "Bitwise compound assignment requires arrays of equal length"
         );
     } else if (lhs.range().length() != rhs.range().length()) {
@@ -571,7 +571,7 @@ constexpr size_t concat_static_size() {
     if constexpr (LogicType<std::remove_cvref_t<T>>) {
         return 1;
     } else {
-        return std::remove_cvref_t<T>::range().length();
+        return std::remove_cvref_t<T>::static_range.length();
     }
 }
 
@@ -637,7 +637,7 @@ template <RangedSequence T>
 auto operator~(T const& arr) {
     using elem_t = std::ranges::range_value_t<T>;
     if constexpr (StaticRangedSequence<T>) {
-        constexpr auto AR = std::remove_cvref_t<T>::range();
+        constexpr auto AR = std::remove_cvref_t<T>::static_range;
         // AR's length is already bounded by Range::value_type (int32_t).
         Array<
             elem_t,

@@ -75,10 +75,13 @@ class ArrayImpl {
         std::ranges::copy(obj, data_.begin());
     }
 
-    // Deliberately similar to DynArray's instance range() so that generic code can query
-    // the range with instance access pattern: `obj.range()`.
-    static constexpr Range range() noexcept { return R; }
-    static constexpr size_t size() noexcept { return R.length(); }
+    // The range, exposed two ways: `static_range` for type-level access
+    // (`T::static_range`, used by the StaticRangedSequence concept), and a
+    // plain constexpr `range()` member matching DynArray's instance accessor
+    // so generic code can write `obj.range()` uniformly across both.
+    static constexpr Range static_range = R;
+    constexpr Range range() const noexcept { return static_range; }
+    constexpr size_t size() const noexcept { return static_range.length(); }
 
     constexpr reference operator[](index_type idx) { return access_(*this, idx); }
     constexpr const_reference operator[](index_type idx) const {
