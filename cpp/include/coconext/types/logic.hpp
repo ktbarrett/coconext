@@ -18,6 +18,19 @@ enum class ResolveMethod {
     RANDOM,
 };
 
+// Process-wide default ResolveMethod used by the no-arg `resolve()` /
+// `is_resolvable()` overloads on Logic and arrays of Logic. Defaults to WEAK
+// (so weak strengths L/H resolve to strong 0/1 but X/Z/U/W/- still throw).
+//
+// Intended to be set once per test/regression in a single-threaded region.
+// Not synchronized -- if you mutate this from multiple threads concurrently,
+// or while resolve() calls are in flight on other threads, behavior is
+// undefined.
+ResolveMethod get_default_resolve_method() noexcept;
+void set_default_resolve_method(ResolveMethod method) noexcept;
+
+class Bit;
+
 class Logic {
   public:
     enum class value_type : uint8_t {
@@ -37,11 +50,17 @@ class Logic {
     constexpr Logic(value_type value) noexcept : value_(value) {}
     constexpr value_type value() const noexcept { return value_; }
 
-    constexpr bool is_resolvable() const noexcept {
-        return value_ == _0 || value_ == _1 || value_ == L || value_ == H;
+    // True iff `resolve(method)` would succeed (NOT throw) for the current
+    // value. ERROR accepts only 0/1; WEAK additionally accepts L/H; ZEROS,
+    // ONES, RANDOM accept anything.
+    bool is_resolvable(ResolveMethod method) const noexcept;
+    // No-arg form uses the global default.
+    bool is_resolvable() const noexcept {
+        return is_resolvable(get_default_resolve_method());
     }
 
-    Logic resolve(ResolveMethod method) const;
+    Bit resolve(ResolveMethod method) const;
+    Bit resolve() const;  // uses global default; defined after Bit is complete
 
   private:
     value_type value_ = _0;
@@ -59,9 +78,12 @@ class Bit {
     constexpr Bit(value_type value) noexcept : value_(value) {}
     constexpr value_type value() const noexcept { return value_; }
 
+    // Bit's domain is {0, 1} -- every value is resolvable under every method.
+    constexpr bool is_resolvable(ResolveMethod) const noexcept { return true; }
     constexpr bool is_resolvable() const noexcept { return true; }
 
     constexpr Bit resolve(ResolveMethod) const noexcept { return *this; }
+    constexpr Bit resolve() const noexcept { return *this; }
 
     // Implicit conversion from Bit to Logic mimics subtype upcasting.
     constexpr operator Logic() const noexcept {
@@ -79,6 +101,10 @@ class Bit {
   private:
     value_type value_ = _0;
 };
+
+// Out-of-line because Bit's return type was incomplete at the inline-body
+// position in Logic.
+inline Bit Logic::resolve() const { return resolve(get_default_resolve_method()); }
 
 constexpr bool operator==(Logic const& lhs, Logic const& rhs) noexcept {
     return lhs.value() == rhs.value();

@@ -337,10 +337,18 @@ TEST(TestLogicArray, ResolveOnes) {
     EXPECT_EQ(to_string(b), "011110111");
 }
 
-TEST(TestLogicArray, ResolveWeak) {
-    auto a = to_logic_array("01XZULWH-");
+TEST(TestLogicArray, ResolveWeakAcceptsResolvable) {
+    // WEAK passes 0/1/L/H -> 0/1/0/1 and throws on the rest. The input must
+    // contain only resolvable-under-WEAK values for the call to succeed.
+    auto a = to_logic_array("01LH");
     auto b = a.resolve(ResolveMethod::WEAK);
-    EXPECT_EQ(to_string(b), "01XZU0X1-");
+    EXPECT_EQ(to_string(b), "0101");
+}
+
+TEST(TestLogicArray, ResolveWeakThrowsOnMetavalue) {
+    // Even a single non-resolvable value makes the whole array throw.
+    auto a = to_logic_array("01X");
+    EXPECT_THROW(a.resolve(ResolveMethod::WEAK), std::invalid_argument);
 }
 
 TEST(TestLogicArray, ResolveError) {
@@ -354,13 +362,21 @@ TEST(TestLogicArray, ResolveErrorPass) {
     EXPECT_EQ(to_string(b), "01");
 }
 
+TEST(TestLogicArray, ResolveErrorThrowsOnWeakStrengths) {
+    // ERROR is the strict tier -- L and H aren't accepted even though they're
+    // representable as 0/1 (use WEAK for that).
+    EXPECT_THROW(to_logic_array("0L").resolve(ResolveMethod::ERROR), std::invalid_argument);
+    EXPECT_THROW(to_logic_array("1H").resolve(ResolveMethod::ERROR), std::invalid_argument);
+}
+
 TEST(TestLogicArray, ResolveStaticReturnsStaticArray) {
     auto a = "01XZ"_l;  // static LogicArray<Range{3, DOWNTO, 0}>
     auto b = a.resolve(ResolveMethod::ZEROS);
     // Static-bound input -> static-bound output of matching range. This is the
     // payoff of memberizing resolve on the specializations: the result type
-    // preserves Self's static range when available.
-    static_assert(std::is_same_v<decltype(b), LogicArray<Range{3, Direction::DOWNTO, 0}>>);
+    // preserves Self's static range when available, and resolve always returns
+    // a Bit-valued container.
+    static_assert(std::is_same_v<decltype(b), BitArray<Range{3, Direction::DOWNTO, 0}>>);
     EXPECT_EQ(to_string(b), "0100");
 }
 
@@ -385,7 +401,7 @@ TEST(TestLogicArray, DynSliceResolveReturnsVector) {
     auto a = to_logic_array("01XZ");
     auto s = a[{3, 0}];
     auto r = s.resolve(ResolveMethod::ZEROS);
-    static_assert(std::is_same_v<decltype(r), Vector<Logic>>);
+    static_assert(std::is_same_v<decltype(r), BitVector>);
     EXPECT_EQ(to_string(r), "0100");
 }
 
@@ -393,7 +409,7 @@ TEST(TestLogicArray, StaticSliceResolveReturnsStaticArray) {
     auto a = "01XZ"_l;  // LogicArray<Range{3, DOWNTO, 0}>
     auto s = a.slice<Range{2, Direction::DOWNTO, 1}>();
     auto r = s.resolve(ResolveMethod::ZEROS);
-    static_assert(std::is_same_v<decltype(r), LogicArray<Range{2, Direction::DOWNTO, 1}>>);
+    static_assert(std::is_same_v<decltype(r), BitArray<Range{2, Direction::DOWNTO, 1}>>);
     EXPECT_EQ(to_string(r), "10");  // X->0, 1->1; slice was {X, 1} in storage order
 }
 

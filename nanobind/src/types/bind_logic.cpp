@@ -126,14 +126,16 @@ void register_logic(nb::module_& m) {
         .def(
             "__invert__", [](Logic const& self) { return ~self; }, nb::is_operator()
         )
-        .def_prop_ro("is_resolvable", &Logic::is_resolvable)
+        .def_prop_ro(
+            "is_resolvable", [](Logic const& self) { return self.is_resolvable(); }
+        )
         .def(
             "resolve",
             [](Logic const& self, std::string_view method) {
                 return self.resolve(string_to_resolve_method(method));
             }
         )
-        .def("resolve", &Logic::resolve)
+        .def("resolve", [](Logic const& self) { return self.resolve(); })
         .def("__copy__", [](Logic const& self) { return Logic(self); })
         .def("__deepcopy__", [](Logic const& self, nb::dict /* memo */) {
             return Logic(self);
@@ -225,14 +227,14 @@ void register_logic(nb::module_& m) {
         .def(
             "__invert__", [](Bit const& self) { return ~self; }, nb::is_operator()
         )
-        .def_prop_ro("is_resolvable", &Bit::is_resolvable)
+        .def_prop_ro("is_resolvable", [](Bit const& self) { return self.is_resolvable(); })
         .def(
             "resolve",
             [](Bit const& self, std::string_view method) {
                 return self.resolve(string_to_resolve_method(method));
             }
         )
-        .def("resolve", &Bit::resolve)
+        .def("resolve", [](Bit const& self) { return self.resolve(); })
         .def("__copy__", [](Bit const& self) { return Bit(self); })
         .def("__deepcopy__", [](Bit const& self, nb::dict /* memo */) {
             return Bit(self);

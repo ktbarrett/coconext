@@ -84,40 +84,49 @@ constexpr Range make_logic_static_range() {
 // so `Array<int, R>::is_resolvable()` and friends don't exist.
 template <typename Self>
 struct LogicArrayMixin {
-    bool is_resolvable() const noexcept {
+    bool is_resolvable(ResolveMethod method) const noexcept {
         auto const& self = *static_cast<Self const*>(this);
         using Elem = std::ranges::range_value_t<Self>;
         if constexpr (std::same_as<Elem, Bit>) {
-            // Every Bit is resolvable; skip the walk.
+            // Every Bit is resolvable under every method; skip the walk.
             return true;
         } else {
-            return std::ranges::all_of(self, [](auto const& v) {
-                return v.is_resolvable();
+            return std::ranges::all_of(self, [method](auto const& v) {
+                return v.is_resolvable(method);
             });
         }
     }
+    bool is_resolvable() const noexcept {
+        return is_resolvable(get_default_resolve_method());
+    }
 
-    // Element-wise resolve. Returns a static `Array<Elem, R>` when Self has a
-    // compile-time range, a heap-allocated `Vector<Elem>` otherwise. The
-    // returned array preserves Self's range (an owner returns the same shape;
-    // a slice returns an owner sized like the slice's range).
+    // Element-wise resolve. Returns a static `BitArray<R>` when Self has a
+    // compile-time range, a heap-allocated `BitVector` otherwise. The returned
+    // array preserves Self's range (an owner returns the same shape; a slice
+    // returns an owner sized like the slice's range).
     auto resolve(ResolveMethod method) const {
         auto const& self = *static_cast<Self const*>(this);
-        using Elem = std::ranges::range_value_t<Self>;
+        // `BitElem` is dependent on Self via `std::conditional`, which defers
+        // lookup of the Vector<Bit> / Array<Bit, ...> specializations to
+        // instantiation time. Without this trick the compiler would look up
+        // Vector<Bit> at template-parse time, find the primary template, and
+        // then complain when the specialization is seen later in the file.
+        using BitElem = std::conditional_t<true, Bit, Self>;
         if constexpr (StaticRangedSequence<Self>) {
-            ::coconext::types::Array<Elem, Self::static_range> result{};
+            ::coconext::types::Array<BitElem, Self::static_range> result{};
             std::ranges::transform(self, result.begin(), [method](auto const& v) {
                 return v.resolve(method);
             });
             return result;
         } else {
-            ::coconext::types::Vector<Elem> result(self.range());
+            ::coconext::types::Vector<BitElem> result(self.range());
             std::ranges::transform(self, result.begin(), [method](auto const& v) {
                 return v.resolve(method);
             });
             return result;
         }
     }
+    auto resolve() const { return resolve(get_default_resolve_method()); }
 
     // Reductions: fold over the array with the corresponding bitwise op.
     // Empty arrays return the operation's identity (1 for AND, 0 for OR/XOR),
