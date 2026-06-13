@@ -57,7 +57,7 @@ TEST(TestStaticArray, CopyAndMove) {
 TEST(TestStaticArray, RangeAccessor) {
     Array<int, Range{2, Direction::TO, 5}> a({1, 2, 3, 4});
     EXPECT_EQ(a.range(), (Range{2, Direction::TO, 5}));
-    static_assert(decltype(a)::range() == Range{2, Direction::TO, 5});
+    static_assert(decltype(a)::static_range == Range{2, Direction::TO, 5});
 }
 
 TEST(TestStaticArray, ForwardIteration) {
@@ -311,7 +311,7 @@ TEST(TestStaticArrayStaticSlice, SliceHappyPath) {
         std::is_same_v<decltype(s), ArraySlice<AT, Range{1, 3}>>,
         "Array::slice<R>() must return ArraySlice<Array, R>"
     );
-    static_assert(decltype(s)::range() == Range{1, Direction::TO, 3});
+    static_assert(decltype(s)::static_range == Range{1, Direction::TO, 3});
     EXPECT_EQ(s.range().length(), 3U);
     EXPECT_EQ(s[1], 20);
     EXPECT_EQ(s[3], 40);

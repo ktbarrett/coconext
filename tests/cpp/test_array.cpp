@@ -84,7 +84,7 @@ TEST(TestDynArray, SizeMember) {
 
 TEST(TestStaticArray, SizeMemberIsStatic) {
     using A = Array<int, Range{0, Direction::TO, 7}>;
-    static_assert(A::size() == 8U);
+    static_assert(A::static_range.length() == 8U);
     A a{};
     EXPECT_EQ(a.size(), 8U);
     EXPECT_EQ(std::ranges::size(a), 8U);
@@ -100,7 +100,7 @@ TEST(TestDynArray, DynSliceSizeMember) {
 TEST(TestDynArrayStaticSlice, StaticSliceSizeIsStatic) {
     DynArray<int> a({10, 20, 30, 40, 50});
     using S = ArraySlice<DynArray<int>, Range{1, Direction::TO, 3}>;
-    static_assert(S::size() == 3U);
+    static_assert(S::static_range.length() == 3U);
     auto s = a.slice<Range{1, Direction::TO, 3}>();
     EXPECT_EQ(s.size(), 3U);
 }
@@ -621,7 +621,7 @@ TEST(TestDynArrayStaticSlice, SliceHappyPath) {
         std::is_same_v<decltype(s), ArraySlice<DynArray<int>, Range{1, 3}>>,
         "DynArray::slice<R>() must return a static ArraySlice"
     );
-    static_assert(decltype(s)::range() == Range{1, Direction::TO, 3});
+    static_assert(decltype(s)::static_range == Range{1, Direction::TO, 3});
     EXPECT_EQ(s.range().length(), 3U);
     EXPECT_EQ(s[1], 20);
     EXPECT_EQ(s[3], 40);
@@ -716,24 +716,25 @@ TEST(TestDynArrayStaticSlice, NullSliceBoundsOutsideParentOK) {
 // -- Compile-time dispatch -------------------------------------------------
 
 // Single integral arg -> length-based static range starting at 0.
-static_assert(Array<int, 8>::range() == Range{0, Direction::TO, 7});
-static_assert(Array<int, 0>::range() == Range{0, Direction::TO, -1});
-static_assert(Array<int, 1>::range() == Range{0, Direction::TO, 0});
+static_assert(Array<int, 8>::static_range == Range{0, Direction::TO, 7});
+static_assert(Array<int, 0>::static_range == Range{0, Direction::TO, -1});
+static_assert(Array<int, 1>::static_range == Range{0, Direction::TO, 0});
 
 // Single Range arg -> direct passthrough.
 static_assert(
-    Array<int, Range{2, Direction::DOWNTO, -5}>::range() == Range{2, Direction::DOWNTO, -5}
+    Array<int, Range{2, Direction::DOWNTO, -5}>::static_range
+    == Range{2, Direction::DOWNTO, -5}
 );
 
 // Two args -> (left, right), direction inferred.
-static_assert(Array<int, 1, 3>::range() == Range{1, Direction::TO, 3});
-static_assert(Array<int, 4, 0>::range() == Range{4, Direction::DOWNTO, 0});
-static_assert(Array<int, -3, 4>::range() == Range{-3, Direction::TO, 4});
+static_assert(Array<int, 1, 3>::static_range == Range{1, Direction::TO, 3});
+static_assert(Array<int, 4, 0>::static_range == Range{4, Direction::DOWNTO, 0});
+static_assert(Array<int, -3, 4>::static_range == Range{-3, Direction::TO, 4});
 
 // Three args -> (left, Direction, right) verbatim.
-static_assert(Array<int, 1, Direction::TO, 3>::range() == Range{1, Direction::TO, 3});
+static_assert(Array<int, 1, Direction::TO, 3>::static_range == Range{1, Direction::TO, 3});
 static_assert(
-    Array<int, 4, Direction::DOWNTO, 0>::range() == Range{4, Direction::DOWNTO, 0}
+    Array<int, 4, Direction::DOWNTO, 0>::static_range == Range{4, Direction::DOWNTO, 0}
 );
 
 // Different spellings of the same static range collapse to the same type:
@@ -744,7 +745,7 @@ static_assert(std::is_same_v<Array<int, 4, 0>, Array<int, 4, Direction::DOWNTO, 
 
 // Forwarding the static_range of one Array into the alias of another.
 using A_1_to_4 = Array<int, 1, 4>;
-static_assert(std::is_same_v<Array<int, A_1_to_4::range()>, Array<int, 1, 4>>);
+static_assert(std::is_same_v<Array<int, A_1_to_4::static_range>, Array<int, 1, 4>>);
 
 // -- Runtime: verify the static Array alias works -------------------------
 
@@ -788,7 +789,7 @@ TEST(TestArray, StaticThreeArgViaAlias) {
 TEST(TestArray, StaticFromForeignStaticRange) {
     using Src = Array<int, 1, 3>;
     Src src({10, 20, 30});
-    Array<int, Src::range()> dst({100, 200, 300});
+    Array<int, Src::static_range> dst({100, 200, 300});
     EXPECT_EQ(dst.range(), src.range());
     EXPECT_EQ(dst[1], 100);
     EXPECT_EQ(dst[3], 300);
