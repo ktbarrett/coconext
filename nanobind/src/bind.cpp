@@ -4,10 +4,8 @@ namespace nb = nanobind;
 
 void register_logic(nb::module_& m);
 void register_range(nb::module_& m);
-void register_vector(nb::module_& m);
 
 NB_MODULE(_coconext, m) {
     register_logic(m);
     register_range(m);
-    register_vector(m);
 }
