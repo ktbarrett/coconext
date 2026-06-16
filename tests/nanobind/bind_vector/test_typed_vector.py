@@ -3,8 +3,7 @@ from __future__ import annotations
 import nanobind_tests
 import pytest
 
-from coconext.types import Range
-
+Range = nanobind_tests.Range
 IntVector = nanobind_tests.IntVector
 StringVector = nanobind_tests.StringVector
 
