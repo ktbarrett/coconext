@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import _coconext
+import nanobind_tests
 import pytest
 
-Range = _coconext.Range
+from coconext.types import Range
 
-IntVector = _coconext.IntVector
-StringVector = _coconext.StringVector
+IntVector = nanobind_tests.IntVector
+StringVector = nanobind_tests.StringVector
 
 
 def test_IntVector_construction() -> None:

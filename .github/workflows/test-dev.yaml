@@ -27,5 +27,5 @@ jobs:
     uses: ./.github/workflows/regression-tests.yaml
     secrets: inherit
     with:
-      make_targets: dev_tests integration_tests generate_report
+      make_targets: dev_tests integration_tests nanobind_tests generate_report
       collect_coverage: true

@@ -38,6 +38,17 @@ dev_tests: dev_build
 	cmake --build "$(CPP_TESTS_BUILD_DIR)"
 	ctest --output-on-failure --test-dir "$(CPP_TESTS_BUILD_DIR)"
 
+NB_TESTS_BUILD_DIR ?= build/nanobind_tests
+
+.PHONY: nanobind_tests
+nanobind_tests:
+	cmake -S tests/nanobind -B "$(NB_TESTS_BUILD_DIR)" \
+		-DCMAKE_CXX_STANDARD=$(CXX_STANDARD) \
+		-Dnanobind_DIR=$$(python3 -m nanobind --cmake_dir)
+	cmake --build "$(NB_TESTS_BUILD_DIR)"
+	NB_SO_DIR="$(NB_TESTS_BUILD_DIR)" \
+	pytest tests/nanobind/
+
 release_test:
 	uv sync --no-default-groups --no-install-project
 	uv pip install coconext --find-links dist --no-index
