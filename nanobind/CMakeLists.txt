@@ -4,7 +4,7 @@ target_compile_features(coconext_nb INTERFACE cxx_std_20)
 target_link_libraries(coconext_nb INTERFACE coconext)
 
 nanobind_add_module(
-    _coconext
+    _pycoconext
     STABLE_ABI
     NB_STATIC
     LTO
@@ -12,15 +12,15 @@ nanobind_add_module(
     src/types/bind_logic.cpp
     src/types/bind_range.cpp
 )
-target_link_libraries(_coconext PRIVATE coconext_nb)
+target_link_libraries(_pycoconext PRIVATE coconext_nb)
 
-install(TARGETS _coconext DESTINATION .)
+install(TARGETS _pycoconext DESTINATION .)
 
 nanobind_add_stub(
-  _coconext_stub
+  _pycoconext_stub
   INSTALL_TIME
-  MODULE _coconext
-  OUTPUT _coconext.pyi
+  MODULE _pycoconext
+  OUTPUT _pycoconext.pyi
   PYTHON_PATH "."
-  DEPENDS _coconext
+  DEPENDS _pycoconext
 )
