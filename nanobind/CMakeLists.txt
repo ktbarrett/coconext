@@ -16,11 +16,7 @@ target_link_libraries(_pycoconext PRIVATE coconext_nb)
 
 install(TARGETS _pycoconext DESTINATION .)
 
-nanobind_add_stub(
-  _pycoconext_stub
-  INSTALL_TIME
-  MODULE _pycoconext
-  OUTPUT _pycoconext.pyi
-  PYTHON_PATH "."
-  DEPENDS _pycoconext
-)
+# Ship the checked-in type stub next to the extension.
+# The dev_build flow re-generates this file and there are check which fail if
+# the checked in version becomes out-of-date.
+install(FILES "${CMAKE_SOURCE_DIR}/python/_pycoconext.pyi" DESTINATION .)
