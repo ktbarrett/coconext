@@ -1,6 +1,4 @@
-# To make coconext usable as a C++ library,
-# this should become a shared library at some point.
-add_library(coconext STATIC
+add_library(coconext SHARED
     src/logic.cpp
     src/random.cpp
 )
@@ -16,7 +14,16 @@ target_include_directories(coconext PUBLIC
 target_compile_features(coconext PUBLIC cxx_std_20)
 set_target_properties(coconext PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
 
+# On macOS the install name is @rpath-relative so a preloaded image
+# satisfies the dependency by install-name match rather than by search path.
+# Looks like RPATH, is actually not.
+set_target_properties(coconext PROPERTIES
+    MACOSX_RPATH TRUE
+    INSTALL_NAME_DIR "@rpath")
+
 install(TARGETS coconext
     EXPORT coconextTargets
+    LIBRARY DESTINATION coconext/lib
+    RUNTIME DESTINATION coconext/lib
     ARCHIVE DESTINATION coconext/lib)
 install(DIRECTORY include/coconext DESTINATION coconext/include)
