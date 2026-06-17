@@ -87,4 +87,4 @@ void bind_array(nb::module_& m, char const* name) {
 
 }  // namespace coconext_nb
 
-#endif  // NB_BIND_ARRAY_HPP
+#endif  // NB_BIND_VECTOR_HPP
