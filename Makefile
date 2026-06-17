@@ -12,7 +12,7 @@ CXX_STANDARD ?= 20
 dev_build:
 	uv sync --no-default-groups --group=$(DEV_BUILD_DEP_GROUP) --no-install-project
 
-	# Build the package with debugging and coverage flags
+	# Build the package with debugging and coverage flags.
 	CCACHE_DISABLE=1 \
 	CXXFLAGS="$$CXXFLAGS --coverage -g -Og" \
 	CFLAGS="$$CFLAGS --coverage -g -Og" \
@@ -20,9 +20,15 @@ dev_build:
 	CMAKE_CXX_STANDARD=$(CXX_STANDARD) \
 	uv pip install --no-build-isolation --no-deps --force-reinstall -e .
 
-	cp "$$(python -c 'import _pycoconext, os; print(os.path.join(os.path.dirname(_pycoconext.__file__), "_pycoconext.pyi"))')" python/_pycoconext.pyi
+	# Generate stubs.
+	# import coconext to preload libcoconext.so and libgpi.so.
+	# Run ruff on the generated stubs to fix formatting and linting issues,
+	# and make `git diff` fail if the stubs are not up to date.
+	python -c 'import coconext; from nanobind.stubgen import main; main(["-m", "_pycoconext", "-o", "python/_pycoconext.pyi"])'
 	ruff check --fix python/_pycoconext.pyi
 	ruff format python/_pycoconext.pyi
+
+	# Copy compile database to project root for clang-tidy and editor integration.
 	cp build/compile_commands.json compile_commands.json
 
 GCOV_EXECUTABLE ?= gcov
