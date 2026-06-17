@@ -20,9 +20,9 @@ dev_build:
 	CMAKE_CXX_STANDARD=$(CXX_STANDARD) \
 	uv pip install --no-build-isolation --no-deps --force-reinstall -e .
 
-	cp "$$(python -c 'import _coconext, os; print(os.path.join(os.path.dirname(_coconext.__file__), "_coconext.pyi"))')" python/_coconext.pyi
-	ruff check --fix python/_coconext.pyi
-	ruff format python/_coconext.pyi
+	cp "$$(python -c 'import _pycoconext, os; print(os.path.join(os.path.dirname(_pycoconext.__file__), "_pycoconext.pyi"))')" python/_pycoconext.pyi
+	ruff check --fix python/_pycoconext.pyi
+	ruff format python/_pycoconext.pyi
 	cp build/compile_commands.json compile_commands.json
 
 GCOV_EXECUTABLE ?= gcov

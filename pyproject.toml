@@ -84,7 +84,7 @@ show_error_codes = true
 #   __eq__(self, other: object, /) -> bool: ...
 # This breaks Liskov substitution so we have to turn off checking here.
 [[tool.mypy.overrides]]
-module = "_coconext"
+module = "_pycoconext"
 disable_error_code = ["override"]
 
 [dependency-groups]

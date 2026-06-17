@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from _coconext import Bit, Direction, Logic, Range
+from _pycoconext import Bit, Direction, Logic, Range
 
 __all__ = (
     "Bit",
