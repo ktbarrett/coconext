@@ -14,6 +14,8 @@ nanobind_add_module(
     NB_STATIC
     ../../nanobind/src/types/bind_range.cpp
     bind.cpp
+    type_cast_vector.cpp
+    type_cast_array.cpp
 )
 
 target_include_directories(nanobind_tests PRIVATE ../../cpp/include)
