@@ -7,6 +7,8 @@ namespace nb = nanobind;
 using namespace coconext::types;
 
 void register_range(nb::module_& m);
+void init_test_vector_caster(nb::module_& m);
+void init_test_array_caster(nb::module_& m);
 
 NB_MODULE(nanobind_tests, m) {
 
@@ -14,4 +16,7 @@ NB_MODULE(nanobind_tests, m) {
 
     coconext_nb::bind_array<Vector<int>>(m, "IntVector");
     coconext_nb::bind_array<Vector<std::string>>(m, "StringVector");
+
+    init_test_vector_caster(m);
+    init_test_array_caster(m);
 }
