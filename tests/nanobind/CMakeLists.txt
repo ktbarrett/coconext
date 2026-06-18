@@ -13,7 +13,7 @@ nanobind_add_module(
     STABLE_ABI
     NB_STATIC
     ../../nanobind/src/types/bind_range.cpp
-    bind_vector.cpp
+    bind.cpp
 )
 
 target_include_directories(nanobind_tests PRIVATE ../../cpp/include)
