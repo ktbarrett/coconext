@@ -68,7 +68,7 @@ struct type_caster<coconext::types::detail::Array<T, R>> {
                 return false;
             }
 
-            value.emplace(temp);
+            value.emplace(std::move(temp));
             return true;
         } catch (...) {
             return false;

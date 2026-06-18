@@ -42,16 +42,17 @@ struct type_caster<coconext::types::Vector<T>> {
             }
 
             std::vector<T> temp;
+            temp.reserve(c_range.length());
             make_caster<T> item_caster;
 
             for (handle item : borrow<iterable>(src)) {
                 if (!item_caster.from_python(item, flags, cleanup)) {
                     return false;
                 }
-                temp.push_back(item_caster.operator Cast<T>());
+                temp.push_back(std::move(item_caster.operator Cast<T>()));
             }
 
-            value.emplace(temp, c_range);
+            value.emplace(std::move(temp), c_range);
             return true;
         } catch (...) {
             return false;
