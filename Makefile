@@ -47,7 +47,7 @@ nanobind_tests:
 		-Dnanobind_DIR=$$(python3 -m nanobind --cmake_dir)
 	cmake --build "$(NB_TESTS_BUILD_DIR)"
 	NB_SO_DIR="$(NB_TESTS_BUILD_DIR)" \
-	pytest tests/nanobind/
+	pytest tests/nanobind/pytest
 
 release_test:
 	uv sync --no-default-groups --no-install-project
