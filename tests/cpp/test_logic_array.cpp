@@ -1263,3 +1263,37 @@ TEST(TestBitArray, UdlBitUnderscore) {
 // Note: "<bad>"_b is a compile-time error (throw in constant evaluation), so
 // the UDL invalid-character path cannot be exercised by a runtime test. The
 // runtime invalid-character path is covered by ToBitArrayInvalidChar above.
+
+// -- index<I>() on Logic/Bit specializations -------------------------------
+//
+// The Logic/Bit Array, Vector, ArraySlice, and StaticArraySlice
+// specializations all inherit from the corresponding *Impl base, so they
+// pick up index<I>() automatically. These tests confirm the inheritance
+// and exercise the HDL-conventional DOWNTO indexing.
+
+TEST(TestLogicArray, IndexOfLogicArray) {
+    auto a = "01XZ"_l;  // LogicArray with Range{3 DOWNTO 0}
+    EXPECT_EQ(a.index<3>(), '0'_l);
+    EXPECT_EQ(a.index<2>(), '1'_l);
+    EXPECT_EQ(a.index<1>(), 'X'_l);
+    EXPECT_EQ(a.index<0>(), 'Z'_l);
+}
+
+TEST(TestLogicArray, IndexOfBitArray) {
+    auto a = "0110"_b;
+    EXPECT_EQ(a.index<3>(), '0'_b);
+    EXPECT_EQ(a.index<2>(), '1'_b);
+}
+
+TEST(TestLogicArray, IndexOfLogicVector) {
+    auto a = to_logic_array("01XZ");  // Vector<Logic>, DOWNTO {3..0}
+    EXPECT_EQ(a.index<3>(), '0'_l);
+    EXPECT_EQ(a.index<0>(), 'Z'_l);
+}
+
+TEST(TestLogicArray, IndexOfLogicSlice) {
+    auto a = "01XZ"_l;
+    auto s = a.slice<Range{2, Direction::DOWNTO, 1}>();
+    EXPECT_EQ(s.index<2>(), '1'_l);
+    EXPECT_EQ(s.index<1>(), 'X'_l);
+}

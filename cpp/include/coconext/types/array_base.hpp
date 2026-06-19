@@ -182,6 +182,11 @@ class ArraySliceImpl {
         return StaticArraySlice<ArrayT, R>(arr_);
     }
 
+    template <index_type I>
+    constexpr reference index() const {
+        return (*this)[I];
+    }
+
     // Have to override this since the implicitly generated copy assignment acts as a
     // variable assignment rather than writing through to the underlying storage.
     constexpr ArraySliceImpl const& operator=(ArraySliceImpl const& other) const
@@ -307,6 +312,12 @@ class StaticArraySliceImpl {
             "static sub-slice range is not a sub-range of the parent slice"
         );
         return StaticArraySlice<ArrayT, R2>(arr_);
+    }
+
+    template <index_type I>
+    constexpr reference index() const {
+        static_assert(find(R, I) != R.end(), "index is out of range");
+        return (*this)[I];
     }
 
     constexpr ArraySlice<ArrayT> operator[](Range r) const {

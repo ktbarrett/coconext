@@ -421,4 +421,51 @@ TEST(TestStaticArray, DynSliceStaticSubSliceFlattens) {
     s[2] = 99;
     EXPECT_EQ(a[2], 99);
 }
+
+// -- index<I>() compile-time-checked element access ------------------------
+//
+// On types with a compile-time range (Array, StaticArraySlice), index<I>()
+// static_asserts that I is within the range and then delegates to
+// operator[](I). This catches out-of-range mistakes at the call site rather
+// than at runtime, mirroring slice<R>()'s compile-time subsequence check.
+
+TEST(TestStaticArray, IndexOfStaticArrayTO) {
+    Array<int, Range{0, Direction::TO, 3}> a({10, 20, 30, 40});
+    EXPECT_EQ(a.index<0>(), 10);
+    EXPECT_EQ(a.index<3>(), 40);
+    a.index<2>() = 99;
+    EXPECT_EQ(a[2], 99);
+}
+
+TEST(TestStaticArray, IndexOfStaticArrayDOWNTO) {
+    Array<int, Range{3, Direction::DOWNTO, 0}> a({10, 20, 30, 40});
+    // DOWNTO: a[3] is the first element, a[0] is the last.
+    EXPECT_EQ(a.index<3>(), 10);
+    EXPECT_EQ(a.index<0>(), 40);
+}
+
+TEST(TestStaticArray, IndexOfConstStaticArray) {
+    Array<int, Range{0, Direction::TO, 2}> const a({10, 20, 30});
+    int const& r = a.index<1>();
+    EXPECT_EQ(r, 20);
+    static_assert(std::is_same_v<decltype(a.index<1>()), int const&>);
+}
+
+TEST(TestStaticArray, IndexOfStaticArraySlice) {
+    Array<int, Range{0, Direction::TO, 5}> a({10, 20, 30, 40, 50, 60});
+    auto s = a.slice<Range{2, 4}>();
+    EXPECT_EQ(s.index<2>(), 30);
+    EXPECT_EQ(s.index<4>(), 50);
+    s.index<3>() = 99;
+    EXPECT_EQ(a[3], 99);
+}
+
+// Compile-time bounds check: uncommenting any of these should produce a
+// static_assert "index is out of range" failure. Kept here as a referenced
+// reminder rather than as an enabled test (no C++ idiom for testing for a
+// static_assert firing at compile time).
+//   Array<int, Range{0, Direction::TO, 3}> a{};
+//   a.index<4>();                                 // out of range high
+//   a.index<-1>();                                // out of range low
+//   a.slice<Range{0, 2}>().index<3>();            // out of slice range
 // LCOV_EXCL_BR_STOP

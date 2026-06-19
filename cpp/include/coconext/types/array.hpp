@@ -143,6 +143,17 @@ class ArrayImpl {
         );
     }
 
+    template <index_type I>
+    constexpr reference index() {
+        static_assert(find(R, I) != R.end(), "index is out of range");
+        return (*this)[I];
+    }
+    template <index_type I>
+    constexpr const_reference index() const {
+        static_assert(find(R, I) != R.end(), "index is out of range");
+        return (*this)[I];
+    }
+
     constexpr iterator begin() noexcept { return data_.begin(); }
     constexpr const_iterator begin() const noexcept { return data_.begin(); }
     constexpr iterator end() noexcept { return data_.end(); }

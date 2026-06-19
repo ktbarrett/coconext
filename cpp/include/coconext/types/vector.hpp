@@ -181,6 +181,15 @@ class VectorImpl {
         );
     }
 
+    template <index_type I>
+    COCONEXT_VECTOR_CONSTEXPR reference index() {
+        return (*this)[I];
+    }
+    template <index_type I>
+    COCONEXT_VECTOR_CONSTEXPR const_reference index() const {
+        return (*this)[I];
+    }
+
     COCONEXT_VECTOR_CONSTEXPR iterator begin() noexcept { return data_.get(); }
     COCONEXT_VECTOR_CONSTEXPR const_iterator begin() const noexcept { return data_.get(); }
     COCONEXT_VECTOR_CONSTEXPR iterator end() noexcept {
