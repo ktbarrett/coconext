@@ -128,16 +128,17 @@ void register_logic(nb::module_& m) {
         )
         .def_prop_ro(
             "is_resolvable",
-            [](Logic const& self) { return self.is_resolvable(ResolveMethod::WEAK); }
+            [](Logic const& self) { return self.resolve(ResolveMethod::WEAK).has_value(); }
         )
         .def(
             "resolve",
             [](Logic const& self, std::string_view method) {
                 auto m = string_to_resolve_method(method);
                 // Compat shim: pre-branch C++ WEAK mapped L/H -> 0/1, W -> X,
-                // and left other metavalues unchanged. Post-branch C++ throws
-                // on metavalues under WEAK. Reproduce the old mapping here so
-                // upstream Python (and its integration tests) don't break.
+                // and left other metavalues unchanged. Post-branch C++ returns
+                // nullopt on metavalues under WEAK. Reproduce the old mapping
+                // here so upstream Python (and its integration tests) don't
+                // break.
                 if (m == ResolveMethod::WEAK) {
                     switch (self.value()) {
                     case Logic::_0:
@@ -153,13 +154,13 @@ void register_logic(nb::module_& m) {
                         return self;
                     }
                 }
-                return Logic(self.resolve(m));
-            }
-        )
-        .def(
-            "resolve",
-            [](Logic const& self, ResolveMethod method) {
-                return Logic(self.resolve(method));
+                auto r = self.resolve(m);
+                if (!r) {
+                    throw std::invalid_argument(
+                        "Logic value is not resolvable under the given method"
+                    );
+                }
+                return Logic(*r);
             }
         )
         .def("__copy__", [](Logic const& self) { return Logic(self); })
@@ -253,17 +254,14 @@ void register_logic(nb::module_& m) {
         .def(
             "__invert__", [](Bit const& self) { return ~self; }, nb::is_operator()
         )
-        .def_prop_ro(
-            "is_resolvable",
-            [](Bit const& self) { return self.is_resolvable(ResolveMethod::WEAK); }
-        )
+        .def_prop_ro("is_resolvable", [](Bit const&) { return true; })
         .def(
             "resolve",
             [](Bit const& self, std::string_view method) {
-                return self.resolve(string_to_resolve_method(method));
+                (void)string_to_resolve_method(method);
+                return self;
             }
         )
-        .def("resolve", &Bit::resolve)
         .def("__copy__", [](Bit const& self) { return Bit(self); })
         .def("__deepcopy__", [](Bit const& self, nb::dict /* memo */) {
             return Bit(self);

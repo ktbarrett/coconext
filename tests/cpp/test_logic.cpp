@@ -95,55 +95,55 @@ TEST(TestBit, BitConversions) {
 // Test Logic bool conversions
 TEST(TestLogic, LogicBoolConversions) {
     // Convertible to true
-    EXPECT_EQ('1'_l.is_resolvable(ResolveMethod::WEAK), true);
-    EXPECT_EQ('H'_l.is_resolvable(ResolveMethod::WEAK), true);
+    EXPECT_EQ('1'_l.resolve(ResolveMethod::WEAK).has_value(), true);
+    EXPECT_EQ('H'_l.resolve(ResolveMethod::WEAK).has_value(), true);
 
     // Convertible to false
-    EXPECT_EQ('0'_l.is_resolvable(ResolveMethod::WEAK), true);
-    EXPECT_EQ('L'_l.is_resolvable(ResolveMethod::WEAK), true);
+    EXPECT_EQ('0'_l.resolve(ResolveMethod::WEAK).has_value(), true);
+    EXPECT_EQ('L'_l.resolve(ResolveMethod::WEAK).has_value(), true);
 
     // Non-convertible values
-    EXPECT_EQ('X'_l.is_resolvable(ResolveMethod::WEAK), false);
-    EXPECT_EQ('Z'_l.is_resolvable(ResolveMethod::WEAK), false);
-    EXPECT_EQ('U'_l.is_resolvable(ResolveMethod::WEAK), false);
-    EXPECT_EQ('W'_l.is_resolvable(ResolveMethod::WEAK), false);
-    EXPECT_EQ('-'_l.is_resolvable(ResolveMethod::WEAK), false);
+    EXPECT_EQ('X'_l.resolve(ResolveMethod::WEAK).has_value(), false);
+    EXPECT_EQ('Z'_l.resolve(ResolveMethod::WEAK).has_value(), false);
+    EXPECT_EQ('U'_l.resolve(ResolveMethod::WEAK).has_value(), false);
+    EXPECT_EQ('W'_l.resolve(ResolveMethod::WEAK).has_value(), false);
+    EXPECT_EQ('-'_l.resolve(ResolveMethod::WEAK).has_value(), false);
 }
 
 TEST(TestBit, BitBoolConversions) {
-    EXPECT_EQ('0'_b.is_resolvable(ResolveMethod::WEAK), true);
-    EXPECT_EQ('1'_b.is_resolvable(ResolveMethod::WEAK), true);
+    EXPECT_EQ('0'_b.resolve(ResolveMethod::WEAK).has_value(), true);
+    EXPECT_EQ('1'_b.resolve(ResolveMethod::WEAK).has_value(), true);
 }
 
-TEST(TestLogic, LogicIsResolvableUnderEachMethod) {
+TEST(TestLogic, LogicResolvabilityUnderEachMethod) {
     // ERROR: only 0/1 are resolvable.
-    EXPECT_TRUE('0'_l.is_resolvable(ResolveMethod::ERROR));
-    EXPECT_TRUE('1'_l.is_resolvable(ResolveMethod::ERROR));
-    EXPECT_FALSE('L'_l.is_resolvable(ResolveMethod::ERROR));
-    EXPECT_FALSE('H'_l.is_resolvable(ResolveMethod::ERROR));
-    EXPECT_FALSE('X'_l.is_resolvable(ResolveMethod::ERROR));
-    EXPECT_FALSE('Z'_l.is_resolvable(ResolveMethod::ERROR));
-    EXPECT_FALSE('U'_l.is_resolvable(ResolveMethod::ERROR));
-    EXPECT_FALSE('W'_l.is_resolvable(ResolveMethod::ERROR));
-    EXPECT_FALSE('-'_l.is_resolvable(ResolveMethod::ERROR));
+    EXPECT_TRUE('0'_l.resolve(ResolveMethod::ERROR).has_value());
+    EXPECT_TRUE('1'_l.resolve(ResolveMethod::ERROR).has_value());
+    EXPECT_FALSE('L'_l.resolve(ResolveMethod::ERROR).has_value());
+    EXPECT_FALSE('H'_l.resolve(ResolveMethod::ERROR).has_value());
+    EXPECT_FALSE('X'_l.resolve(ResolveMethod::ERROR).has_value());
+    EXPECT_FALSE('Z'_l.resolve(ResolveMethod::ERROR).has_value());
+    EXPECT_FALSE('U'_l.resolve(ResolveMethod::ERROR).has_value());
+    EXPECT_FALSE('W'_l.resolve(ResolveMethod::ERROR).has_value());
+    EXPECT_FALSE('-'_l.resolve(ResolveMethod::ERROR).has_value());
 
     // WEAK: 0/1/L/H pass; metavalues (incl. W) do not.
-    EXPECT_TRUE('0'_l.is_resolvable(ResolveMethod::WEAK));
-    EXPECT_TRUE('1'_l.is_resolvable(ResolveMethod::WEAK));
-    EXPECT_TRUE('L'_l.is_resolvable(ResolveMethod::WEAK));
-    EXPECT_TRUE('H'_l.is_resolvable(ResolveMethod::WEAK));
-    EXPECT_FALSE('X'_l.is_resolvable(ResolveMethod::WEAK));
-    EXPECT_FALSE('Z'_l.is_resolvable(ResolveMethod::WEAK));
-    EXPECT_FALSE('U'_l.is_resolvable(ResolveMethod::WEAK));
-    EXPECT_FALSE('W'_l.is_resolvable(ResolveMethod::WEAK));
-    EXPECT_FALSE('-'_l.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_TRUE('0'_l.resolve(ResolveMethod::WEAK).has_value());
+    EXPECT_TRUE('1'_l.resolve(ResolveMethod::WEAK).has_value());
+    EXPECT_TRUE('L'_l.resolve(ResolveMethod::WEAK).has_value());
+    EXPECT_TRUE('H'_l.resolve(ResolveMethod::WEAK).has_value());
+    EXPECT_FALSE('X'_l.resolve(ResolveMethod::WEAK).has_value());
+    EXPECT_FALSE('Z'_l.resolve(ResolveMethod::WEAK).has_value());
+    EXPECT_FALSE('U'_l.resolve(ResolveMethod::WEAK).has_value());
+    EXPECT_FALSE('W'_l.resolve(ResolveMethod::WEAK).has_value());
+    EXPECT_FALSE('-'_l.resolve(ResolveMethod::WEAK).has_value());
 
     // ZEROS / ONES / RANDOM: always resolvable (no value can throw).
     for (auto m : {ResolveMethod::ZEROS, ResolveMethod::ONES, ResolveMethod::RANDOM}) {
-        EXPECT_TRUE('0'_l.is_resolvable(m));
-        EXPECT_TRUE('X'_l.is_resolvable(m));
-        EXPECT_TRUE('U'_l.is_resolvable(m));
-        EXPECT_TRUE('-'_l.is_resolvable(m));
+        EXPECT_TRUE('0'_l.resolve(m).has_value());
+        EXPECT_TRUE('X'_l.resolve(m).has_value());
+        EXPECT_TRUE('U'_l.resolve(m).has_value());
+        EXPECT_TRUE('-'_l.resolve(m).has_value());
     }
 }
 
@@ -259,16 +259,17 @@ TEST(TestBit, BitInvert) {
 // Test Logic resolve with different methods
 TEST(TestLogic, LogicResolve) {
     // Test WEAK resolution: 0/1 pass through; L/H map to 0/1; everything else
-    // throws (the "not resolvable under WEAK" tier matches L/H plus 0/1).
+    // returns nullopt (the "not resolvable under WEAK" tier matches L/H plus
+    // 0/1). optional<Bit> compares equal to Bit when engaged.
     EXPECT_EQ('0'_l.resolve(ResolveMethod::WEAK), '0'_b);
     EXPECT_EQ('1'_l.resolve(ResolveMethod::WEAK), '1'_b);
     EXPECT_EQ('L'_l.resolve(ResolveMethod::WEAK), '0'_b);
     EXPECT_EQ('H'_l.resolve(ResolveMethod::WEAK), '1'_b);
-    EXPECT_THROW((void)'U'_l.resolve(ResolveMethod::WEAK), std::invalid_argument);
-    EXPECT_THROW((void)'X'_l.resolve(ResolveMethod::WEAK), std::invalid_argument);
-    EXPECT_THROW((void)'Z'_l.resolve(ResolveMethod::WEAK), std::invalid_argument);
-    EXPECT_THROW((void)'W'_l.resolve(ResolveMethod::WEAK), std::invalid_argument);
-    EXPECT_THROW((void)'-'_l.resolve(ResolveMethod::WEAK), std::invalid_argument);
+    EXPECT_EQ('U'_l.resolve(ResolveMethod::WEAK), std::nullopt);
+    EXPECT_EQ('X'_l.resolve(ResolveMethod::WEAK), std::nullopt);
+    EXPECT_EQ('Z'_l.resolve(ResolveMethod::WEAK), std::nullopt);
+    EXPECT_EQ('W'_l.resolve(ResolveMethod::WEAK), std::nullopt);
+    EXPECT_EQ('-'_l.resolve(ResolveMethod::WEAK), std::nullopt);
 
     // Test ZEROS resolution
     EXPECT_EQ('U'_l.resolve(ResolveMethod::ZEROS), '0'_b);
@@ -317,24 +318,23 @@ TEST(TestLogic, LogicResolve) {
     // Test ERROR resolution
     EXPECT_EQ('0'_l.resolve(ResolveMethod::ERROR), '0'_b);
     EXPECT_EQ('1'_l.resolve(ResolveMethod::ERROR), '1'_b);
-    EXPECT_THROW((void)'U'_l.resolve(ResolveMethod::ERROR), std::invalid_argument);
-    EXPECT_THROW((void)'X'_l.resolve(ResolveMethod::ERROR), std::invalid_argument);
-    EXPECT_THROW((void)'Z'_l.resolve(ResolveMethod::ERROR), std::invalid_argument);
-    EXPECT_THROW((void)'W'_l.resolve(ResolveMethod::ERROR), std::invalid_argument);
-    EXPECT_THROW((void)'L'_l.resolve(ResolveMethod::ERROR), std::invalid_argument);
-    EXPECT_THROW((void)'H'_l.resolve(ResolveMethod::ERROR), std::invalid_argument);
-    EXPECT_THROW((void)'-'_l.resolve(ResolveMethod::ERROR), std::invalid_argument);
+    EXPECT_EQ('U'_l.resolve(ResolveMethod::ERROR), std::nullopt);
+    EXPECT_EQ('X'_l.resolve(ResolveMethod::ERROR), std::nullopt);
+    EXPECT_EQ('Z'_l.resolve(ResolveMethod::ERROR), std::nullopt);
+    EXPECT_EQ('W'_l.resolve(ResolveMethod::ERROR), std::nullopt);
+    EXPECT_EQ('L'_l.resolve(ResolveMethod::ERROR), std::nullopt);
+    EXPECT_EQ('H'_l.resolve(ResolveMethod::ERROR), std::nullopt);
+    EXPECT_EQ('-'_l.resolve(ResolveMethod::ERROR), std::nullopt);
 
-    // Out-of-range ResolveMethod hits the outer `default:` arm.
-    EXPECT_THROW(
-        (void)'0'_l.resolve(static_cast<ResolveMethod>(99)), std::invalid_argument
-    );
+    // Out-of-range ResolveMethod hits the outer fall-through arm and returns
+    // nullopt (the unified API doesn't throw on bad methods either).
+    EXPECT_EQ('0'_l.resolve(static_cast<ResolveMethod>(99)), std::nullopt);
 }
 
 TEST(TestBit, BitResolve) {
-    // Every Bit value is resolvable, so resolve() is a no-op regardless of
-    // method -- including ERROR (which throws on Logic for non-binary values)
-    // and out-of-range method values.
+    // Every Bit value is resolvable, so resolve() always returns an engaged
+    // optional equal to the input -- including ERROR (which is nullopt on
+    // Logic for non-binary values) and out-of-range method values.
     EXPECT_EQ('0'_b.resolve(ResolveMethod::ERROR), '0'_b);
     EXPECT_EQ('1'_b.resolve(ResolveMethod::ERROR), '1'_b);
 
@@ -374,23 +374,23 @@ TEST(TestLogic, RuntimeIntAndBitConversions) {
     EXPECT_EQ(bits[1].resolve(ResolveMethod::ZEROS), '1'_b);
 }
 
-// Test Logic is_resolvable
+// Test Logic resolvability via resolve(...).has_value()
 TEST(TestLogic, LogicIsResolvable) {
-    EXPECT_TRUE('0'_l.is_resolvable(ResolveMethod::WEAK));
-    EXPECT_TRUE('1'_l.is_resolvable(ResolveMethod::WEAK));
-    EXPECT_TRUE('L'_l.is_resolvable(ResolveMethod::WEAK));
-    EXPECT_TRUE('H'_l.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_TRUE('0'_l.resolve(ResolveMethod::WEAK).has_value());
+    EXPECT_TRUE('1'_l.resolve(ResolveMethod::WEAK).has_value());
+    EXPECT_TRUE('L'_l.resolve(ResolveMethod::WEAK).has_value());
+    EXPECT_TRUE('H'_l.resolve(ResolveMethod::WEAK).has_value());
 
-    EXPECT_FALSE('U'_l.is_resolvable(ResolveMethod::WEAK));
-    EXPECT_FALSE('X'_l.is_resolvable(ResolveMethod::WEAK));
-    EXPECT_FALSE('Z'_l.is_resolvable(ResolveMethod::WEAK));
-    EXPECT_FALSE('W'_l.is_resolvable(ResolveMethod::WEAK));
-    EXPECT_FALSE('-'_l.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_FALSE('U'_l.resolve(ResolveMethod::WEAK).has_value());
+    EXPECT_FALSE('X'_l.resolve(ResolveMethod::WEAK).has_value());
+    EXPECT_FALSE('Z'_l.resolve(ResolveMethod::WEAK).has_value());
+    EXPECT_FALSE('W'_l.resolve(ResolveMethod::WEAK).has_value());
+    EXPECT_FALSE('-'_l.resolve(ResolveMethod::WEAK).has_value());
 }
 
 TEST(TestBit, BitIsResolvable) {
-    EXPECT_TRUE('0'_b.is_resolvable(ResolveMethod::WEAK));
-    EXPECT_TRUE('1'_b.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_TRUE('0'_b.resolve(ResolveMethod::WEAK).has_value());
+    EXPECT_TRUE('1'_b.resolve(ResolveMethod::WEAK).has_value());
 }
 
 TEST(TestLogic, LogicIsHashable) {

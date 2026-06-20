@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <format>
 #include <limits>
+#include <optional>
 #include <ranges>
 #include <stdexcept>
 #include <string>
@@ -85,27 +86,12 @@ class Vector<Bit>;
 
 namespace detail {
 
-template <Range R>
-class Array<Bit, R>;
-
-// CRTP mixin providing the Logic/Bit-specific query and resolution members.
-// Inherited by the Logic/Bit specializations of Array, Vector, StaticArraySlice,
-// and ArraySlice below. The non-Logic/Bit primaries do NOT inherit this,
-// so `Array<int, R>::is_resolvable(method)` and friends don't exist.
+// CRTP mixin providing the Logic/Bit-specific resolve member. Inherited by
+// the Logic/Bit specializations of Array, Vector, StaticArraySlice, and
+// ArraySlice below. The non-Logic/Bit primaries do NOT inherit this, so
+// `Array<int, R>::resolve(method)` and friends don't exist.
 template <typename Self>
 struct LogicArrayMixin {
-    bool is_resolvable(ResolveMethod method) const noexcept {
-        auto const& self = *static_cast<Self const*>(this);
-        using Elem = std::ranges::range_value_t<Self>;
-        if constexpr (std::same_as<Elem, Bit>) {
-            // Every Bit is resolvable under every method; skip the walk.
-            return true;
-        } else {
-            return std::ranges::all_of(self, [method](auto const& v) {
-                return v.is_resolvable(method);
-            });
-        }
-    }
 
     auto resolve(ResolveMethod method) const;
 
@@ -150,9 +136,9 @@ struct LogicArrayMixin {
 //
 // These specializations make `Array<Logic, R>`, `Array<Bit, R>`,
 // `Vector<Logic>`, `Vector<Bit>`, and slices over Logic/Bit owners
-// inherit `LogicArrayMixin`, gaining `is_resolvable(method)` and `resolve(method)`
-// as members. The primary templates remain unchanged for non-Logic element
-// types -- e.g., `Array<int, R>` has no `is_resolvable(method)`.
+// inherit `LogicArrayMixin`, gaining `resolve(method)` as a member. The
+// primary templates remain unchanged for non-Logic element types -- e.g.,
+// `Array<int, R>` has no `resolve(method)`.
 
 namespace detail {
 
@@ -248,16 +234,28 @@ template <typename Self>
 auto LogicArrayMixin<Self>::resolve(ResolveMethod method) const {
     auto const& self = *static_cast<Self const*>(this);
     if constexpr (StaticRangedSequence<Self>) {
-        ::coconext::types::detail::Array<Bit, Self::static_range> result{};
-        std::ranges::transform(self, result.begin(), [method](auto const& v) {
-            return v.resolve(method);
-        });
+        std::optional<::coconext::types::detail::Array<Bit, Self::static_range>> result{
+            std::in_place
+        };
+        auto out = result->begin();
+        for (auto const& v : self) {
+            auto r = v.resolve(method);
+            if (!r) {
+                return decltype(result){std::nullopt};
+            }
+            *out++ = *r;
+        }
         return result;
     } else {
-        ::coconext::types::Vector<Bit> result(self.range());
-        std::ranges::transform(self, result.begin(), [method](auto const& v) {
-            return v.resolve(method);
-        });
+        std::optional<::coconext::types::Vector<Bit>> result{std::in_place, self.range()};
+        auto out = result->begin();
+        for (auto const& v : self) {
+            auto r = v.resolve(method);
+            if (!r) {
+                return decltype(result){std::nullopt};
+            }
+            *out++ = *r;
+        }
         return result;
     }
 }
@@ -757,31 +755,6 @@ inline Vector<Logic> to_logic_array(std::string_view s) {
 
 inline Vector<Bit> to_bit_array(std::string_view s) {
     return detail::parse_logic_string<Bit>(s, [](char c) { return to_bit(c); });
-}
-
-// Convert a range of Logic to a Vector<Bit>. Throws if any element is not
-// 0/1/L/H (i.e. every element must be resolvable). Constrained to sized_range
-// so the result can be sized up-front from std::ranges::size in O(1) and the
-// resolvability check can be fused with the fill into a single pass.
-template <std::ranges::sized_range R>
-    requires std::same_as<std::ranges::range_value_t<R>, Logic>
-Vector<Bit> to_bit_array(R const& range) {
-    auto const sz = std::ranges::size(range);
-    if (sz > static_cast<size_t>(std::numeric_limits<Range::value_type>::max())) {
-        throw std::length_error("range too long for Range::value_type");
-    }
-    auto const n = static_cast<Range::value_type>(sz);
-    Vector<Bit> result(Range{n - 1, Direction::DOWNTO, 0});
-    auto out = result.begin();
-    for (Logic const& v : range) {
-        if (!v.is_resolvable(ResolveMethod::WEAK)) {
-            throw std::invalid_argument(
-                "Cannot convert non-resolvable Logic values to BitArray"
-            );
-        }
-        *out++ = to_int(v) ? Bit::_1 : Bit::_0;
-    }
-    return result;
 }
 
 // -- String-literal UDL ----------------------------------------------------

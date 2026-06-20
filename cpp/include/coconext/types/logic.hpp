@@ -4,6 +4,7 @@
 #include <coconext/types/concepts.hpp>
 #include <cstdint>
 #include <format>
+#include <optional>
 #include <stdexcept>
 #include <string_view>
 #include <type_traits>
@@ -39,9 +40,12 @@ class Logic {
     constexpr Logic(value_type value) noexcept : value_(value) {}
     constexpr value_type value() const noexcept { return value_; }
 
-    bool is_resolvable(ResolveMethod method) const noexcept;
-
-    Bit resolve(ResolveMethod method) const;
+    // Resolve under `method`. Returns nullopt iff the value is not resolvable
+    // under `method` -- ERROR accepts only 0/1; WEAK additionally accepts L/H;
+    // ZEROS, ONES, RANDOM accept anything. This unifies the old separate
+    // is_resolvable/resolve pair: `r.has_value()` answers the predicate,
+    // `r.value()` extracts the Bit.
+    std::optional<Bit> resolve(ResolveMethod method) const noexcept;
 
   private:
     value_type value_ = _0;
@@ -59,9 +63,10 @@ class Bit {
     constexpr Bit(value_type value) noexcept : value_(value) {}
     constexpr value_type value() const noexcept { return value_; }
 
-    constexpr bool is_resolvable(ResolveMethod) const noexcept { return true; }
-
-    constexpr Bit resolve(ResolveMethod) const noexcept { return *this; }
+    // Every Bit is resolvable under every method, so the optional is always
+    // engaged. Kept for uniformity with Logic::resolve so generic code over
+    // LogicType can treat both the same way.
+    constexpr std::optional<Bit> resolve(ResolveMethod) const noexcept { return *this; }
 
     // Implicit conversion from Bit to Logic mimics subtype upcasting.
     constexpr operator Logic() const noexcept {
