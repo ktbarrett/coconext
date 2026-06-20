@@ -27,10 +27,8 @@ Logic Logic::resolve(ResolveMethod method) const {
             return _0;
         case H:
             return _1;
-        case W:
-            return X;
         default:
-            return *this;
+            throw std::invalid_argument("Logic value is not resolvable under WEAK");
         }
     case ResolveMethod::ZEROS:
         switch (value_) {

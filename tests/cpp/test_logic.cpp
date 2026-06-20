@@ -226,16 +226,17 @@ TEST(TestBit, BitInvert) {
 
 // Test Logic resolve with different methods
 TEST(TestLogic, LogicResolve) {
-    // Test WEAK resolution
-    EXPECT_EQ('U'_l.resolve(ResolveMethod::WEAK), 'U'_l);
-    EXPECT_EQ('X'_l.resolve(ResolveMethod::WEAK), 'X'_l);
+    // Test WEAK resolution: 0/1 pass through; L/H map to 0/1; everything else
+    // throws (the "not resolvable under WEAK" tier matches L/H plus 0/1).
     EXPECT_EQ('0'_l.resolve(ResolveMethod::WEAK), '0'_l);
     EXPECT_EQ('1'_l.resolve(ResolveMethod::WEAK), '1'_l);
-    EXPECT_EQ('Z'_l.resolve(ResolveMethod::WEAK), 'Z'_l);
-    EXPECT_EQ('W'_l.resolve(ResolveMethod::WEAK), 'X'_l);
     EXPECT_EQ('L'_l.resolve(ResolveMethod::WEAK), '0'_l);
     EXPECT_EQ('H'_l.resolve(ResolveMethod::WEAK), '1'_l);
-    EXPECT_EQ('-'_l.resolve(ResolveMethod::WEAK), '-'_l);
+    EXPECT_THROW((void)'U'_l.resolve(ResolveMethod::WEAK), std::invalid_argument);
+    EXPECT_THROW((void)'X'_l.resolve(ResolveMethod::WEAK), std::invalid_argument);
+    EXPECT_THROW((void)'Z'_l.resolve(ResolveMethod::WEAK), std::invalid_argument);
+    EXPECT_THROW((void)'W'_l.resolve(ResolveMethod::WEAK), std::invalid_argument);
+    EXPECT_THROW((void)'-'_l.resolve(ResolveMethod::WEAK), std::invalid_argument);
 
     // Test ZEROS resolution
     EXPECT_EQ('U'_l.resolve(ResolveMethod::ZEROS), '0'_l);
