@@ -260,10 +260,10 @@ TEST(TestBit, BitInvert) {
 TEST(TestLogic, LogicResolve) {
     // Test WEAK resolution: 0/1 pass through; L/H map to 0/1; everything else
     // throws (the "not resolvable under WEAK" tier matches L/H plus 0/1).
-    EXPECT_EQ('0'_l.resolve(ResolveMethod::WEAK), '0'_l);
-    EXPECT_EQ('1'_l.resolve(ResolveMethod::WEAK), '1'_l);
-    EXPECT_EQ('L'_l.resolve(ResolveMethod::WEAK), '0'_l);
-    EXPECT_EQ('H'_l.resolve(ResolveMethod::WEAK), '1'_l);
+    EXPECT_EQ('0'_l.resolve(ResolveMethod::WEAK), '0'_b);
+    EXPECT_EQ('1'_l.resolve(ResolveMethod::WEAK), '1'_b);
+    EXPECT_EQ('L'_l.resolve(ResolveMethod::WEAK), '0'_b);
+    EXPECT_EQ('H'_l.resolve(ResolveMethod::WEAK), '1'_b);
     EXPECT_THROW((void)'U'_l.resolve(ResolveMethod::WEAK), std::invalid_argument);
     EXPECT_THROW((void)'X'_l.resolve(ResolveMethod::WEAK), std::invalid_argument);
     EXPECT_THROW((void)'Z'_l.resolve(ResolveMethod::WEAK), std::invalid_argument);
@@ -271,52 +271,52 @@ TEST(TestLogic, LogicResolve) {
     EXPECT_THROW((void)'-'_l.resolve(ResolveMethod::WEAK), std::invalid_argument);
 
     // Test ZEROS resolution
-    EXPECT_EQ('U'_l.resolve(ResolveMethod::ZEROS), '0'_l);
-    EXPECT_EQ('X'_l.resolve(ResolveMethod::ZEROS), '0'_l);
-    EXPECT_EQ('0'_l.resolve(ResolveMethod::ZEROS), '0'_l);
-    EXPECT_EQ('1'_l.resolve(ResolveMethod::ZEROS), '1'_l);
-    EXPECT_EQ('Z'_l.resolve(ResolveMethod::ZEROS), '0'_l);
-    EXPECT_EQ('W'_l.resolve(ResolveMethod::ZEROS), '0'_l);
-    EXPECT_EQ('L'_l.resolve(ResolveMethod::ZEROS), '0'_l);
-    EXPECT_EQ('H'_l.resolve(ResolveMethod::ZEROS), '1'_l);
-    EXPECT_EQ('-'_l.resolve(ResolveMethod::ZEROS), '0'_l);
+    EXPECT_EQ('U'_l.resolve(ResolveMethod::ZEROS), '0'_b);
+    EXPECT_EQ('X'_l.resolve(ResolveMethod::ZEROS), '0'_b);
+    EXPECT_EQ('0'_l.resolve(ResolveMethod::ZEROS), '0'_b);
+    EXPECT_EQ('1'_l.resolve(ResolveMethod::ZEROS), '1'_b);
+    EXPECT_EQ('Z'_l.resolve(ResolveMethod::ZEROS), '0'_b);
+    EXPECT_EQ('W'_l.resolve(ResolveMethod::ZEROS), '0'_b);
+    EXPECT_EQ('L'_l.resolve(ResolveMethod::ZEROS), '0'_b);
+    EXPECT_EQ('H'_l.resolve(ResolveMethod::ZEROS), '1'_b);
+    EXPECT_EQ('-'_l.resolve(ResolveMethod::ZEROS), '0'_b);
 
     // Test ONES resolution
-    EXPECT_EQ('U'_l.resolve(ResolveMethod::ONES), '1'_l);
-    EXPECT_EQ('X'_l.resolve(ResolveMethod::ONES), '1'_l);
-    EXPECT_EQ('0'_l.resolve(ResolveMethod::ONES), '0'_l);
-    EXPECT_EQ('1'_l.resolve(ResolveMethod::ONES), '1'_l);
-    EXPECT_EQ('Z'_l.resolve(ResolveMethod::ONES), '1'_l);
-    EXPECT_EQ('W'_l.resolve(ResolveMethod::ONES), '1'_l);
-    EXPECT_EQ('L'_l.resolve(ResolveMethod::ONES), '0'_l);
-    EXPECT_EQ('H'_l.resolve(ResolveMethod::ONES), '1'_l);
-    EXPECT_EQ('-'_l.resolve(ResolveMethod::ONES), '1'_l);
+    EXPECT_EQ('U'_l.resolve(ResolveMethod::ONES), '1'_b);
+    EXPECT_EQ('X'_l.resolve(ResolveMethod::ONES), '1'_b);
+    EXPECT_EQ('0'_l.resolve(ResolveMethod::ONES), '0'_b);
+    EXPECT_EQ('1'_l.resolve(ResolveMethod::ONES), '1'_b);
+    EXPECT_EQ('Z'_l.resolve(ResolveMethod::ONES), '1'_b);
+    EXPECT_EQ('W'_l.resolve(ResolveMethod::ONES), '1'_b);
+    EXPECT_EQ('L'_l.resolve(ResolveMethod::ONES), '0'_b);
+    EXPECT_EQ('H'_l.resolve(ResolveMethod::ONES), '1'_b);
+    EXPECT_EQ('-'_l.resolve(ResolveMethod::ONES), '1'_b);
 
     // Test RANDOM resolution
     auto resolved_u = 'U'_l.resolve(ResolveMethod::RANDOM);
-    EXPECT_TRUE(resolved_u == '0'_l || resolved_u == '1'_l);
+    EXPECT_TRUE(resolved_u == '0'_b || resolved_u == '1'_b);
 
     auto resolved_x = 'X'_l.resolve(ResolveMethod::RANDOM);
-    EXPECT_TRUE(resolved_x == '0'_l || resolved_x == '1'_l);
+    EXPECT_TRUE(resolved_x == '0'_b || resolved_x == '1'_b);
 
-    EXPECT_EQ('0'_l.resolve(ResolveMethod::RANDOM), '0'_l);
-    EXPECT_EQ('1'_l.resolve(ResolveMethod::RANDOM), '1'_l);
+    EXPECT_EQ('0'_l.resolve(ResolveMethod::RANDOM), '0'_b);
+    EXPECT_EQ('1'_l.resolve(ResolveMethod::RANDOM), '1'_b);
 
     auto resolved_z = 'Z'_l.resolve(ResolveMethod::RANDOM);
-    EXPECT_TRUE(resolved_z == '0'_l || resolved_z == '1'_l);
+    EXPECT_TRUE(resolved_z == '0'_b || resolved_z == '1'_b);
 
     auto resolved_w = 'W'_l.resolve(ResolveMethod::RANDOM);
-    EXPECT_TRUE(resolved_w == '0'_l || resolved_w == '1'_l);
+    EXPECT_TRUE(resolved_w == '0'_b || resolved_w == '1'_b);
 
-    EXPECT_EQ('L'_l.resolve(ResolveMethod::RANDOM), '0'_l);
-    EXPECT_EQ('H'_l.resolve(ResolveMethod::RANDOM), '1'_l);
+    EXPECT_EQ('L'_l.resolve(ResolveMethod::RANDOM), '0'_b);
+    EXPECT_EQ('H'_l.resolve(ResolveMethod::RANDOM), '1'_b);
 
     auto resolved_dc = '-'_l.resolve(ResolveMethod::RANDOM);
-    EXPECT_TRUE(resolved_dc == '0'_l || resolved_dc == '1'_l);
+    EXPECT_TRUE(resolved_dc == '0'_b || resolved_dc == '1'_b);
 
     // Test ERROR resolution
-    EXPECT_EQ('0'_l.resolve(ResolveMethod::ERROR), '0'_l);
-    EXPECT_EQ('1'_l.resolve(ResolveMethod::ERROR), '1'_l);
+    EXPECT_EQ('0'_l.resolve(ResolveMethod::ERROR), '0'_b);
+    EXPECT_EQ('1'_l.resolve(ResolveMethod::ERROR), '1'_b);
     EXPECT_THROW((void)'U'_l.resolve(ResolveMethod::ERROR), std::invalid_argument);
     EXPECT_THROW((void)'X'_l.resolve(ResolveMethod::ERROR), std::invalid_argument);
     EXPECT_THROW((void)'Z'_l.resolve(ResolveMethod::ERROR), std::invalid_argument);

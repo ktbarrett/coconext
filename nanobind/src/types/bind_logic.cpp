@@ -55,7 +55,7 @@ void register_logic(nb::module_& m) {
             [](Logic* self, long long value) { new (self) Logic(to_logic(value)); }
         )
         .def("__str__", [](Logic const& self) { return to_string(self); })
-        .def("__index__", &to_int)
+        .def("__index__", [](Logic const& self) { return to_int(self); })
         .def("__bool__", [](Logic const& self) { return to_int(self) != 0; })
         .def(
             "__repr__",
@@ -153,10 +153,15 @@ void register_logic(nb::module_& m) {
                         return self;
                     }
                 }
-                return self.resolve(m);
+                return Logic(self.resolve(m));
             }
         )
-        .def("resolve", &Logic::resolve)
+        .def(
+            "resolve",
+            [](Logic const& self, ResolveMethod method) {
+                return Logic(self.resolve(method));
+            }
+        )
         .def("__copy__", [](Logic const& self) { return Logic(self); })
         .def("__deepcopy__", [](Logic const& self, nb::dict /* memo */) {
             return Logic(self);
@@ -173,7 +178,7 @@ void register_logic(nb::module_& m) {
         )
         .def("__init__", [](Bit* self, long long value) { new (self) Bit(to_bit(value)); })
         .def("__str__", [](Bit const& self) { return to_string(self); })
-        .def("__index__", &to_int)
+        .def("__index__", [](Bit const& self) { return to_int(self); })
         .def("__bool__", [](Bit const& self) { return to_int(self) != 0; })
         .def(
             "__repr__",

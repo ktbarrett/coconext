@@ -18,6 +18,8 @@ enum class ResolveMethod {
     RANDOM,
 };
 
+class Bit;
+
 class Logic {
   public:
     enum class value_type : uint8_t {
@@ -39,7 +41,7 @@ class Logic {
 
     bool is_resolvable(ResolveMethod method) const noexcept;
 
-    Logic resolve(ResolveMethod method) const;
+    Bit resolve(ResolveMethod method) const;
 
   private:
     value_type value_ = _0;
@@ -232,6 +234,8 @@ constexpr int to_int(Logic const& value) {
         );
     }
 }
+
+constexpr int to_int(Bit const& value) noexcept { return value.value() == Bit::_0 ? 0 : 1; }
 
 constexpr Logic operator|(Logic const& lhs, Logic const& rhs) noexcept {
     using enum Logic::value_type;
