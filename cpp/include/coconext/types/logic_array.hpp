@@ -78,6 +78,16 @@ constexpr Range make_logic_static_range() {
     }
 }
 
+}  // namespace detail
+
+template <>
+class Vector<Bit>;
+
+namespace detail {
+
+template <Range R>
+class Array<Bit, R>;
+
 // CRTP mixin providing the Logic/Bit-specific query and resolution members.
 // Inherited by the Logic/Bit specializations of Array, Vector, StaticArraySlice,
 // and ArraySlice below. The non-Logic/Bit primaries do NOT inherit this,
@@ -97,27 +107,7 @@ struct LogicArrayMixin {
         }
     }
 
-    // Element-wise resolve. Returns a static `Array<Elem, R>` when Self has a
-    // compile-time range, a heap-allocated `Vector<Elem>` otherwise. The
-    // returned array preserves Self's range (an owner returns the same shape;
-    // a slice returns an owner sized like the slice's range).
-    auto resolve(ResolveMethod method) const {
-        auto const& self = *static_cast<Self const*>(this);
-        using Elem = std::ranges::range_value_t<Self>;
-        if constexpr (StaticRangedSequence<Self>) {
-            ::coconext::types::Array<Elem, Self::static_range> result{};
-            std::ranges::transform(self, result.begin(), [method](auto const& v) {
-                return v.resolve(method);
-            });
-            return result;
-        } else {
-            ::coconext::types::Vector<Elem> result(self.range());
-            std::ranges::transform(self, result.begin(), [method](auto const& v) {
-                return v.resolve(method);
-            });
-            return result;
-        }
-    }
+    auto resolve(ResolveMethod method) const;
 
     // Reductions: fold over the array with the corresponding bitwise op.
     // Empty arrays return the operation's identity (1 for AND, 0 for OR/XOR),
@@ -251,6 +241,28 @@ class StaticArraySlice<ArrayT, R>
     using detail::StaticArraySliceImpl<ArrayT, R>::StaticArraySliceImpl;
     using detail::StaticArraySliceImpl<ArrayT, R>::operator=;
 };
+
+namespace detail {
+
+template <typename Self>
+auto LogicArrayMixin<Self>::resolve(ResolveMethod method) const {
+    auto const& self = *static_cast<Self const*>(this);
+    if constexpr (StaticRangedSequence<Self>) {
+        ::coconext::types::detail::Array<Bit, Self::static_range> result{};
+        std::ranges::transform(self, result.begin(), [method](auto const& v) {
+            return v.resolve(method);
+        });
+        return result;
+    } else {
+        ::coconext::types::Vector<Bit> result(self.range());
+        std::ranges::transform(self, result.begin(), [method](auto const& v) {
+            return v.resolve(method);
+        });
+        return result;
+    }
+}
+
+}  // namespace detail
 
 using LogicVector = Vector<Logic>;
 using BitVector = Vector<Bit>;

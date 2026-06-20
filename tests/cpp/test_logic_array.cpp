@@ -367,8 +367,9 @@ TEST(TestLogicArray, ResolveStaticReturnsStaticArray) {
     auto b = a.resolve(ResolveMethod::ZEROS);
     // Static-bound input -> static-bound output of matching range. This is the
     // payoff of memberizing resolve on the specializations: the result type
-    // preserves Self's static range when available.
-    static_assert(std::is_same_v<decltype(b), LogicArray<Range{3, Direction::DOWNTO, 0}>>);
+    // preserves Self's static range when available, and resolve always returns
+    // a Bit-valued container.
+    static_assert(std::is_same_v<decltype(b), BitArray<Range{3, Direction::DOWNTO, 0}>>);
     EXPECT_EQ(to_string(b), "0100");
 }
 
@@ -393,7 +394,7 @@ TEST(TestLogicArray, DynSliceResolveReturnsVector) {
     auto a = to_logic_array("01XZ");
     auto s = a[{3, 0}];
     auto r = s.resolve(ResolveMethod::ZEROS);
-    static_assert(std::is_same_v<decltype(r), Vector<Logic>>);
+    static_assert(std::is_same_v<decltype(r), BitVector>);
     EXPECT_EQ(to_string(r), "0100");
 }
 
@@ -401,7 +402,7 @@ TEST(TestLogicArray, StaticSliceResolveReturnsStaticArray) {
     auto a = "01XZ"_l;  // LogicArray<Range{3, DOWNTO, 0}>
     auto s = a.slice<Range{2, Direction::DOWNTO, 1}>();
     auto r = s.resolve(ResolveMethod::ZEROS);
-    static_assert(std::is_same_v<decltype(r), LogicArray<Range{2, Direction::DOWNTO, 1}>>);
+    static_assert(std::is_same_v<decltype(r), BitArray<Range{2, Direction::DOWNTO, 1}>>);
     EXPECT_EQ(to_string(r), "10");  // X->0, 1->1; slice was {X, 1} in storage order
 }
 
