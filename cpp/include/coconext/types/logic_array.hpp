@@ -81,18 +81,18 @@ constexpr Range make_logic_static_range() {
 // CRTP mixin providing the Logic/Bit-specific query and resolution members.
 // Inherited by the Logic/Bit specializations of Array, Vector, StaticArraySlice,
 // and ArraySlice below. The non-Logic/Bit primaries do NOT inherit this,
-// so `Array<int, R>::is_resolvable()` and friends don't exist.
+// so `Array<int, R>::is_resolvable(method)` and friends don't exist.
 template <typename Self>
 struct LogicArrayMixin {
-    bool is_resolvable() const noexcept {
+    bool is_resolvable(ResolveMethod method) const noexcept {
         auto const& self = *static_cast<Self const*>(this);
         using Elem = std::ranges::range_value_t<Self>;
         if constexpr (std::same_as<Elem, Bit>) {
-            // Every Bit is resolvable; skip the walk.
+            // Every Bit is resolvable under every method; skip the walk.
             return true;
         } else {
-            return std::ranges::all_of(self, [](auto const& v) {
-                return v.is_resolvable();
+            return std::ranges::all_of(self, [method](auto const& v) {
+                return v.is_resolvable(method);
             });
         }
     }
@@ -160,9 +160,9 @@ struct LogicArrayMixin {
 //
 // These specializations make `Array<Logic, R>`, `Array<Bit, R>`,
 // `Vector<Logic>`, `Vector<Bit>`, and slices over Logic/Bit owners
-// inherit `LogicArrayMixin`, gaining `is_resolvable()` and `resolve(method)`
+// inherit `LogicArrayMixin`, gaining `is_resolvable(method)` and `resolve(method)`
 // as members. The primary templates remain unchanged for non-Logic element
-// types -- e.g., `Array<int, R>` has no `is_resolvable()`.
+// types -- e.g., `Array<int, R>` has no `is_resolvable(method)`.
 
 namespace detail {
 
@@ -762,7 +762,7 @@ Vector<Bit> to_bit_array(R const& range) {
     Vector<Bit> result(Range{n - 1, Direction::DOWNTO, 0});
     auto out = result.begin();
     for (Logic const& v : range) {
-        if (!v.is_resolvable()) {
+        if (!v.is_resolvable(ResolveMethod::WEAK)) {
             throw std::invalid_argument(
                 "Cannot convert non-resolvable Logic values to BitArray"
             );

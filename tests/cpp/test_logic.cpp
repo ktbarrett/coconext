@@ -95,24 +95,56 @@ TEST(TestBit, BitConversions) {
 // Test Logic bool conversions
 TEST(TestLogic, LogicBoolConversions) {
     // Convertible to true
-    EXPECT_EQ('1'_l.is_resolvable(), true);
-    EXPECT_EQ('H'_l.is_resolvable(), true);
+    EXPECT_EQ('1'_l.is_resolvable(ResolveMethod::WEAK), true);
+    EXPECT_EQ('H'_l.is_resolvable(ResolveMethod::WEAK), true);
 
     // Convertible to false
-    EXPECT_EQ('0'_l.is_resolvable(), true);
-    EXPECT_EQ('L'_l.is_resolvable(), true);
+    EXPECT_EQ('0'_l.is_resolvable(ResolveMethod::WEAK), true);
+    EXPECT_EQ('L'_l.is_resolvable(ResolveMethod::WEAK), true);
 
     // Non-convertible values
-    EXPECT_EQ('X'_l.is_resolvable(), false);
-    EXPECT_EQ('Z'_l.is_resolvable(), false);
-    EXPECT_EQ('U'_l.is_resolvable(), false);
-    EXPECT_EQ('W'_l.is_resolvable(), false);
-    EXPECT_EQ('-'_l.is_resolvable(), false);
+    EXPECT_EQ('X'_l.is_resolvable(ResolveMethod::WEAK), false);
+    EXPECT_EQ('Z'_l.is_resolvable(ResolveMethod::WEAK), false);
+    EXPECT_EQ('U'_l.is_resolvable(ResolveMethod::WEAK), false);
+    EXPECT_EQ('W'_l.is_resolvable(ResolveMethod::WEAK), false);
+    EXPECT_EQ('-'_l.is_resolvable(ResolveMethod::WEAK), false);
 }
 
 TEST(TestBit, BitBoolConversions) {
-    EXPECT_EQ('0'_b.is_resolvable(), true);
-    EXPECT_EQ('1'_b.is_resolvable(), true);
+    EXPECT_EQ('0'_b.is_resolvable(ResolveMethod::WEAK), true);
+    EXPECT_EQ('1'_b.is_resolvable(ResolveMethod::WEAK), true);
+}
+
+TEST(TestLogic, LogicIsResolvableUnderEachMethod) {
+    // ERROR: only 0/1 are resolvable.
+    EXPECT_TRUE('0'_l.is_resolvable(ResolveMethod::ERROR));
+    EXPECT_TRUE('1'_l.is_resolvable(ResolveMethod::ERROR));
+    EXPECT_FALSE('L'_l.is_resolvable(ResolveMethod::ERROR));
+    EXPECT_FALSE('H'_l.is_resolvable(ResolveMethod::ERROR));
+    EXPECT_FALSE('X'_l.is_resolvable(ResolveMethod::ERROR));
+    EXPECT_FALSE('Z'_l.is_resolvable(ResolveMethod::ERROR));
+    EXPECT_FALSE('U'_l.is_resolvable(ResolveMethod::ERROR));
+    EXPECT_FALSE('W'_l.is_resolvable(ResolveMethod::ERROR));
+    EXPECT_FALSE('-'_l.is_resolvable(ResolveMethod::ERROR));
+
+    // WEAK: 0/1/L/H pass; metavalues (incl. W) do not.
+    EXPECT_TRUE('0'_l.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_TRUE('1'_l.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_TRUE('L'_l.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_TRUE('H'_l.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_FALSE('X'_l.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_FALSE('Z'_l.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_FALSE('U'_l.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_FALSE('W'_l.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_FALSE('-'_l.is_resolvable(ResolveMethod::WEAK));
+
+    // ZEROS / ONES / RANDOM: always resolvable (no value can throw).
+    for (auto m : {ResolveMethod::ZEROS, ResolveMethod::ONES, ResolveMethod::RANDOM}) {
+        EXPECT_TRUE('0'_l.is_resolvable(m));
+        EXPECT_TRUE('X'_l.is_resolvable(m));
+        EXPECT_TRUE('U'_l.is_resolvable(m));
+        EXPECT_TRUE('-'_l.is_resolvable(m));
+    }
 }
 
 // Test Logic string conversions
@@ -344,21 +376,21 @@ TEST(TestLogic, RuntimeIntAndBitConversions) {
 
 // Test Logic is_resolvable
 TEST(TestLogic, LogicIsResolvable) {
-    EXPECT_TRUE('0'_l.is_resolvable());
-    EXPECT_TRUE('1'_l.is_resolvable());
-    EXPECT_TRUE('L'_l.is_resolvable());
-    EXPECT_TRUE('H'_l.is_resolvable());
+    EXPECT_TRUE('0'_l.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_TRUE('1'_l.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_TRUE('L'_l.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_TRUE('H'_l.is_resolvable(ResolveMethod::WEAK));
 
-    EXPECT_FALSE('U'_l.is_resolvable());
-    EXPECT_FALSE('X'_l.is_resolvable());
-    EXPECT_FALSE('Z'_l.is_resolvable());
-    EXPECT_FALSE('W'_l.is_resolvable());
-    EXPECT_FALSE('-'_l.is_resolvable());
+    EXPECT_FALSE('U'_l.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_FALSE('X'_l.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_FALSE('Z'_l.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_FALSE('W'_l.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_FALSE('-'_l.is_resolvable(ResolveMethod::WEAK));
 }
 
 TEST(TestBit, BitIsResolvable) {
-    EXPECT_TRUE('0'_b.is_resolvable());
-    EXPECT_TRUE('1'_b.is_resolvable());
+    EXPECT_TRUE('0'_b.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_TRUE('1'_b.is_resolvable(ResolveMethod::WEAK));
 }
 
 TEST(TestLogic, LogicIsHashable) {
