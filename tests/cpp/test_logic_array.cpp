@@ -377,6 +377,18 @@ TEST(TestLogicArray, ResolveStaticReturnsStaticArray) {
     EXPECT_EQ(to_string(*b), "0100");
 }
 
+// No-arg resolve() defaults to WEAK -- engages iff every element is 0/1/L/H,
+// matching the scalar Logic::resolve() shortcut.
+TEST(TestLogicArray, ResolveNoArgDefaultsToWeak) {
+    auto resolvable = to_logic_array("01LH");
+    auto a = resolvable.resolve();
+    ASSERT_TRUE(a.has_value());
+    EXPECT_EQ(to_string(*a), "0101");
+
+    auto mixed = to_logic_array("01X");
+    EXPECT_FALSE(mixed.resolve().has_value());
+}
+
 // -- Slice resolvability ---------------------------------------------------
 //
 // The constrained partial specs of StaticArraySlice and ArraySlice inherit the
