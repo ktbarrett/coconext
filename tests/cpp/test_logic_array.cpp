@@ -303,24 +303,24 @@ TEST(TestLogicArray, ToStringEmpty) {
     EXPECT_EQ(to_string(a), "");
 }
 
-// -- is_resolvable on arrays ------------------------------------------------
+// -- resolvability query on arrays ------------------------------------------
 
-TEST(TestLogicArray, IsResolvableTrue) {
+TEST(TestLogicArray, ResolveEngagedOnResolvable) {
     auto a = to_logic_array("01LH");
-    EXPECT_TRUE(a.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_TRUE(a.resolve(ResolveMethod::WEAK).has_value());
 }
 
-TEST(TestLogicArray, IsResolvableFalse) {
-    EXPECT_FALSE(to_logic_array("01X0").is_resolvable(ResolveMethod::WEAK));
-    EXPECT_FALSE(to_logic_array("Z").is_resolvable(ResolveMethod::WEAK));
-    EXPECT_FALSE(to_logic_array("U").is_resolvable(ResolveMethod::WEAK));
-    EXPECT_FALSE(to_logic_array("W").is_resolvable(ResolveMethod::WEAK));
-    EXPECT_FALSE(to_logic_array("-").is_resolvable(ResolveMethod::WEAK));
+TEST(TestLogicArray, ResolveNulloptOnMetavalue) {
+    EXPECT_FALSE(to_logic_array("01X0").resolve(ResolveMethod::WEAK).has_value());
+    EXPECT_FALSE(to_logic_array("Z").resolve(ResolveMethod::WEAK).has_value());
+    EXPECT_FALSE(to_logic_array("U").resolve(ResolveMethod::WEAK).has_value());
+    EXPECT_FALSE(to_logic_array("W").resolve(ResolveMethod::WEAK).has_value());
+    EXPECT_FALSE(to_logic_array("-").resolve(ResolveMethod::WEAK).has_value());
 }
 
-TEST(TestLogicArray, IsResolvableEmpty) {
+TEST(TestLogicArray, ResolveEngagedOnEmpty) {
     auto a = to_logic_array("");
-    EXPECT_TRUE(a.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_TRUE(a.resolve(ResolveMethod::WEAK).has_value());
 }
 
 // -- resolve on arrays ------------------------------------------------------
@@ -328,38 +328,40 @@ TEST(TestLogicArray, IsResolvableEmpty) {
 TEST(TestLogicArray, ResolveZeros) {
     auto a = to_logic_array("01XZULWH-");
     auto b = a.resolve(ResolveMethod::ZEROS);
-    EXPECT_EQ(to_string(b), "010000010");
+    EXPECT_EQ(to_string(*b), "010000010");
 }
 
 TEST(TestLogicArray, ResolveOnes) {
     auto a = to_logic_array("01XZULWH-");
     auto b = a.resolve(ResolveMethod::ONES);
-    EXPECT_EQ(to_string(b), "011110111");
+    EXPECT_EQ(to_string(*b), "011110111");
 }
 
 TEST(TestLogicArray, ResolveWeakAcceptsResolvable) {
-    // WEAK passes 0/1/L/H -> 0/1/0/1 and throws on the rest. The input must
-    // contain only resolvable-under-WEAK values for the call to succeed.
+    // WEAK passes 0/1/L/H -> 0/1/0/1 and returns nullopt on the rest. The
+    // input must contain only resolvable-under-WEAK values for the result to
+    // be engaged.
     auto a = to_logic_array("01LH");
     auto b = a.resolve(ResolveMethod::WEAK);
-    EXPECT_EQ(to_string(b), "0101");
+    EXPECT_EQ(to_string(*b), "0101");
 }
 
-TEST(TestLogicArray, ResolveWeakThrowsOnMetavalue) {
-    // Even a single non-resolvable value makes the whole array throw.
+TEST(TestLogicArray, ResolveWeakReturnsNulloptOnMetavalue) {
+    // Even a single non-resolvable value makes the whole array's resolve
+    // return nullopt (build-then-drop).
     auto a = to_logic_array("01X");
-    EXPECT_THROW(a.resolve(ResolveMethod::WEAK), std::invalid_argument);
+    EXPECT_FALSE(a.resolve(ResolveMethod::WEAK).has_value());
 }
 
 TEST(TestLogicArray, ResolveError) {
     auto a = to_logic_array("01X");
-    EXPECT_THROW(a.resolve(ResolveMethod::ERROR), std::invalid_argument);
+    EXPECT_FALSE(a.resolve(ResolveMethod::ERROR).has_value());
 }
 
 TEST(TestLogicArray, ResolveErrorPass) {
     auto a = to_logic_array("01");
     auto b = a.resolve(ResolveMethod::ERROR);
-    EXPECT_EQ(to_string(b), "01");
+    EXPECT_EQ(to_string(*b), "01");
 }
 
 TEST(TestLogicArray, ResolveStaticReturnsStaticArray) {
@@ -368,16 +370,18 @@ TEST(TestLogicArray, ResolveStaticReturnsStaticArray) {
     // Static-bound input -> static-bound output of matching range. This is the
     // payoff of memberizing resolve on the specializations: the result type
     // preserves Self's static range when available, and resolve always returns
-    // a Bit-valued container.
-    static_assert(std::is_same_v<decltype(b), BitArray<Range{3, Direction::DOWNTO, 0}>>);
-    EXPECT_EQ(to_string(b), "0100");
+    // an optional Bit-valued container.
+    static_assert(
+        std::is_same_v<decltype(b), std::optional<BitArray<Range{3, Direction::DOWNTO, 0}>>>
+    );
+    EXPECT_EQ(to_string(*b), "0100");
 }
 
 // -- Slice resolvability ---------------------------------------------------
 //
 // The constrained partial specs of StaticArraySlice and ArraySlice inherit the
 // LogicArrayMixin too, so slices of LogicArray/BitArray/LogicVector/etc
-// have is_resolvable(method) and resolve(method) members. Sub-slicing preserves
+// have resolve(method) members returning std::optional. Sub-slicing preserves
 // the mixin via outer-name resolution in the slice impl.
 
 TEST(TestLogicArray, DynSliceIsResolvable) {
@@ -385,37 +389,44 @@ TEST(TestLogicArray, DynSliceIsResolvable) {
     // a[2]='0', a[1]='1', a[0]='X'.
     auto a = to_logic_array("01X");
     auto s_full = a[{2, 0}];
-    EXPECT_FALSE(s_full.is_resolvable(ResolveMethod::WEAK));  // covers the X at a[0]
+    EXPECT_FALSE(s_full.resolve(ResolveMethod::WEAK).has_value());  // covers the X at a[0]
     auto s_excl_x = a[{2, 1}];
-    EXPECT_TRUE(s_excl_x.is_resolvable(ResolveMethod::WEAK));  // covers '0' and '1' only
+    EXPECT_TRUE(
+        s_excl_x.resolve(ResolveMethod::WEAK).has_value()
+    );  // covers '0' and '1' only
 }
 
 TEST(TestLogicArray, DynSliceResolveReturnsVector) {
     auto a = to_logic_array("01XZ");
     auto s = a[{3, 0}];
     auto r = s.resolve(ResolveMethod::ZEROS);
-    static_assert(std::is_same_v<decltype(r), BitVector>);
-    EXPECT_EQ(to_string(r), "0100");
+    static_assert(std::is_same_v<decltype(r), std::optional<BitVector>>);
+    EXPECT_EQ(to_string(*r), "0100");
 }
 
 TEST(TestLogicArray, StaticSliceResolveReturnsStaticArray) {
     auto a = "01XZ"_l;  // LogicArray<Range{3, DOWNTO, 0}>
     auto s = a.slice<Range{2, Direction::DOWNTO, 1}>();
     auto r = s.resolve(ResolveMethod::ZEROS);
-    static_assert(std::is_same_v<decltype(r), BitArray<Range{2, Direction::DOWNTO, 1}>>);
-    EXPECT_EQ(to_string(r), "10");  // X->0, 1->1; slice was {X, 1} in storage order
+    static_assert(
+        std::is_same_v<decltype(r), std::optional<BitArray<Range{2, Direction::DOWNTO, 1}>>>
+    );
+    EXPECT_EQ(to_string(*r), "10");  // X->0, 1->1; slice was {X, 1} in storage order
 }
 
 TEST(TestLogicArray, StaticSliceIsResolvable) {
-    // Exercises StaticArraySlice<LogicArray<R>, R2>::is_resolvable(method) -- the
-    // constrained partial spec from logic_array.hpp. Without this test a regression that
-    // drops the mixin from the static slice spec would only be caught when user code calls
-    // .is_resolvable(method) on a sliced LogicArray and fails to compile.
+    // Exercises StaticArraySlice<LogicArray<R>, R2>::resolve(method) -- the
+    // constrained partial spec from logic_array.hpp. Without this test a
+    // regression that drops the mixin from the static slice spec would only be
+    // caught when user code calls .resolve(method).has_value() on a sliced
+    // LogicArray and fails to compile.
     auto a = "01XZ"_l;  // a[3]='0', a[2]='1', a[1]='X', a[0]='Z'
     auto s_with_x = a.slice<Range{2, Direction::DOWNTO, 1}>();
-    EXPECT_FALSE(s_with_x.is_resolvable(ResolveMethod::WEAK));  // contains '1' and 'X'
+    EXPECT_FALSE(
+        s_with_x.resolve(ResolveMethod::WEAK).has_value()
+    );  // contains '1' and 'X'
     auto s_clean = a.slice<Range{3, Direction::DOWNTO, 2}>();
-    EXPECT_TRUE(s_clean.is_resolvable(ResolveMethod::WEAK));  // '0' and '1'
+    EXPECT_TRUE(s_clean.resolve(ResolveMethod::WEAK).has_value());  // '0' and '1'
 }
 
 TEST(TestLogicArray, ConstOwnerDynSliceHasMixin) {
@@ -431,19 +442,19 @@ TEST(TestLogicArray, ConstOwnerDynSliceHasMixin) {
         std::same_as<decltype(s), ArraySlice<Vector<Logic> const>>,
         "const Logic owner must produce ArraySlice<const Vector<Logic>>"
     );
-    EXPECT_TRUE(s.is_resolvable(ResolveMethod::WEAK));  // all elements are 0/1/L/H
+    EXPECT_TRUE(s.resolve(ResolveMethod::WEAK).has_value());  // all elements are 0/1/L/H
     auto r = s.resolve(ResolveMethod::WEAK);
-    EXPECT_EQ(to_string(r), "0101");  // L->0, H->1
+    EXPECT_EQ(to_string(*r), "0101");  // L->0, H->1
 }
 
 TEST(TestLogicArray, SubSlicePreservesMixin) {
     auto a = to_logic_array("01XZ");
     auto s = a[{3, 0}];
     auto sub = s[{2, 1}];  // sub-slice via ArraySliceImpl::operator[]
-    // The sub-slice still has is_resolvable(method) -- the impl returns
+    // The sub-slice still has resolve(method) -- the impl returns
     // ArraySlice<ArrayT> by outer name, which resolves to the constrained
     // partial spec when the element type is Logic.
-    EXPECT_FALSE(sub.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_FALSE(sub.resolve(ResolveMethod::WEAK).has_value());
 }
 
 // -- index_of / rindex_of on Logic/Bit arrays --------------------------------
@@ -1155,54 +1166,6 @@ TEST(TestBitArray, ToBitArrayInvalidChar) {
     EXPECT_THROW(to_bit_array("2"), std::invalid_argument);
 }
 
-// -- to_bit_array from range of Logic --------------------------------------
-
-TEST(TestBitArray, ToBitArrayFromLogicRange) {
-    auto a = to_logic_array("01LH");
-    auto b = to_bit_array(a);
-    static_assert(std::is_same_v<decltype(b), BitVector>);
-    EXPECT_EQ(b.range(), Range(3, Direction::DOWNTO, 0));
-    EXPECT_EQ(b[3], '0'_b);
-    EXPECT_EQ(b[2], '1'_b);
-    EXPECT_EQ(b[1], '0'_b);
-    EXPECT_EQ(b[0], '1'_b);
-}
-
-TEST(TestBitArray, ToBitArrayFromLogicRangeNonResolvable) {
-    EXPECT_THROW(to_bit_array(to_logic_array("X")), std::invalid_argument);
-    EXPECT_THROW(to_bit_array(to_logic_array("Z")), std::invalid_argument);
-    EXPECT_THROW(to_bit_array(to_logic_array("U")), std::invalid_argument);
-    EXPECT_THROW(to_bit_array(to_logic_array("W")), std::invalid_argument);
-    EXPECT_THROW(to_bit_array(to_logic_array("-")), std::invalid_argument);
-}
-
-TEST(TestBitArray, ToBitArrayFromStdVector) {
-    // Exercises the sized_range overload with a non-coconext range. std::vector
-    // is the canonical non-coconext sized range; this verifies the constraint
-    // accepts it and the single-pass fused walk yields the same result as the
-    // coconext-array form above.
-    std::vector<Logic> const v{'0'_l, '1'_l, 'L'_l, 'H'_l};
-    auto b = to_bit_array(v);
-    static_assert(std::is_same_v<decltype(b), BitVector>);
-    EXPECT_EQ(b.range(), Range(3, Direction::DOWNTO, 0));
-    EXPECT_EQ(b[3], '0'_b);
-    EXPECT_EQ(b[2], '1'_b);
-    EXPECT_EQ(b[1], '0'_b);  // L -> 0
-    EXPECT_EQ(b[0], '1'_b);  // H -> 1
-}
-
-TEST(TestBitArray, ToBitArrayFromStdVectorNonResolvable) {
-    std::vector<Logic> const v{'0'_l, '1'_l, 'X'_l};
-    EXPECT_THROW(to_bit_array(v), std::invalid_argument);
-}
-
-TEST(TestBitArray, ToBitArrayFromStaticLogicArray) {
-    auto a = "01LH"_l;
-    auto b = to_bit_array(a);
-    static_assert(std::is_same_v<decltype(b), BitVector>);
-    EXPECT_EQ(to_string(b), "0101");
-}
-
 // -- to_string on BitArray -------------------------------------------------
 
 TEST(TestBitArray, ToStringBit) {
@@ -1215,20 +1178,22 @@ TEST(TestBitArray, ToStringStaticBit) {
     EXPECT_EQ(to_string(a), "0101");
 }
 
-// -- is_resolvable on BitArray ---------------------------------------------
+// -- resolve on BitArray (always engaged) ----------------------------------
 
-TEST(TestBitArray, IsResolvableAlwaysTrue) {
+TEST(TestBitArray, ResolveAlwaysEngaged) {
     auto a = to_bit_array("0110");
-    EXPECT_TRUE(a.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_TRUE(a.resolve(ResolveMethod::WEAK).has_value());
     auto empty = to_bit_array("");
-    EXPECT_TRUE(empty.is_resolvable(ResolveMethod::WEAK));
+    EXPECT_TRUE(empty.resolve(ResolveMethod::WEAK).has_value());
 }
 
 // -- resolve on BitArray ---------------------------------------------------
 
 TEST(TestBitArray, ResolveBitIsIdentity) {
     auto a = to_bit_array("0110");
-    static_assert(std::is_same_v<decltype(a.resolve(ResolveMethod::ZEROS)), BitVector>);
+    static_assert(
+        std::is_same_v<decltype(a.resolve(ResolveMethod::ZEROS)), std::optional<BitVector>>
+    );
     for (auto method :
          {ResolveMethod::ZEROS,
           ResolveMethod::ONES,
@@ -1236,7 +1201,7 @@ TEST(TestBitArray, ResolveBitIsIdentity) {
           ResolveMethod::ERROR,
           ResolveMethod::RANDOM})
     {
-        EXPECT_EQ(to_string(a.resolve(method)), "0110");
+        EXPECT_EQ(to_string(*a.resolve(method)), "0110");
     }
 }
 

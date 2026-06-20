@@ -1,7 +1,6 @@
 #include <coconext/types/logic.hpp>
+#include <optional>
 #include <random>
-#include <stdexcept>
-#include <string>
 
 #include "./random.hpp"
 
@@ -9,71 +8,51 @@ using namespace coconext::types;
 
 namespace coconext::types {
 
-bool Logic::is_resolvable(ResolveMethod method) const noexcept {
+std::optional<Bit> Logic::resolve(ResolveMethod method) const noexcept {
     switch (method) {
     case ResolveMethod::ERROR:
-        return value_ == _0 || value_ == _1;
+        switch (value_) {
+        case _0:
+            return Bit::_0;
+        case _1:
+            return Bit::_1;
+        default:
+            return std::nullopt;
+        }
     case ResolveMethod::WEAK:
-        return value_ == _0 || value_ == _1 || value_ == L || value_ == H;
+        switch (value_) {
+        case _0:
+        case L:
+            return Bit::_0;
+        case _1:
+        case H:
+            return Bit::_1;
+        default:
+            return std::nullopt;
+        }
     case ResolveMethod::ZEROS:
+        switch (value_) {
+        case _0:
+        case L:
+            return Bit::_0;
+        case _1:
+        case H:
+            return Bit::_1;
+        default:
+            return Bit::_0;
+        }
     case ResolveMethod::ONES:
+        switch (value_) {
+        case _0:
+        case L:
+            return Bit::_0;
+        case _1:
+        case H:
+            return Bit::_1;
+        default:
+            return Bit::_1;
+        }
     case ResolveMethod::RANDOM:
-        return true;
-    }
-    return false;
-}
-
-Bit Logic::resolve(ResolveMethod method) const {
-    switch (method) {
-    case ResolveMethod::ERROR:
-        switch (value_) {
-        case _0:
-            return Bit::_0;
-        case _1:
-            return Bit::_1;
-        default:
-            throw std::invalid_argument(
-                "Logic value '" + std::string(to_string(*this))
-                + "' is not resolvable under ERROR"
-            );
-        }
-    case ResolveMethod::WEAK:
-        switch (value_) {
-        case _0:
-        case L:
-            return Bit::_0;
-        case _1:
-        case H:
-            return Bit::_1;
-        default:
-            throw std::invalid_argument(
-                "Logic value '" + std::string(to_string(*this))
-                + "' is not resolvable under WEAK"
-            );
-        }
-    case ResolveMethod::ZEROS:
-        switch (value_) {
-        case _0:
-        case L:
-            return Bit::_0;
-        case _1:
-        case H:
-            return Bit::_1;
-        default:
-            return Bit::_0;
-        }
-    case ResolveMethod::ONES:
-        switch (value_) {
-        case _0:
-        case L:
-            return Bit::_0;
-        case _1:
-        case H:
-            return Bit::_1;
-        default:
-            return Bit::_1;
-        }
-    case ResolveMethod::RANDOM: {
         switch (value_) {
         case _0:
         case L:
@@ -87,8 +66,7 @@ Bit Logic::resolve(ResolveMethod method) const {
         }
         }
     }
-    }
-    throw std::invalid_argument("Unknown resolve method");
+    return std::nullopt;
 }
 
 }  // namespace coconext::types
