@@ -337,10 +337,18 @@ TEST(TestLogicArray, ResolveOnes) {
     EXPECT_EQ(to_string(b), "011110111");
 }
 
-TEST(TestLogicArray, ResolveWeak) {
-    auto a = to_logic_array("01XZULWH-");
+TEST(TestLogicArray, ResolveWeakAcceptsResolvable) {
+    // WEAK passes 0/1/L/H -> 0/1/0/1 and throws on the rest. The input must
+    // contain only resolvable-under-WEAK values for the call to succeed.
+    auto a = to_logic_array("01LH");
     auto b = a.resolve(ResolveMethod::WEAK);
-    EXPECT_EQ(to_string(b), "01XZU0X1-");
+    EXPECT_EQ(to_string(b), "0101");
+}
+
+TEST(TestLogicArray, ResolveWeakThrowsOnMetavalue) {
+    // Even a single non-resolvable value makes the whole array throw.
+    auto a = to_logic_array("01X");
+    EXPECT_THROW(a.resolve(ResolveMethod::WEAK), std::invalid_argument);
 }
 
 TEST(TestLogicArray, ResolveError) {

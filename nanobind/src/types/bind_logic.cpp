@@ -130,7 +130,27 @@ void register_logic(nb::module_& m) {
         .def(
             "resolve",
             [](Logic const& self, std::string_view method) {
-                return self.resolve(string_to_resolve_method(method));
+                auto m = string_to_resolve_method(method);
+                // Compat shim: pre-branch C++ WEAK mapped L/H -> 0/1, W -> X,
+                // and left other metavalues unchanged. Post-branch C++ throws
+                // on metavalues under WEAK. Reproduce the old mapping here so
+                // upstream Python (and its integration tests) don't break.
+                if (m == ResolveMethod::WEAK) {
+                    switch (self.value()) {
+                    case Logic::_0:
+                    case Logic::_1:
+                        return self;
+                    case Logic::L:
+                        return Logic(Logic::_0);
+                    case Logic::H:
+                        return Logic(Logic::_1);
+                    case Logic::W:
+                        return Logic(Logic::X);
+                    default:
+                        return self;
+                    }
+                }
+                return self.resolve(m);
             }
         )
         .def("resolve", &Logic::resolve)
