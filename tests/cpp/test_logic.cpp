@@ -356,6 +356,26 @@ TEST(TestBit, BitResolve) {
     EXPECT_EQ('1'_b.resolve(static_cast<ResolveMethod>(99)), '1'_b);
 }
 
+// No-arg resolve() defaults to WEAK -- mirroring the LogicArrayMixin shortcut
+// so user code can write `r.resolve()` for the common synthesizable-values
+// case.
+TEST(TestLogic, LogicResolveNoArgDefaultsToWeak) {
+    EXPECT_EQ('0'_l.resolve(), '0'_b);
+    EXPECT_EQ('1'_l.resolve(), '1'_b);
+    EXPECT_EQ('L'_l.resolve(), '0'_b);
+    EXPECT_EQ('H'_l.resolve(), '1'_b);
+    EXPECT_EQ('X'_l.resolve(), std::nullopt);
+    EXPECT_EQ('U'_l.resolve(), std::nullopt);
+    EXPECT_EQ('Z'_l.resolve(), std::nullopt);
+    EXPECT_EQ('W'_l.resolve(), std::nullopt);
+    EXPECT_EQ('-'_l.resolve(), std::nullopt);
+}
+
+TEST(TestBit, BitResolveNoArgAlwaysEngaged) {
+    EXPECT_EQ('0'_b.resolve(), '0'_b);
+    EXPECT_EQ('1'_b.resolve(), '1'_b);
+}
+
 // Stores values in std::vector to force runtime evaluation of conversions.
 // These can be evaluated at compile time and reduce observed coverage.
 TEST(TestLogic, RuntimeIntAndBitConversions) {

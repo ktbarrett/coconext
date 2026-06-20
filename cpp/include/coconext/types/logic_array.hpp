@@ -94,6 +94,8 @@ template <typename Self>
 struct LogicArrayMixin {
 
     auto resolve(ResolveMethod method) const;
+    // Default to WEAK.
+    auto resolve() const { return resolve(ResolveMethod::WEAK); }
 
     // Reductions: fold over the array with the corresponding bitwise op.
     // Empty arrays return the operation's identity (1 for AND, 0 for OR/XOR),

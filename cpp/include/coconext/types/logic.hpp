@@ -47,6 +47,9 @@ class Logic {
     // `r.value()` extracts the Bit.
     std::optional<Bit> resolve(ResolveMethod method) const noexcept;
 
+    // Default to WEAK.
+    std::optional<Bit> resolve() const noexcept;
+
   private:
     value_type value_ = _0;
 };
@@ -67,6 +70,7 @@ class Bit {
     // engaged. Kept for uniformity with Logic::resolve so generic code over
     // LogicType can treat both the same way.
     constexpr std::optional<Bit> resolve(ResolveMethod) const noexcept { return *this; }
+    constexpr std::optional<Bit> resolve() const noexcept { return *this; }
 
     // Implicit conversion from Bit to Logic mimics subtype upcasting.
     constexpr operator Logic() const noexcept {
@@ -84,6 +88,12 @@ class Bit {
   private:
     value_type value_ = _0;
 };
+
+// Out-of-line: needs the Bit definition above to instantiate
+// std::optional<Bit>.
+inline std::optional<Bit> Logic::resolve() const noexcept {
+    return resolve(ResolveMethod::WEAK);
+}
 
 constexpr bool operator==(Logic const& lhs, Logic const& rhs) noexcept {
     return lhs.value() == rhs.value();
