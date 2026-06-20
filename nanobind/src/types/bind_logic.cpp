@@ -126,7 +126,10 @@ void register_logic(nb::module_& m) {
         .def(
             "__invert__", [](Logic const& self) { return ~self; }, nb::is_operator()
         )
-        .def_prop_ro("is_resolvable", &Logic::is_resolvable)
+        .def_prop_ro(
+            "is_resolvable",
+            [](Logic const& self) { return self.is_resolvable(ResolveMethod::WEAK); }
+        )
         .def(
             "resolve",
             [](Logic const& self, std::string_view method) {
@@ -245,7 +248,10 @@ void register_logic(nb::module_& m) {
         .def(
             "__invert__", [](Bit const& self) { return ~self; }, nb::is_operator()
         )
-        .def_prop_ro("is_resolvable", &Bit::is_resolvable)
+        .def_prop_ro(
+            "is_resolvable",
+            [](Bit const& self) { return self.is_resolvable(ResolveMethod::WEAK); }
+        )
         .def(
             "resolve",
             [](Bit const& self, std::string_view method) {

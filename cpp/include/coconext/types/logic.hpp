@@ -37,9 +37,7 @@ class Logic {
     constexpr Logic(value_type value) noexcept : value_(value) {}
     constexpr value_type value() const noexcept { return value_; }
 
-    constexpr bool is_resolvable() const noexcept {
-        return value_ == _0 || value_ == _1 || value_ == L || value_ == H;
-    }
+    bool is_resolvable(ResolveMethod method) const noexcept;
 
     Logic resolve(ResolveMethod method) const;
 
@@ -59,7 +57,7 @@ class Bit {
     constexpr Bit(value_type value) noexcept : value_(value) {}
     constexpr value_type value() const noexcept { return value_; }
 
-    constexpr bool is_resolvable() const noexcept { return true; }
+    constexpr bool is_resolvable(ResolveMethod) const noexcept { return true; }
 
     constexpr Bit resolve(ResolveMethod) const noexcept { return *this; }
 

@@ -8,6 +8,20 @@ using namespace coconext::types;
 
 namespace coconext::types {
 
+bool Logic::is_resolvable(ResolveMethod method) const noexcept {
+    switch (method) {
+    case ResolveMethod::ERROR:
+        return value_ == _0 || value_ == _1;
+    case ResolveMethod::WEAK:
+        return value_ == _0 || value_ == _1 || value_ == L || value_ == H;
+    case ResolveMethod::ZEROS:
+    case ResolveMethod::ONES:
+    case ResolveMethod::RANDOM:
+        return true;
+    }
+    return false;
+}
+
 Logic Logic::resolve(ResolveMethod method) const {
     switch (method) {
     case ResolveMethod::ERROR:

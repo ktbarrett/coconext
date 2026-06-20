@@ -307,20 +307,20 @@ TEST(TestLogicArray, ToStringEmpty) {
 
 TEST(TestLogicArray, IsResolvableTrue) {
     auto a = to_logic_array("01LH");
-    EXPECT_TRUE(a.is_resolvable());
+    EXPECT_TRUE(a.is_resolvable(ResolveMethod::WEAK));
 }
 
 TEST(TestLogicArray, IsResolvableFalse) {
-    EXPECT_FALSE(to_logic_array("01X0").is_resolvable());
-    EXPECT_FALSE(to_logic_array("Z").is_resolvable());
-    EXPECT_FALSE(to_logic_array("U").is_resolvable());
-    EXPECT_FALSE(to_logic_array("W").is_resolvable());
-    EXPECT_FALSE(to_logic_array("-").is_resolvable());
+    EXPECT_FALSE(to_logic_array("01X0").is_resolvable(ResolveMethod::WEAK));
+    EXPECT_FALSE(to_logic_array("Z").is_resolvable(ResolveMethod::WEAK));
+    EXPECT_FALSE(to_logic_array("U").is_resolvable(ResolveMethod::WEAK));
+    EXPECT_FALSE(to_logic_array("W").is_resolvable(ResolveMethod::WEAK));
+    EXPECT_FALSE(to_logic_array("-").is_resolvable(ResolveMethod::WEAK));
 }
 
 TEST(TestLogicArray, IsResolvableEmpty) {
     auto a = to_logic_array("");
-    EXPECT_TRUE(a.is_resolvable());
+    EXPECT_TRUE(a.is_resolvable(ResolveMethod::WEAK));
 }
 
 // -- resolve on arrays ------------------------------------------------------
@@ -376,7 +376,7 @@ TEST(TestLogicArray, ResolveStaticReturnsStaticArray) {
 //
 // The constrained partial specs of StaticArraySlice and ArraySlice inherit the
 // LogicArrayMixin too, so slices of LogicArray/BitArray/LogicVector/etc
-// have is_resolvable() and resolve(method) members. Sub-slicing preserves
+// have is_resolvable(method) and resolve(method) members. Sub-slicing preserves
 // the mixin via outer-name resolution in the slice impl.
 
 TEST(TestLogicArray, DynSliceIsResolvable) {
@@ -384,9 +384,9 @@ TEST(TestLogicArray, DynSliceIsResolvable) {
     // a[2]='0', a[1]='1', a[0]='X'.
     auto a = to_logic_array("01X");
     auto s_full = a[{2, 0}];
-    EXPECT_FALSE(s_full.is_resolvable());  // covers the X at a[0]
+    EXPECT_FALSE(s_full.is_resolvable(ResolveMethod::WEAK));  // covers the X at a[0]
     auto s_excl_x = a[{2, 1}];
-    EXPECT_TRUE(s_excl_x.is_resolvable());  // covers '0' and '1' only
+    EXPECT_TRUE(s_excl_x.is_resolvable(ResolveMethod::WEAK));  // covers '0' and '1' only
 }
 
 TEST(TestLogicArray, DynSliceResolveReturnsVector) {
@@ -406,15 +406,15 @@ TEST(TestLogicArray, StaticSliceResolveReturnsStaticArray) {
 }
 
 TEST(TestLogicArray, StaticSliceIsResolvable) {
-    // Exercises StaticArraySlice<LogicArray<R>, R2>::is_resolvable() -- the constrained
-    // partial spec from logic_array.hpp. Without this test a regression that drops
-    // the mixin from the static slice spec would only be caught when user code
-    // calls .is_resolvable() on a sliced LogicArray and fails to compile.
+    // Exercises StaticArraySlice<LogicArray<R>, R2>::is_resolvable(method) -- the
+    // constrained partial spec from logic_array.hpp. Without this test a regression that
+    // drops the mixin from the static slice spec would only be caught when user code calls
+    // .is_resolvable(method) on a sliced LogicArray and fails to compile.
     auto a = "01XZ"_l;  // a[3]='0', a[2]='1', a[1]='X', a[0]='Z'
     auto s_with_x = a.slice<Range{2, Direction::DOWNTO, 1}>();
-    EXPECT_FALSE(s_with_x.is_resolvable());  // contains '1' and 'X'
+    EXPECT_FALSE(s_with_x.is_resolvable(ResolveMethod::WEAK));  // contains '1' and 'X'
     auto s_clean = a.slice<Range{3, Direction::DOWNTO, 2}>();
-    EXPECT_TRUE(s_clean.is_resolvable());  // '0' and '1'
+    EXPECT_TRUE(s_clean.is_resolvable(ResolveMethod::WEAK));  // '0' and '1'
 }
 
 TEST(TestLogicArray, ConstOwnerDynSliceHasMixin) {
@@ -430,7 +430,7 @@ TEST(TestLogicArray, ConstOwnerDynSliceHasMixin) {
         std::same_as<decltype(s), ArraySlice<Vector<Logic> const>>,
         "const Logic owner must produce ArraySlice<const Vector<Logic>>"
     );
-    EXPECT_TRUE(s.is_resolvable());  // all elements are 0/1/L/H
+    EXPECT_TRUE(s.is_resolvable(ResolveMethod::WEAK));  // all elements are 0/1/L/H
     auto r = s.resolve(ResolveMethod::WEAK);
     EXPECT_EQ(to_string(r), "0101");  // L->0, H->1
 }
@@ -439,10 +439,10 @@ TEST(TestLogicArray, SubSlicePreservesMixin) {
     auto a = to_logic_array("01XZ");
     auto s = a[{3, 0}];
     auto sub = s[{2, 1}];  // sub-slice via ArraySliceImpl::operator[]
-    // The sub-slice still has is_resolvable() -- the impl returns
+    // The sub-slice still has is_resolvable(method) -- the impl returns
     // ArraySlice<ArrayT> by outer name, which resolves to the constrained
     // partial spec when the element type is Logic.
-    EXPECT_FALSE(sub.is_resolvable());
+    EXPECT_FALSE(sub.is_resolvable(ResolveMethod::WEAK));
 }
 
 // -- index / rindex on Logic/Bit arrays -----------------------------------
@@ -1218,9 +1218,9 @@ TEST(TestBitArray, ToStringStaticBit) {
 
 TEST(TestBitArray, IsResolvableAlwaysTrue) {
     auto a = to_bit_array("0110");
-    EXPECT_TRUE(a.is_resolvable());
+    EXPECT_TRUE(a.is_resolvable(ResolveMethod::WEAK));
     auto empty = to_bit_array("");
-    EXPECT_TRUE(empty.is_resolvable());
+    EXPECT_TRUE(empty.is_resolvable(ResolveMethod::WEAK));
 }
 
 // -- resolve on BitArray ---------------------------------------------------
