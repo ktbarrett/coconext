@@ -211,13 +211,6 @@ class VectorImpl {
         return std::reverse_iterator(begin());
     }
 
-    COCONEXT_VECTOR_CONSTEXPR std::optional<index_type> index(value_type const& v) const {
-        return detail::index_in(*this, v);
-    }
-    COCONEXT_VECTOR_CONSTEXPR std::optional<index_type> rindex(value_type const& v) const {
-        return detail::rindex_in(*this, v);
-    }
-
   private:
     template <typename Self>
     static COCONEXT_VECTOR_CONSTEXPR auto& access_(Self& self, index_type idx) {

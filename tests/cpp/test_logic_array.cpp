@@ -437,22 +437,22 @@ TEST(TestLogicArray, SubSlicePreservesMixin) {
     EXPECT_FALSE(sub.is_resolvable());
 }
 
-// -- index / rindex on Logic/Bit arrays -----------------------------------
+// -- index_of / rindex_of on Logic/Bit arrays --------------------------------
 
-TEST(TestLogicArray, IndexInheritedOnLogicVector) {
+TEST(TestLogicArray, IndexOfOnLogicVector) {
     auto a = "10X10"_l;  // DOWNTO {4..0}: a[4]=1, a[3]=0, a[2]=X, a[1]=1, a[0]=0
-    auto first_one = a.index('1'_l);
-    auto last_one = a.rindex('1'_l);
+    auto first_one = index_of(a, '1'_l);
+    auto last_one = rindex_of(a, '1'_l);
     ASSERT_TRUE(first_one.has_value() && last_one.has_value());
     EXPECT_EQ(*first_one, 4);  // first '1' in iteration -> highest HDL coord
     EXPECT_EQ(*last_one, 1);
-    EXPECT_FALSE(a.index('U'_l).has_value());
+    EXPECT_FALSE(index_of(a, 'U'_l).has_value());
 }
 
-TEST(TestBitArray, IndexInheritedOnStaticBitArray) {
+TEST(TestBitArray, IndexOfOnStaticBitArray) {
     BitArray<4> a({'1'_b, '0'_b, '1'_b, '0'_b});
-    EXPECT_EQ(*a.index('1'_b), 3);   // DOWNTO {3..0}, first '1' is a[3]
-    EXPECT_EQ(*a.rindex('1'_b), 1);  // last '1' is a[1]
+    EXPECT_EQ(*index_of(a, '1'_b), 3);   // DOWNTO {3..0}, first '1' is a[3]
+    EXPECT_EQ(*rindex_of(a, '1'_b), 1);  // last '1' is a[1]
 }
 
 // -- Reductions: and_reduce / or_reduce / xor_reduce -----------------------
