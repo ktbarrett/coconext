@@ -23,7 +23,8 @@ add_executable(coconext_tests
     test_static_array.cpp
     test_logic_array.cpp
     test_int.cpp
-    test_signed.cpp)
+    test_signed.cpp
+    test_unsigned.cpp)
 target_link_libraries(coconext_tests PRIVATE coconext::coconext GTest::gtest_main)
 
 gtest_discover_tests(coconext_tests)
