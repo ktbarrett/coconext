@@ -356,9 +356,7 @@ TEST(TestBit, BitResolve) {
     EXPECT_EQ('1'_b.resolve(static_cast<ResolveMethod>(99)), '1'_b);
 }
 
-// No-arg resolve() defaults to WEAK -- mirroring the LogicArrayMixin shortcut
-// so user code can write `r.resolve()` for the common synthesizable-values
-// case.
+// No-arg resolve() defaults to WEAK -- mirroring the array-form shortcut.
 TEST(TestLogic, LogicResolveNoArgDefaultsToWeak) {
     EXPECT_EQ('0'_l.resolve(), '0'_b);
     EXPECT_EQ('1'_l.resolve(), '1'_b);
