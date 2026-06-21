@@ -26,6 +26,7 @@ def test_vector_element_wise_add():
 
 
 def test_vector_element_wise_add_without_range():
+    """Test successful translation from Python -> C++ -> Python(Unspecified Range)."""
 
     c: Array[int] = Array([1, 2, 3, 4])
     d: Array[int] = Array([100, 95, 89, 67])
@@ -53,6 +54,15 @@ def test_array_invalid_type_throws():
     """Only cocotb.types.Array is compatible with our test cpp function"""
     a = [1, 2, 3, 4]
     b = [1, 2, 3, 4]
+
+    with pytest.raises(TypeError):
+        ext.element_wise_add(a, b)
+
+
+def test_array_element_invalid_type_throws():
+    """Incompatible array element type must raise a type error"""
+    a = Array([1, 2, 3, "4"])
+    b = Array([1, 2, 3, 4])
 
     with pytest.raises(TypeError):
         ext.element_wise_add(a, b)
