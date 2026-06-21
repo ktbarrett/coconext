@@ -23,6 +23,18 @@ def test_array_element_wise_add():
     assert c.range == r
 
 
+def test_array_element_wise_add_without_range():
+    """Test successful translation from Python -> C++ -> Python(Unspecified Range)."""
+    a: Array[int] = Array([1, 2, 3, 4])
+    b: Array[int] = Array([100, 95, 89, 67])
+
+    # call test cpp function (Python -> C++ -> Python)
+    c = ext.element_wise_add_array(a, b)
+
+    assert isinstance(c, Array)
+    assert c == [101, 97, 92, 71]
+
+
 def test_array_bounds_mismatch_throws():
     """Passing an Array with the wrong static size fails nanobind type casting."""
 
@@ -35,20 +47,19 @@ def test_array_bounds_mismatch_throws():
         ext.element_wise_add_array(a, b)
 
 
-def test_array_no_range_throws():
-    """Unspecified Range for an Array fails nanobind type casting."""
-
-    a = Array([1, 2, 3, 4])
-    b = Array([1, 2, 3, 4])
+def test_array_invalid_type_throws():
+    """Only cocotb.types.Array is compatible with our test cpp function"""
+    a = [1, 2, 3, 4]
+    b = [1, 2, 3, 4]
 
     with pytest.raises(TypeError):
         ext.element_wise_add_array(a, b)
 
 
-def test_array_invalid_type_throws():
-    """Only cocotb.types.Array is compatible with our test cpp function"""
-    a = [1, 2, 3, 4]
-    b = [1, 2, 3, 4]
+def test_array_element_invalid_type_throws():
+    """Incompatible array element type must raise a type error"""
+    a = Array([1, 2, 3, "4"])
+    b = Array([1, 2, 3, 4])
 
     with pytest.raises(TypeError):
         ext.element_wise_add_array(a, b)

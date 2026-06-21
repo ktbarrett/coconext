@@ -2,19 +2,25 @@
 #define NB_TYPE_CAST_ARRAY_HPP
 
 #include <nanobind/nanobind.h>
+#include <nanobind/stl/string.h>
 #include <optional>
 #include <stdexcept>
 #include <vector>
 
 #include <coconext/types/array.hpp>
+#include <coconext/types/direction.hpp>
 #include <coconext/types/range.hpp>
 
 namespace nanobind::detail {
 
-template <typename T, coconext::types::Range R>
-struct type_caster<coconext::types::detail::Array<T, R>> {
+using namespace coconext::types;
+using coconext::types::detail::Array;
+
+template <typename T, Range R>
+struct type_caster<Array<T, R>> {
   private:
-    using Value = coconext::types::detail::Array<T, R>;
+    using Value = Array<T, R>;
+    using index_t = typename Value::index_type;
     std::optional<Value> value;
 
   public:
@@ -32,12 +38,14 @@ struct type_caster<coconext::types::detail::Array<T, R>> {
             }
 
             object py_range = src.attr("range");
-            int left = cast<int>(py_range.attr("left"));
-            int right = cast<int>(py_range.attr("right"));
+            index_t left = cast<index_t>(py_range.attr("left"));
+            index_t right = cast<index_t>(py_range.attr("right"));
+            std::string dir_str = cast<std::string>(py_range.attr("direction"));
+            auto direction = to_direction(dir_str);
 
-            coconext::types::Range py_c_range{left, right};
+            Range py_c_range{left, direction, right};
 
-            if (py_c_range != R) {
+            if (py_c_range.length() != R.length()) {
                 return false;
             }
 
@@ -46,30 +54,40 @@ struct type_caster<coconext::types::detail::Array<T, R>> {
             }
 
             constexpr size_t N = R.length();
-            std::array<T, N> temp;
+            value.emplace();
 
             make_caster<T> item_caster;
+            auto it = value->begin();
             size_t count = 0;
 
             for (handle item : borrow<iterable>(src)) {
                 if (count >= N) {
+                    value.reset();
                     return false;
                 }
 
-                if (!item_caster.from_python(item, flags, cleanup)) {
+                if (!item_caster.from_python(
+                        item, flags & ~nanobind::detail::cast_flags::convert, cleanup
+                    ))
+                {
+                    value.reset();
                     return false;
                 }
 
-                temp[count] = std::move(item_caster.operator Cast<T>());
+                *it = std::move(item_caster.operator Cast<T>());
+                ++it;
                 count++;
             }
 
             if (count != N) {
+                value.reset();
                 return false;
             }
 
-            value.emplace(std::move(temp));
             return true;
+        } catch (std::exception const& e) {
+            fprintf(stderr, "C++ Exception in from_python: %s\n", e.what());
+            return false;
         } catch (...) {
             return false;
         }
@@ -90,10 +108,12 @@ struct type_caster<coconext::types::detail::Array<T, R>> {
             }
 
             object cpp_range = nanobind::cast(src.range(), policy);
-            int left = nanobind::cast<int>(cpp_range.attr("left"));
-            int right = nanobind::cast<int>(cpp_range.attr("right"));
 
-            object pure_py_range = py_Range(left, right);
+            index_t left = nanobind::cast<index_t>(cpp_range.attr("left"));
+            index_t right = nanobind::cast<index_t>(cpp_range.attr("right"));
+            std::string_view py_dir_str = to_string(src.range().direction);
+
+            object pure_py_range = py_Range(left, std::string{py_dir_str}, right);
             object result = py_Array(py_list, nanobind::arg("range") = pure_py_range);
             return result.release();
 
