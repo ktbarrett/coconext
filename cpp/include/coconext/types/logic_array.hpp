@@ -82,88 +82,7 @@ constexpr Range make_logic_static_range() {
 }  // namespace detail
 
 template <>
-class Vector<Bit>;
-
-namespace detail {
-
-// CRTP mixin providing the Logic/Bit-specific resolve member. Inherited by
-// the Logic/Bit specializations of Array, Vector, StaticArraySlice, and
-// ArraySlice below. The non-Logic/Bit primaries do NOT inherit this, so
-// `Array<int, R>::resolve(method)` and friends don't exist.
-template <typename Self>
-struct LogicArrayMixin {
-
-    auto resolve(ResolveMethod method) const;
-    // Default to WEAK.
-    auto resolve() const { return resolve(ResolveMethod::WEAK); }
-
-    // Reductions: fold over the array with the corresponding bitwise op.
-    // Empty arrays return the operation's identity (1 for AND, 0 for OR/XOR),
-    // matching the standard math definition and VHDL std_logic_1164's
-    // and_reduce/or_reduce/xor_reduce.
-    auto and_reduce() const {
-        auto const& self = *static_cast<Self const*>(this);
-        using Elem = std::ranges::range_value_t<Self>;
-        Elem result{Elem::_1};
-        for (auto const& v : self) {
-            result = result & v;
-        }
-        return result;
-    }
-
-    auto or_reduce() const {
-        auto const& self = *static_cast<Self const*>(this);
-        using Elem = std::ranges::range_value_t<Self>;
-        Elem result{Elem::_0};
-        for (auto const& v : self) {
-            result = result | v;
-        }
-        return result;
-    }
-
-    auto xor_reduce() const {
-        auto const& self = *static_cast<Self const*>(this);
-        using Elem = std::ranges::range_value_t<Self>;
-        Elem result{Elem::_0};
-        for (auto const& v : self) {
-            result = result ^ v;
-        }
-        return result;
-    }
-};
-
-}  // namespace detail
-
-// -- Logic/Bit specializations ---------------------------------------------
-//
-// These specializations make `Array<Logic, R>`, `Array<Bit, R>`,
-// `Vector<Logic>`, `Vector<Bit>`, and slices over Logic/Bit owners
-// inherit `LogicArrayMixin`, gaining `resolve(method)` as a member. The
-// primary templates remain unchanged for non-Logic element types -- e.g.,
-// `Array<int, R>` has no `resolve(method)`.
-
-namespace detail {
-
-template <Range R>
-class Array<Logic, R> : public ArrayImpl<Logic, R>,
-                        public LogicArrayMixin<Array<Logic, R>> {
-  public:
-    using ArrayImpl<Logic, R>::ArrayImpl;
-    using ArrayImpl<Logic, R>::operator=;
-};
-
-template <Range R>
-class Array<Bit, R> : public ArrayImpl<Bit, R>, public LogicArrayMixin<Array<Bit, R>> {
-  public:
-    using ArrayImpl<Bit, R>::ArrayImpl;
-    using ArrayImpl<Bit, R>::operator=;
-};
-
-}  // namespace detail
-
-template <>
-class Vector<Logic> : public detail::VectorImpl<Logic>,
-                      public detail::LogicArrayMixin<Vector<Logic>> {
+class Vector<Logic> : public detail::VectorImpl<Logic> {
   public:
     using detail::VectorImpl<Logic>::VectorImpl;
     using detail::VectorImpl<Logic>::operator=;
@@ -188,8 +107,7 @@ class Vector<Logic> : public detail::VectorImpl<Logic>,
 };
 
 template <>
-class Vector<Bit> : public detail::VectorImpl<Bit>,
-                    public detail::LogicArrayMixin<Vector<Bit>> {
+class Vector<Bit> : public detail::VectorImpl<Bit> {
   public:
     using detail::VectorImpl<Bit>::VectorImpl;
     using detail::VectorImpl<Bit>::operator=;
@@ -208,35 +126,11 @@ class Vector<Bit> : public detail::VectorImpl<Bit>,
     }
 };
 
-// Constrained partial specs that pick up any slice whose owner's element
-// type is Logic or Bit, regardless of whether the owner is Array<...>,
-// Vector<...>, or const-qualified.
-template <typename ArrayT>
-    requires LogicType<std::ranges::range_value_t<ArrayT>>
-class ArraySlice<ArrayT> : public detail::ArraySliceImpl<ArrayT>,
-                           public detail::LogicArrayMixin<ArraySlice<ArrayT>> {
-  public:
-    using detail::ArraySliceImpl<ArrayT>::ArraySliceImpl;
-    using detail::ArraySliceImpl<ArrayT>::operator=;
-};
-
-template <typename ArrayT, Range R>
-    requires LogicType<std::ranges::range_value_t<ArrayT>>
-class StaticArraySlice<ArrayT, R>
-    : public detail::StaticArraySliceImpl<ArrayT, R>,
-      public detail::LogicArrayMixin<StaticArraySlice<ArrayT, R>> {
-  public:
-    using detail::StaticArraySliceImpl<ArrayT, R>::StaticArraySliceImpl;
-    using detail::StaticArraySliceImpl<ArrayT, R>::operator=;
-};
-
-namespace detail {
-
-template <typename Self>
-auto LogicArrayMixin<Self>::resolve(ResolveMethod method) const {
-    auto const& self = *static_cast<Self const*>(this);
-    if constexpr (StaticRangedSequence<Self>) {
-        std::optional<::coconext::types::detail::Array<Bit, Self::static_range>> result{
+template <RangedSequence T>
+    requires LogicType<std::ranges::range_value_t<T>>
+auto resolve(T const& self, ResolveMethod method) {
+    if constexpr (StaticRangedSequence<T>) {
+        std::optional<detail::Array<Bit, std::remove_cvref_t<T>::static_range>> result{
             std::in_place
         };
         auto out = result->begin();
@@ -249,7 +143,7 @@ auto LogicArrayMixin<Self>::resolve(ResolveMethod method) const {
         }
         return result;
     } else {
-        std::optional<::coconext::types::Vector<Bit>> result{std::in_place, self.range()};
+        std::optional<Vector<Bit>> result{std::in_place, self.range()};
         auto out = result->begin();
         for (auto const& v : self) {
             auto r = v.resolve(method);
@@ -262,7 +156,44 @@ auto LogicArrayMixin<Self>::resolve(ResolveMethod method) const {
     }
 }
 
-}  // namespace detail
+template <RangedSequence T>
+    requires LogicType<std::ranges::range_value_t<T>>
+auto resolve(T const& self) {
+    return resolve(self, ResolveMethod::WEAK);
+}
+
+template <RangedSequence T>
+    requires LogicType<std::ranges::range_value_t<T>>
+auto and_reduce(T const& self) {
+    using Elem = std::ranges::range_value_t<T>;
+    Elem result{Elem::_1};
+    for (auto const& v : self) {
+        result = result & v;
+    }
+    return result;
+}
+
+template <RangedSequence T>
+    requires LogicType<std::ranges::range_value_t<T>>
+auto or_reduce(T const& self) {
+    using Elem = std::ranges::range_value_t<T>;
+    Elem result{Elem::_0};
+    for (auto const& v : self) {
+        result = result | v;
+    }
+    return result;
+}
+
+template <RangedSequence T>
+    requires LogicType<std::ranges::range_value_t<T>>
+auto xor_reduce(T const& self) {
+    using Elem = std::ranges::range_value_t<T>;
+    Elem result{Elem::_0};
+    for (auto const& v : self) {
+        result = result ^ v;
+    }
+    return result;
+}
 
 using LogicVector = Vector<Logic>;
 using BitVector = Vector<Bit>;

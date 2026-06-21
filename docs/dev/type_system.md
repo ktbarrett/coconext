@@ -561,7 +561,7 @@ which is used for compile-time bounds checks and constant folding.
 Same as `ArraySlice` and `StaticArraySlice`, but support logical operators like `LogicArray`.
 
 * `&`, `|`, `^`, `~`
-* `and_reduce`, `or_reduce`, `xor_reduce`
+* Free functions on any `RangedSequence` of `Logic`/`Bit`: `resolve(arr, method)` / `resolve(arr)`, `and_reduce(arr)`, `or_reduce(arr)`, `xor_reduce(arr)`
 
 ## `BitArray`
 
