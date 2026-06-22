@@ -1,5 +1,5 @@
-Reference Manual
-################
+Python API Reference Manual
+###########################
 
 Triggers
 ========

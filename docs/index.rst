@@ -6,10 +6,38 @@
 coconext documentation
 ======================
 
-A staging area for new `cocotb <https://github.com/cocotb/cocotb>`_ features.
-This project will move faster and include more experimental features than may end up in the main repo.
+Next generation features for `cocotb <https://github.com/cocotb/cocotb>`_.
 
 .. toctree::
    :maxdepth: 1
+   :caption: Getting Started
+   :name: getting_started
 
-   reference
+   installation
+   tutorial
+
+.. toctree::
+   :maxdepth: 1
+   :caption: C++ Reference Manual
+   :name: cpp_reference
+   :hidden:
+
+   cpp_types_reference
+   cmake_reference
+   cpp_nanobind_reference
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Python Reference Manual
+   :name: python_reference
+   :hidden:
+
+   python_reference
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Additional Topics
+   :name: topics
+
+   tools_reference
+   installation_without_uv
