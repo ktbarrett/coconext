@@ -2,16 +2,10 @@
 
 from __future__ import annotations
 
-from cocotb.triggers import TaskManager, gather, select, wait
-
 from coconext._synchronization_primitives import Notify
 
 __all__ = (
     "Notify",
-    "TaskManager",
-    "gather",
-    "select",
-    "wait",
 )
 
 # Fix up module reference
