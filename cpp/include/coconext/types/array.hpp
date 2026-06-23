@@ -18,6 +18,7 @@
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <typeinfo>
 
 namespace coconext::types {
 
@@ -191,12 +192,9 @@ class Array : public ArrayImpl<T, R> {
     using ArrayImpl<T, R>::operator=;
 };
 
-template <typename T, Range R1, Range R2>
+template <typename T, Range R>
     requires std::equality_comparable<T>
-constexpr bool operator==(Array<T, R1> const& lhs, Array<T, R2> const& rhs) noexcept {
-    if constexpr (R1 != R2) {
-        return false;
-    }
+constexpr bool operator==(Array<T, R> const& lhs, Array<T, R> const& rhs) noexcept {
     return std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
 }
 
@@ -298,7 +296,7 @@ using Array = detail::Array<T, detail::make_static_range<Args...>()>;
 template <typename T, coconext::types::Range R>
 struct std::hash<coconext::types::detail::Array<T, R>> {
     size_t operator()(coconext::types::detail::Array<T, R> const& arr) const noexcept {
-        size_t seed = 0;
+        size_t seed = typeid(coconext::types::detail::Array<T, R>).hash_code();
         for (auto const& elem : arr) {
             seed = coconext::types::detail::hash_combine(seed, elem);
         }

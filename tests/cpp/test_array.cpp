@@ -534,6 +534,17 @@ TEST(TestVector, UnorderedSetDeduplicatesEmptyArrays) {
     EXPECT_EQ(s.size(), 1U);
 }
 
+TEST(TestVector, HashDistinctAcrossElementType) {
+    // Element- and range-equivalent values of Vector<int> and Vector<long>
+    // are distinct types with no cross-type equality; their hashes must
+    // differ.
+    Vector<int> a({1, 2, 3});
+    Vector<long> b({1L, 2L, 3L});
+    auto ha = std::hash<Vector<int>>{}(a);
+    auto hb = std::hash<Vector<long>>{}(b);
+    EXPECT_NE(ha, hb);
+}
+
 // -- Copy semantics ---------------------------------------------------------
 
 TEST(TestVector, Copy) {
