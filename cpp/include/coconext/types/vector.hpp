@@ -249,14 +249,6 @@ constexpr bool operator==(Vector<ValueT> const& lhs, Vector<ValueT> const& rhs) 
     return true;
 }
 
-namespace detail {
-
-// Opt into array-specific features such as formatting.
-template <typename T>
-struct is_array<Vector<T>> : std::true_type {};
-
-}  // namespace detail
-
 static_assert(RangedSequence<Vector<int>>);
 static_assert(RangedSequence<Vector<int> const>);
 static_assert(RangedSequence<ArraySlice<Vector<int>>>);

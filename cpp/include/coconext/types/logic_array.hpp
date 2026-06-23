@@ -210,7 +210,7 @@ using BitArray = detail::Array<Bit, detail::make_logic_static_range<Args...>()>;
 
 template <typename T>
 concept LogicArrayType =
-    ArrayType<T> && LogicType<std::ranges::range_value_t<std::remove_cvref_t<T>>>;
+    RangedSequence<T> && LogicType<std::ranges::range_value_t<std::remove_cvref_t<T>>>;
 
 // -- Bitwise array operations -----------------------------------------------
 

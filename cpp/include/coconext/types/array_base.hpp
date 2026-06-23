@@ -24,10 +24,6 @@ namespace detail {
 template <typename R>
 concept sized_input_range = std::ranges::sized_range<R> && std::ranges::input_range<R>;
 
-// Opt-in trait for array types.
-template <typename T>
-struct is_array : std::false_type {};
-
 // Helper to force a value into a constant-expression context.
 template <auto V>
 struct require_constant {};
@@ -54,12 +50,6 @@ template <typename T, typename Elem = void>
 concept StaticRangedSequence = RangedSequence<T, Elem> && requires {
     typename detail::require_constant<std::remove_cvref_t<T>::static_range>;
 };
-
-// Any type that opts into the array machinery via is_array. Element-type
-// constraints (formattability, etc.) live on the consumers that need them,
-// not on this concept.
-template <typename T>
-concept ArrayType = detail::is_array<std::remove_cvref_t<T>>::value;
 
 // -- Slice types --------------------------------------------------------------
 
@@ -436,12 +426,6 @@ class StaticArraySlice : public detail::StaticArraySliceImpl<ArrayT, R> {
 };
 
 namespace detail {
-
-template <typename ArrayT>
-struct is_array<ArraySlice<ArrayT>> : std::true_type {};
-
-template <typename ArrayT, Range R>
-struct is_array<StaticArraySlice<ArrayT, R>> : std::true_type {};
 
 // Emit "<prefix>[range]{e0, e1, ...}". Used by the per-type std::formatter
 // specializations for Array/Vector/ArraySlice/StaticArraySlice on non-logic
