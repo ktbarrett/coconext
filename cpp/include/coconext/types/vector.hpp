@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <typeinfo>
 
 // std::unique_ptr's constexpr support landed in C++23 (P2273R3); under C++20
 // the constexpr keyword on Vector's members is still legal but evaluating
@@ -275,7 +276,10 @@ static_assert(
 template <typename T>
 struct std::hash<coconext::types::Vector<T>> {
     size_t operator()(coconext::types::Vector<T> const& arr) const noexcept {
-        size_t seed = hash<coconext::types::Range>{}(arr.range());
+        size_t seed = typeid(coconext::types::Vector<T>).hash_code();
+        seed = coconext::types::detail::hash_mix(
+            seed, hash<coconext::types::Range>{}(arr.range())
+        );
         for (auto const& elem : arr) {
             seed = coconext::types::detail::hash_combine(seed, elem);
         }

@@ -255,6 +255,27 @@ TEST(TestStaticArray, UnorderedSetByValue) {
     EXPECT_EQ(s.size(), 1u);
 }
 
+TEST(TestStaticArray, HashDistinctAcrossElementType) {
+    // Element-equivalent values of Array<int, R> and Array<long, R> are
+    // distinct types with no cross-type equality; their hashes must differ
+    // so a downstream type added to the family doesn't inherit a collision.
+    Array<int, Range{0, Direction::TO, 2}> a({1, 2, 3});
+    Array<long, Range{0, Direction::TO, 2}> b({1L, 2L, 3L});
+    auto ha = std::hash<decltype(a)>{}(a);
+    auto hb = std::hash<decltype(b)>{}(b);
+    EXPECT_NE(ha, hb);
+}
+
+TEST(TestStaticArray, HashDistinctAcrossRange) {
+    // Different static ranges instantiate different types; their hashes
+    // must differ even when the element sequence matches.
+    Array<int, Range{0, Direction::TO, 2}> a({1, 2, 3});
+    Array<int, Range{2, Direction::DOWNTO, 0}> b({1, 2, 3});
+    auto ha = std::hash<decltype(a)>{}(a);
+    auto hb = std::hash<decltype(b)>{}(b);
+    EXPECT_NE(ha, hb);
+}
+
 // -- Formatter --------------------------------------------------------------
 
 TEST(TestStaticArray, FormatterInt) {
