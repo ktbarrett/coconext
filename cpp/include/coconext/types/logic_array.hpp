@@ -612,15 +612,6 @@ auto operator~(T const& arr) {
 
 namespace detail {
 
-template <LogicType T>
-constexpr std::string_view logic_type_name() {
-    if constexpr (std::same_as<T, Logic>) {
-        return "Logic";
-    } else {
-        return "Bit";
-    }
-}
-
 template <typename ElemT, typename CharToElem>
 Vector<ElemT> parse_logic_string(std::string_view s, CharToElem char_to_elem) {
     size_t count = 0;
@@ -654,17 +645,15 @@ constexpr size_t count_non_underscore() {
     return n;
 }
 
+// Emit '<prefix>[range]{"<bit-string>"}' for Logic/Bit-element arrays.
 template <RangedSequence ArrayT, typename OutIt>
-OutIt format_typed_array(std::string_view type_name, ArrayT const& arr, OutIt out) {
-    out = std::format_to(out, "{}{}{{", type_name, arr.range());
-    bool first = true;
+    requires LogicType<std::ranges::range_value_t<ArrayT>>
+OutIt format_logic_array(std::string_view prefix, ArrayT const& arr, OutIt out) {
+    out = std::format_to(out, "{}{}{{\"", prefix, arr.range());
     for (auto const& elem : arr) {
-        if (!first) {
-            out = std::format_to(out, ", ");
-        }
-        out = std::format_to(out, "{}", to_string(elem));
-        first = false;
+        *out++ = to_char(elem);
     }
+    *out++ = '"';
     *out++ = '}';
     return out;
 }
@@ -730,34 +719,83 @@ constexpr auto operator""_b() {
 
 }  // namespace coconext::types
 
-// One LogicType-constrained formatter for every array type that opts into
-// is_array (Vector, Array, ArraySlice, StaticArraySlice). The constraint is a
-// conjunction of the generic ArrayType constraint plus a LogicType check on
-// the element type, so it subsumes the generic std::formatter<ArrayType T> in
-// array_base.hpp via C++20 partial specialization ordering with constraints.
-// Result: arrays of Logic/Bit print as "Logic[range]{0, 1, X}" instead of
-// "[range]{Logic{0}, Logic{1}, Logic{X}}".
-template <typename T>
-    requires coconext::types::ArrayType<T>
-          && coconext::types::detail::Formattable<std::ranges::range_value_t<T>>
-          && coconext::types::LogicType<std::ranges::range_value_t<T>>
-struct std::formatter<T> {
-    constexpr auto parse(std::format_parse_context& ctx) {
-        auto it = ctx.begin();
-        if (it != ctx.end() && *it != '}') {
-            throw std::format_error("ArrayType<Logic/Bit> formatter takes no format spec");
-        }
-        return it;
+// Per-type formatters for Logic/Bit-element arrays. These are more-specialized
+// partial specializations of std::formatter than the corresponding non-logic
+// formatters in array.hpp / vector.hpp / array_base.hpp, so they win by C++20
+// partial-ordering rules when both headers are visible.
+//
+// Output format: `<Prefix>[range]{"<bit-string>"}`. The prefix encodes the
+// type kind (Array / Vector / ArraySlice) and the element type (Logic / Bit).
+
+#define COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER(PREFIX, ...)                                 \
+    struct std::formatter<__VA_ARGS__> {                                                   \
+        constexpr auto parse(std::format_parse_context& ctx) {                             \
+            auto it = ctx.begin();                                                         \
+            if (it != ctx.end() && *it != '}') {                                           \
+                throw std::format_error(PREFIX " formatter takes no format spec");         \
+            }                                                                              \
+            return it;                                                                     \
+        }                                                                                  \
+        auto format(__VA_ARGS__ const& v, std::format_context& ctx) const {                \
+            return coconext::types::detail::format_logic_array(PREFIX, v, ctx.out());      \
+        }                                                                                  \
     }
 
-    auto format(T const& arr, std::format_context& ctx) const {
-        return coconext::types::detail::format_typed_array(
-            coconext::types::detail::logic_type_name<std::ranges::range_value_t<T>>(),
-            arr,
-            ctx.out()
-        );
-    }
-};
+template <coconext::types::Range R>
+COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER(
+    "LogicArray", coconext::types::detail::Array<coconext::types::Logic, R>
+);
+
+template <coconext::types::Range R>
+COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER(
+    "BitArray", coconext::types::detail::Array<coconext::types::Bit, R>
+);
+
+template <>
+COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER(
+    "LogicVector", coconext::types::Vector<coconext::types::Logic>
+);
+
+template <>
+COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER(
+    "BitVector", coconext::types::Vector<coconext::types::Bit>
+);
+
+template <typename ArrayT>
+    requires coconext::types::detail::Formattable<std::ranges::range_value_t<ArrayT>>
+          && std::same_as<
+                 std::remove_cv_t<std::ranges::range_value_t<ArrayT>>,
+                 coconext::types::Logic>
+COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER(
+    "LogicArraySlice", coconext::types::ArraySlice<ArrayT>
+);
+
+template <typename ArrayT>
+    requires coconext::types::detail::Formattable<std::ranges::range_value_t<ArrayT>>
+          && std::same_as<
+                 std::remove_cv_t<std::ranges::range_value_t<ArrayT>>,
+                 coconext::types::Bit>
+COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER("BitArraySlice", coconext::types::ArraySlice<ArrayT>);
+
+template <typename ArrayT, coconext::types::Range R>
+    requires coconext::types::detail::Formattable<std::ranges::range_value_t<ArrayT>>
+          && std::same_as<
+                 std::remove_cv_t<std::ranges::range_value_t<ArrayT>>,
+                 coconext::types::Logic>
+COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER(
+    "LogicArraySlice", coconext::types::StaticArraySlice<ArrayT, R>
+);
+
+template <typename ArrayT, coconext::types::Range R>
+    requires coconext::types::detail::Formattable<std::ranges::range_value_t<ArrayT>>
+          && std::same_as<
+                 std::remove_cv_t<std::ranges::range_value_t<ArrayT>>,
+                 coconext::types::Bit>
+COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER(
+    "BitArraySlice", coconext::types::StaticArraySlice<ArrayT, R>
+);
+
+#undef COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER
 
 #undef COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR
 

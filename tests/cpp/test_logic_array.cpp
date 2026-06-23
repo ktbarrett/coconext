@@ -962,17 +962,16 @@ TEST(TestLogicArray, UdlLogicAllUnderscores) {
 }
 
 TEST(TestLogicArray, FormatterStatic) {
-    // The LogicType-constrained std::formatter spec in logic_array.hpp must
-    // pick up static LogicArray, not just LogicVector (the latter is covered
-    // in test_array.cpp). Verifies the partial spec matches at the static
-    // owner type and produces the "Logic[range]{...}" form.
+    // Per-type std::formatter spec for Array<Logic, R> in logic_array.hpp
+    // must wins over the generic Array formatter. Verifies the spec produces
+    // the "LogicArray[range]{"..."}" form.
     auto a = "01XZ"_l;  // LogicArray<Range{3, DOWNTO, 0}>
-    EXPECT_EQ(std::format("{}", a), "Logic[3 downto 0]{0, 1, X, Z}");
+    EXPECT_EQ(std::format("{}", a), "LogicArray[3 downto 0]{\"01XZ\"}");
 }
 
 TEST(TestBitArray, FormatterStatic) {
     auto a = "0101"_b;  // BitArray<Range{3, DOWNTO, 0}>
-    EXPECT_EQ(std::format("{}", a), "Bit[3 downto 0]{0, 1, 0, 1}");
+    EXPECT_EQ(std::format("{}", a), "BitArray[3 downto 0]{\"0101\"}");
 }
 
 TEST(TestLogicArray, UdlBitwiseOps) {

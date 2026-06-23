@@ -291,6 +291,24 @@ struct std::hash<coconext::types::Vector<T>> {
     }
 };
 
+// Formatter for Vector<T>. The Logic/Bit specializations in logic_array.hpp
+// are more-specialized partial specs and win when both headers are visible.
+template <typename T>
+    requires coconext::types::detail::Formattable<T>
+struct std::formatter<coconext::types::Vector<T>> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        auto it = ctx.begin();
+        if (it != ctx.end() && *it != '}') {
+            throw std::format_error("Vector formatter takes no format spec");
+        }
+        return it;
+    }
+
+    auto format(coconext::types::Vector<T> const& arr, std::format_context& ctx) const {
+        return coconext::types::detail::format_array("Vector", arr, ctx.out());
+    }
+};
+
 #undef COCONEXT_VECTOR_CONSTEXPR
 
 #endif  // COCONEXT_VECTOR_HPP

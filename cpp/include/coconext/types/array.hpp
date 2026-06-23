@@ -309,4 +309,25 @@ struct std::hash<coconext::types::detail::Array<T, R>> {
     }
 };
 
+// Formatter for Array<T, R>. The Logic/Bit specializations in logic_array.hpp
+// are more-specialized partial specs and win by C++'s partial-ordering rules
+// when both headers are visible.
+template <typename T, coconext::types::Range R>
+    requires coconext::types::detail::Formattable<T>
+struct std::formatter<coconext::types::detail::Array<T, R>> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        auto it = ctx.begin();
+        if (it != ctx.end() && *it != '}') {
+            throw std::format_error("Array formatter takes no format spec");
+        }
+        return it;
+    }
+
+    auto format(
+        coconext::types::detail::Array<T, R> const& arr, std::format_context& ctx
+    ) const {
+        return coconext::types::detail::format_array("Array", arr, ctx.out());
+    }
+};
+
 #endif  // COCONEXT_ARRAY_HPP
