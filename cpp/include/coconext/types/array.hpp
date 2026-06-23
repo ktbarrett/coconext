@@ -200,9 +200,6 @@ constexpr bool operator==(Array<T, R1> const& lhs, Array<T, R2> const& rhs) noex
     return std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
 }
 
-template <typename T, Range R>
-struct is_array<Array<T, R>> : std::true_type {};
-
 static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}>>);
 static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}> const>);
 static_assert(RangedSequence<ArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
