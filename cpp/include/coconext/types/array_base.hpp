@@ -443,14 +443,14 @@ struct is_array<ArraySlice<ArrayT>> : std::true_type {};
 template <typename ArrayT, Range R>
 struct is_array<StaticArraySlice<ArrayT, R>> : std::true_type {};
 
-// -- Formatter ----------------------------------------------------------------
-
-// Walks a RangedSequence, emitting "[range]{elem, elem, ...}" via the formatter
-// for each element type. Used by the generic Array/Slice formatter.
+// Emit "<prefix>[range]{e0, e1, ...}". Used by the per-type std::formatter
+// specializations for Array/Vector/ArraySlice/StaticArraySlice on non-logic
+// element types. Logic/Bit arrays use a quoted-bit-string body instead; see
+// logic_array.hpp.
 template <RangedSequence ArrayT, typename OutIt>
     requires Formattable<std::ranges::range_value_t<ArrayT>>
-OutIt format_array(ArrayT const& arr, OutIt out) {
-    out = std::format_to(out, "{}{{", arr.range());
+OutIt format_array(std::string_view prefix, ArrayT const& arr, OutIt out) {
+    out = std::format_to(out, "{}{}{{", prefix, arr.range());
     bool first = true;
     for (auto const& elem : arr) {
         if (!first) {
@@ -467,25 +467,33 @@ OutIt format_array(ArrayT const& arr, OutIt out) {
 
 }  // namespace coconext::types
 
-// One generic formatter for every array type that opts into is_array. The
-// LogicType-constrained version in logic_array.hpp subsumes this one for
-// arrays of Logic/Bit (via constraint conjunction) and produces the terse
-// "Logic[range]{0, 1, X}" form instead.
-template <typename T>
-    requires coconext::types::ArrayType<T>
-          && coconext::types::detail::Formattable<std::ranges::range_value_t<T>>
-struct std::formatter<T> {
-    constexpr auto parse(std::format_parse_context& ctx) {
-        auto it = ctx.begin();
-        if (it != ctx.end() && *it != '}') {
-            throw std::format_error("ArrayType formatter takes no format spec");
-        }
-        return it;
+// Formatters for ArraySlice and StaticArraySlice. Both print with the
+// "ArraySlice" prefix; the static-vs-runtime distinction isn't useful to a
+// reader of the printed output. The Logic/Bit specializations in
+// logic_array.hpp are more-specialized partial specs and win when both
+// headers are visible.
+#define COCONEXT_DEFINE_ARRAY_SLICE_FORMATTER(...)                                         \
+    struct std::formatter<__VA_ARGS__> {                                                   \
+        constexpr auto parse(std::format_parse_context& ctx) {                             \
+            auto it = ctx.begin();                                                         \
+            if (it != ctx.end() && *it != '}') {                                           \
+                throw std::format_error("ArraySlice formatter takes no format spec");      \
+            }                                                                              \
+            return it;                                                                     \
+        }                                                                                  \
+        auto format(__VA_ARGS__ const& s, std::format_context& ctx) const {                \
+            return coconext::types::detail::format_array("ArraySlice", s, ctx.out());      \
+        }                                                                                  \
     }
 
-    auto format(T const& arr, std::format_context& ctx) const {
-        return coconext::types::detail::format_array(arr, ctx.out());
-    }
-};
+template <typename ArrayT>
+    requires coconext::types::detail::Formattable<std::ranges::range_value_t<ArrayT>>
+COCONEXT_DEFINE_ARRAY_SLICE_FORMATTER(coconext::types::ArraySlice<ArrayT>);
+
+template <typename ArrayT, coconext::types::Range R>
+    requires coconext::types::detail::Formattable<std::ranges::range_value_t<ArrayT>>
+COCONEXT_DEFINE_ARRAY_SLICE_FORMATTER(coconext::types::StaticArraySlice<ArrayT, R>);
+
+#undef COCONEXT_DEFINE_ARRAY_SLICE_FORMATTER
 
 #endif  // COCONEXT_ARRAY_BASE_HPP

@@ -259,46 +259,46 @@ TEST(TestStaticArray, UnorderedSetByValue) {
 
 TEST(TestStaticArray, FormatterInt) {
     Array<int, Range{0, Direction::TO, 2}> a({1, 2, 3});
-    EXPECT_EQ(std::format("{}", a), "[0 to 2]{1, 2, 3}");
+    EXPECT_EQ(std::format("{}", a), "Array[0 to 2]{1, 2, 3}");
 }
 
 TEST(TestStaticArray, FormatterEmpty) {
     Array<int, Range{0, Direction::TO, -1}> a;
-    EXPECT_EQ(std::format("{}", a), "[0 to -1]{}");
+    EXPECT_EQ(std::format("{}", a), "Array[0 to -1]{}");
 }
 
 TEST(TestStaticArray, FormatterLogic) {
     Array<Logic, Range{0, Direction::TO, 2}> a({'0'_l, '1'_l, 'X'_l});
-    EXPECT_EQ(std::format("{}", a), "Logic[0 to 2]{0, 1, X}");
+    EXPECT_EQ(std::format("{}", a), "LogicArray[0 to 2]{\"01X\"}");
 }
 
 TEST(TestStaticArray, FormatterBit) {
     Array<Bit, Range{0, Direction::TO, 3}> a({'0'_b, '1'_b, '0'_b, '1'_b});
-    EXPECT_EQ(std::format("{}", a), "Bit[0 to 3]{0, 1, 0, 1}");
+    EXPECT_EQ(std::format("{}", a), "BitArray[0 to 3]{\"0101\"}");
 }
 
 TEST(TestStaticArray, FormatterLogicRuntimeSlice) {
     Array<Logic, Range{0, Direction::TO, 3}> a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
     auto s = a[Range{1, 2}];
-    EXPECT_EQ(std::format("{}", s), "Logic[1 to 2]{1, X}");
+    EXPECT_EQ(std::format("{}", s), "LogicArraySlice[1 to 2]{\"1X\"}");
 }
 
 TEST(TestStaticArray, FormatterLogicRuntimeSliceConst) {
     Array<Logic, Range{0, Direction::TO, 3}> const a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
     auto s = a[Range{1, 2}];
-    EXPECT_EQ(std::format("{}", s), "Logic[1 to 2]{1, X}");
+    EXPECT_EQ(std::format("{}", s), "LogicArraySlice[1 to 2]{\"1X\"}");
 }
 
 TEST(TestStaticArray, FormatterBitRuntimeSlice) {
     Array<Bit, Range{0, Direction::TO, 3}> a({'0'_b, '1'_b, '0'_b, '1'_b});
     auto s = a[Range{1, 2}];
-    EXPECT_EQ(std::format("{}", s), "Bit[1 to 2]{1, 0}");
+    EXPECT_EQ(std::format("{}", s), "BitArraySlice[1 to 2]{\"10\"}");
 }
 
 TEST(TestStaticArray, FormatterBitRuntimeSliceConst) {
     Array<Bit, Range{0, Direction::TO, 3}> const a({'0'_b, '1'_b, '0'_b, '1'_b});
     auto s = a[Range{1, 2}];
-    EXPECT_EQ(std::format("{}", s), "Bit[1 to 2]{1, 0}");
+    EXPECT_EQ(std::format("{}", s), "BitArraySlice[1 to 2]{\"10\"}");
 }
 
 // -- Static sub-slice (compile-time-bounded) -------------------------------

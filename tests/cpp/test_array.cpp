@@ -575,40 +575,40 @@ TEST(TestVector, MoveAssignReplacesRange) {
 
 TEST(TestVector, FormatterInt) {
     Vector<int> a({1, 2, 3});
-    EXPECT_EQ(std::format("{}", a), "[0 to 2]{1, 2, 3}");
+    EXPECT_EQ(std::format("{}", a), "Vector[0 to 2]{1, 2, 3}");
 }
 
 TEST(TestVector, FormatterEmpty) {
     Vector<int> a({});
-    EXPECT_EQ(std::format("{}", a), "[0 to -1]{}");
+    EXPECT_EQ(std::format("{}", a), "Vector[0 to -1]{}");
 }
 
 TEST(TestVector, FormatterLogic) {
     Vector<Logic> a({'0'_l, '1'_l, 'X'_l});
-    EXPECT_EQ(std::format("{}", a), "Logic[2 downto 0]{0, 1, X}");
+    EXPECT_EQ(std::format("{}", a), "LogicVector[2 downto 0]{\"01X\"}");
 }
 
 TEST(TestVector, FormatterBit) {
     Vector<Bit> a({'0'_b, '1'_b, '0'_b, '1'_b});
-    EXPECT_EQ(std::format("{}", a), "Bit[3 downto 0]{0, 1, 0, 1}");
+    EXPECT_EQ(std::format("{}", a), "BitVector[3 downto 0]{\"0101\"}");
 }
 
 TEST(TestVector, FormatterLogicSlice) {
     Vector<Logic> a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
     auto s = a[Range(2, 1)];
-    EXPECT_EQ(std::format("{}", s), "Logic[2 downto 1]{1, X}");
+    EXPECT_EQ(std::format("{}", s), "LogicArraySlice[2 downto 1]{\"1X\"}");
 }
 
 TEST(TestVector, FormatterLogicConstSlice) {
     Vector<Logic> const a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
     auto s = a[Range(2, 1)];
-    EXPECT_EQ(std::format("{}", s), "Logic[2 downto 1]{1, X}");
+    EXPECT_EQ(std::format("{}", s), "LogicArraySlice[2 downto 1]{\"1X\"}");
 }
 
 TEST(TestVector, FormatterBitSlice) {
     Vector<Bit> a({'0'_b, '1'_b, '0'_b, '1'_b});
     auto s = a[Range(2, 1)];
-    EXPECT_EQ(std::format("{}", s), "Bit[2 downto 1]{1, 0}");
+    EXPECT_EQ(std::format("{}", s), "BitArraySlice[2 downto 1]{\"10\"}");
 }
 
 // -- Static slice of Vector (compile-time-bounded view) -----------------
