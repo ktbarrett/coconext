@@ -13,29 +13,30 @@
 #include <llvm/ADT/APInt.h>
 #endif
 
-namespace coconext::types {
-
-namespace detail {
+namespace coconext::types::detail {
 
 #ifdef COCONEXT_USE_APINT
 
-template <size_t Bits, bool Signed>
-class IntBackend {
+static constexpr bool using_APInt = true;
+
+template <size_t BitWidth>
+class BigInt {
     // TODO
 };
 
 #else
 
+static constexpr bool using_APInt = false;
+
 // This class can handle arbitrary precision integer's basic essential
 // arithmetic E.g. shifting, bitwise operations, equality e.t.c. For complete arithmetic
-// operations, we fall back to APInt based IntBackend
-template <size_t BitWidth, bool is_signed>
-class IntBackend {
+// operations, we fall back to APInt based BigInt
+template <size_t BitWidth>
+class BigInt {
   public:
     using WordType = uint64_t;
     static constexpr unsigned word_width = 64;
     static constexpr unsigned num_of_words = (BitWidth + word_width - 1) / word_width;
-    static constexpr bool is_single_word = num_of_words == 1;
 
   private:
     static constexpr WordType get_last_word_mask() {
@@ -49,19 +50,7 @@ class IntBackend {
     static constexpr WordType last_word_mask = get_last_word_mask();
     std::array<WordType, num_of_words> data{};
 
-    constexpr int64_t sign_extend_to_64(uint64_t val) const {
-        static_assert(BitWidth <= 64, "sign_extend_to_64 only valid for single words");
-        if constexpr (!is_signed) {
-            return static_cast<int64_t>(val);
-        }
-        unsigned shift = 64 - BitWidth;
-        return static_cast<int64_t>(val << shift) >> shift;
-    }
-
     bool isNegative() const {
-        if constexpr (!is_signed) {
-            return false;
-        }
         unsigned sign_bit = (BitWidth - 1) % 64;
         return (data.back() >> sign_bit) & 1;
     }
@@ -70,21 +59,19 @@ class IntBackend {
     WordType get_word(size_t index) const { return data[index]; }
     std::array<WordType, num_of_words> get_data() const { return data; }
 
-    IntBackend() = default;
+    BigInt() = default;
 
-    IntBackend(WordType val) {
+    BigInt(WordType val, bool is_signed = false) {
         data[0] = val;
 
-        if constexpr (is_signed) {
-            if (static_cast<int64_t>(val) < 0) {
-                std::fill(data.begin() + 1, data.end(), ~WordType(0));
-            }
+        if (is_signed && (static_cast<int64_t>(val) < 0)) {
+            std::fill(data.begin() + 1, data.end(), ~WordType(0));
         }
 
         data.back() &= last_word_mask;
     }
 
-    explicit constexpr IntBackend(std::string_view str) {
+    explicit constexpr BigInt(std::string_view str) {
         if (str.empty()) {
             return;
         }
@@ -93,11 +80,6 @@ class IntBackend {
         size_t i = 0;
 
         if (str[i] == '-') {
-            if constexpr (!is_signed) {
-                throw std::invalid_argument(
-                    "Cannot assign negative string to unsigned IntBackend"
-                );
-            }
             is_neg = true;
             i++;
         } else if (str[i] == '+') {
@@ -178,25 +160,21 @@ class IntBackend {
         data.back() &= last_word_mask;
     }
 
-    IntBackend& operator=(IntBackend const&) = default;
-    IntBackend& operator=(IntBackend&&) noexcept = default;
-    IntBackend(IntBackend const&) = default;
-    IntBackend(IntBackend&&) noexcept = default;
+    BigInt& operator=(BigInt const&) = default;
+    BigInt& operator=(BigInt&&) noexcept = default;
+    BigInt(BigInt const&) = default;
+    BigInt(BigInt&&) noexcept = default;
 
-    bool operator==(IntBackend const& rhs) const { return data == rhs.data; }
+    bool operator==(BigInt const& rhs) const { return data == rhs.data; }
 
-    bool operator!=(IntBackend const& rhs) const { return !(*this == rhs); }
+    bool operator!=(BigInt const& rhs) const { return !(*this == rhs); }
 
-    bool operator<(IntBackend const& rhs) const {
-        bool lhs_neg = false;
+    bool operator<(BigInt const& rhs) const {
+        bool lhs_neg = isNegative();
+        bool rhs_neg = rhs.isNegative();
 
-        if (is_signed) {
-            lhs_neg = isNegative();
-            bool rhs_neg = rhs.isNegative();
-
-            if (lhs_neg != rhs_neg) {
-                return lhs_neg;
-            }
+        if (lhs_neg != rhs_neg) {
+            return lhs_neg;
         }
 
         for (int i = num_of_words - 1; i >= 0; --i) {
@@ -208,12 +186,12 @@ class IntBackend {
         return false;
     }
 
-    bool operator>(IntBackend const& rhs) const { return rhs < *this; }
-    bool operator<=(IntBackend const& rhs) const { return !(rhs < *this); }
-    bool operator>=(IntBackend const& rhs) const { return !(*this < rhs); }
+    bool operator>(BigInt const& rhs) const { return rhs < *this; }
+    bool operator<=(BigInt const& rhs) const { return !(rhs < *this); }
+    bool operator>=(BigInt const& rhs) const { return !(*this < rhs); }
 
-    IntBackend operator&(IntBackend const& rhs) const {
-        IntBackend result;
+    BigInt operator&(BigInt const& rhs) const {
+        BigInt result;
 
         for (unsigned i = 0; i < num_of_words; ++i) {
             result.data[i] = data[i] & rhs.data[i];
@@ -222,8 +200,8 @@ class IntBackend {
         return result;
     }
 
-    IntBackend operator|(IntBackend const& rhs) const {
-        IntBackend result;
+    BigInt operator|(BigInt const& rhs) const {
+        BigInt result;
 
         for (unsigned i = 0; i < num_of_words; ++i) {
             result.data[i] = data[i] | rhs.data[i];
@@ -232,8 +210,8 @@ class IntBackend {
         return result;
     }
 
-    IntBackend operator^(IntBackend const& rhs) const {
-        IntBackend result;
+    BigInt operator^(BigInt const& rhs) const {
+        BigInt result;
 
         for (unsigned i = 0; i < num_of_words; ++i) {
             result.data[i] = data[i] ^ rhs.data[i];
@@ -242,8 +220,8 @@ class IntBackend {
         return result;
     }
 
-    IntBackend operator~() const {
-        IntBackend result(*this);
+    BigInt operator~() const {
+        BigInt result(*this);
 
         for (auto& word : result.data) {
             word = ~word;
@@ -253,105 +231,18 @@ class IntBackend {
         return result;
     }
 
-    IntBackend operator+(IntBackend const& rhs) const {
-        static_assert(
-            is_single_word,
-            "operator(+) is only supported for BitWidth within 64. Use APInt for larger "
-            "widths."
-        );
+    template <size_t BW>
+    friend void shift_right_logical(BigInt<BW>& val, size_t amount);
 
-        IntBackend result;
-        result.data[0] = data[0] + rhs.data[0];
-        result.data[0] &= last_word_mask;
-        return result;
-    }
+    template <size_t BW>
+    friend void shift_right_arith(BigInt<BW>& val, size_t amount);
 
-    IntBackend operator-(IntBackend const& rhs) const {
-        static_assert(
-            is_single_word,
-            "operator(-) is only supported for BitWidth within 64. Use APInt for larger "
-            "widths."
-        );
-
-        IntBackend result;
-        result.data[0] = data[0] - rhs.data[0];
-        result.data[0] &= last_word_mask;
-        return result;
-    }
-
-    IntBackend operator*(IntBackend const& rhs) const {
-        static_assert(
-            is_single_word,
-            "operator(*) is only supported for BitWidth within 64. Use APInt for larger "
-            "widths."
-        );
-
-        IntBackend result;
-        result.data[0] = data[0] * rhs.data[0];
-        result.data[0] &= last_word_mask;
-        return result;
-    }
-
-    IntBackend operator/(IntBackend const& rhs) const {
-        static_assert(
-            is_single_word,
-            "operator(/) is only supported for BitWidth within 64. Use APInt for larger "
-            "widths."
-        );
-
-        if (rhs.data[0] == 0) {
-            throw std::domain_error("Division by zero not possible");
-        }
-
-        IntBackend result;
-        if constexpr (is_signed) {
-            int64_t lhs_val = sign_extend_to_64(data[0]);
-            int64_t rhs_val = sign_extend_to_64(rhs.data[0]);
-            result.data[0] = static_cast<uint64_t>(lhs_val / rhs_val);
-        } else {
-            result.data[0] = data[0] / rhs.data[0];
-        }
-
-        result.data[0] &= last_word_mask;
-        return result;
-    }
-
-    IntBackend operator%(IntBackend const& rhs) const {
-        static_assert(
-            is_single_word,
-            "operator(%) is only supported for BitWidth within 64. Use APInt for larger "
-            "widths."
-        );
-
-        if (rhs.data[0] == 0) {
-            throw std::domain_error("Modulo by zero not possible");
-        }
-
-        IntBackend result;
-        if constexpr (is_signed) {
-            int64_t lhs_val = sign_extend_to_64(data[0]);
-            int64_t rhs_val = sign_extend_to_64(rhs.data[0]);
-            result.data[0] = static_cast<uint64_t>(lhs_val % rhs_val);
-        } else {
-            result.data[0] = data[0] % rhs.data[0];
-        }
-
-        result.data[0] &= last_word_mask;
-        return result;
-    }
-
-    template <size_t BW, bool S>
-    friend void shift_right_logical(IntBackend<BW, S>& val, size_t amount);
-
-    template <size_t BW, bool S>
-    friend void shift_right_arith(IntBackend<BW, S>& val, size_t amount);
-
-    template <size_t BW, bool S>
-    friend void shift_left(IntBackend<BW, S>& val, size_t amount);
+    template <size_t BW>
+    friend void shift_left(BigInt<BW>& val, size_t amount);
 };
 
-template <size_t BitWidth, bool is_signed>
-inline void shift_right_logical(IntBackend<BitWidth, is_signed>& val, size_t amount) {
+template <size_t BitWidth>
+inline void shift_right_logical(BigInt<BitWidth>& val, size_t amount) {
     if (amount == 0) {
         return;
     }
@@ -380,8 +271,8 @@ inline void shift_right_logical(IntBackend<BitWidth, is_signed>& val, size_t amo
     }
 }
 
-template <size_t BitWidth, bool is_signed>
-inline void shift_right_arith(IntBackend<BitWidth, is_signed>& val, size_t amount) {
+template <size_t BitWidth>
+inline void shift_right_arith(BigInt<BitWidth>& val, size_t amount) {
     if (amount == 0) {
         return;
     }
@@ -419,8 +310,8 @@ inline void shift_right_arith(IntBackend<BitWidth, is_signed>& val, size_t amoun
     }
 }
 
-template <size_t BitWidth, bool is_signed>
-inline void shift_left(IntBackend<BitWidth, is_signed>& val, size_t amount) {
+template <size_t BitWidth>
+inline void shift_left(BigInt<BitWidth>& val, size_t amount) {
     if (amount == 0) {
         return;
     }
@@ -455,51 +346,274 @@ inline void shift_left(IntBackend<BitWidth, is_signed>& val, size_t amount) {
 
 struct EmptyStorage {};
 
-template <size_t Bits, bool Signed>
+template <size_t BW>
 struct IntTypePicker {
-    using type = IntBackend<Bits, Signed>;
-};
-
-template <bool Signed>
-struct IntTypePicker<0, Signed> {
-    using type = EmptyStorage;
-};
-
-template <bool Signed>
-struct IntTypePicker<8, Signed> {
-    using type = std::conditional_t<Signed, int8_t, uint8_t>;
-};
-
-template <bool Signed>
-struct IntTypePicker<16, Signed> {
-    using type = std::conditional_t<Signed, int16_t, uint16_t>;
-};
-
-template <bool Signed>
-struct IntTypePicker<32, Signed> {
-    using type = std::conditional_t<Signed, int32_t, uint32_t>;
-};
-
-template <bool Signed>
-struct IntTypePicker<64, Signed> {
-    using type = std::conditional_t<Signed, int64_t, uint64_t>;
-};
-
+    using type = std::conditional_t<
+        BW == 0,
+        EmptyStorage,
+        std::conditional_t<
+            (BW <= 8),
+            uint8_t,
+            std::conditional_t<
+                (BW <= 16),
+                uint16_t,
+                std::conditional_t<
+                    (BW <= 32),
+                    uint32_t,
+                    std::conditional_t<
+                        (BW <= 64),
+                        uint64_t,
 #if defined(__SIZEOF_INT128__)
-template <bool Signed>
-struct IntTypePicker<128, Signed> {
-    using type = std::conditional_t<Signed, __int128_t, __uint128_t>;
-};
+                        std::conditional_t<(BW <= 128), __uint128_t, BigInt<BW>>
+#else
+                        BigInt<BW>
 #endif
+                        >>>>>;
+};
 
-}  // namespace detail
+template <size_t W>
+class Bits {
+  public:
+    using intType = IntTypePicker<W>::type;
+    static constexpr bool is_not_native_int = std::is_same_v<intType, BigInt<W>>;
+    static constexpr bool supports_overloaded_op = !is_not_native_int || using_APInt;
 
-template <size_t Bits>
-using UInt = typename detail::IntTypePicker<Bits, false>::type;
+    constexpr Bits() = default;
 
-template <size_t Bits>
-using SInt = typename detail::IntTypePicker<Bits, true>::type;
+    // native ints
+    constexpr Bits(intType val)
+        requires(!is_not_native_int)
+        : storage_(std::move(val)) {}
 
-}  // namespace coconext::types
+    // BigInt from an BigInt
+    constexpr Bits(BigInt<W> val)
+        requires is_not_native_int
+        : storage_(std::move(val)) {}
+
+    // BigInt from a native uint64_t
+    constexpr Bits(uint64_t val, bool is_signed = false)
+        requires is_not_native_int
+        : storage_(std::move(val), is_signed) {}
+
+    // BigInt from a string
+    constexpr Bits(std::string_view val)
+        requires is_not_native_int
+        : storage_(val) {}
+
+    constexpr Bits operator+(Bits<W> const& other) const {
+        static_assert(
+            supports_overloaded_op,
+            "operator(+) only supported by native ints and APInt BigInt"
+        );
+        return Bits<W>(static_cast<intType>(storage_ + other.storage_));
+    }
+
+    constexpr Bits operator-(Bits<W> const& other) const {
+        static_assert(
+            supports_overloaded_op,
+            "operator(-) only supported by native ints and APInt BigInt"
+        );
+        return Bits<W>(static_cast<intType>(storage_ - other.storage_));
+    }
+
+    constexpr Bits operator*(Bits<W> const& other) const {
+        static_assert(
+            supports_overloaded_op,
+            "operator(*) only supported by native ints and APInt BigInt"
+        );
+        return Bits<W>(static_cast<intType>(storage_ * other.storage_));
+    }
+
+    constexpr Bits udiv(Bits<W> const& other) const {
+        static_assert(
+            supports_overloaded_op,
+            "Division only supported by native ints and APInt BigInt"
+        );
+        if (other.raw() == 0) {
+            throw std::domain_error("Division by zero");
+        }
+
+        if constexpr (using_APInt) {
+            // TODO
+        } else {
+            return Bits<W>(static_cast<intType>(this->raw() / other.raw()));
+        }
+    }
+
+    constexpr Bits sdiv(Bits<W> const& other) const {
+        static_assert(
+            supports_overloaded_op,
+            "Division only supported by native ints and APInt BigInt"
+        );
+        if (other.raw() == 0) {
+            throw std::domain_error("Division by zero");
+        }
+
+        if constexpr (using_APInt) {
+            // TODO
+        } else {
+            auto lhs_ext = this->sign_extended();
+            auto rhs_ext = other.sign_extended();
+            return Bits<W>(static_cast<intType>(lhs_ext / rhs_ext));
+        }
+    }
+
+    constexpr Bits umod(Bits<W> const& other) const {
+        static_assert(
+            supports_overloaded_op, "Mod only supported by native ints and APInt BigInt"
+        );
+        if (other.raw() == 0) {
+            throw std::domain_error("Division by zero");
+        }
+
+        if constexpr (using_APInt) {
+            // TODO
+        } else {
+            return Bits<W>(static_cast<intType>(this->raw() % other.raw()));
+        }
+    }
+
+    constexpr Bits smod(Bits<W> const& other) const {
+        static_assert(
+            supports_overloaded_op, "Mod only supported by native ints and APInt BigInt"
+        );
+        if (other.raw() == 0) {
+            throw std::domain_error("Division by zero");
+        }
+
+        if constexpr (using_APInt) {
+            // TODO
+        } else {
+            auto lhs_ext = this->sign_extended();
+            auto rhs_ext = other.sign_extended();
+            return Bits<W>(static_cast<intType>(lhs_ext % rhs_ext));
+        }
+    }
+
+    constexpr Bits operator<<(size_t amount) const {
+        if constexpr (!is_not_native_int) {
+            return Bits<W>(static_cast<intType>(raw() << amount));
+        } else if constexpr (using_APInt) {
+            // TODO
+        } else {
+            BigInt<W> result = storage_;
+            shift_left(result, amount);
+            return Bits<W>(result);
+        }
+    }
+
+    constexpr Bits sra(size_t amount) const {
+        if constexpr (!is_not_native_int) {
+            auto ext = this->sign_extended();
+            return Bits<W>(static_cast<intType>(ext >> amount));
+        } else if constexpr (using_APInt) {
+            // TODO
+        } else {
+            BigInt<W> result = storage_;
+            shift_right_arith(result, amount);
+            return Bits<W>(result);
+        }
+    }
+
+    constexpr Bits srl(size_t amount) const {
+        if constexpr (!is_not_native_int) {
+            return Bits<W>(static_cast<intType>(raw() >> amount));
+        } else if constexpr (using_APInt) {
+            // TODO
+        } else {
+            BigInt<W> result = storage_;
+            shift_right_logical(result, amount);
+            return Bits<W>(result);
+        }
+    }
+
+    constexpr bool operator==(Bits<W> const& other) const {
+        if constexpr (is_not_native_int) {
+            return storage_ == other.storage_;
+        }
+        return (raw() == other.raw());
+    }
+
+    constexpr bool operator!=(Bits<W> const& other) const {
+        if constexpr (is_not_native_int) {
+            return storage_ != other.storage_;
+        }
+        return (raw() != other.raw());
+    }
+
+    constexpr bool operator<(Bits<W> const& other) const {
+        if constexpr (is_not_native_int) {
+            return storage_ < other.storage_;
+        }
+        return (raw() < other.raw());
+    }
+
+    constexpr bool operator<=(Bits<W> const& other) const {
+        if constexpr (is_not_native_int) {
+            return storage_ <= other.storage_;
+        }
+        return (raw() <= other.raw());
+    }
+
+    constexpr bool operator>(Bits<W> const& other) const {
+        if constexpr (is_not_native_int) {
+            return storage_ > other.storage_;
+        }
+        return (raw() > other.raw());
+    }
+
+    constexpr bool operator>=(Bits<W> const& other) const {
+        if constexpr (is_not_native_int) {
+            return storage_ >= other.storage_;
+        }
+        return (raw() >= other.raw());
+    }
+
+    constexpr Bits operator&(Bits<W> const& other) const {
+        if constexpr (is_not_native_int) {
+            return Bits<W>(storage_ & other.storage_);
+        }
+        return Bits<W>(raw() & other.raw());
+    }
+
+    constexpr Bits operator|(Bits<W> const& other) const {
+        if constexpr (is_not_native_int) {
+            return Bits<W>(storage_ | other.storage_);
+        }
+        return Bits<W>(raw() | other.raw());
+    }
+
+    constexpr Bits operator^(Bits<W> const& other) const {
+        if constexpr (is_not_native_int) {
+            return Bits<W>(storage_ ^ other.storage_);
+        }
+        return Bits<W>(raw() ^ other.raw());
+    }
+
+    constexpr Bits operator~() const { return Bits<W>(~storage_); }
+
+    intType raw() const {
+        if constexpr (is_not_native_int) {
+            return storage_;
+        } else {
+            return static_cast<intType>(storage_ & topMask);
+        }
+    }
+
+  private:
+    intType storage_;
+    static constexpr intType topMask =
+        (W % (sizeof(intType) * 8) == 0)
+            ? ~static_cast<intType>(0)
+            : (static_cast<intType>(1) << (W % (sizeof(intType) * 8))) - 1;
+
+    constexpr auto sign_extended() const {
+        using SType = std::make_signed_t<intType>;
+        constexpr unsigned shift = sizeof(intType) * 8 - W;
+        return static_cast<SType>(raw() << shift) >> shift;
+    }
+};
+
+}  // namespace coconext::types::detail
 
 #endif  // COCONEXT_INT_BASE_HPP
