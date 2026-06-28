@@ -374,14 +374,14 @@ struct IntTypePicker {
 template <size_t W>
 class Bits {
   public:
-    using intType = IntTypePicker<W>::type;
-    static constexpr bool is_not_native_int = std::is_same_v<intType, BigInt<W>>;
+    using IntType = IntTypePicker<W>::type;
+    static constexpr bool is_not_native_int = std::is_same_v<IntType, BigInt<W>>;
     static constexpr bool supports_overloaded_op = !is_not_native_int || using_APInt;
 
     constexpr Bits() = default;
 
     // native ints
-    constexpr Bits(intType val)
+    constexpr Bits(IntType val)
         requires(!is_not_native_int)
         : storage_(std::move(val)) {}
 
@@ -405,7 +405,7 @@ class Bits {
             supports_overloaded_op,
             "operator(+) only supported by native ints and APInt BigInt"
         );
-        return Bits<W>(static_cast<intType>(storage_ + other.storage_));
+        return Bits<W>(static_cast<IntType>(storage_ + other.storage_));
     }
 
     constexpr Bits operator-(Bits<W> const& other) const {
@@ -413,7 +413,7 @@ class Bits {
             supports_overloaded_op,
             "operator(-) only supported by native ints and APInt BigInt"
         );
-        return Bits<W>(static_cast<intType>(storage_ - other.storage_));
+        return Bits<W>(static_cast<IntType>(storage_ - other.storage_));
     }
 
     constexpr Bits operator*(Bits<W> const& other) const {
@@ -421,7 +421,7 @@ class Bits {
             supports_overloaded_op,
             "operator(*) only supported by native ints and APInt BigInt"
         );
-        return Bits<W>(static_cast<intType>(storage_ * other.storage_));
+        return Bits<W>(static_cast<IntType>(storage_ * other.storage_));
     }
 
     constexpr Bits udiv(Bits<W> const& other) const {
@@ -436,7 +436,7 @@ class Bits {
         if constexpr (using_APInt) {
             // TODO
         } else {
-            return Bits<W>(static_cast<intType>(this->raw() / other.raw()));
+            return Bits<W>(static_cast<IntType>(this->raw() / other.raw()));
         }
     }
 
@@ -454,7 +454,7 @@ class Bits {
         } else {
             auto lhs_ext = this->sign_extended();
             auto rhs_ext = other.sign_extended();
-            return Bits<W>(static_cast<intType>(lhs_ext / rhs_ext));
+            return Bits<W>(static_cast<IntType>(lhs_ext / rhs_ext));
         }
     }
 
@@ -469,7 +469,7 @@ class Bits {
         if constexpr (using_APInt) {
             // TODO
         } else {
-            return Bits<W>(static_cast<intType>(this->raw() % other.raw()));
+            return Bits<W>(static_cast<IntType>(this->raw() % other.raw()));
         }
     }
 
@@ -486,13 +486,13 @@ class Bits {
         } else {
             auto lhs_ext = this->sign_extended();
             auto rhs_ext = other.sign_extended();
-            return Bits<W>(static_cast<intType>(lhs_ext % rhs_ext));
+            return Bits<W>(static_cast<IntType>(lhs_ext % rhs_ext));
         }
     }
 
     constexpr Bits operator<<(size_t amount) const {
         if constexpr (!is_not_native_int) {
-            return Bits<W>(static_cast<intType>(raw() << amount));
+            return Bits<W>(static_cast<IntType>(raw() << amount));
         } else if constexpr (using_APInt) {
             // TODO
         } else {
@@ -505,7 +505,7 @@ class Bits {
     constexpr Bits sra(size_t amount) const {
         if constexpr (!is_not_native_int) {
             auto ext = this->sign_extended();
-            return Bits<W>(static_cast<intType>(ext >> amount));
+            return Bits<W>(static_cast<IntType>(ext >> amount));
         } else if constexpr (using_APInt) {
             // TODO
         } else {
@@ -517,7 +517,7 @@ class Bits {
 
     constexpr Bits srl(size_t amount) const {
         if constexpr (!is_not_native_int) {
-            return Bits<W>(static_cast<intType>(raw() >> amount));
+            return Bits<W>(static_cast<IntType>(raw() >> amount));
         } else if constexpr (using_APInt) {
             // TODO
         } else {
@@ -592,24 +592,24 @@ class Bits {
 
     constexpr Bits operator~() const { return Bits<W>(~storage_); }
 
-    intType raw() const {
+    IntType raw() const {
         if constexpr (is_not_native_int) {
             return storage_;
         } else {
-            return static_cast<intType>(storage_ & topMask);
+            return static_cast<IntType>(storage_ & topMask);
         }
     }
 
   private:
-    intType storage_;
-    static constexpr intType topMask =
-        (W % (sizeof(intType) * 8) == 0)
-            ? ~static_cast<intType>(0)
-            : (static_cast<intType>(1) << (W % (sizeof(intType) * 8))) - 1;
+    IntType storage_;
+    static constexpr IntType topMask =
+        (W % (sizeof(IntType) * 8) == 0)
+            ? ~static_cast<IntType>(0)
+            : (static_cast<IntType>(1) << (W % (sizeof(IntType) * 8))) - 1;
 
     constexpr auto sign_extended() const {
-        using SType = std::make_signed_t<intType>;
-        constexpr unsigned shift = sizeof(intType) * 8 - W;
+        using SType = std::make_signed_t<IntType>;
+        constexpr unsigned shift = sizeof(IntType) * 8 - W;
         return static_cast<SType>(raw() << shift) >> shift;
     }
 };

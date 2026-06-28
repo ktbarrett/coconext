@@ -15,9 +15,9 @@ using namespace coconext::types;
 #if defined(__SIZEOF_INT128__)
 
 TEST(TestBits, JustAbove128) {
-    static_assert(std::is_same_v<detail::Bits<127>::intType, __uint128_t>);
-    static_assert(std::is_same_v<detail::Bits<128>::intType, __uint128_t>);
-    static_assert(std::is_same_v<detail::Bits<129>::intType, detail::BigInt<129>>);
+    static_assert(std::is_same_v<detail::Bits<127>::IntType, __uint128_t>);
+    static_assert(std::is_same_v<detail::Bits<128>::IntType, __uint128_t>);
+    static_assert(std::is_same_v<detail::Bits<129>::IntType, detail::BigInt<129>>);
 }
 
 TEST(TestBits, single_word_constructor_supports_128) {
@@ -169,9 +169,9 @@ TEST(TestBits, shift_left_supports_128) {
 #else
 
 TEST(TestBits, JustAbove64) {
-    static_assert(std::is_same_v<detail::Bits<63>::intType, uint64_t>);
-    static_assert(std::is_same_v<detail::Bits<64>::intType, uint64_t>);
-    static_assert(std::is_same_v<detail::Bits<65>::intType, detail::BigInt<65>>);
+    static_assert(std::is_same_v<detail::Bits<63>::IntType, uint64_t>);
+    static_assert(std::is_same_v<detail::Bits<64>::IntType, uint64_t>);
+    static_assert(std::is_same_v<detail::Bits<65>::IntType, detail::BigInt<65>>);
 }
 
 #endif  // defined(__SIZEOF_INT128__)
