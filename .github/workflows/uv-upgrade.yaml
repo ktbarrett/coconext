@@ -30,6 +30,6 @@ jobs:
         commit-message: "Upgrade locked dependencies"
         title: "Upgrade locked dependencies"
         body: ""
-        author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+        author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
         branch: "upgrade-locked-dependencies"
         sign-commits: true
