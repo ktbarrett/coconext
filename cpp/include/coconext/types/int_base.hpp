@@ -3,17 +3,26 @@
 
 #include <algorithm>
 #include <array>
+#include <coconext/types/direction.hpp>
+#include <coconext/types/range.hpp>
+#include <coconext/types/resize_mode.hpp>
+#include <compare>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
+#include <string>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
 
 #ifdef COCONEXT_USE_APINT
 #include <llvm/ADT/APInt.h>
 #endif
 
-namespace coconext::types::detail {
+namespace coconext::types {
+
+namespace detail {
 
 #ifdef COCONEXT_USE_APINT
 
@@ -61,7 +70,7 @@ class BigInt {
 
     BigInt() = default;
 
-    BigInt(WordType val, bool is_signed = false) {
+    constexpr BigInt(WordType val, bool is_signed = false) {
         data[0] = val;
 
         if (is_signed && (static_cast<int64_t>(val) < 0)) {
@@ -371,6 +380,12 @@ struct IntTypePicker {
                         >>>>>;
 };
 
+#if defined(__SIZEOF_INT128__)
+static constexpr bool supports_128B = true;
+#else
+static constexpr bool supports_128B = false;
+#endif
+
 template <size_t W>
 class Bits {
   public:
@@ -399,6 +414,32 @@ class Bits {
     constexpr Bits(std::string_view val)
         requires is_not_native_int
         : storage_(val) {}
+
+    template <size_t bits>
+    constexpr auto max_unsigned_native() {
+        static_assert(!is_not_native_int, "Not a native integer");
+
+        if constexpr (bits > 64 && bits <= 128) {
+            static_assert(supports_128B, "128 is not a native integer width");
+            if constexpr (bits == 128) {
+                return ~__uint128_t{0};
+            } else {
+                return ((__uint128_t)1 << bits) - 1;
+            }
+        } else if constexpr (bits == 64) {
+            return ~uint64_t{0};
+        } else if constexpr (bits < 64) {
+            return (uint64_t{1} << bits) - 1;
+        } else {
+            static_assert(bits <= 128, "Not a native integer width");
+        }
+    }
+
+    template <size_t bits>
+    constexpr auto max_unsigned_bigInt() {
+        static_assert(is_not_native_int, "Not a BigInt");
+        return BigInt<bits>(-1, true);
+    }
 
     constexpr Bits operator+(Bits<W> const& other) const {
         static_assert(
@@ -534,39 +575,18 @@ class Bits {
         return (raw() == other.raw());
     }
 
-    constexpr bool operator!=(Bits<W> const& other) const {
+    constexpr auto operator<=>(Bits<W> const& other) const {
         if constexpr (is_not_native_int) {
-            return storage_ != other.storage_;
+            if (storage_ == other.storage_) {
+                return std::strong_ordering::equal;
+            }
+            if (storage_ < other.storage_) {
+                return std::strong_ordering::less;
+            }
+            return std::strong_ordering::greater;
+        } else {
+            return raw() <=> other.raw();
         }
-        return (raw() != other.raw());
-    }
-
-    constexpr bool operator<(Bits<W> const& other) const {
-        if constexpr (is_not_native_int) {
-            return storage_ < other.storage_;
-        }
-        return (raw() < other.raw());
-    }
-
-    constexpr bool operator<=(Bits<W> const& other) const {
-        if constexpr (is_not_native_int) {
-            return storage_ <= other.storage_;
-        }
-        return (raw() <= other.raw());
-    }
-
-    constexpr bool operator>(Bits<W> const& other) const {
-        if constexpr (is_not_native_int) {
-            return storage_ > other.storage_;
-        }
-        return (raw() > other.raw());
-    }
-
-    constexpr bool operator>=(Bits<W> const& other) const {
-        if constexpr (is_not_native_int) {
-            return storage_ >= other.storage_;
-        }
-        return (raw() >= other.raw());
     }
 
     constexpr Bits operator&(Bits<W> const& other) const {
@@ -592,7 +612,7 @@ class Bits {
 
     constexpr Bits operator~() const { return Bits<W>(~storage_); }
 
-    IntType raw() const {
+    constexpr IntType raw() const {
         if constexpr (is_not_native_int) {
             return storage_;
         } else {
@@ -614,6 +634,142 @@ class Bits {
     }
 };
 
-}  // namespace coconext::types::detail
+// Build a {n-1 DOWNTO 0} Range from a length, the HDL convention for numeric
+// types. Used by Unsigned/Signed/DynUnsigned/DynSigned constructors that take
+// just a width.
+constexpr Range int_downto_range(size_t n) {
+    return Range{static_cast<Range::value_type>(n) - 1, Direction::DOWNTO, 0};
+}
+
+// Range NTTP dispatcher for the Unsigned<...>/Signed<...> template aliases.
+// Same shape as the logic_array `make_logic_static_range`: defaults to DOWNTO
+// when the user didn't pick a direction explicitly.
+//   `Unsigned<8>`        -> {7 DOWNTO 0}
+//   `Unsigned<Range{R}>` -> R (passthrough)
+//   `Unsigned<7, 0>`     -> {7 DOWNTO 0}  (auto)
+//   `Unsigned<3, 3>`     -> {3 DOWNTO 3}  (default DOWNTO when L == R)
+//   `Unsigned<0, 7>`     -> {0 TO 7}      (auto)
+//   `Unsigned<L, D, R>`  -> {L D R}       (explicit)
+template <auto... Args>
+constexpr Range make_int_range() {
+    static_assert(
+        sizeof...(Args) >= 1 && sizeof...(Args) <= 3,
+        "Unsigned/Signed takes 1 to 3 range args"
+    );
+    constexpr auto t = std::tuple{Args...};
+    if constexpr (sizeof...(Args) == 1) {
+        using First = std::remove_cvref_t<decltype(std::get<0>(t))>;
+        if constexpr (std::is_same_v<First, Range>) {
+            return std::get<0>(t);
+        } else {
+            static_assert(
+                std::integral<First>,
+                "single template arg must be a Range value or an integral length"
+            );
+            static_assert(std::get<0>(t) >= 0, "length must be non-negative");
+            return int_downto_range(static_cast<size_t>(std::get<0>(t)));
+        }
+    } else if constexpr (sizeof...(Args) == 2) {
+        constexpr Range r{
+            static_cast<Range::value_type>(std::get<0>(t)),
+            static_cast<Range::value_type>(std::get<1>(t))
+        };
+        if constexpr (r.left == r.right) {
+            return Range{r.left, Direction::DOWNTO, r.right};
+        } else {
+            return r;
+        }
+    } else {  // 3
+        static_assert(
+            std::is_same_v<std::remove_cvref_t<decltype(std::get<1>(t))>, Direction>,
+            "three-arg form requires (left, Direction, right)"
+        );
+        return Range{
+            static_cast<Range::value_type>(std::get<0>(t)),
+            std::get<1>(t),
+            static_cast<Range::value_type>(std::get<2>(t))
+        };
+    }
+}
+
+// Result range for a binary op between two fixed-width numeric types: width
+// max(width(a), width(b)), normalized to {N-1 DOWNTO 0} (VHDL numeric_std
+// convention).
+template <Range A, Range B>
+inline constexpr Range int_result_range =
+    int_downto_range(std::max(A.length(), B.length()));
+
+template <typename T>
+class [[nodiscard]] auto_reinterpreted {
+    T value_;
+
+  public:
+    constexpr explicit auto_reinterpreted(T v) : value_(std::forward<T>(v)) {}
+
+    auto_reinterpreted(auto_reinterpreted const&) = delete;
+    auto_reinterpreted& operator=(auto_reinterpreted const&) = delete;
+
+    constexpr auto_reinterpreted(auto_reinterpreted&& other) noexcept
+        : value_(std::forward<T>(other.value_)) {}
+
+    constexpr auto_reinterpreted& operator=(auto_reinterpreted&&) = delete;
+
+    constexpr T consume() && { return std::forward<T>(value_); }
+};
+
+template <typename T>
+class [[nodiscard]] auto_resized {
+    T value_;
+    overflow_mode ovf_;
+    round_mode rnd_;
+
+  public:
+    constexpr auto_resized(T v, overflow_mode o, round_mode r)
+        : value_(std::forward<T>(v)), ovf_(o), rnd_(r) {}
+
+    auto_resized(auto_resized const&) = delete;
+    auto_resized& operator=(auto_resized const&) = delete;
+
+    constexpr auto_resized(auto_resized&& other) noexcept
+        : value_(std::forward<T>(other.value_)), ovf_(other.ovf_), rnd_(other.rnd_) {}
+
+    constexpr auto_resized& operator=(auto_resized&&) = delete;
+    constexpr std::tuple<T, overflow_mode, round_mode> consume() && {
+        return {std::forward<T>(value_), ovf_, rnd_};
+    }
+};
+
+}  // namespace detail
+
+template <typename T>
+[[nodiscard]] constexpr detail::auto_reinterpreted<T const&> as(T const& x) noexcept {
+    return detail::auto_reinterpreted<T const&>(x);
+}
+
+template <typename T>
+    requires(!std::is_lvalue_reference_v<T>)
+[[nodiscard]] constexpr detail::auto_reinterpreted<T> as(T&& x) noexcept {
+    return detail::auto_reinterpreted<T>(std::move(x));
+}
+
+template <typename T>
+[[nodiscard]] constexpr detail::auto_resized<T const&> resize(
+    T const& x,
+    overflow_mode ovf = overflow_mode::wrap,
+    round_mode rnd = round_mode::truncate
+) noexcept {
+    return detail::auto_resized<T const&>(x, ovf, rnd);
+}
+
+// Prvalue (temporary) overload
+template <typename T>
+    requires(!std::is_lvalue_reference_v<T>)
+[[nodiscard]] constexpr detail::auto_resized<T> resize(
+    T&& x, overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
+) noexcept {
+    return detail::auto_resized<T>(std::move(x), ovf, rnd);
+}
+
+}  // namespace coconext::types
 
 #endif  // COCONEXT_INT_BASE_HPP

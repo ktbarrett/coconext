@@ -17,12 +17,14 @@ FetchContent_MakeAvailable(googletest)
 include(GoogleTest)
 
 add_executable(coconext_tests
-    test_logic.cpp
-    test_range.cpp
-    test_array.cpp
-    test_static_array.cpp
-    test_logic_array.cpp
-    test_int.cpp)
+  test_logic.cpp
+  test_range.cpp
+  test_array.cpp
+  test_static_array.cpp
+  test_logic_array.cpp
+  test_int.cpp
+  test_unsigned.cpp)
+
 target_link_libraries(coconext_tests PRIVATE coconext::coconext GTest::gtest_main)
 
 gtest_discover_tests(coconext_tests)
