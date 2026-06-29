@@ -518,11 +518,7 @@ Implementations should compute the bit-pattern hash from shared `Bits<W>` storag
 
 Output style is `Type[range]{body}` matching the array formatter convention.
 
-## `to_string`
-
-`to_string(u)` returns a **bit string** (preserves the length encoding that decimal would discard). E.g. `to_string(Unsigned<8>(170))` returns `"10101010"`.
-
-For integer-string output, use `std::format("{:d}", u)`.
+`to_string` is **not** provided on `Unsigned`/`Signed`. For a bit-string representation use `std::format("{:b}", u)`; for decimal use `std::format("{}", u)` or `std::format("{:d}", u)`. `to_string` remains on `LogicVector`/`LogicArray`/`BitVector`/`BitArray` — those are the types where bit-string is the only natural string representation, so the function name carries unambiguous meaning. On numeric types it would invite confusion (decimal? bit-pattern? hex?) when `std::format` already covers all of them.
 
 ## Typed literal helpers
 
