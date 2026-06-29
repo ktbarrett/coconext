@@ -20,6 +20,15 @@ namespace coconext::types {
 namespace detail {
 
 template <Range R>
+class Unsigned;
+
+template <typename T>
+struct is_unsigned_type : std::false_type {};
+
+template <Range R>
+struct is_unsigned_type<Unsigned<R>> : std::true_type {};
+
+template <Range R>
 class Unsigned {
     static_assert(R.length() >= 0, "Unsigned width must not be negative");
 
@@ -40,7 +49,18 @@ class Unsigned {
     static constexpr Range range() noexcept { return R; }
     static constexpr size_t size() noexcept { return R.length(); }
 
+    // Allow different width Unsigned templates to read our private value_ (required for
+    // resize)
+    template <Range R2>
+    friend class Unsigned;
+
     constexpr Unsigned() noexcept : value_(0) {}
+
+    template <size_t W>
+    constexpr Unsigned(Bits<W> const& val) {
+        static_assert(W == size(), "Construction from Bits requires identical width");
+        value_ = val;
+    }
 
     // Construct from a native integer. Throws std::out_of_range if the value is
     // negative or does not fit in R.length() bits.
@@ -148,6 +168,87 @@ class Unsigned {
         return *this;
     }
 
+    template <typename SourceWrapper>
+    constexpr Unsigned(detail::auto_resized<SourceWrapper>&& wrapper) {
+        auto [src, ovf, rnd] = std::move(wrapper).consume();
+        using ActualSource = std::remove_cvref_t<SourceWrapper>;
+
+        static_assert(
+            detail::is_unsigned_type<ActualSource>::value,
+            "resize() target and source must both be Unsigned. Use as() for cross-type "
+            "conversions."
+        );
+
+        constexpr size_t TargetW = size();
+        constexpr size_t SourceW = ActualSource::size();
+
+        if constexpr (TargetW >= SourceW) {
+            if constexpr (
+                !Bits<TargetW>::is_not_native_int
+                && !detail::Bits<SourceW>::is_not_native_int
+            )
+            {
+                value_ = detail::Bits<TargetW>(
+                    static_cast<typename detail::Bits<TargetW>::IntType>(src.value_.raw())
+                );
+            } else {
+                value_ = detail::Bits<TargetW>(src.value_.raw());
+            }
+        } else {
+            // Narrowing
+            if (ovf == overflow_mode::wrap) {
+                if constexpr (
+                    !Bits<TargetW>::is_not_native_int
+                    && !detail::Bits<SourceW>::is_not_native_int
+                )
+                {
+                    value_ = detail::Bits<TargetW>(
+                        static_cast<typename detail::Bits<TargetW>::IntType>(
+                            src.value_.raw()
+                        )
+                    );
+                } else {
+                    value_ = detail::Bits<TargetW>(src.value_.raw());
+                }
+            } else {
+                // Saturate Clamp to the maximum representable value of the Target width
+                if constexpr (
+                    !Bits<TargetW>::is_not_native_int
+                    && !detail::Bits<SourceW>::is_not_native_int
+                )
+                {
+                    auto src_raw = src.value_.raw();
+                    auto target_max = value_.template max_unsigned_native<TargetW>();
+
+                    if (src_raw > target_max) {
+                        value_ = detail::Bits<TargetW>(
+                            static_cast<typename detail::Bits<TargetW>::IntType>(target_max)
+                        );
+                    } else {
+                        value_ = detail::Bits<TargetW>(
+                            static_cast<typename detail::Bits<TargetW>::IntType>(src_raw)
+                        );
+                    }
+                } else {
+                    // BigInt saturate fallback
+                    auto src_raw = src.value_.raw();
+                    auto target_max = value_.template max_unsigned_bigInt<TargetW>();
+                    if (src_raw > target_max) {
+                        value_ = detail::Bits<TargetW>(target_max);
+                    } else {
+                        value_ = detail::Bits<TargetW>(src_raw);
+                    }
+                }
+            }
+        }
+    }
+
+    template <typename SourceWrapper>
+    constexpr Unsigned& operator=(detail::auto_resized<SourceWrapper>&& wrapper) {
+        *this = Unsigned(std::move(wrapper));
+        return *this;
+    }
+
     friend constexpr bool operator==(Unsigned const& lhs, Unsigned const& rhs) noexcept {
         return lhs.value_ == rhs.value_;
     }
@@ -222,91 +323,48 @@ class Unsigned {
     }
 #endif
 
+    constexpr auto operator+() const noexcept {
+        return coconext::types::Signed<size() + 1>(*this);
+    }
+
+    constexpr auto operator-() const noexcept {
+        Unsigned<R> widened = resize<size() + 1>(*this);
+        coconext::types::Signed<size() + 1> result(~widened + 1);
+        return result;
+    }
+
+    friend std::string to_string(Unsigned const& u) {
+        std::string result;
+        constexpr size_t W = size();
+        result.reserve(W);
+
+        detail::Bits<W> temp_bit(1);
+        size_t bit_idx = W - 1;
+
+        for (size_t i = 0; i < W; ++i) {
+            if constexpr (!detail::Bits<W>::is_not_native_int) {
+                // Extract the specific bit, check if it's non-zero
+                bool is_set = ((u.value_.srl(bit_idx)) & temp_bit).raw() != 0;
+                result.push_back(is_set ? '1' : '0');
+            } else {
+                // BigInt fallback
+                bool is_set = ((u.value_.srl(bit_idx)) & temp_bit).raw().get_word(0) != 0;
+                result.push_back(is_set ? '1' : '0');
+            }
+
+            if (bit_idx > 0) {
+                bit_idx--;
+            }
+        }
+
+        return result;
+    }
+
     // TODO indexing, slicing, etc ....
 
-    // TODO
-    // constexpr Unsigned operator+() const noexcept { return *this; }
-    // constexpr Unsigned operator-() const noexcept { return Unsigned<R>(~value_ + 1); }
-    // constexpr Unsigned operator~() const noexcept { return Unsigned<R>(~value_); }
-
-    // -- shifts (amount is a native integer) ----------------------------------
-    // constexpr Unsigned operator<<(int amount) const {
-    //     if (amount < 0) {
-    //         throw std::invalid_argument("negative shift amount");
-    //     }
-    //     return make_unsigned<R>(value_ << amount);
-    // }
-    // constexpr Unsigned operator>>(int amount) const {
-    //     if (amount < 0) {
-    //         throw std::invalid_argument("negative shift amount");
-    //     }
-    //     return make_unsigned<R>(value_ >> amount);
-    // }
-
-    // // -- compound assignment (result wrapped to this width) -------------------
-    // template <Range R2>
-    // constexpr Unsigned& operator+=(Unsigned<R2> rhs) noexcept {
-    //     value_ = (value_ + rhs.value(), size());
-    //     return *this;
-    // }
-    // template <Range R2>
-    // constexpr Unsigned& operator-=(Unsigned<R2> rhs) noexcept {
-    //     value_ = (value_ - rhs.value(), size());
-    //     return *this;
-    // }
-    // template <Range R2>
-    // constexpr Unsigned& operator*=(Unsigned<R2> rhs) noexcept {
-    //     value_ = (value_ * rhs.value(), size());
-    //     return *this;
-    // }
-    // template <Range R2>
-    // constexpr Unsigned& operator/=(Unsigned<R2> rhs) {
-    //     if (rhs.value() == 0) {
-    //         throw std::domain_error("division by zero");
-    //     }
-    //     value_ = (value_ / rhs.value(), size());
-    //     return *this;
-    // }
-    // template <Range R2>
-    // constexpr Unsigned& operator%=(Unsigned<R2> rhs) {
-    //     if (rhs.value() == 0) {
-    //         throw std::domain_error("modulo by zero");
-    //     }
-    //     value_ = (value_ % rhs.value(), size());
-    //     return *this;
-    // }
-    // template <Range R2>
-    // constexpr Unsigned& operator&=(Unsigned<R2> rhs) noexcept {
-    //     value_ = (value_ & rhs.value(), size());
-    //     return *this;
-    // }
-    // template <Range R2>
-    // constexpr Unsigned& operator|=(Unsigned<R2> rhs) noexcept {
-    //     value_ = (value_ | rhs.value(), size());
-    //     return *this;
-    // }
-    // template <Range R2>
-    // constexpr Unsigned& operator^=(Unsigned<R2> rhs) noexcept {
-    //     value_ = (value_ ^ rhs.value(), size());
-    //     return *this;
-    // }
-    // constexpr Unsigned& operator<<=(int amount) {
-    //     *this = *this << amount;
-    //     return *this;
-    // }
-    // constexpr Unsigned& operator>>=(int amount) {
-    //     *this = *this >> amount;
-    //     return *this;
-    // }
   private:
     Bits<size()> value_;
 };
-
-template <typename T>
-struct is_unsigned_type : std::false_type {};
-
-template <Range R>
-struct is_unsigned_type<Unsigned<R>> : std::true_type {};
 
 }  // namespace detail
 
@@ -325,6 +383,23 @@ constexpr Target as(Source const& source) noexcept {
 
     return Target(static_cast<detail::Array<Bit, Source::static_range>>(source));
 }
+
+template <auto... Args, typename X>
+    requires(sizeof...(Args) > 0 && detail::is_unsigned_type<std::remove_cvref_t<X>>::value)
+constexpr auto resize(
+    X&& x, overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
+) {
+    constexpr Range TargetRange = detail::make_int_range<Args...>();
+    return Unsigned<TargetRange>(resize(std::forward<X>(x), ovf, rnd));
+}
+
+consteval Unsigned<8> u8(unsigned long long v) { return Unsigned<8>(v); }
+
+consteval Unsigned<16> u16(unsigned long long v) { return Unsigned<16>(v); }
+
+consteval Unsigned<32> u32(unsigned long long v) { return Unsigned<32>(v); }
+
+consteval Unsigned<64> u64(unsigned long long v) { return Unsigned<64>(v); }
 
 }  // namespace coconext::types
 
@@ -350,14 +425,12 @@ constexpr Target as(Source const& source) noexcept {
 //     }
 // };
 
+// TODO
 // template <coconext::types::Range R>
 // struct std::hash<coconext::types::detail::Unsigned<R>> {
 //     size_t operator()(coconext::types::detail::Unsigned<R> const& v) const noexcept {
 //         return std::hash<uint64_t>{}(v.value());
 //     }
 // };
-
-// TODO
-// u8, u16, ...
 
 #endif  // COCONEXT_UNSIGNED_HPP

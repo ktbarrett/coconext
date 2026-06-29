@@ -19,9 +19,12 @@ TEST(TestUnsigned, Constructors) {
     EXPECT_EQ(a.size(), 4U);
 
     BitArray<5> arr_a({'0'_b, '1'_b, '0'_b, '0'_b, '1'_b});
+
     Unsigned<5> u_arr_a(arr_a);
     EXPECT_EQ(static_cast<uint32_t>(u_arr_a), 9U);
 
+    Unsigned<5> arr_a_exp("01001"_b);
+    EXPECT_EQ(u_arr_a, arr_a_exp);
     //
 }
 
@@ -46,6 +49,38 @@ TEST(TestUnsigned, as_overloads) {
     BitArray<4, 0> arr_exp_a1 = a1;
     EXPECT_EQ(static_cast<uint8_t>(a1), 9U);
     EXPECT_EQ(arr_a, arr_exp_a1);
+}
+
+TEST(TestUnsigned, resize_overloads) {
+    Unsigned<8> small(200);
+
+    auto wide_spelled = resize<16>(small);
+    static_assert(std::is_same_v<decltype(wide_spelled), Unsigned<16>>);
+    EXPECT_EQ(static_cast<uint16_t>(wide_spelled), 200U);
+
+    Unsigned<16> wide_deduced;
+    wide_deduced = resize(small);
+    EXPECT_EQ(static_cast<uint16_t>(wide_deduced), 200U);
+
+    Unsigned<16> wide(1000);
+
+    auto narrow_wrap_spelled = resize<8>(wide);
+    static_assert(std::is_same_v<decltype(narrow_wrap_spelled), Unsigned<8>>);
+    EXPECT_EQ(static_cast<uint8_t>(narrow_wrap_spelled), 232U);
+
+    Unsigned<8> narrow_wrap_deduced;
+    narrow_wrap_deduced = resize(wide);
+    EXPECT_EQ(static_cast<uint8_t>(narrow_wrap_deduced), 232U);
+
+    auto narrow_sat_spelled = resize<8>(wide, overflow_mode::saturate);
+    EXPECT_EQ(static_cast<uint8_t>(narrow_sat_spelled), 255U);
+
+    Unsigned<8> narrow_sat_deduced;
+    narrow_sat_deduced = resize(wide, overflow_mode::saturate);
+    EXPECT_EQ(static_cast<uint8_t>(narrow_sat_deduced), 255U);
+
+    Unsigned<8> copy_init_deduced = resize(wide, overflow_mode::saturate);
+    EXPECT_EQ(static_cast<uint8_t>(copy_init_deduced), 255U);
 }
 
 TEST(TestUnsigned, Comparisons) {
@@ -79,6 +114,71 @@ TEST(TestUnsigned, Comparisons) {
     EXPECT_EQ(a <=> b, std::strong_ordering::equal);
     EXPECT_EQ(d <=> a, std::strong_ordering::less);
     EXPECT_EQ(c <=> a, std::strong_ordering::greater);
+}
+
+TEST(TestUnsigned, Bitwise_ops) {
+    Unsigned<8> a(10);
+    Unsigned<8> b(10);
+
+    // auto and_result = a & b;
+}
+
+TEST(TestUnsigned, constudl) {
+    static_assert(std::is_same_v<decltype(u8(0)), Unsigned<8>>, "u8 type mismatch");
+    static_assert(std::is_same_v<decltype(u16(0)), Unsigned<16>>, "u16 type mismatch");
+    static_assert(std::is_same_v<decltype(u32(0)), Unsigned<32>>, "u32 type mismatch");
+    static_assert(std::is_same_v<decltype(u64(0)), Unsigned<64>>, "u64 type mismatch");
+
+    static_assert(static_cast<int>(u8(0)) == 0, "u8 min value failed");
+    static_assert(static_cast<int>(u8(5)) == 5, "u8 mid value failed");
+    static_assert(static_cast<int>(u8(255)) == 255, "u8 max value failed");
+
+    static_assert(static_cast<int>(u16(0)) == 0, "u16 min value failed");
+    static_assert(static_cast<int>(u16(65535)) == 65535, "u16 max value failed");
+
+    static_assert(static_cast<long long>(u32(0)) == 0, "u32 min value failed");
+    static_assert(
+        static_cast<long long>(u32(4294967295ULL)) == 4294967295ULL, "u32 max value failed"
+    );
+
+    static_assert(static_cast<unsigned long long>(u64(0)) == 0ULL, "u64 min value failed");
+    static_assert(
+        static_cast<unsigned long long>(u64(18446744073709551615ULL))
+            == 18446744073709551615ULL,
+        "u64 max value failed"
+    );
+
+    static_assert(u8(42) == u8(42), "u8 equality failed");
+    static_assert(u16(1024) == u16(1024), "u16 equality failed");
+}
+
+TEST(TestUnsigned, ToString) {
+    EXPECT_EQ(to_string(u8(0)), "00000000");
+    EXPECT_EQ(to_string(u8(255)), "11111111");
+    EXPECT_EQ(to_string(u8(170)), "10101010");
+    EXPECT_EQ(to_string(u8(85)), "01010101");
+    EXPECT_EQ(to_string(u8(128)), "10000000");
+    EXPECT_EQ(to_string(u8(1)), "00000001");
+
+    EXPECT_EQ(to_string(u16(0)), "0000000000000000");
+    EXPECT_EQ(to_string(u16(65535)), "1111111111111111");
+    EXPECT_EQ(to_string(u16(0xDEAD)), "1101111010101101");
+
+    EXPECT_EQ(to_string(u32(0)), "00000000000000000000000000000000");
+    EXPECT_EQ(to_string(u32(4294967295)), "11111111111111111111111111111111");
+    EXPECT_EQ(to_string(u32(0xF0F0F0F0)), "11110000111100001111000011110000");
+
+    EXPECT_EQ(
+        to_string(u64(0ULL)),
+        "0000000000000000000000000000000000000000000000000000000000000000"
+    );
+    EXPECT_EQ(
+        to_string(u64(0x8000000000000000ULL)),
+        "1000000000000000000000000000000000000000000000000000000000000000"
+    );
+
+    EXPECT_EQ(to_string(Unsigned<4>(0xA)), "1010");
+    EXPECT_EQ(to_string(Unsigned<4>(0xF)), "1111");
 }
 
 // TEST(TestUnsigned, RangeAccessor) {

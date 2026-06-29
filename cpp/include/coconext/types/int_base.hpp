@@ -5,6 +5,7 @@
 #include <array>
 #include <coconext/types/direction.hpp>
 #include <coconext/types/range.hpp>
+#include <coconext/types/resize_mode.hpp>
 #include <compare>
 #include <cstddef>
 #include <cstdint>
@@ -611,7 +612,7 @@ class Bits {
 
     constexpr Bits operator~() const { return Bits<W>(~storage_); }
 
-    IntType raw() const {
+    constexpr IntType raw() const {
         if constexpr (is_not_native_int) {
             return storage_;
         } else {
@@ -716,6 +717,28 @@ class [[nodiscard]] auto_reinterpreted {
     constexpr T consume() && { return std::forward<T>(value_); }
 };
 
+template <typename T>
+class [[nodiscard]] auto_resized {
+    T value_;
+    overflow_mode ovf_;
+    round_mode rnd_;
+
+  public:
+    constexpr auto_resized(T v, overflow_mode o, round_mode r)
+        : value_(std::forward<T>(v)), ovf_(o), rnd_(r) {}
+
+    auto_resized(auto_resized const&) = delete;
+    auto_resized& operator=(auto_resized const&) = delete;
+
+    constexpr auto_resized(auto_resized&& other) noexcept
+        : value_(std::forward<T>(other.value_)), ovf_(other.ovf_), rnd_(other.rnd_) {}
+
+    constexpr auto_resized& operator=(auto_resized&&) = delete;
+    constexpr std::tuple<T, overflow_mode, round_mode> consume() && {
+        return {std::forward<T>(value_), ovf_, rnd_};
+    }
+};
+
 }  // namespace detail
 
 template <typename T>
@@ -727,6 +750,24 @@ template <typename T>
     requires(!std::is_lvalue_reference_v<T>)
 [[nodiscard]] constexpr detail::auto_reinterpreted<T> as(T&& x) noexcept {
     return detail::auto_reinterpreted<T>(std::move(x));
+}
+
+template <typename T>
+[[nodiscard]] constexpr detail::auto_resized<T const&> resize(
+    T const& x,
+    overflow_mode ovf = overflow_mode::wrap,
+    round_mode rnd = round_mode::truncate
+) noexcept {
+    return detail::auto_resized<T const&>(x, ovf, rnd);
+}
+
+// Prvalue (temporary) overload
+template <typename T>
+    requires(!std::is_lvalue_reference_v<T>)
+[[nodiscard]] constexpr detail::auto_resized<T> resize(
+    T&& x, overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
+) noexcept {
+    return detail::auto_resized<T>(std::move(x), ovf, rnd);
 }
 
 }  // namespace coconext::types
