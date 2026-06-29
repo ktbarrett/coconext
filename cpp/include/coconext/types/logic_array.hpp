@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <format>
 #include <limits>
+#include <optional>
 #include <ranges>
 #include <stdexcept>
 #include <string>
@@ -78,114 +79,10 @@ constexpr Range make_logic_static_range() {
     }
 }
 
-// CRTP mixin providing the Logic/Bit-specific query and resolution members.
-// Inherited by the Logic/Bit specializations of Array, Vector, StaticArraySlice,
-// and ArraySlice below. The non-Logic/Bit primaries do NOT inherit this,
-// so `Array<int, R>::is_resolvable()` and friends don't exist.
-template <typename Self>
-struct LogicArrayMixin {
-    bool is_resolvable() const noexcept {
-        auto const& self = *static_cast<Self const*>(this);
-        using Elem = std::ranges::range_value_t<Self>;
-        if constexpr (std::same_as<Elem, Bit>) {
-            // Every Bit is resolvable; skip the walk.
-            return true;
-        } else {
-            return std::ranges::all_of(self, [](auto const& v) {
-                return v.is_resolvable();
-            });
-        }
-    }
-
-    // Element-wise resolve. Returns a static `Array<Elem, R>` when Self has a
-    // compile-time range, a heap-allocated `Vector<Elem>` otherwise. The
-    // returned array preserves Self's range (an owner returns the same shape;
-    // a slice returns an owner sized like the slice's range).
-    auto resolve(ResolveMethod method) const {
-        auto const& self = *static_cast<Self const*>(this);
-        using Elem = std::ranges::range_value_t<Self>;
-        if constexpr (StaticRangedSequence<Self>) {
-            ::coconext::types::Array<Elem, Self::static_range> result{};
-            std::ranges::transform(self, result.begin(), [method](auto const& v) {
-                return v.resolve(method);
-            });
-            return result;
-        } else {
-            ::coconext::types::Vector<Elem> result(self.range());
-            std::ranges::transform(self, result.begin(), [method](auto const& v) {
-                return v.resolve(method);
-            });
-            return result;
-        }
-    }
-
-    // Reductions: fold over the array with the corresponding bitwise op.
-    // Empty arrays return the operation's identity (1 for AND, 0 for OR/XOR),
-    // matching the standard math definition and VHDL std_logic_1164's
-    // and_reduce/or_reduce/xor_reduce.
-    auto and_reduce() const {
-        auto const& self = *static_cast<Self const*>(this);
-        using Elem = std::ranges::range_value_t<Self>;
-        Elem result{Elem::_1};
-        for (auto const& v : self) {
-            result = result & v;
-        }
-        return result;
-    }
-
-    auto or_reduce() const {
-        auto const& self = *static_cast<Self const*>(this);
-        using Elem = std::ranges::range_value_t<Self>;
-        Elem result{Elem::_0};
-        for (auto const& v : self) {
-            result = result | v;
-        }
-        return result;
-    }
-
-    auto xor_reduce() const {
-        auto const& self = *static_cast<Self const*>(this);
-        using Elem = std::ranges::range_value_t<Self>;
-        Elem result{Elem::_0};
-        for (auto const& v : self) {
-            result = result ^ v;
-        }
-        return result;
-    }
-};
-
-}  // namespace detail
-
-// -- Logic/Bit specializations ---------------------------------------------
-//
-// These specializations make `Array<Logic, R>`, `Array<Bit, R>`,
-// `Vector<Logic>`, `Vector<Bit>`, and slices over Logic/Bit owners
-// inherit `LogicArrayMixin`, gaining `is_resolvable()` and `resolve(method)`
-// as members. The primary templates remain unchanged for non-Logic element
-// types -- e.g., `Array<int, R>` has no `is_resolvable()`.
-
-namespace detail {
-
-template <Range R>
-class Array<Logic, R> : public ArrayImpl<Logic, R>,
-                        public LogicArrayMixin<Array<Logic, R>> {
-  public:
-    using ArrayImpl<Logic, R>::ArrayImpl;
-    using ArrayImpl<Logic, R>::operator=;
-};
-
-template <Range R>
-class Array<Bit, R> : public ArrayImpl<Bit, R>, public LogicArrayMixin<Array<Bit, R>> {
-  public:
-    using ArrayImpl<Bit, R>::ArrayImpl;
-    using ArrayImpl<Bit, R>::operator=;
-};
-
 }  // namespace detail
 
 template <>
-class Vector<Logic> : public detail::VectorImpl<Logic>,
-                      public detail::LogicArrayMixin<Vector<Logic>> {
+class Vector<Logic> : public detail::VectorImpl<Logic> {
   public:
     using detail::VectorImpl<Logic>::VectorImpl;
     using detail::VectorImpl<Logic>::operator=;
@@ -210,8 +107,7 @@ class Vector<Logic> : public detail::VectorImpl<Logic>,
 };
 
 template <>
-class Vector<Bit> : public detail::VectorImpl<Bit>,
-                    public detail::LogicArrayMixin<Vector<Bit>> {
+class Vector<Bit> : public detail::VectorImpl<Bit> {
   public:
     using detail::VectorImpl<Bit>::VectorImpl;
     using detail::VectorImpl<Bit>::operator=;
@@ -230,27 +126,74 @@ class Vector<Bit> : public detail::VectorImpl<Bit>,
     }
 };
 
-// Constrained partial specs that pick up any slice whose owner's element
-// type is Logic or Bit, regardless of whether the owner is Array<...>,
-// Vector<...>, or const-qualified.
-template <typename ArrayT>
-    requires LogicType<std::ranges::range_value_t<ArrayT>>
-class ArraySlice<ArrayT> : public detail::ArraySliceImpl<ArrayT>,
-                           public detail::LogicArrayMixin<ArraySlice<ArrayT>> {
-  public:
-    using detail::ArraySliceImpl<ArrayT>::ArraySliceImpl;
-    using detail::ArraySliceImpl<ArrayT>::operator=;
-};
+template <RangedSequence T>
+    requires LogicType<std::ranges::range_value_t<T>>
+auto resolve(T const& self, ResolveMethod method) {
+    if constexpr (StaticRangedSequence<T>) {
+        std::optional<detail::Array<Bit, std::remove_cvref_t<T>::static_range>> result{
+            std::in_place
+        };
+        auto out = result->begin();
+        for (auto const& v : self) {
+            auto r = v.resolve(method);
+            if (!r) {
+                return decltype(result){std::nullopt};
+            }
+            *out++ = *r;
+        }
+        return result;
+    } else {
+        std::optional<Vector<Bit>> result{std::in_place, self.range()};
+        auto out = result->begin();
+        for (auto const& v : self) {
+            auto r = v.resolve(method);
+            if (!r) {
+                return decltype(result){std::nullopt};
+            }
+            *out++ = *r;
+        }
+        return result;
+    }
+}
 
-template <typename ArrayT, Range R>
-    requires LogicType<std::ranges::range_value_t<ArrayT>>
-class StaticArraySlice<ArrayT, R>
-    : public detail::StaticArraySliceImpl<ArrayT, R>,
-      public detail::LogicArrayMixin<StaticArraySlice<ArrayT, R>> {
-  public:
-    using detail::StaticArraySliceImpl<ArrayT, R>::StaticArraySliceImpl;
-    using detail::StaticArraySliceImpl<ArrayT, R>::operator=;
-};
+template <RangedSequence T>
+    requires LogicType<std::ranges::range_value_t<T>>
+auto resolve(T const& self) {
+    return resolve(self, ResolveMethod::WEAK);
+}
+
+template <RangedSequence T>
+    requires LogicType<std::ranges::range_value_t<T>>
+auto and_reduce(T const& self) {
+    using Elem = std::ranges::range_value_t<T>;
+    Elem result{Elem::_1};
+    for (auto const& v : self) {
+        result = result & v;
+    }
+    return result;
+}
+
+template <RangedSequence T>
+    requires LogicType<std::ranges::range_value_t<T>>
+auto or_reduce(T const& self) {
+    using Elem = std::ranges::range_value_t<T>;
+    Elem result{Elem::_0};
+    for (auto const& v : self) {
+        result = result | v;
+    }
+    return result;
+}
+
+template <RangedSequence T>
+    requires LogicType<std::ranges::range_value_t<T>>
+auto xor_reduce(T const& self) {
+    using Elem = std::ranges::range_value_t<T>;
+    Elem result{Elem::_0};
+    for (auto const& v : self) {
+        result = result ^ v;
+    }
+    return result;
+}
 
 using LogicVector = Vector<Logic>;
 using BitVector = Vector<Bit>;
@@ -267,7 +210,7 @@ using BitArray = detail::Array<Bit, detail::make_logic_static_range<Args...>()>;
 
 template <typename T>
 concept LogicArrayType =
-    ArrayType<T> && LogicType<std::ranges::range_value_t<std::remove_cvref_t<T>>>;
+    RangedSequence<T> && LogicType<std::ranges::range_value_t<std::remove_cvref_t<T>>>;
 
 // -- Bitwise array operations -----------------------------------------------
 
@@ -669,15 +612,6 @@ auto operator~(T const& arr) {
 
 namespace detail {
 
-template <LogicType T>
-constexpr std::string_view logic_type_name() {
-    if constexpr (std::same_as<T, Logic>) {
-        return "Logic";
-    } else {
-        return "Bit";
-    }
-}
-
 template <typename ElemT, typename CharToElem>
 Vector<ElemT> parse_logic_string(std::string_view s, CharToElem char_to_elem) {
     size_t count = 0;
@@ -711,17 +645,15 @@ constexpr size_t count_non_underscore() {
     return n;
 }
 
+// Emit '<prefix>[range]{"<bit-string>"}' for Logic/Bit-element arrays.
 template <RangedSequence ArrayT, typename OutIt>
-OutIt format_typed_array(std::string_view type_name, ArrayT const& arr, OutIt out) {
-    out = std::format_to(out, "{}{}{{", type_name, arr.range());
-    bool first = true;
+    requires LogicType<std::ranges::range_value_t<ArrayT>>
+OutIt format_logic_array(std::string_view prefix, ArrayT const& arr, OutIt out) {
+    out = std::format_to(out, "{}{}{{\"", prefix, arr.range());
     for (auto const& elem : arr) {
-        if (!first) {
-            out = std::format_to(out, ", ");
-        }
-        out = std::format_to(out, "{}", to_string(elem));
-        first = false;
+        *out++ = to_char(elem);
     }
+    *out++ = '"';
     *out++ = '}';
     return out;
 }
@@ -745,31 +677,6 @@ inline Vector<Logic> to_logic_array(std::string_view s) {
 
 inline Vector<Bit> to_bit_array(std::string_view s) {
     return detail::parse_logic_string<Bit>(s, [](char c) { return to_bit(c); });
-}
-
-// Convert a range of Logic to a Vector<Bit>. Throws if any element is not
-// 0/1/L/H (i.e. every element must be resolvable). Constrained to sized_range
-// so the result can be sized up-front from std::ranges::size in O(1) and the
-// resolvability check can be fused with the fill into a single pass.
-template <std::ranges::sized_range R>
-    requires std::same_as<std::ranges::range_value_t<R>, Logic>
-Vector<Bit> to_bit_array(R const& range) {
-    auto const sz = std::ranges::size(range);
-    if (sz > static_cast<size_t>(std::numeric_limits<Range::value_type>::max())) {
-        throw std::length_error("range too long for Range::value_type");
-    }
-    auto const n = static_cast<Range::value_type>(sz);
-    Vector<Bit> result(Range{n - 1, Direction::DOWNTO, 0});
-    auto out = result.begin();
-    for (Logic const& v : range) {
-        if (!v.is_resolvable()) {
-            throw std::invalid_argument(
-                "Cannot convert non-resolvable Logic values to BitArray"
-            );
-        }
-        *out++ = to_int(v) ? Bit::_1 : Bit::_0;
-    }
-    return result;
 }
 
 // -- String-literal UDL ----------------------------------------------------
@@ -812,34 +719,83 @@ constexpr auto operator""_b() {
 
 }  // namespace coconext::types
 
-// One LogicType-constrained formatter for every array type that opts into
-// is_array (Vector, Array, ArraySlice, StaticArraySlice). The constraint is a
-// conjunction of the generic ArrayType constraint plus a LogicType check on
-// the element type, so it subsumes the generic std::formatter<ArrayType T> in
-// array_base.hpp via C++20 partial specialization ordering with constraints.
-// Result: arrays of Logic/Bit print as "Logic[range]{0, 1, X}" instead of
-// "[range]{Logic{0}, Logic{1}, Logic{X}}".
-template <typename T>
-    requires coconext::types::ArrayType<T>
-          && coconext::types::detail::Formattable<std::ranges::range_value_t<T>>
-          && coconext::types::LogicType<std::ranges::range_value_t<T>>
-struct std::formatter<T> {
-    constexpr auto parse(std::format_parse_context& ctx) {
-        auto it = ctx.begin();
-        if (it != ctx.end() && *it != '}') {
-            throw std::format_error("ArrayType<Logic/Bit> formatter takes no format spec");
-        }
-        return it;
+// Per-type formatters for Logic/Bit-element arrays. These are more-specialized
+// partial specializations of std::formatter than the corresponding non-logic
+// formatters in array.hpp / vector.hpp / array_base.hpp, so they win by C++20
+// partial-ordering rules when both headers are visible.
+//
+// Output format: `<Prefix>[range]{"<bit-string>"}`. The prefix encodes the
+// type kind (Array / Vector / ArraySlice) and the element type (Logic / Bit).
+
+#define COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER(PREFIX, ...)                                 \
+    struct std::formatter<__VA_ARGS__> {                                                   \
+        constexpr auto parse(std::format_parse_context& ctx) {                             \
+            auto it = ctx.begin();                                                         \
+            if (it != ctx.end() && *it != '}') {                                           \
+                throw std::format_error(PREFIX " formatter takes no format spec");         \
+            }                                                                              \
+            return it;                                                                     \
+        }                                                                                  \
+        auto format(__VA_ARGS__ const& v, std::format_context& ctx) const {                \
+            return coconext::types::detail::format_logic_array(PREFIX, v, ctx.out());      \
+        }                                                                                  \
     }
 
-    auto format(T const& arr, std::format_context& ctx) const {
-        return coconext::types::detail::format_typed_array(
-            coconext::types::detail::logic_type_name<std::ranges::range_value_t<T>>(),
-            arr,
-            ctx.out()
-        );
-    }
-};
+template <coconext::types::Range R>
+COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER(
+    "LogicArray", coconext::types::detail::Array<coconext::types::Logic, R>
+);
+
+template <coconext::types::Range R>
+COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER(
+    "BitArray", coconext::types::detail::Array<coconext::types::Bit, R>
+);
+
+template <>
+COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER(
+    "LogicVector", coconext::types::Vector<coconext::types::Logic>
+);
+
+template <>
+COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER(
+    "BitVector", coconext::types::Vector<coconext::types::Bit>
+);
+
+template <typename ArrayT>
+    requires coconext::types::detail::Formattable<std::ranges::range_value_t<ArrayT>>
+          && std::same_as<
+                 std::remove_cv_t<std::ranges::range_value_t<ArrayT>>,
+                 coconext::types::Logic>
+COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER(
+    "LogicArraySlice", coconext::types::ArraySlice<ArrayT>
+);
+
+template <typename ArrayT>
+    requires coconext::types::detail::Formattable<std::ranges::range_value_t<ArrayT>>
+          && std::same_as<
+                 std::remove_cv_t<std::ranges::range_value_t<ArrayT>>,
+                 coconext::types::Bit>
+COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER("BitArraySlice", coconext::types::ArraySlice<ArrayT>);
+
+template <typename ArrayT, coconext::types::Range R>
+    requires coconext::types::detail::Formattable<std::ranges::range_value_t<ArrayT>>
+          && std::same_as<
+                 std::remove_cv_t<std::ranges::range_value_t<ArrayT>>,
+                 coconext::types::Logic>
+COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER(
+    "LogicArraySlice", coconext::types::StaticArraySlice<ArrayT, R>
+);
+
+template <typename ArrayT, coconext::types::Range R>
+    requires coconext::types::detail::Formattable<std::ranges::range_value_t<ArrayT>>
+          && std::same_as<
+                 std::remove_cv_t<std::ranges::range_value_t<ArrayT>>,
+                 coconext::types::Bit>
+COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER(
+    "BitArraySlice", coconext::types::StaticArraySlice<ArrayT, R>
+);
+
+#undef COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER
 
 #undef COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR
 

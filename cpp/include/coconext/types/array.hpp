@@ -18,6 +18,7 @@
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <typeinfo>
 
 namespace coconext::types {
 
@@ -143,6 +144,17 @@ class ArrayImpl {
         );
     }
 
+    template <index_type I>
+    constexpr reference index() {
+        static_assert(find(R, I) != R.end(), "index is out of range");
+        return (*this)[I];
+    }
+    template <index_type I>
+    constexpr const_reference index() const {
+        static_assert(find(R, I) != R.end(), "index is out of range");
+        return (*this)[I];
+    }
+
     constexpr iterator begin() noexcept { return data_.begin(); }
     constexpr const_iterator begin() const noexcept { return data_.begin(); }
     constexpr iterator end() noexcept { return data_.end(); }
@@ -151,13 +163,6 @@ class ArrayImpl {
     constexpr auto rbegin() const noexcept { return data_.rbegin(); }
     constexpr auto rend() noexcept { return data_.rend(); }
     constexpr auto rend() const noexcept { return data_.rend(); }
-
-    constexpr std::optional<index_type> index(value_type const& v) const {
-        return detail::index_in(*this, v);
-    }
-    constexpr std::optional<index_type> rindex(value_type const& v) const {
-        return detail::rindex_in(*this, v);
-    }
 
   private:
     template <typename Self>
@@ -187,17 +192,11 @@ class Array : public ArrayImpl<T, R> {
     using ArrayImpl<T, R>::operator=;
 };
 
-template <typename T, Range R1, Range R2>
+template <typename T, Range R>
     requires std::equality_comparable<T>
-constexpr bool operator==(Array<T, R1> const& lhs, Array<T, R2> const& rhs) noexcept {
-    if constexpr (R1 != R2) {
-        return false;
-    }
+constexpr bool operator==(Array<T, R> const& lhs, Array<T, R> const& rhs) noexcept {
     return std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
 }
-
-template <typename T, Range R>
-struct is_array<Array<T, R>> : std::true_type {};
 
 static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}>>);
 static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}> const>);
@@ -297,11 +296,32 @@ using Array = detail::Array<T, detail::make_static_range<Args...>()>;
 template <typename T, coconext::types::Range R>
 struct std::hash<coconext::types::detail::Array<T, R>> {
     size_t operator()(coconext::types::detail::Array<T, R> const& arr) const noexcept {
-        size_t seed = 0;
+        size_t seed = typeid(coconext::types::detail::Array<T, R>).hash_code();
         for (auto const& elem : arr) {
             seed = coconext::types::detail::hash_combine(seed, elem);
         }
         return seed;
+    }
+};
+
+// Formatter for Array<T, R>. The Logic/Bit specializations in logic_array.hpp
+// are more-specialized partial specs and win by C++'s partial-ordering rules
+// when both headers are visible.
+template <typename T, coconext::types::Range R>
+    requires coconext::types::detail::Formattable<T>
+struct std::formatter<coconext::types::detail::Array<T, R>> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        auto it = ctx.begin();
+        if (it != ctx.end() && *it != '}') {
+            throw std::format_error("Array formatter takes no format spec");
+        }
+        return it;
+    }
+
+    auto format(
+        coconext::types::detail::Array<T, R> const& arr, std::format_context& ctx
+    ) const {
+        return coconext::types::detail::format_array("Array", arr, ctx.out());
     }
 };
 

@@ -24,10 +24,6 @@ namespace detail {
 template <typename R>
 concept sized_input_range = std::ranges::sized_range<R> && std::ranges::input_range<R>;
 
-// Opt-in trait for array types.
-template <typename T>
-struct is_array : std::false_type {};
-
 // Helper to force a value into a constant-expression context.
 template <auto V>
 struct require_constant {};
@@ -55,12 +51,6 @@ concept StaticRangedSequence = RangedSequence<T, Elem> && requires {
     typename detail::require_constant<std::remove_cvref_t<T>::static_range>;
 };
 
-// Any type that opts into the array machinery via is_array. Element-type
-// constraints (formattability, etc.) live on the consumers that need them,
-// not on this concept.
-template <typename T>
-concept ArrayType = detail::is_array<std::remove_cvref_t<T>>::value;
-
 // -- Slice types --------------------------------------------------------------
 
 namespace detail {
@@ -80,17 +70,19 @@ constexpr Range::value_type offset_to_hdl_coord(
     return r.direction == Direction::TO ? r.left + off : r.left - off;
 }
 
+}  // namespace detail
+
 // First HDL coordinate (from the left in iteration order) whose element equals
-// `v`, or nullopt if not found. Used by Array/Vector/slice members.
+// `v`, or nullopt if not found.
 template <RangedSequence S>
-constexpr std::optional<Range::value_type> index_in(
+constexpr std::optional<Range::value_type> index_of(
     S const& s, std::ranges::range_value_t<S> const& v
 ) {
     auto const it = std::ranges::find(s, v);
     if (it == s.end()) {
         return std::nullopt;
     }
-    return offset_to_hdl_coord(
+    return detail::offset_to_hdl_coord(
         s.range(), static_cast<size_t>(std::ranges::distance(s.begin(), it))
     );
 }
@@ -98,7 +90,7 @@ constexpr std::optional<Range::value_type> index_in(
 // First HDL coordinate from the right (i.e. the last matching element in
 // iteration order), or nullopt if not found.
 template <RangedSequence S>
-constexpr std::optional<Range::value_type> rindex_in(
+constexpr std::optional<Range::value_type> rindex_of(
     S const& s, std::ranges::range_value_t<S> const& v
 ) {
     auto const rit = std::find(s.rbegin(), s.rend(), v);
@@ -106,21 +98,19 @@ constexpr std::optional<Range::value_type> rindex_in(
         return std::nullopt;
     }
     auto const off_from_end = static_cast<size_t>(std::distance(s.rbegin(), rit));
-    return offset_to_hdl_coord(s.range(), s.range().length() - 1 - off_from_end);
+    return detail::offset_to_hdl_coord(s.range(), s.range().length() - 1 - off_from_end);
 }
-
-}  // namespace detail
 
 template <typename ArrayT>
 class ArraySlice;
 template <typename ArrayT, Range R>
 class StaticArraySlice;
 
+namespace detail {
+
 // We split out the implementations into a base class so that we can reuse then in the
 // Logic/Bit-aware specializations in logic_array.hpp. LogicArray is just an Array with
 // extra members. BitArray is too, for now...
-
-namespace detail {
 
 template <typename ArrayT>
 class ArraySliceImpl {
@@ -182,6 +172,11 @@ class ArraySliceImpl {
         return StaticArraySlice<ArrayT, R>(arr_);
     }
 
+    template <index_type I>
+    constexpr reference index() const {
+        return (*this)[I];
+    }
+
     // Have to override this since the implicitly generated copy assignment acts as a
     // variable assignment rather than writing through to the underlying storage.
     constexpr ArraySliceImpl const& operator=(ArraySliceImpl const& other) const
@@ -231,15 +226,6 @@ class ArraySliceImpl {
     constexpr iterator end() const noexcept { return begin_ + range_.length(); }
     constexpr auto rbegin() const noexcept { return std::reverse_iterator(end()); }
     constexpr auto rend() const noexcept { return std::reverse_iterator(begin()); }
-
-    // First HDL coordinate (from the left/right respectively) whose element
-    // equals `v`, or nullopt if not found.
-    constexpr std::optional<index_type> index(value_type const& v) const {
-        return detail::index_in(*this, v);
-    }
-    constexpr std::optional<index_type> rindex(value_type const& v) const {
-        return detail::rindex_in(*this, v);
-    }
 
   private:
     // Cache the begin pointer. This is just one stack pointer for a temporary object, and
@@ -307,6 +293,12 @@ class StaticArraySliceImpl {
             "static sub-slice range is not a sub-range of the parent slice"
         );
         return StaticArraySlice<ArrayT, R2>(arr_);
+    }
+
+    template <index_type I>
+    constexpr reference index() const {
+        static_assert(find(R, I) != R.end(), "index is out of range");
+        return (*this)[I];
     }
 
     constexpr ArraySlice<ArrayT> operator[](Range r) const {
@@ -401,13 +393,6 @@ class StaticArraySliceImpl {
     constexpr auto rbegin() const noexcept { return std::reverse_iterator(end()); }
     constexpr auto rend() const noexcept { return std::reverse_iterator(begin()); }
 
-    constexpr std::optional<index_type> index(value_type const& v) const {
-        return detail::index_in(*this, v);
-    }
-    constexpr std::optional<index_type> rindex(value_type const& v) const {
-        return detail::rindex_in(*this, v);
-    }
-
   private:
     ArrayT* arr_;
 };
@@ -442,20 +427,14 @@ class StaticArraySlice : public detail::StaticArraySliceImpl<ArrayT, R> {
 
 namespace detail {
 
-template <typename ArrayT>
-struct is_array<ArraySlice<ArrayT>> : std::true_type {};
-
-template <typename ArrayT, Range R>
-struct is_array<StaticArraySlice<ArrayT, R>> : std::true_type {};
-
-// -- Formatter ----------------------------------------------------------------
-
-// Walks a RangedSequence, emitting "[range]{elem, elem, ...}" via the formatter
-// for each element type. Used by the generic Array/Slice formatter.
+// Emit "<prefix>[range]{e0, e1, ...}". Used by the per-type std::formatter
+// specializations for Array/Vector/ArraySlice/StaticArraySlice on non-logic
+// element types. Logic/Bit arrays use a quoted-bit-string body instead; see
+// logic_array.hpp.
 template <RangedSequence ArrayT, typename OutIt>
     requires Formattable<std::ranges::range_value_t<ArrayT>>
-OutIt format_array(ArrayT const& arr, OutIt out) {
-    out = std::format_to(out, "{}{{", arr.range());
+OutIt format_array(std::string_view prefix, ArrayT const& arr, OutIt out) {
+    out = std::format_to(out, "{}{}{{", prefix, arr.range());
     bool first = true;
     for (auto const& elem : arr) {
         if (!first) {
@@ -472,25 +451,33 @@ OutIt format_array(ArrayT const& arr, OutIt out) {
 
 }  // namespace coconext::types
 
-// One generic formatter for every array type that opts into is_array. The
-// LogicType-constrained version in logic_array.hpp subsumes this one for
-// arrays of Logic/Bit (via constraint conjunction) and produces the terse
-// "Logic[range]{0, 1, X}" form instead.
-template <typename T>
-    requires coconext::types::ArrayType<T>
-          && coconext::types::detail::Formattable<std::ranges::range_value_t<T>>
-struct std::formatter<T> {
-    constexpr auto parse(std::format_parse_context& ctx) {
-        auto it = ctx.begin();
-        if (it != ctx.end() && *it != '}') {
-            throw std::format_error("ArrayType formatter takes no format spec");
-        }
-        return it;
+// Formatters for ArraySlice and StaticArraySlice. Both print with the
+// "ArraySlice" prefix; the static-vs-runtime distinction isn't useful to a
+// reader of the printed output. The Logic/Bit specializations in
+// logic_array.hpp are more-specialized partial specs and win when both
+// headers are visible.
+#define COCONEXT_DEFINE_ARRAY_SLICE_FORMATTER(...)                                         \
+    struct std::formatter<__VA_ARGS__> {                                                   \
+        constexpr auto parse(std::format_parse_context& ctx) {                             \
+            auto it = ctx.begin();                                                         \
+            if (it != ctx.end() && *it != '}') {                                           \
+                throw std::format_error("ArraySlice formatter takes no format spec");      \
+            }                                                                              \
+            return it;                                                                     \
+        }                                                                                  \
+        auto format(__VA_ARGS__ const& s, std::format_context& ctx) const {                \
+            return coconext::types::detail::format_array("ArraySlice", s, ctx.out());      \
+        }                                                                                  \
     }
 
-    auto format(T const& arr, std::format_context& ctx) const {
-        return coconext::types::detail::format_array(arr, ctx.out());
-    }
-};
+template <typename ArrayT>
+    requires coconext::types::detail::Formattable<std::ranges::range_value_t<ArrayT>>
+COCONEXT_DEFINE_ARRAY_SLICE_FORMATTER(coconext::types::ArraySlice<ArrayT>);
+
+template <typename ArrayT, coconext::types::Range R>
+    requires coconext::types::detail::Formattable<std::ranges::range_value_t<ArrayT>>
+COCONEXT_DEFINE_ARRAY_SLICE_FORMATTER(coconext::types::StaticArraySlice<ArrayT, R>);
+
+#undef COCONEXT_DEFINE_ARRAY_SLICE_FORMATTER
 
 #endif  // COCONEXT_ARRAY_BASE_HPP

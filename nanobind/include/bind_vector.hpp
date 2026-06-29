@@ -57,11 +57,13 @@ void bind_array(nb::module_& m, char const* name) {
 
         .def(
             "__contains__",
-            [](VectorType const& a, ValueT const& val) { return a.index(val).has_value(); }
+            [](VectorType const& a, ValueT const& val) {
+                return index_of(a, val).has_value();
+            }
         )
 
         .def("index", [](VectorType const& a, ValueT const& val) {
-            auto idx = a.index(val);
+            auto idx = index_of(a, val);
             if (!idx.has_value()) {
                 throw nb::value_error("Value not found in array");
             }
@@ -87,4 +89,4 @@ void bind_array(nb::module_& m, char const* name) {
 
 }  // namespace coconext_nb
 
-#endif  // NB_BIND_ARRAY_HPP
+#endif  // NB_BIND_VECTOR_HPP

@@ -14,7 +14,7 @@ jobs:
     name: Upgrade locked dependencies
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6.0.2
+    - uses: actions/checkout@v7
 
     - name: Install uv
       uses: astral-sh/setup-uv@v8.1.0
@@ -30,6 +30,6 @@ jobs:
         commit-message: "Upgrade locked dependencies"
         title: "Upgrade locked dependencies"
         body: ""
-        author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+        author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
         branch: "upgrade-locked-dependencies"
         sign-commits: true

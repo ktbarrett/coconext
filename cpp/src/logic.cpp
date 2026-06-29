@@ -1,6 +1,6 @@
 #include <coconext/types/logic.hpp>
+#include <optional>
 #include <random>
-#include <stdexcept>
 
 #include "./random.hpp"
 
@@ -8,72 +8,65 @@ using namespace coconext::types;
 
 namespace coconext::types {
 
-Logic Logic::resolve(ResolveMethod method) const {
+std::optional<Bit> Logic::resolve(ResolveMethod method) const noexcept {
     switch (method) {
     case ResolveMethod::ERROR:
         switch (value_) {
         case _0:
+            return Bit::_0;
         case _1:
-            return *this;
+            return Bit::_1;
         default:
-            throw std::invalid_argument("Logic value is not resolvable");
+            return std::nullopt;
         }
     case ResolveMethod::WEAK:
         switch (value_) {
         case _0:
-        case _1:
-            return *this;
         case L:
-            return _0;
+            return Bit::_0;
+        case _1:
         case H:
-            return _1;
-        case W:
-            return X;
+            return Bit::_1;
         default:
-            return *this;
+            return std::nullopt;
         }
     case ResolveMethod::ZEROS:
         switch (value_) {
         case _0:
-        case _1:
-            return *this;
         case L:
-            return _0;
+            return Bit::_0;
+        case _1:
         case H:
-            return _1;
+            return Bit::_1;
         default:
-            return _0;
+            return Bit::_0;
         }
     case ResolveMethod::ONES:
         switch (value_) {
         case _0:
-        case _1:
-            return *this;
         case L:
-            return _0;
+            return Bit::_0;
+        case _1:
         case H:
-            return _1;
+            return Bit::_1;
         default:
-            return _1;
+            return Bit::_1;
         }
-    case ResolveMethod::RANDOM: {
+    case ResolveMethod::RANDOM:
         switch (value_) {
         case _0:
-        case _1:
-            return *this;
         case L:
-            return _0;
+            return Bit::_0;
+        case _1:
         case H:
-            return _1;
+            return Bit::_1;
         default: {
             auto& rng = get_rng();
-            return (rng() % 2 == 0) ? _0 : _1;
+            return (rng() % 2 == 0) ? Bit::_0 : Bit::_1;
         }
         }
     }
-    default:
-        throw std::invalid_argument("Unknown resolve method");
-    }
+    return std::nullopt;
 }
 
 }  // namespace coconext::types

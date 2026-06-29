@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <typeinfo>
 
 // std::unique_ptr's constexpr support landed in C++23 (P2273R3); under C++20
 // the constexpr keyword on Vector's members is still legal but evaluating
@@ -181,6 +182,15 @@ class VectorImpl {
         );
     }
 
+    template <index_type I>
+    COCONEXT_VECTOR_CONSTEXPR reference index() {
+        return (*this)[I];
+    }
+    template <index_type I>
+    COCONEXT_VECTOR_CONSTEXPR const_reference index() const {
+        return (*this)[I];
+    }
+
     COCONEXT_VECTOR_CONSTEXPR iterator begin() noexcept { return data_.get(); }
     COCONEXT_VECTOR_CONSTEXPR const_iterator begin() const noexcept { return data_.get(); }
     COCONEXT_VECTOR_CONSTEXPR iterator end() noexcept {
@@ -200,13 +210,6 @@ class VectorImpl {
     }
     COCONEXT_VECTOR_CONSTEXPR auto rend() const noexcept {
         return std::reverse_iterator(begin());
-    }
-
-    COCONEXT_VECTOR_CONSTEXPR std::optional<index_type> index(value_type const& v) const {
-        return detail::index_in(*this, v);
-    }
-    COCONEXT_VECTOR_CONSTEXPR std::optional<index_type> rindex(value_type const& v) const {
-        return detail::rindex_in(*this, v);
     }
 
   private:
@@ -247,14 +250,6 @@ constexpr bool operator==(Vector<ValueT> const& lhs, Vector<ValueT> const& rhs) 
     return true;
 }
 
-namespace detail {
-
-// Opt into array-specific features such as formatting.
-template <typename T>
-struct is_array<Vector<T>> : std::true_type {};
-
-}  // namespace detail
-
 static_assert(RangedSequence<Vector<int>>);
 static_assert(RangedSequence<Vector<int> const>);
 static_assert(RangedSequence<ArraySlice<Vector<int>>>);
@@ -281,11 +276,32 @@ static_assert(
 template <typename T>
 struct std::hash<coconext::types::Vector<T>> {
     size_t operator()(coconext::types::Vector<T> const& arr) const noexcept {
-        size_t seed = hash<coconext::types::Range>{}(arr.range());
+        size_t seed = typeid(coconext::types::Vector<T>).hash_code();
+        seed = coconext::types::detail::hash_mix(
+            seed, hash<coconext::types::Range>{}(arr.range())
+        );
         for (auto const& elem : arr) {
             seed = coconext::types::detail::hash_combine(seed, elem);
         }
         return seed;
+    }
+};
+
+// Formatter for Vector<T>. The Logic/Bit specializations in logic_array.hpp
+// are more-specialized partial specs and win when both headers are visible.
+template <typename T>
+    requires coconext::types::detail::Formattable<T>
+struct std::formatter<coconext::types::Vector<T>> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        auto it = ctx.begin();
+        if (it != ctx.end() && *it != '}') {
+            throw std::format_error("Vector formatter takes no format spec");
+        }
+        return it;
+    }
+
+    auto format(coconext::types::Vector<T> const& arr, std::format_context& ctx) const {
+        return coconext::types::detail::format_array("Vector", arr, ctx.out());
     }
 };
 

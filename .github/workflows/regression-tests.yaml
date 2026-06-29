@@ -24,7 +24,7 @@ jobs:
       runs-on: ubuntu-latest
       name: Generate a list of environments to run tests against
       steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - run: ./.github/generate-envs.py --output-format=gha --gha-output-file="$GITHUB_OUTPUT"
         id: run_generate_script
       outputs:
@@ -48,7 +48,7 @@ jobs:
           include: ${{ fromJson(needs.generate_envs.outputs.envs) }}
 
       steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # GitHub PR's create a merge commit, and Actions are run on that commit.
           # Codecov's uploader needs the previous commit (tip of PR branch) to associate coverage correctly.
@@ -69,7 +69,7 @@ jobs:
           name: sdist
           path: dist
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v6.2.0
         with:
           python-version: ${{matrix.python-version}}
           allow-prereleases: true
@@ -97,7 +97,7 @@ jobs:
 
       - name: Checkout cocotb
         if: contains(inputs.make_targets, 'integration_tests')
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: cocotb/cocotb
           path: cocotb

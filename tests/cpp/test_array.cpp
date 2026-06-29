@@ -142,37 +142,37 @@ TEST(TestVector, FindElementMissing) {
 
 // -- index / rindex ---------------------------------------------------------
 //
-// index(v) returns the first HDL coordinate (from the left in iteration
-// order) whose element equals v; rindex(v) is the same from the right (i.e.
-// the last matching element). Both return nullopt when not found.
+// index_of(seq, v) returns the first HDL coordinate (from the left in
+// iteration order) whose element equals v; rindex_of is the same from the
+// right (i.e. the last matching element). Both return nullopt when not found.
 
 TEST(TestVector, IndexFoundTO) {
     Vector<int> a(std::vector<int>{10, 20, 30, 20}, Range(0, Direction::TO, 3));
-    auto i = a.index(20);
+    auto i = index_of(a, 20);
     ASSERT_TRUE(i.has_value());
     EXPECT_EQ(*i, 1);  // first 20 is at HDL coord 1
 }
 
 TEST(TestVector, IndexFoundDOWNTO) {
     Vector<int> a({10, 20, 30});  // default DOWNTO {2..0}: a[2]=10, a[1]=20, a[0]=30
-    auto i = a.index(20);
+    auto i = index_of(a, 20);
     ASSERT_TRUE(i.has_value());
     EXPECT_EQ(*i, 1);  // 20 is at HDL coord 1 (DOWNTO)
 }
 
 TEST(TestVector, IndexNotFound) {
     Vector<int> a({10, 20, 30});
-    EXPECT_FALSE(a.index(99).has_value());
+    EXPECT_FALSE(index_of(a, 99).has_value());
 }
 
 TEST(TestVector, IndexEmpty) {
     Vector<int> a({});
-    EXPECT_FALSE(a.index(0).has_value());
+    EXPECT_FALSE(index_of(a, 0).has_value());
 }
 
 TEST(TestVector, RindexFindsLastOccurrenceTO) {
     Vector<int> a(std::vector<int>{10, 20, 30, 20}, Range(0, Direction::TO, 3));
-    auto i = a.rindex(20);
+    auto i = rindex_of(a, 20);
     ASSERT_TRUE(i.has_value());
     EXPECT_EQ(*i, 3);  // last 20 is at HDL coord 3
 }
@@ -180,40 +180,40 @@ TEST(TestVector, RindexFindsLastOccurrenceTO) {
 TEST(TestVector, RindexFindsLastOccurrenceDOWNTO) {
     Vector<int> a(std::vector<int>{10, 20, 30, 20}, Range(3, Direction::DOWNTO, 0));
     // a[3]=10, a[2]=20, a[1]=30, a[0]=20. Last 20 in iteration is at HDL 0.
-    auto i = a.rindex(20);
+    auto i = rindex_of(a, 20);
     ASSERT_TRUE(i.has_value());
     EXPECT_EQ(*i, 0);
 }
 
 TEST(TestVector, RindexNotFound) {
     Vector<int> a({10, 20, 30});
-    EXPECT_FALSE(a.rindex(99).has_value());
+    EXPECT_FALSE(rindex_of(a, 99).has_value());
 }
 
 TEST(TestVector, IndexOnSlice) {
     // Generic Vector<int> defaults to TO {0..4}.
     Vector<int> a({10, 20, 30, 40, 50});
     auto s = a[{1, 3}];  // TO slice covering HDL coords 1, 2, 3 -> 20, 30, 40
-    auto i = s.index(30);
+    auto i = index_of(s, 30);
     ASSERT_TRUE(i.has_value());
     EXPECT_EQ(*i, 2);
 }
 
 TEST(TestStaticArray, IndexAndRindex) {
     Array<int, Range{0, Direction::TO, 4}> a({10, 20, 30, 20, 50});
-    auto first = a.index(20);
-    auto last = a.rindex(20);
+    auto first = index_of(a, 20);
+    auto last = rindex_of(a, 20);
     ASSERT_TRUE(first.has_value() && last.has_value());
     EXPECT_EQ(*first, 1);
     EXPECT_EQ(*last, 3);
-    EXPECT_FALSE(a.index(99).has_value());
+    EXPECT_FALSE(index_of(a, 99).has_value());
 }
 
 TEST(TestVectorStaticSlice, IndexAndRindex) {
     Vector<int> a({10, 20, 30, 20, 50}, Range(0, Direction::TO, 4));
     auto s = a.slice<Range{1, Direction::TO, 3}>();  // values 20, 30, 20
-    auto first = s.index(20);
-    auto last = s.rindex(20);
+    auto first = index_of(s, 20);
+    auto last = rindex_of(s, 20);
     ASSERT_TRUE(first.has_value() && last.has_value());
     EXPECT_EQ(*first, 1);
     EXPECT_EQ(*last, 3);
@@ -534,6 +534,17 @@ TEST(TestVector, UnorderedSetDeduplicatesEmptyArrays) {
     EXPECT_EQ(s.size(), 1U);
 }
 
+TEST(TestVector, HashDistinctAcrossElementType) {
+    // Element- and range-equivalent values of Vector<int> and Vector<long>
+    // are distinct types with no cross-type equality; their hashes must
+    // differ.
+    Vector<int> a({1, 2, 3});
+    Vector<long> b({1L, 2L, 3L});
+    auto ha = std::hash<Vector<int>>{}(a);
+    auto hb = std::hash<Vector<long>>{}(b);
+    EXPECT_NE(ha, hb);
+}
+
 // -- Copy semantics ---------------------------------------------------------
 
 TEST(TestVector, Copy) {
@@ -575,40 +586,40 @@ TEST(TestVector, MoveAssignReplacesRange) {
 
 TEST(TestVector, FormatterInt) {
     Vector<int> a({1, 2, 3});
-    EXPECT_EQ(std::format("{}", a), "[0 to 2]{1, 2, 3}");
+    EXPECT_EQ(std::format("{}", a), "Vector[0 to 2]{1, 2, 3}");
 }
 
 TEST(TestVector, FormatterEmpty) {
     Vector<int> a({});
-    EXPECT_EQ(std::format("{}", a), "[0 to -1]{}");
+    EXPECT_EQ(std::format("{}", a), "Vector[0 to -1]{}");
 }
 
 TEST(TestVector, FormatterLogic) {
     Vector<Logic> a({'0'_l, '1'_l, 'X'_l});
-    EXPECT_EQ(std::format("{}", a), "Logic[2 downto 0]{0, 1, X}");
+    EXPECT_EQ(std::format("{}", a), "LogicVector[2 downto 0]{\"01X\"}");
 }
 
 TEST(TestVector, FormatterBit) {
     Vector<Bit> a({'0'_b, '1'_b, '0'_b, '1'_b});
-    EXPECT_EQ(std::format("{}", a), "Bit[3 downto 0]{0, 1, 0, 1}");
+    EXPECT_EQ(std::format("{}", a), "BitVector[3 downto 0]{\"0101\"}");
 }
 
 TEST(TestVector, FormatterLogicSlice) {
     Vector<Logic> a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
     auto s = a[Range(2, 1)];
-    EXPECT_EQ(std::format("{}", s), "Logic[2 downto 1]{1, X}");
+    EXPECT_EQ(std::format("{}", s), "LogicArraySlice[2 downto 1]{\"1X\"}");
 }
 
 TEST(TestVector, FormatterLogicConstSlice) {
     Vector<Logic> const a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
     auto s = a[Range(2, 1)];
-    EXPECT_EQ(std::format("{}", s), "Logic[2 downto 1]{1, X}");
+    EXPECT_EQ(std::format("{}", s), "LogicArraySlice[2 downto 1]{\"1X\"}");
 }
 
 TEST(TestVector, FormatterBitSlice) {
     Vector<Bit> a({'0'_b, '1'_b, '0'_b, '1'_b});
     auto s = a[Range(2, 1)];
-    EXPECT_EQ(std::format("{}", s), "Bit[2 downto 1]{1, 0}");
+    EXPECT_EQ(std::format("{}", s), "BitArraySlice[2 downto 1]{\"10\"}");
 }
 
 // -- Static slice of Vector (compile-time-bounded view) -----------------
@@ -948,4 +959,45 @@ static_assert(!StaticRangedSequence<Array<int, Range{0, Direction::TO, 3}>, floa
 static_assert(!StaticRangedSequence<Vector<int>>);
 static_assert(!StaticRangedSequence<Vector<int>, int>);
 
+// -- index<I>() on dynamic-range types -------------------------------------
+//
+// On Vector and ArraySlice the range is a runtime value, so index<I>() can't
+// static_assert anything -- it just delegates to operator[](I) for API
+// consistency with the static-range siblings (Array::index<I>(),
+// StaticArraySlice::index<I>()).
+
+TEST(TestVector, IndexOfVectorTO) {
+    Vector<int> a({10, 20, 30, 40}, Range(0, Direction::TO, 3));
+    EXPECT_EQ(a.index<0>(), 10);
+    EXPECT_EQ(a.index<3>(), 40);
+    a.index<2>() = 99;
+    EXPECT_EQ(a[2], 99);
+}
+
+TEST(TestVector, IndexOfVectorOutOfRangeThrows) {
+    Vector<int> a({10, 20, 30, 40}, Range(0, Direction::TO, 3));
+    EXPECT_THROW((void)a.index<4>(), std::out_of_range);
+    EXPECT_THROW((void)a.index<-1>(), std::out_of_range);
+}
+
+TEST(TestVector, IndexOfConstVector) {
+    Vector<int> const a({10, 20, 30});
+    EXPECT_EQ(a.index<1>(), 20);
+}
+
+TEST(TestVector, IndexOfDynamicSlice) {
+    Vector<int> a({10, 20, 30, 40, 50});
+    auto s = a[{1, 3}];  // dynamic ArraySlice over indices 1..3
+    EXPECT_EQ(s.index<1>(), 20);
+    EXPECT_EQ(s.index<3>(), 40);
+    s.index<2>() = 99;
+    EXPECT_EQ(a[2], 99);
+}
+
+TEST(TestVector, IndexOfDynamicSliceOutOfRangeThrows) {
+    Vector<int> a({10, 20, 30, 40, 50});
+    auto s = a[{1, 3}];
+    EXPECT_THROW((void)s.index<0>(), std::out_of_range);
+    EXPECT_THROW((void)s.index<4>(), std::out_of_range);
+}
 // LCOV_EXCL_BR_STOP
