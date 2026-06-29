@@ -178,6 +178,12 @@ struct Range {
     }
 };
 
+constexpr Range reverse(Range const& r) noexcept {
+    return Range{
+        r.right, r.direction == Direction::TO ? Direction::DOWNTO : Direction::TO, r.left
+    };
+}
+
 // more optimal implementation of std::ranges::find for Range
 constexpr Range::iterator find(Range const& range, Range::value_type value) {
     if (range.direction == Direction::TO) {

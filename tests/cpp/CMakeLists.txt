@@ -22,7 +22,8 @@ add_executable(coconext_tests
     test_array.cpp
     test_static_array.cpp
     test_logic_array.cpp
-    test_int.cpp)
+    test_int.cpp
+    test_reverse.cpp)
 target_link_libraries(coconext_tests PRIVATE coconext::coconext GTest::gtest_main)
 
 gtest_discover_tests(coconext_tests)

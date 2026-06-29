@@ -10,6 +10,7 @@
 #include "./types/logic.hpp"
 #include "./types/logic_array.hpp"
 #include "./types/range.hpp"
+#include "./types/reverse.hpp"
 #include "./types/vector.hpp"
 // NOLINTEND(unused-includes)
 
