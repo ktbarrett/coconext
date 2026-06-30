@@ -1,10 +1,10 @@
 #include <nanobind/nanobind.h>
-#include <nanobind/operators.h>        // Required for operator overloading
 #include <nanobind/stl/string.h>       // IWYU pragma: keep -- std::string caster
 #include <nanobind/stl/string_view.h>  // IWYU pragma: keep -- std::string_view caster
 
 #include <algorithm>
 #include <coconext/types/direction.hpp>
+#include <coconext/types/hash.hpp>
 #include <coconext/types/range.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -19,9 +19,6 @@ using namespace nb::literals;
 using namespace coconext::types;
 
 Range slice_range(Range const& r, size_t start, size_t stop) {
-    if (stop > r.length()) {
-        throw std::out_of_range("Stop index out of range");
-    }
     auto new_left = r[start];
     auto new_right = r[stop - 1];
     return Range(new_left, r.direction, new_right);
@@ -129,8 +126,44 @@ void register_range(nb::module_& m) {
             },
             nb::arg().noconvert()
         )
-        .def(nb::self == nb::self, nb::arg().noconvert())
-        .def("__hash__", [](Range const& self) { return std::hash<Range>()(self); })
+        // Python __eq__/__hash__ mirror cocotb's same-sequence semantics while C++ Range
+        // equality is structural.
+        .def(
+            "__eq__",
+            [](Range const& self, nb::handle other) -> nb::object {
+                if (!nb::isinstance<Range>(other)) {
+                    return nb::cast<nb::object>(nb::not_implemented());
+                }
+                auto const& rhs = nb::cast<Range const&>(other);
+                auto const len = self.length();
+                if (len != rhs.length()) {
+                    return nb::cast(false);
+                }
+                if (len == 0) {
+                    return nb::cast(true);
+                }
+                if (self.left != rhs.left) {
+                    return nb::cast(false);
+                }
+                if (len == 1) {
+                    return nb::cast(true);
+                }
+                return nb::cast(self.direction == rhs.direction);
+            }
+        )
+        .def(
+            "__hash__",
+            [](Range const& self) {
+                auto const len = self.length();
+                if (len == 0) {
+                    return std::hash<size_t>{}(0);
+                }
+                if (len == 1) {
+                    return std::hash<Range::value_type>{}(self.left);
+                }
+                return detail::hash_combine(self.left, self.right, self.direction);
+            }
+        )
         .def(
             "__repr__",
             [](Range const& self) {

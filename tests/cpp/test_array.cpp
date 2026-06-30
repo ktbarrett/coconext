@@ -494,20 +494,24 @@ TEST(TestVector, HashEqualArraysSameRange) {
     EXPECT_EQ(h(a), h(b));
 }
 
-TEST(TestVector, HashEmptyArraysWithDifferentBounds) {
+TEST(TestVector, EmptyArraysWithDifferentBoundsNotEqual) {
+    // Range equality is structural, so two empty Vectors with different
+    // range fields are distinct keys and hash separately.
     std::hash<Vector<int>> h;
     Vector<int> a({});
     Vector<int> b(std::vector<int>{}, Range(5, Direction::DOWNTO, 8));
-    EXPECT_EQ(a, b);
-    EXPECT_EQ(h(a), h(b));
+    EXPECT_NE(a, b);
+    EXPECT_NE(h(a), h(b));
 }
 
-TEST(TestVector, HashSingleElementSameLeftDifferentDirection) {
+TEST(TestVector, SingleElementSameLeftDifferentDirectionNotEqual) {
+    // Structural range equality: same single value, different direction is
+    // a different Range and therefore a different Vector.
     std::hash<Vector<int>> h;
     Vector<int> a({42});  // range: 0 TO 0
     Vector<int> b(std::vector<int>{42}, Range(0, Direction::DOWNTO, 0));
-    EXPECT_EQ(a, b);
-    EXPECT_EQ(h(a), h(b));
+    EXPECT_NE(a, b);
+    EXPECT_NE(h(a), h(b));
 }
 
 TEST(TestVector, MultiElementDifferentRangeNotEqual) {
@@ -525,13 +529,13 @@ TEST(TestVector, UnorderedSetDistinguishesByRange) {
     EXPECT_EQ(s.size(), 2U);
 }
 
-TEST(TestVector, UnorderedSetDeduplicatesEmptyArrays) {
+TEST(TestVector, UnorderedSetDistinguishesEmptyArrays) {
     Vector<int> a({});
     Vector<int> b(std::vector<int>{}, Range(5, Direction::DOWNTO, 8));
     std::unordered_set<Vector<int>> s;
     s.insert(a);
     s.insert(b);
-    EXPECT_EQ(s.size(), 1U);
+    EXPECT_EQ(s.size(), 2U);
 }
 
 TEST(TestVector, HashDistinctAcrossElementType) {
