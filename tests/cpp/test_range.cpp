@@ -76,23 +76,18 @@ TEST(TestRange, BadArgumentsEquivalent) {
 }
 
 TEST(TestRange, Equality) {
+    // Range equality is fully structural: all three fields must match. Two
+    // ranges that denote the same sequence but differ in any field (direction,
+    // or empty-range bounds) compare unequal. Users who want sequence equality
+    // should compare elements via std::ranges::equal.
     EXPECT_EQ(Range(7, Direction::DOWNTO, -7), Range(7, Direction::DOWNTO, -7));
     EXPECT_NE(Range(7, Direction::DOWNTO, -7), Range(0, Direction::TO, 8));
-    EXPECT_EQ(Range(1, Direction::TO, 0), Range(8, Direction::TO, -8));
-}
-
-TEST(TestRange, EqualitySingleElementIgnoresDirection) {
-    // A single-element range contains the same numbers regardless of
-    // direction, so 3 TO 3 and 3 DOWNTO 3 must compare equal.
-    EXPECT_EQ(Range(3, Direction::TO, 3), Range(3, Direction::DOWNTO, 3));
-
-    std::hash<Range> h;
-    EXPECT_EQ(h(Range(3, Direction::TO, 3)), h(Range(3, Direction::DOWNTO, 3)));
-
-    std::unordered_set<Range> const single{
-        Range(3, Direction::TO, 3), Range(3, Direction::DOWNTO, 3)
-    };
-    EXPECT_EQ(single.size(), 1U);
+    // Same sequence (both empty), different fields: not equal.
+    EXPECT_NE(Range(1, Direction::TO, 0), Range(8, Direction::TO, -8));
+    // Same single value, different direction: not equal.
+    EXPECT_NE(Range(3, Direction::TO, 3), Range(3, Direction::DOWNTO, 3));
+    // Length-2+ shape that the previous loose-equality bug missed.
+    EXPECT_NE(Range(5, Direction::TO, 10), Range(5, Direction::DOWNTO, 0));
 }
 
 TEST(TestRange, OtherConstructors) {
@@ -141,6 +136,18 @@ TEST(TestRange, RangeIsHashable) {
         Range(1, Direction::TO, 8), Range(8, Direction::DOWNTO, 1)
     };
     EXPECT_EQ(different.size(), 2U);
+
+    // Structural equality: ranges whose denoted sequence is identical but
+    // whose fields differ are distinct keys.
+    std::unordered_set<Range> const distinct_single{
+        Range(3, Direction::TO, 3), Range(3, Direction::DOWNTO, 3)
+    };
+    EXPECT_EQ(distinct_single.size(), 2U);
+
+    std::unordered_set<Range> const distinct_empty{
+        Range(1, Direction::TO, 0), Range(8, Direction::TO, -8)
+    };
+    EXPECT_EQ(distinct_empty.size(), 2U);
 }
 
 // -- is_subsequence_of ------------------------------------------------------

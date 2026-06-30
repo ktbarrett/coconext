@@ -37,6 +37,9 @@ input = "python/coconext/__init__.py"
 [project.scripts]
 coconext-config = "coconext_tools.config:main"
 
+[tool.ruff]
+extend-exclude = ["python/_pycoconext.pyi"]
+
 [tool.ruff.lint]
 select = [
     "E",    # pycodestyle errors

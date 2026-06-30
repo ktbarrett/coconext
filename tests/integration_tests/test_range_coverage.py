@@ -55,3 +55,39 @@ def test_index_three_argument_not_in_sliced_range():
 
     with pytest.raises(ValueError, match="Value not found in range"):
         r.index(5, 0, 4)
+
+
+def test_range_hash_equality() -> None:
+    # null range
+    a = {
+        Range(1, "to", 0): 1,
+        Range(10, "downto", 20): 2,
+    }
+    assert len(a) == 1
+
+    # single element range
+    b = {
+        Range(1, "to", 1): 1,
+        Range(1, "downto", 1): 2,
+    }
+    assert len(b) == 1
+
+
+def test_range_inequality() -> None:
+    # left, direction, right, length
+    # same, same, diff
+    assert Range(1, "to", 5) != Range(1, "to", 4)
+    # same, diff, same
+    assert Range(1, "to", 5) != Range(1, "downto", 5)
+    # diff, same, same
+    assert Range(1, "to", 5) != Range(2, "to", 5)
+    # same, diff, diff
+    assert Range(1, "to", 5) != Range(1, "downto", 4)
+    # diff, same, diff
+    assert Range(1, "to", 5) != Range(2, "to", 4)
+    # diff, diff, same
+    assert Range(1, "to", 5) != Range(2, "downto", 5)
+    # diff, diff, diff, different length
+    assert Range(1, "to", 5) != Range(2, "downto", 4)
+    # diff, diff, diff, same length
+    assert Range(1, "to", 5) != Range(5, "downto", 1)
