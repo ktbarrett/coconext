@@ -40,6 +40,19 @@ def _get_parser() -> argparse.ArgumentParser:
     return parser
 
 
+# import ctypes
+# import coconext
+
+# def load_user_cpp_library(coconext_cpp):
+#     abi_mismatc = coconext.check_abi_version()
+
+#     if abi_mismatch:
+#         raise RuntimeError(
+#             f"ABI Mismatch! You compiled your tests with coconext v{user_abi}, "
+#             f"but you are running coconext v{current_abi}. Please recompile your tests."
+#         )
+
+
 def main() -> None:  # noqa: D103
     parser = _get_parser()
     args = parser.parse_args()

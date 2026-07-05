@@ -3,6 +3,10 @@ add_library(coconext SHARED
     src/random.cpp
 )
 
+target_compile_definitions(coconext PUBLIC
+    COCONEXT_ABI_VERSION=\"${SKBUILD_PROJECT_VERSION}\"
+)
+
 option(COCONEXT_USE_APINT "Use LLVM APInt backend" OFF)
 if(COCONEXT_USE_APINT)
     target_compile_definitions(coconext PUBLIC COCONEXT_USE_APINT)

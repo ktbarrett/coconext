@@ -8,13 +8,15 @@ DEV_BUILD_DEP_GROUP ?= dev
 
 CXX_STANDARD ?= 20
 
+GIT_HASH := $(shell git describe --always --dirty --exclude '*')
+
 .PHONY: dev_build
 dev_build:
 	uv sync --no-default-groups --group=$(DEV_BUILD_DEP_GROUP) --no-install-project
 
 	# Build the package with debugging and coverage flags.
 	CCACHE_DISABLE=1 \
-	CXXFLAGS="$$CXXFLAGS --coverage -g -Og" \
+	CXXFLAGS="$$CXXFLAGS --coverage -g -Og -DCOCONEXT_ABI_VERSION=\"\\\"$(GIT_HASH)\\\"\"" \
 	CFLAGS="$$CFLAGS --coverage -g -Og" \
 	LDFLAGS="$$LDFLAGS --coverage" \
 	CMAKE_CXX_STANDARD=$(CXX_STANDARD) \
