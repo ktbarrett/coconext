@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <coconext/types/array.hpp>
+#include <coconext/types/bit_array.hpp>
 #include <coconext/types/logic.hpp>
 #include <coconext/types/string_literal.hpp>
 #include <coconext/types/vector.hpp>
@@ -179,27 +180,6 @@ class Array<Logic, R> : public ArrayImpl<Logic, R> {
         auto out = this->begin();
         for (char c : s) {
             *out++ = Logic(c);
-        }
-    }
-    explicit constexpr Array(char const* s) : Array(std::string_view(s)) {}
-};
-
-template <Range R>
-class Array<Bit, R> : public ArrayImpl<Bit, R> {
-  public:
-    using ArrayImpl<Bit, R>::ArrayImpl;
-    using ArrayImpl<Bit, R>::operator=;
-
-    explicit constexpr Array(std::string_view s) : ArrayImpl<Bit, R>() {
-        if (s.size() != R.length()) {
-            throw std::invalid_argument(
-                "String of length " + std::to_string(s.size())
-                + " does not match Array length " + std::to_string(R.length())
-            );
-        }
-        auto out = this->begin();
-        for (char c : s) {
-            *out++ = Bit(c);
         }
     }
     explicit constexpr Array(char const* s) : Array(std::string_view(s)) {}
@@ -692,21 +672,6 @@ std::string to_string(T const& arr) {
     return result;
 }
 
-namespace detail {
-
-template <StringLiteral S>
-constexpr size_t count_non_underscore() {
-    size_t n = 0;
-    for (size_t i = 0; i < S.size; ++i) {
-        if (S.data[i] != '_') {
-            ++n;
-        }
-    }
-    return n;
-}
-
-}  // namespace detail
-
 template <StringLiteral S>
 consteval auto operator""_l() {
     constexpr auto N = detail::count_non_underscore<S>();
@@ -720,24 +685,6 @@ consteval auto operator""_l() {
     for (auto in = S.data; in != S.data + S.size; ++in) {
         if (*in != '_') {
             *out++ = Logic(*in);
-        }
-    }
-    return result;
-}
-
-template <StringLiteral S>
-consteval auto operator""_b() {
-    constexpr auto N = detail::count_non_underscore<S>();
-    static_assert(
-        N <= static_cast<size_t>(std::numeric_limits<Range::value_type>::max()),
-        "bit literal too long for Range::value_type"
-    );
-    constexpr Range R{static_cast<Range::value_type>(N) - 1, Direction::DOWNTO, 0};
-    BitArray<R> result{};
-    auto out = result.begin();
-    for (auto in = S.data; in != S.data + S.size; ++in) {
-        if (*in != '_') {
-            *out++ = Bit(*in);
         }
     }
     return result;

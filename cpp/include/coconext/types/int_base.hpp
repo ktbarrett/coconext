@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
@@ -231,6 +232,28 @@ class BigInt {
         return result;
     }
 
+    constexpr size_t count_trailing_zeros() const {
+        for (size_t i = 0; i < num_of_words; ++i) {
+            if (data[i] != 0) {
+                return (i * 64) + std::countr_zero(data[i]);
+            }
+        }
+        return BitWidth;
+    }
+
+    constexpr size_t count_leading_zeros() const {
+        for (int i = num_of_words - 1; i >= 0; --i) {
+            if (data[i] != 0) {
+                size_t leading_in_word = std::countl_zero(data[i]);
+                size_t total_leading = ((num_of_words - 1 - i) * 64) + leading_in_word;
+
+                size_t unused_top_bits = (num_of_words * 64) - BitWidth;
+                return total_leading - unused_top_bits;
+            }
+        }
+        return BitWidth;
+    }
+
     template <size_t BW>
     friend void shift_right_logical(BigInt<BW>& val, size_t amount);
 
@@ -370,6 +393,12 @@ struct IntTypePicker {
 #endif
                         >>>>>;
 };
+
+#if defined(__SIZEOF_INT128__)
+static constexpr bool supports_128B = true;
+#else
+static constexpr bool supports_128B = false;
+#endif
 
 template <size_t W>
 class Bits {
@@ -591,6 +620,50 @@ class Bits {
     }
 
     constexpr Bits operator~() const { return Bits<W>(~storage_); }
+
+    constexpr size_t count_trailing_zeros() const {
+        if constexpr (is_not_native_int) {
+            return storage_.count_trailing_zeros();
+        } else {
+            IntType val = raw();
+            if (val == 0) {
+                return W;
+            }
+
+            if constexpr (supports_128B && W > 64) {
+                uint64_t lower = static_cast<uint64_t>(val);
+                if (lower != 0) {
+                    return std::countr_zero(lower);
+                }
+                return 64 + std::countr_zero(static_cast<uint64_t>(val >> 64));
+            } else {
+                return std::countr_zero(val);
+            }
+        }
+    }
+
+    constexpr size_t count_leading_zeros() const {
+        if constexpr (is_not_native_int) {
+            return storage_.count_leading_zeros();
+        } else {
+            IntType val = raw();
+            if (val == 0) {
+                return W;
+            }
+
+            if constexpr (supports_128B && W > 64) {
+                uint64_t upper = static_cast<uint64_t>(val >> 64);
+                size_t unused_bits = 128 - W;
+                if (upper != 0) {
+                    return std::countl_zero(upper) - unused_bits;
+                }
+                return 64 + std::countl_zero(static_cast<uint64_t>(val)) - unused_bits;
+            } else {
+                size_t unused_bits = (sizeof(IntType) * 8) - W;
+                return std::countl_zero(val) - unused_bits;
+            }
+        }
+    }
 
     IntType raw() const {
         if constexpr (is_not_native_int) {
