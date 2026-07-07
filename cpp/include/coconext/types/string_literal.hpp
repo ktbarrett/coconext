@@ -14,6 +14,21 @@ struct StringLiteral {
     constexpr StringLiteral(char const (&str)[N]) { std::copy_n(str, N, data); }
 };
 
+namespace detail {
+
+template <StringLiteral S>
+constexpr size_t count_non_underscore() {
+    size_t n = 0;
+    for (size_t i = 0; i < S.size; ++i) {
+        if (S.data[i] != '_') {
+            ++n;
+        }
+    }
+    return n;
+}
+
+}  // namespace detail
+
 }  // namespace coconext::types
 
 #endif  // COCONEXT_STRING_LITERAL_HPP
