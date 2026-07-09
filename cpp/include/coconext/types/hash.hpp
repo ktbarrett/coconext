@@ -6,6 +6,8 @@
 
 namespace coconext::types::detail {
 
+// Inspired by boost::hash_combine
+
 constexpr size_t hash_mix(size_t seed, size_t value) noexcept {
     return seed ^ (value + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2));
 }

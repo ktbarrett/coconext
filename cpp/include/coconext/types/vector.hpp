@@ -11,16 +11,13 @@
 #include <initializer_list>
 #include <iterator>
 #include <memory>
-#include <optional>
 #include <ranges>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <typeinfo>
 
-// std::unique_ptr's constexpr support landed in C++23 (P2273R3); under C++20
-// the constexpr keyword on Vector's members is still legal but evaluating
-// those members in a constant expression fails. Gate accordingly.
+// std::unique_ptr's constexpr support landed in C++23 (P2273R3).
 #if __cplusplus >= 202302L
 #define COCONEXT_VECTOR_CONSTEXPR constexpr
 #else
@@ -126,10 +123,18 @@ class VectorImpl {
     constexpr size_t size() const noexcept { return range_.length(); }
 
     COCONEXT_VECTOR_CONSTEXPR reference operator[](index_type idx) {
-        return access_(*this, idx);
+        auto offset = offset_of(range_, idx);
+        if (!offset.has_value()) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        return *(data_.get() + offset.value());
     }
     COCONEXT_VECTOR_CONSTEXPR const_reference operator[](index_type idx) const {
-        return access_(*this, idx);
+        auto offset = offset_of(range_, idx);
+        if (!offset.has_value()) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        return *(data_.get() + offset.value());
     }
 
     // Slices route through the outer `Vector<ValueT>` (or const variant)
@@ -213,15 +218,6 @@ class VectorImpl {
     }
 
   private:
-    template <typename Self>
-    static COCONEXT_VECTOR_CONSTEXPR auto& access_(Self& self, index_type idx) {
-        auto it = find(self.range_, idx);
-        if (it == self.range_.end()) {
-            throw std::out_of_range("Index out of bounds");
-        }
-        return *(self.data_.get() + std::distance(self.range_.begin(), it));
-    }
-
     std::unique_ptr<value_type[]> data_;
     Range range_;
 };

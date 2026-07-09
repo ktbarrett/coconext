@@ -12,7 +12,6 @@
 #include <initializer_list>
 #include <iterator>
 #include <limits>
-#include <optional>
 #include <ranges>
 #include <stdexcept>
 #include <string>
@@ -76,24 +75,25 @@ class ArrayImpl {
         std::ranges::copy(obj, data_.begin());
     }
 
-    // The range, exposed two ways: `static_range` for type-level access
-    // (`T::static_range`, used by the StaticRangedSequence concept), and a
-    // plain constexpr `range()` member matching Vector's instance accessor
-    // so generic code can write `obj.range()` uniformly across both.
     static constexpr Range static_range = R;
-    constexpr Range range() const noexcept { return static_range; }
-    constexpr size_t size() const noexcept { return static_range.length(); }
+    static constexpr Range range() noexcept { return static_range; }
+    static constexpr size_t size() noexcept { return static_range.length(); }
 
-    constexpr reference operator[](index_type idx) { return access_(*this, idx); }
+    constexpr reference operator[](index_type idx) {
+        auto offset = offset_of(R, idx);
+        if (!offset.has_value()) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        return data_[offset.value()];
+    }
     constexpr const_reference operator[](index_type idx) const {
-        return access_(*this, idx);
+        auto offset = offset_of(R, idx);
+        if (!offset.has_value()) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        return data_[offset.value()];
     }
 
-    // Slices are constructed with the outer `Array<T, R>` (or const variant)
-    // as the owner. `this` is an ArrayImpl*, but the outer Array derives from
-    // it, so static_cast safely lands on the most-derived type at every
-    // instantiation -- and routes through the Logic/Bit slice partial spec
-    // when applicable.
     constexpr ArraySlice<Array<T, R>> operator[](Range r) {
         detail::subsequence_check(R, r);
         return ArraySlice<Array<T, R>>(static_cast<Array<T, R>*>(this), r);
@@ -146,12 +146,12 @@ class ArrayImpl {
 
     template <index_type I>
     constexpr reference index() {
-        static_assert(find(R, I) != R.end(), "index is out of range");
+        static_assert(contains(R, I), "index is out of range");
         return (*this)[I];
     }
     template <index_type I>
     constexpr const_reference index() const {
-        static_assert(find(R, I) != R.end(), "index is out of range");
+        static_assert(contains(R, I), "index is out of range");
         return (*this)[I];
     }
 
@@ -165,26 +165,12 @@ class ArrayImpl {
     constexpr auto rend() const noexcept { return data_.rend(); }
 
   private:
-    template <typename Self>
-    static constexpr auto& access_(Self& self, index_type idx) {
-        if constexpr (R.direction == Direction::TO) {
-            if (idx < R.left || idx > R.right) {
-                throw std::out_of_range("Index out of bounds");
-            }
-            return *(self.begin() + (idx - R.left));
-        } else {
-            if (idx > R.left || idx < R.right) {
-                throw std::out_of_range("Index out of bounds");
-            }
-            return *(self.begin() + (R.left - idx));
-        }
-    }
-
     std::array<value_type, R.length()> data_;
 };
 
-// Local-allocated, compile-time-bounded array indexed according to its Range.
-// This is the canonical "Array" implementation. It's stuck in detail since `Array`
+// Local-allocated, compile-time-bounded, type-generic array indexed according to its Range.
+// This is the canonical "Array" implementation. Stuck here so coconext::types::Array can be
+// the variadic template.
 template <typename T, Range R>
 class Array : public ArrayImpl<T, R> {
   public:
@@ -304,9 +290,6 @@ struct std::hash<coconext::types::detail::Array<T, R>> {
     }
 };
 
-// Formatter for Array<T, R>. The Logic/Bit specializations in logic_array.hpp
-// are more-specialized partial specs and win by C++'s partial-ordering rules
-// when both headers are visible.
 template <typename T, coconext::types::Range R>
     requires coconext::types::detail::Formattable<T>
 struct std::formatter<coconext::types::detail::Array<T, R>> {

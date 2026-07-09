@@ -6,6 +6,7 @@
 #include <format>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 #include <type_traits>
 
@@ -38,16 +39,101 @@ class Logic {
 
     constexpr Logic() noexcept = default;
     constexpr Logic(value_type value) noexcept : value_(value) {}
+
+    template <Character C>
+    constexpr explicit Logic(C c) {
+        switch (c) {
+        case '0':
+            value_ = _0;
+            return;
+        case '1':
+            value_ = _1;
+            return;
+        case 'X':
+        case 'x':
+            value_ = X;
+            return;
+        case 'Z':
+        case 'z':
+            value_ = Z;
+            return;
+        case 'U':
+        case 'u':
+            value_ = U;
+            return;
+        case 'W':
+        case 'w':
+            value_ = W;
+            return;
+        case 'L':
+        case 'l':
+            value_ = L;
+            return;
+        case 'H':
+        case 'h':
+            value_ = H;
+            return;
+        case '-':
+            value_ = DC;
+            return;
+        default:
+            throw std::invalid_argument(
+                std::string("Invalid logic literal: '") + static_cast<char>(c) + "'"
+            );
+        }
+    }
+    constexpr explicit Logic(std::string_view s)
+        : Logic(
+              (s.size() == 1) ? s[0] : throw std::invalid_argument("Invalid logic value")
+          ) {}
+    constexpr explicit Logic(char const* s) : Logic(std::string_view(s)) {}
+    template <Integer I>
+    constexpr explicit Logic(I v) {
+        if (v == 0) {
+            value_ = _0;
+        } else if (v == 1) {
+            value_ = _1;
+        } else {
+            throw std::invalid_argument("Invalid logic value");
+        }
+    }
+    constexpr explicit Logic(bool v) noexcept : value_(v ? _1 : _0) {}
+
     constexpr value_type value() const noexcept { return value_; }
 
-    // Resolve under `method`. Returns nullopt iff the value is not resolvable
-    // under `method` -- ERROR accepts only 0/1; WEAK additionally accepts L/H;
-    // ZEROS, ONES, RANDOM accept anything. This unifies the old separate
-    // is_resolvable/resolve pair: `r.has_value()` answers the predicate,
-    // `r.value()` extracts the Bit.
-    std::optional<Bit> resolve(ResolveMethod method) const noexcept;
+    // Egress conversion operators.
+    template <Integer T>
+    constexpr explicit operator T() const {
+        if (value_ == _0 || value_ == L) {
+            return T(0);
+        } else if (value_ == _1 || value_ == H) {
+            return T(1);
+        } else {
+            throw std::invalid_argument(
+                "Cannot convert Logic with non-binary value to integer"
+            );
+        }
+    }
+    template <Character C>
+    constexpr explicit operator C() const noexcept {
+        constexpr char char_map[] = {'0', '1', 'X', 'Z', 'U', 'W', 'L', 'H', '-'};
+        return static_cast<C>(char_map[static_cast<size_t>(value_)]);
+    }
 
-    // Default to WEAK.
+    explicit constexpr operator bool() const {
+        switch (value_) {
+        case _0:
+        case L:
+            return false;
+        case _1:
+        case H:
+            return true;
+        default:
+            throw std::out_of_range("Cannot convert Logic with non-0/1 value to bool");
+        }
+    }
+
+    std::optional<Bit> resolve(ResolveMethod method) const noexcept;
     std::optional<Bit> resolve() const noexcept;
 
   private:
@@ -64,33 +150,68 @@ class Bit {
 
     constexpr Bit() noexcept = default;
     constexpr Bit(value_type value) noexcept : value_(value) {}
+
+    template <Character C>
+    constexpr explicit Bit(C c) {
+        if (c == '0') {
+            value_ = _0;
+        } else if (c == '1') {
+            value_ = _1;
+        } else {
+            throw std::invalid_argument(
+                std::string("Invalid bit value: '") + static_cast<char>(c) + "'"
+            );
+        }
+    }
+    constexpr explicit Bit(std::string_view s)
+        : Bit((s.size() == 1) ? s[0] : throw std::invalid_argument("Invalid bit value")) {}
+    constexpr explicit Bit(char const* s) : Bit(std::string_view(s)) {}
+    template <Integer I>
+    constexpr explicit Bit(I v) {
+        if (v == 0) {
+            value_ = _0;
+        } else if (v == 1) {
+            value_ = _1;
+        } else {
+            throw std::invalid_argument("Invalid bit value");
+        }
+    }
+    constexpr explicit Bit(bool v) noexcept : value_(v ? _1 : _0) {}
+    constexpr explicit Bit(Logic const& v) {
+        if (v.value() == Logic::_0 || v.value() == Logic::L) {
+            value_ = _0;
+        } else if (v.value() == Logic::_1 || v.value() == Logic::H) {
+            value_ = _1;
+        } else {
+            throw std::invalid_argument("Invalid bit value");
+        }
+    }
+
     constexpr value_type value() const noexcept { return value_; }
 
-    // Every Bit is resolvable under every method, so the optional is always
-    // engaged. Kept for uniformity with Logic::resolve so generic code over
-    // LogicType can treat both the same way.
     constexpr std::optional<Bit> resolve(ResolveMethod) const noexcept { return *this; }
     constexpr std::optional<Bit> resolve() const noexcept { return *this; }
+
+    template <Integer T>
+    constexpr explicit operator T() const noexcept {
+        return value_ == _0 ? T(0) : T(1);
+    }
+    template <Character C>
+    constexpr explicit operator C() const noexcept {
+        return value_ == _0 ? C('0') : C('1');
+    }
 
     // Implicit conversion from Bit to Logic mimics subtype upcasting.
     constexpr operator Logic() const noexcept {
         return value_ == _0 ? Logic::_0 : Logic::_1;
     }
 
-    // Bit is a 2-element numeric domain {0, 1}, so conversion to int and bool
-    // is total and lossless -- implicit, unlike the Logic counterparts which
-    // can fail on X/Z/U/W/-. `operator bool` is explicit (matches std::optional
-    // / std::unique_ptr) to keep `if (b)` working while preventing ambiguity
-    // with `operator int` in arithmetic contexts like `b + 2`.
-    constexpr operator int() const noexcept { return value_ == _0 ? 0 : 1; }
     explicit constexpr operator bool() const noexcept { return value_ != _0; }
 
   private:
     value_type value_ = _0;
 };
 
-// Out-of-line: needs the Bit definition above to instantiate
-// std::optional<Bit>.
 inline std::optional<Bit> Logic::resolve() const noexcept {
     return resolve(ResolveMethod::WEAK);
 }
@@ -103,122 +224,13 @@ constexpr bool operator==(Bit const& lhs, Bit const& rhs) noexcept {
     return lhs.value() == rhs.value();
 }
 
-template <Character CharType>
-constexpr Logic to_logic(CharType c) {
-    switch (c) {
-    case '0':
-        return Logic::_0;
-    case '1':
-        return Logic::_1;
-    case 'X':
-    case 'x':
-        return Logic::X;
-    case 'Z':
-    case 'z':
-        return Logic::Z;
-    case 'U':
-    case 'u':
-        return Logic::U;
-    case 'W':
-    case 'w':
-        return Logic::W;
-    case 'L':
-    case 'l':
-        return Logic::L;
-    case 'H':
-    case 'h':
-        return Logic::H;
-    case '-':
-        return Logic::DC;
-    default:
-        throw std::invalid_argument(
-            std::string("Invalid logic literal: '") + static_cast<char>(c) + "'"
-        );
-    }
-}
+// Prevent cross-type equality.
+bool operator==(Logic const&, Bit const&) = delete;
+bool operator==(Bit const&, Logic const&) = delete;
 
-template <Character CharType>
-constexpr Bit to_bit(CharType value) {
-    if (value == '0') {
-        return Bit::_0;
-    } else if (value == '1') {
-        return Bit::_1;
-    } else {
-        throw std::invalid_argument(
-            std::string("Invalid bit value: '") + static_cast<char>(value) + "'"
-        );
-    }
-}
+consteval Logic operator""_l(char c) { return Logic(c); }
 
-constexpr Logic operator""_l(char c) { return to_logic(c); }
-
-constexpr Bit operator""_b(char c) { return to_bit(c); }
-
-constexpr Logic to_logic(std::string_view value) {
-    if (value.size() != 1) {
-        throw std::invalid_argument("Invalid logic value");
-    }
-    return to_logic(value[0]);
-}
-
-constexpr Logic to_logic(char const* value) {
-    // Without this, string literals will choose the bool overload since const
-    // char* can decay to bool which is defined by the language and the
-    // string_view overload is defined in a library.
-    return to_logic(std::string_view(value));
-}
-
-template <Integer IntType>
-constexpr Logic to_logic(IntType value) {
-    if (value == 0) {
-        return Logic::_0;
-    } else if (value == 1) {
-        return Logic::_1;
-    } else {
-        throw std::invalid_argument("Invalid logic value");
-    }
-}
-
-constexpr Logic to_logic(bool value) { return value ? Logic::_1 : Logic::_0; }
-
-constexpr Logic to_logic(Bit const& value) { return value; }
-
-constexpr Bit to_bit(std::string_view value) {
-    if (value.size() != 1) {
-        throw std::invalid_argument("Invalid bit value");
-    }
-    return to_bit(value[0]);
-}
-
-constexpr Bit to_bit(char const* value) {
-    // Without this, string literals will choose the bool overload since const
-    // char* can decay to bool which is defined by the language and the
-    // string_view overload is defined in a library.
-    return to_bit(std::string_view(value));
-}
-
-template <Integer IntType>
-constexpr Bit to_bit(IntType value) {
-    if (value == 0) {
-        return Bit::_0;
-    } else if (value == 1) {
-        return Bit::_1;
-    } else {
-        throw std::invalid_argument("Invalid bit value");
-    }
-}
-
-constexpr Bit to_bit(bool value) { return value ? Bit::_1 : Bit::_0; }
-
-constexpr Bit to_bit(Logic const& value) {
-    if (value == Logic::_0) {
-        return Bit::_0;
-    } else if (value == Logic::_1) {
-        return Bit::_1;
-    } else {
-        throw std::invalid_argument("Invalid bit value");
-    }
-}
+consteval Bit operator""_b(char c) { return Bit(c); }
 
 constexpr std::string_view to_string(Logic const& value) noexcept {
     constexpr char const* const str_map[] = {"0", "1", "X", "Z", "U", "W", "L", "H", "-"};
@@ -228,29 +240,6 @@ constexpr std::string_view to_string(Logic const& value) noexcept {
 constexpr std::string_view to_string(Bit const& value) noexcept {
     return value.value() == Bit::_0 ? "0" : "1";
 }
-
-constexpr char to_char(Logic const& value) noexcept {
-    constexpr char char_map[] = {'0', '1', 'X', 'Z', 'U', 'W', 'L', 'H', '-'};
-    return char_map[static_cast<size_t>(value.value())];
-}
-
-constexpr char to_char(Bit const& value) noexcept {
-    return value.value() == Bit::_0 ? '0' : '1';
-}
-
-constexpr int to_int(Logic const& value) {
-    if (value.value() == Logic::_0 || value.value() == Logic::L) {
-        return 0;
-    } else if (value.value() == Logic::_1 || value.value() == Logic::H) {
-        return 1;
-    } else {
-        throw std::invalid_argument(
-            "Cannot convert Logic with non-binary value to integer"
-        );
-    }
-}
-
-constexpr int to_int(Bit const& value) noexcept { return value.value() == Bit::_0 ? 0 : 1; }
 
 constexpr Logic operator|(Logic const& lhs, Logic const& rhs) noexcept {
     using enum Logic::value_type;
@@ -343,10 +332,6 @@ constexpr Bit operator~(Bit const& value) noexcept {
     return value.value() == Bit::_0 ? Bit::_1 : Bit::_0;
 }
 
-// Compound bitwise assignment. Bit is implicitly convertible to Logic, so the
-// Logic overloads accept `Logic l; l &= bit;`. The reverse (`Bit b; b &= logic;`)
-// has no overload (Logic doesn't convert to Bit), which is the intended behavior:
-// non-resolvable values can't be assigned into a Bit.
 constexpr Logic& operator&=(Logic& lhs, Logic const& rhs) noexcept {
     return lhs = lhs & rhs;
 }
@@ -360,8 +345,6 @@ constexpr Bit& operator&=(Bit& lhs, Bit const& rhs) noexcept { return lhs = lhs 
 constexpr Bit& operator|=(Bit& lhs, Bit const& rhs) noexcept { return lhs = lhs | rhs; }
 constexpr Bit& operator^=(Bit& lhs, Bit const& rhs) noexcept { return lhs = lhs ^ rhs; }
 
-// Free function in-place complement. C++ has no `~=` operator, so this is the
-// in-place counterpart of `operator~`.
 constexpr Logic& inplace_not(Logic& v) noexcept { return v = ~v; }
 constexpr Bit& inplace_not(Bit& v) noexcept { return v = ~v; }
 
@@ -426,17 +409,5 @@ struct std::formatter<coconext::types::Bit> {
         return std::format_to(ctx.out(), "Bit{{{}}}", coconext::types::to_string(v));
     }
 };
-
-// Pull in the Logic/Bit-specialized array formatters so any TU that can name
-// Logic or Bit also sees the LogicType-constrained std::formatter
-// specializations for Vector<Logic/Bit>, Array<Logic/Bit, R>, and
-// their StaticArraySlice views. Without this, a TU that includes only logic.hpp +
-// (vector|array).hpp would instantiate the generic Array formatter
-// for those element types, while a TU with the umbrella header would
-// instantiate the terse LogicType form -- an ODR violation. The recursive
-// include is safe: logic_array.hpp's guarded include of logic.hpp is a no-op
-// here (we're at the bottom of logic.hpp's body), and Logic/Bit are fully
-// defined above.
-#include <coconext/types/logic_array.hpp>
 
 #endif  // COCONEXT_LOGIC_HPP

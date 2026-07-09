@@ -60,9 +60,7 @@ concept Hashable = requires(T a) {
     { std::hash<T>{}(a) } -> std::convertible_to<std::size_t>;
 };
 
-// C++20 substitute for std::formattable (C++23). Strong enough to discriminate
-// types with a usable std::formatter specialization from those that fall back
-// to the disabled primary template.
+// C++20 substitute for std::formattable (C++23).
 template <typename T>
 concept Formattable = std::semiregular<std::formatter<std::remove_cvref_t<T>, char>>;
 

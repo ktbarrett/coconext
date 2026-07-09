@@ -14,11 +14,8 @@
 #include <stdexcept>
 #include <string>
 
-// The Logic/Bit Vector ctors below delegate to VectorImpl ctors that are
-// only constexpr in C++23 (gated by COCONEXT_VECTOR_CONSTEXPR inside
-// vector.hpp, which #undefs the macro at its end). Mirror the gating here
-// so clang doesn't diagnose "constexpr ctor never produces a constant
-// expression" under C++20.
+// The Logic/Bit Vector ctors below delegate to VectorImpl ctors that are only constexpr in
+// C++23.
 #if __cplusplus >= 202302L
 #define COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR constexpr
 #else
@@ -87,10 +84,6 @@ class Vector<Logic> : public detail::VectorImpl<Logic> {
     using detail::VectorImpl<Logic>::VectorImpl;
     using detail::VectorImpl<Logic>::operator=;
 
-    // Length-only constructors default to DOWNTO (HDL bit-vector convention).
-    // The base ctors default to TO; these specializations override that for
-    // logic arrays so `Vector<Logic>({...})` and friends produce ranges that
-    // match what HDL code expects.
     explicit COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR Vector(size_t length)
         : detail::VectorImpl<Logic>(detail::logic_downto_range(length)) {}
 
@@ -104,6 +97,27 @@ class Vector<Logic> : public detail::VectorImpl<Logic> {
         : detail::VectorImpl<Logic>(
               obj, detail::logic_downto_range(std::ranges::size(obj))
           ) {}
+
+    explicit COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR Vector(std::string_view s)
+        : Vector(s, detail::logic_downto_range(s.size())) {}
+    explicit COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR Vector(char const* s)
+        : Vector(std::string_view(s)) {}
+
+    COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR Vector(std::string_view s, Range r)
+        : detail::VectorImpl<Logic>(r) {
+        if (s.size() != r.length()) {
+            throw std::invalid_argument(
+                "String of length " + std::to_string(s.size())
+                + " does not match Range length " + std::to_string(r.length())
+            );
+        }
+        auto out = this->begin();
+        for (char c : s) {
+            *out++ = Logic(c);
+        }
+    }
+    COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR Vector(char const* s, Range r)
+        : Vector(std::string_view(s), r) {}
 };
 
 template <>
@@ -124,7 +138,74 @@ class Vector<Bit> : public detail::VectorImpl<Bit> {
     explicit COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR Vector(R const& obj)
         : detail::VectorImpl<Bit>(obj, detail::logic_downto_range(std::ranges::size(obj))) {
     }
+
+    explicit COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR Vector(std::string_view s)
+        : Vector(s, detail::logic_downto_range(s.size())) {}
+    explicit COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR Vector(char const* s)
+        : Vector(std::string_view(s)) {}
+
+    COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR Vector(std::string_view s, Range r)
+        : detail::VectorImpl<Bit>(r) {
+        if (s.size() != r.length()) {
+            throw std::invalid_argument(
+                "String of length " + std::to_string(s.size())
+                + " does not match Range length " + std::to_string(r.length())
+            );
+        }
+        auto out = this->begin();
+        for (char c : s) {
+            *out++ = Bit(c);
+        }
+    }
+    COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR Vector(char const* s, Range r)
+        : Vector(std::string_view(s), r) {}
 };
+
+namespace detail {
+
+template <Range R>
+class Array<Logic, R> : public ArrayImpl<Logic, R> {
+  public:
+    using ArrayImpl<Logic, R>::ArrayImpl;
+    using ArrayImpl<Logic, R>::operator=;
+
+    explicit constexpr Array(std::string_view s) : ArrayImpl<Logic, R>() {
+        if (s.size() != R.length()) {
+            throw std::invalid_argument(
+                "String of length " + std::to_string(s.size())
+                + " does not match Array length " + std::to_string(R.length())
+            );
+        }
+        auto out = this->begin();
+        for (char c : s) {
+            *out++ = Logic(c);
+        }
+    }
+    explicit constexpr Array(char const* s) : Array(std::string_view(s)) {}
+};
+
+template <Range R>
+class Array<Bit, R> : public ArrayImpl<Bit, R> {
+  public:
+    using ArrayImpl<Bit, R>::ArrayImpl;
+    using ArrayImpl<Bit, R>::operator=;
+
+    explicit constexpr Array(std::string_view s) : ArrayImpl<Bit, R>() {
+        if (s.size() != R.length()) {
+            throw std::invalid_argument(
+                "String of length " + std::to_string(s.size())
+                + " does not match Array length " + std::to_string(R.length())
+            );
+        }
+        auto out = this->begin();
+        for (char c : s) {
+            *out++ = Bit(c);
+        }
+    }
+    explicit constexpr Array(char const* s) : Array(std::string_view(s)) {}
+};
+
+}  // namespace detail
 
 template <RangedSequence T>
     requires LogicType<std::ranges::range_value_t<T>>
@@ -198,13 +279,8 @@ auto xor_reduce(T const& self) {
 using LogicVector = Vector<Logic>;
 using BitVector = Vector<Bit>;
 
-// LogicArray<N> / BitArray<N> default to {N-1 DOWNTO 0} for the length-only
-// form (HDL bit-vector convention). Explicit-Range and (L, [D,] H) forms pass
-// through unchanged. The generic `Array<Logic, N>` sugar still produces TO --
-// users wanting HDL conventions should prefer these aliases.
 template <auto... Args>
 using LogicArray = detail::Array<Logic, detail::make_logic_static_range<Args...>()>;
-
 template <auto... Args>
 using BitArray = detail::Array<Bit, detail::make_logic_static_range<Args...>()>;
 
@@ -226,14 +302,14 @@ auto logic_binop(LHS const& lhs, RHS const& rhs, Op op) {
     ));
     // When both sides have compile-time-known ranges, fold the length check
     // into a static_assert and return a stack-allocated static Array. A
-    // runtime range on either side forces a heap-allocated Vector.
+    // runtime range on either side forces a heap-allocated Vector. The result
+    // Range is always normalized to {N-1 DOWNTO 0} (HDL convention).
     if constexpr (StaticRangedSequence<LHS> && StaticRangedSequence<RHS>) {
         constexpr auto LR = std::remove_cvref_t<LHS>::static_range;
         constexpr auto RR = std::remove_cvref_t<RHS>::static_range;
         static_assert(
             LR.length() == RR.length(), "Bitwise operation requires arrays of equal length"
         );
-        // LR's length is already bounded by Range::value_type (int32_t).
         Array<
             result_elem,
             Range{static_cast<Range::value_type>(LR.length()) - 1, Direction::DOWNTO, 0}>
@@ -254,8 +330,6 @@ auto logic_binop(LHS const& lhs, RHS const& rhs, Op op) {
                 + std::to_string(rhs.range().length())
             );
         }
-        // lhs.range() was constructed validly so its length already fits in
-        // Range::value_type.
         auto const n = static_cast<Range::value_type>(lhs.range().length());
         Vector<result_elem> result(Range{n - 1, Direction::DOWNTO, 0});
         std::transform(
@@ -271,6 +345,7 @@ auto logic_binop(LHS const& lhs, RHS const& rhs, Op op) {
 
 // Scalar broadcast: per-element op(elem, scalar). Same static/dynamic dispatch
 // shape as logic_binop, but no length-check branch (a scalar fits any array).
+// Result Range is normalized to {N-1 DOWNTO 0}, matching logic_binop.
 template <RangedSequence Arr, LogicType Scalar, typename Op>
     requires LogicType<std::ranges::range_value_t<Arr>>
 auto logic_binop_scalar(Arr const& arr, Scalar const& s, Op op) {
@@ -380,13 +455,6 @@ auto operator^(Arr const& arr, Scalar const& s) {
 }
 
 // -- Compound bitwise assignment -------------------------------------------
-//
-// Free functions taking the LHS by forwarding reference so they bind to both
-// owning arrays (`arr &= mask`) and slice rvalues (`arr[{2, 1}] &= mask`).
-// RHS may be another array (length-checked) or a scalar Bit/Logic (broadcast).
-// Element-type compatibility is enforced by the underlying `v = v <op> rhs`
-// assignment -- e.g. `BitArray &= LogicArray` fails to compile because the
-// elementwise `Bit & Logic` returns Logic and Logic isn't assignable to Bit.
 
 namespace detail {
 
@@ -477,8 +545,6 @@ constexpr decltype(auto) operator^=(LHS&& lhs, RHS const& rhs) {
     return std::forward<LHS>(lhs);
 }
 
-// In-place complement of an array. Like the compound assignment ops, taken by
-// forwarding reference so it binds to slice rvalues too.
 template <typename Arr>
     requires LogicArrayType<std::remove_cvref_t<Arr>>
 constexpr decltype(auto) inplace_not(Arr&& arr) {
@@ -540,13 +606,6 @@ constexpr void concat_copy_one(OutIt& out, T const& t) {
 
 }  // namespace detail
 
-// Variadic concat of Logic/Bit scalars and Logic/Bit arrays. First argument
-// occupies the high bits; within each operand, elements are taken in iteration
-// order (begin to end) regardless of the operand's direction. Result is a
-// static `Array<Elem, {N-1 DOWNTO 0}>` when every operand has a compile-time
-// size (scalar or StaticRangedSequence), else a runtime `Vector<Elem>`.
-// Element type is `std::common_type_t<...>` over the operand element types
-// (Logic if any operand is Logic, else Bit).
 template <typename... Args>
     requires(sizeof...(Args) >= 1) && (... && detail::ConcatOperand<Args>)
 auto concat(Args const&... args) {
@@ -580,11 +639,9 @@ template <RangedSequence T>
 auto operator~(T const& arr) {
     using elem_t = std::ranges::range_value_t<T>;
     if constexpr (StaticRangedSequence<T>) {
-        constexpr auto AR = std::remove_cvref_t<T>::static_range;
-        // AR's length is already bounded by Range::value_type (int32_t).
         Array<
             elem_t,
-            Range{static_cast<Range::value_type>(AR.length()) - 1, Direction::DOWNTO, 0}>
+            Range{std::remove_cvref_t<T>::static_range.length() - 1, Direction::DOWNTO, 0}>
             result{};
         std::transform(
             std::ranges::begin(arr),
@@ -594,8 +651,6 @@ auto operator~(T const& arr) {
         );
         return result;
     } else {
-        // arr.range() was constructed validly so its length already fits in
-        // Range::value_type.
         auto const n = static_cast<Range::value_type>(arr.range().length());
         Vector<elem_t> result(Range{n - 1, Direction::DOWNTO, 0});
         std::transform(
@@ -612,46 +667,12 @@ auto operator~(T const& arr) {
 
 namespace detail {
 
-template <typename ElemT, typename CharToElem>
-Vector<ElemT> parse_logic_string(std::string_view s, CharToElem char_to_elem) {
-    size_t count = 0;
-    for (char c : s) {
-        if (c != '_') {
-            ++count;
-        }
-    }
-    if (count > static_cast<size_t>(std::numeric_limits<Range::value_type>::max())) {
-        throw std::length_error("logic string too long for Range::value_type");
-    }
-    auto const n = static_cast<Range::value_type>(count);
-    Vector<ElemT> result(Range{n - 1, Direction::DOWNTO, 0});
-    size_t j = 0;
-    for (char c : s) {
-        if (c != '_') {
-            *(result.begin() + j++) = char_to_elem(c);
-        }
-    }
-    return result;
-}
-
-template <StringLiteral S>
-constexpr size_t count_non_underscore() {
-    size_t n = 0;
-    for (size_t i = 0; i < S.size; ++i) {
-        if (S.data[i] != '_') {
-            ++n;
-        }
-    }
-    return n;
-}
-
-// Emit '<prefix>[range]{"<bit-string>"}' for Logic/Bit-element arrays.
 template <RangedSequence ArrayT, typename OutIt>
     requires LogicType<std::ranges::range_value_t<ArrayT>>
 OutIt format_logic_array(std::string_view prefix, ArrayT const& arr, OutIt out) {
     out = std::format_to(out, "{}{}{{\"", prefix, arr.range());
     for (auto const& elem : arr) {
-        *out++ = to_char(elem);
+        *out++ = char(elem);
     }
     *out++ = '"';
     *out++ = '}';
@@ -666,23 +687,28 @@ std::string to_string(T const& arr) {
     std::string result;
     result.reserve(arr.range().length());
     for (auto const& elem : arr) {
-        result += to_char(elem);
+        result += char(elem);
     }
     return result;
 }
 
-inline Vector<Logic> to_logic_array(std::string_view s) {
-    return detail::parse_logic_string<Logic>(s, [](char c) { return to_logic(c); });
-}
-
-inline Vector<Bit> to_bit_array(std::string_view s) {
-    return detail::parse_logic_string<Bit>(s, [](char c) { return to_bit(c); });
-}
-
-// -- String-literal UDL ----------------------------------------------------
+namespace detail {
 
 template <StringLiteral S>
-constexpr auto operator""_l() {
+constexpr size_t count_non_underscore() {
+    size_t n = 0;
+    for (size_t i = 0; i < S.size; ++i) {
+        if (S.data[i] != '_') {
+            ++n;
+        }
+    }
+    return n;
+}
+
+}  // namespace detail
+
+template <StringLiteral S>
+consteval auto operator""_l() {
     constexpr auto N = detail::count_non_underscore<S>();
     static_assert(
         N <= static_cast<size_t>(std::numeric_limits<Range::value_type>::max()),
@@ -693,14 +719,14 @@ constexpr auto operator""_l() {
     auto out = result.begin();
     for (auto in = S.data; in != S.data + S.size; ++in) {
         if (*in != '_') {
-            *out++ = to_logic(*in);
+            *out++ = Logic(*in);
         }
     }
     return result;
 }
 
 template <StringLiteral S>
-constexpr auto operator""_b() {
+consteval auto operator""_b() {
     constexpr auto N = detail::count_non_underscore<S>();
     static_assert(
         N <= static_cast<size_t>(std::numeric_limits<Range::value_type>::max()),
@@ -711,7 +737,7 @@ constexpr auto operator""_b() {
     auto out = result.begin();
     for (auto in = S.data; in != S.data + S.size; ++in) {
         if (*in != '_') {
-            *out++ = to_bit(*in);
+            *out++ = Bit(*in);
         }
     }
     return result;
@@ -719,13 +745,7 @@ constexpr auto operator""_b() {
 
 }  // namespace coconext::types
 
-// Per-type formatters for Logic/Bit-element arrays. These are more-specialized
-// partial specializations of std::formatter than the corresponding non-logic
-// formatters in array.hpp / vector.hpp / array_base.hpp, so they win by C++20
-// partial-ordering rules when both headers are visible.
-//
-// Output format: `<Prefix>[range]{"<bit-string>"}`. The prefix encodes the
-// type kind (Array / Vector / ArraySlice) and the element type (Logic / Bit).
+// -- std::formatter specializations -------------------------------------------
 
 #define COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER(PREFIX, ...)                                 \
     struct std::formatter<__VA_ARGS__> {                                                   \
@@ -783,7 +803,7 @@ template <typename ArrayT, coconext::types::Range R>
                  std::remove_cv_t<std::ranges::range_value_t<ArrayT>>,
                  coconext::types::Logic>
 COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER(
-    "LogicArraySlice", coconext::types::StaticArraySlice<ArrayT, R>
+    "LogicStaticArraySlice", coconext::types::StaticArraySlice<ArrayT, R>
 );
 
 template <typename ArrayT, coconext::types::Range R>
@@ -792,7 +812,7 @@ template <typename ArrayT, coconext::types::Range R>
                  std::remove_cv_t<std::ranges::range_value_t<ArrayT>>,
                  coconext::types::Bit>
 COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER(
-    "BitArraySlice", coconext::types::StaticArraySlice<ArrayT, R>
+    "BitStaticArraySlice", coconext::types::StaticArraySlice<ArrayT, R>
 );
 
 #undef COCONEXT_DEFINE_LOGIC_ARRAY_FORMATTER

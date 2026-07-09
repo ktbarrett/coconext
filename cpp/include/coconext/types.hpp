@@ -3,7 +3,6 @@
 
 // NOLINTBEGIN(unused-includes)
 #include "./types/array.hpp"
-#include "./types/array_base.hpp"
 #include "./types/concepts.hpp"
 #include "./types/direction.hpp"
 #include "./types/int.hpp"

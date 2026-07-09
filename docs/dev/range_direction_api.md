@@ -12,7 +12,7 @@ The cross-cutting formatting, hashing, and construction-vs-conversion convention
 cpp/include/coconext/types/
   direction.hpp       --  Direction enum, to_string,
                           std::formatter specialization
-  range.hpp           --  Range, its iterator, reverse(), find(),
+  range.hpp           --  Range, its iterator, reverse(),
                           std::hash / std::formatter specializations
   count_iterator.hpp  --  CountIterator<value_type> that Range uses [internal]
   hash.hpp            --  hash_combine helper used by std::hash<Range> [internal]
@@ -220,16 +220,6 @@ constexpr Range reverse(Range const& r) noexcept;
 
 Returns `Range{r.right, opposite_direction, r.left}`: the values are the same set in the reverse order.
 
-### `find`
-
-`Range` is a `std::ranges::range`, so `std::find` works. An O(1) coconext-native overload is provided as a free function:
-
-```c++
-constexpr Range::iterator find(Range const& r, Range::value_type value);
-```
-
-Returns an iterator to the position of `value` in `r`, or `r.end()` if the value is outside the range.
-
 ### Ordering / equality
 
 `Range` only supports `==` and `!=`, and equality is strict on all three fields (`left`, `right`, `direction`). `Range{5, 5}` (TO) and `Range{5, DOWNTO, 5}` compare `!=` even though they iterate to the same one-element sequence  --  the direction is part of the identity so that hashing and equality agree (see `conventions_api.md`).
@@ -268,4 +258,4 @@ Every `Direction` and `Range` operation is marked `constexpr`, and every operati
 
 `Range::length()` itself is `noexcept`; it produces unspecified results on the two full-domain invalid values (see [Invalid values](#invalid-values)).
 
-Everything else  --  copy, comparison, iteration, `is_subsequence_of`, `reverse`, `find`, `to_string(Direction)`, `std::hash`  --  is `constexpr noexcept`. `Range` is therefore usable as an NTTP in `constexpr` contexts (subject to the standard's NTTP structural-type rules), which is how `Array<T, Range{...}>` and the compile-time-bounded family carry their shape.
+Everything else  --  copy, comparison, iteration, `is_subsequence_of`, `reverse`, `to_string(Direction)`, `std::hash`  --  is `constexpr noexcept`. `Range` is therefore usable as an NTTP in `constexpr` contexts (subject to the standard's NTTP structural-type rules), which is how `Array<T, Range{...}>` and the compile-time-bounded family carry their shape.

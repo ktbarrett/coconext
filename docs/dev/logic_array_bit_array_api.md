@@ -189,6 +189,17 @@ The result type is determined by two rules from [`ranged_sequence_api.md`](range
 
 Both operands must be the same length. When both are `StaticRangedSequence`s the mismatch is a `static_assert`; otherwise it is a runtime `std::invalid_argument`.
 
+The result's `Range` is always normalized to `[N-1 downto 0]` regardless of the operands' ranges  --  the operands may have different (possibly incompatible) ranges of the same length, so there is no non-arbitrary way to inherit from one side, and the HDL convention for a freshly-computed bit-array is `downto 0`.
+
+### Scalar broadcast
+
+Either operand may be a `LogicType` scalar (`Logic` or `Bit`) instead of a `RangedSequence`. The scalar is broadcast against every element of the sequence, and the result follows the container-kind and element-type rules with the sequence operand as the container source:
+
+```c++
+auto a = "01XZ"_l & '1'_l;   // LogicArray[3 downto 0]{"01XZ"}  (AND with '1' is identity on Logic)
+auto b = '0'_b | "1010"_b;   // BitArray[3 downto 0]{"1010"}
+```
+
 ```c++
 auto a = "0101"_l;
 auto b = "0110"_l;
@@ -212,9 +223,9 @@ Canonical result-type examples:
 
 ## `RangedSequence<LogicType>` compound assignment
 
-`&=`, `|=`, `^=` are defined on any mutating `RangedSequence<LogicType>` and take any `RangedSequence<LogicType>` as the RHS. Assignment is elementwise; the RHS must have the same length as the LHS.
+`&=`, `|=`, `^=` are defined on any mutating `RangedSequence<LogicType>` and take either a `RangedSequence<LogicType>` or a `LogicType` scalar as the RHS. Assignment is elementwise; when the RHS is a `RangedSequence` it must have the same length as the LHS. When the RHS is a scalar it is broadcast against every element.
 
-- The `Logic` / `Bit` downcast rule from the scalar layer lifts: an LHS of `Bit` element type only accepts an RHS of `Bit` element type; `logic_bit_arr &= bit_arr` is fine (elementwise `Bit -> Logic` upcast), but `bit_arr &= logic_arr` is ill-formed at compile time.
+- The `Logic` / `Bit` downcast rule from the scalar layer lifts: an LHS of `Bit` element type only accepts an RHS whose (scalar or elementwise) type is `Bit`; `logic_bit_arr &= bit_arr` is fine (elementwise `Bit -> Logic` upcast), but `bit_arr &= logic_arr` and `bit_arr &= 'X'_l` are ill-formed at compile time.
 - Length match: when both sides are `StaticRangedSequence`, mismatch is a `static_assert`; otherwise it is a runtime `std::invalid_argument`.
 - These work on mutating slices (`ArraySlice<...>` / `StaticArraySlice<...>` over a non-`const` parent) and write through to the parent's storage.
 
@@ -230,6 +241,9 @@ b |= "0X10"_l;                     // ill-formed: Bit LHS cannot take Logic RHS
 
 Vector<Bit> v {'0'_b, '1'_b, '0'_b, '1'_b};
 v[{1, 2}] &= "10"_b;               // writes through slice into v: v is now "0001"
+
+LogicVector d {"01XZ"_l};
+d |= '1'_l;                        // broadcast: d is now "1111" ('1' dominates in Logic OR)
 ```
 
 ## `RangedSequence<LogicType>` unary `~`
@@ -254,6 +268,28 @@ inplace_not(a);                       // a is now "1001"
 
 LogicVector v {"01XZ"_l};             // range 3 downto 0
 inplace_not(v[{2, 1}]);               // ~v[2]='1'->'0', ~v[1]='X'->'X'; v is now "00XZ"
+```
+
+## `concat`
+
+Free function that concatenates a variadic list of `LogicType` scalars and `RangedSequence<LogicType>` operands into a single owning container:
+
+```c++
+template <typename... Args>
+    requires (sizeof...(Args) >= 1) && (... && (LogicType<Args> || RangedSequence<Args, Logic> || RangedSequence<Args, Bit>))
+auto concat(Args const&... args);
+```
+
+- The first argument occupies the high bits (MSB); the last argument occupies the low bits (LSB). Within each `RangedSequence` operand, elements are taken in iteration order (`begin()` to `end()`) regardless of the operand's direction.
+- Element type is `Logic` if any operand's element is `Logic`, else `Bit`.
+- Result is a `LogicArray<N>` / `BitArray<N>` when every operand has a compile-time size (a scalar, or a `StaticRangedSequence`). Otherwise it is a `LogicVector` / `BitVector`. Result range is `N-1 downto 0`.
+
+```c++
+auto a = concat('1'_l, "01X"_b);       // LogicArray[3 downto 0]{"101X"}
+auto b = concat("1010"_b, "0011"_b);   // BitArray[7 downto 0]{"10100011"}
+
+LogicVector v {"01"_l};
+auto c = concat('1'_l, v);             // LogicVector[2 downto 0]{"101"} (runtime because v is)
 ```
 
 ## Reduction and resolution free functions

@@ -42,21 +42,14 @@ void register_logic(nb::module_& m) {
 
     nb::class_<Logic>(m, "Logic")
         .def(nb::init<Logic const&>())
+        .def("__init__", [](Logic* self, Bit const& value) { new (self) Logic(value); })
         .def(
-            "__init__",
-            [](Logic* self, Bit const& value) { new (self) Logic(to_logic(value)); }
+            "__init__", [](Logic* self, std::string_view value) { new (self) Logic(value); }
         )
-        .def(
-            "__init__",
-            [](Logic* self, std::string_view value) { new (self) Logic(to_logic(value)); }
-        )
-        .def(
-            "__init__",
-            [](Logic* self, long long value) { new (self) Logic(to_logic(value)); }
-        )
+        .def("__init__", [](Logic* self, long long value) { new (self) Logic(value); })
         .def("__str__", [](Logic const& self) { return to_string(self); })
-        .def("__index__", [](Logic const& self) { return to_int(self); })
-        .def("__bool__", [](Logic const& self) { return to_int(self) != 0; })
+        .def("__index__", [](Logic const& self) { return int(self); })
+        .def("__bool__", [](Logic const& self) { return int(self) != 0; })
         .def(
             "__repr__",
             [](Logic const& self) {
@@ -74,14 +67,14 @@ void register_logic(nb::module_& m) {
         )
         .def(
             "__eq__",
-            [](Logic const& lhs, Bit const& rhs) { return lhs == rhs; },
+            [](Logic const& lhs, Bit const& rhs) { return lhs == Logic(rhs); },
             nb::is_operator()
         )
         .def(
             "__eq__",
             [](Logic const& self, long long other) {
                 try {
-                    return self == to_logic(other);
+                    return self == Logic(other);
                 } catch (std::invalid_argument const&) {
                     return false;
                 }
@@ -92,7 +85,7 @@ void register_logic(nb::module_& m) {
             "__eq__",
             [](Logic const& self, std::string_view other) {
                 try {
-                    return self == to_logic(other);
+                    return self == Logic(other);
                 } catch (std::invalid_argument const&) {
                     return false;
                 }
@@ -170,17 +163,12 @@ void register_logic(nb::module_& m) {
 
     nb::class_<Bit>(m, "Bit")
         .def(nb::init<Bit const&>())
-        .def(
-            "__init__", [](Bit* self, Logic const& value) { new (self) Bit(to_bit(value)); }
-        )
-        .def(
-            "__init__",
-            [](Bit* self, std::string_view value) { new (self) Bit(to_bit(value)); }
-        )
-        .def("__init__", [](Bit* self, long long value) { new (self) Bit(to_bit(value)); })
+        .def("__init__", [](Bit* self, Logic const& value) { new (self) Bit(value); })
+        .def("__init__", [](Bit* self, std::string_view value) { new (self) Bit(value); })
+        .def("__init__", [](Bit* self, long long value) { new (self) Bit(value); })
         .def("__str__", [](Bit const& self) { return to_string(self); })
-        .def("__index__", [](Bit const& self) { return to_int(self); })
-        .def("__bool__", [](Bit const& self) { return to_int(self) != 0; })
+        .def("__index__", [](Bit const& self) { return int(self); })
+        .def("__bool__", [](Bit const& self) { return int(self) != 0; })
         .def(
             "__repr__",
             [](Bit const& self) {
@@ -198,14 +186,14 @@ void register_logic(nb::module_& m) {
         )
         .def(
             "__eq__",
-            [](Bit const& lhs, Logic const& rhs) { return lhs == rhs; },
+            [](Bit const& lhs, Logic const& rhs) { return Logic(lhs) == rhs; },
             nb::is_operator()
         )
         .def(
             "__eq__",
             [](Bit const& self, long long other) {
                 try {
-                    return self == to_bit(other);
+                    return self == Bit(other);
                 } catch (std::invalid_argument const&) {
                     return false;
                 }
@@ -216,7 +204,7 @@ void register_logic(nb::module_& m) {
             "__eq__",
             [](Bit const& self, std::string_view other) {
                 try {
-                    return self == to_bit(other);
+                    return self == Bit(other);
                 } catch (std::invalid_argument const&) {
                     return false;
                 }

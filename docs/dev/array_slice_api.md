@@ -87,7 +87,7 @@ Random-access iteration over the slice's range. Free-function `index_of(slice, v
 
 `ArraySlice` supports `std::formatter`, per the conventions in `conventions_api.md`. `std::formatter<ArraySlice>` produces `ArraySlice[range]{elem, elem, ...}`, e.g. `ArraySlice[1 to 3]{20, 30, 40}`. The parent container type is not included in the header; a slice prints as its own view over its own range. The specialization is available only when the element type is `Formattable`. Takes no format spec; any spec character throws `std::format_error` at parse time.
 
-Slices whose element type is `Logic` or `Bit` get a specialized output that mirrors the owning bit-array containers: `ArraySlice<Logic>[3 downto 2]{"01"}`, `ArraySlice<Bit>[1 to 2]{"10"}`. The element type is called out in the header so the printed form matches how the reader thinks of the slice, and the value is the same bit-string form used by `LogicArray` / `BitArray` (round-trippable via the string-view ctor after collecting into an owning container).
+Slices whose element type is `Logic` or `Bit` get a specialized output that mirrors the owning bit-array containers, with the element type folded into the type name: `LogicArraySlice[3 downto 2]{"01"}`, `BitArraySlice[1 to 2]{"10"}`. Value form matches `LogicArray` / `BitArray` (bit-string, round-trippable via the `std::string_view` ctor after collecting into an owning container).
 
 ## `StaticArraySlice`
 
@@ -128,7 +128,7 @@ Identical to `ArraySlice`. When the parent is also a `StaticRangedSequence`, `St
 
 `std::formatter<StaticArraySlice>` produces `StaticArraySlice[range]{elem, elem, ...}`, e.g. `StaticArraySlice[6 to 7]{7, 8}`. Same rules as `ArraySlice`: parent type omitted, requires a `Formattable` element type, no format spec.
 
-Same `Logic` / `Bit` specialization applies: `StaticArraySlice<Logic>[3 downto 2]{"01"}`, `StaticArraySlice<Bit>[1 to 2]{"10"}`.
+Same `Logic` / `Bit` specialization applies, with the element type folded into the type name: `LogicStaticArraySlice[3 downto 2]{"01"}`, `BitStaticArraySlice[1 to 2]{"10"}`.
 
 ## `constexpr` and `noexcept` contract
 

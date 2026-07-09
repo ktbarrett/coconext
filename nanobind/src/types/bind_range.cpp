@@ -9,7 +9,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <format>
-#include <iterator>
 #include <stdexcept>
 #include <string_view>
 
@@ -175,11 +174,11 @@ void register_range(nb::module_& m) {
         .def(
             "index",
             [](Range const& self, int32_t value) {
-                auto it = find(self, value);
-                if (it == self.end()) {
+                auto offset = detail::offset_of(self, value);
+                if (!offset.has_value()) {
                     throw nb::value_error("Value not found in range");
                 }
-                return std::distance(self.begin(), it);
+                return offset.value();
             },
             nb::arg().noconvert()
         )
@@ -196,13 +195,11 @@ void register_range(nb::module_& m) {
 
                 auto sliced = slice_range(self, start, len);
 
-                auto it = find(sliced, value);
-
-                if (it == sliced.end()) {
+                auto offset = detail::offset_of(sliced, value);
+                if (!offset.has_value()) {
                     throw nb::value_error("Value not found in range");
                 }
-
-                return start + std::distance(sliced.begin(), it);
+                return start + offset.value();
             },
             nb::arg().noconvert(),
             nb::arg().noconvert()
@@ -223,13 +220,11 @@ void register_range(nb::module_& m) {
 
                 auto sliced = slice_range(self, start, stop);
 
-                auto it = find(sliced, value);
-
-                if (it == sliced.end()) {
+                auto offset = detail::offset_of(sliced, value);
+                if (!offset.has_value()) {
                     throw nb::value_error("Value not found in range");
                 }
-
-                return start + std::distance(sliced.begin(), it);
+                return start + offset.value();
             },
             nb::arg().noconvert(),
             nb::arg().noconvert(),
