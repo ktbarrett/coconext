@@ -92,7 +92,7 @@ class Logic {
     constexpr explicit Logic(char const* s);                           // string_view overload
     template <Integer I> constexpr explicit Logic(I v);                // 0 -> _0, 1 -> _1; throws otherwise
     constexpr explicit Logic(bool v) noexcept;                         // total
-    constexpr Logic(Bit const& v) noexcept;                            // implicit upcast (see below)
+    // Bit -> Logic upcast is implemented on Bit via operator Logic() (see below).
     // ... value_type ctor, default ctor, etc.
 };
 

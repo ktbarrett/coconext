@@ -53,28 +53,10 @@ struct Range {
     value_type right = -1;
     Direction direction = Direction::TO;
 
-    // length() is the only safe place to enforce the size_t-overflow check:
-    // the fields are public, so a Range can be mutated into the full-domain
-    // span after construction.
-    //
-    // Throws std::length_error if the range spans the full value_type domain
-    // (mathematical length 2^width(value_type), doesn't fit in size_t).
-    //
-    // The arithmetic is in size_t. See the static_assert above for why direct
-    // signed-to-size_t casts give us the correct unsigned difference. Without
-    // the full-span check below, the +1 on a SIZE_MAX-1 difference would wrap
-    // silently to 0.
-    constexpr size_t length() const {
-        constexpr value_type lo = std::numeric_limits<value_type>::min();
-        constexpr value_type hi = std::numeric_limits<value_type>::max();
-        bool const full_to = direction == Direction::TO && left == lo && right == hi;
-        bool const full_downto =
-            direction == Direction::DOWNTO && left == hi && right == lo;
-        if (full_to || full_downto) {
-            throw std::length_error(
-                "Range spans the full value_type domain; length overflows size_t"
-            );
-        }
+    // Two ranges [INT_MIN to INT_MAX] and [INT_MAX downto INT_MIN] are both invalid, when
+    // getting the length it will read 0. There is no protection for this case for
+    // performance reasons.
+    constexpr size_t length() const noexcept {
         if (direction == Direction::TO) {
             if (right < left) {
                 return 0;
@@ -86,6 +68,8 @@ struct Range {
         }
         return static_cast<size_t>(left) - static_cast<size_t>(right) + 1;
     }
+
+    constexpr size_t size() const noexcept { return length(); }
 
     constexpr iterator begin() const noexcept { return iterator(left, direction); }
 
@@ -167,20 +151,32 @@ constexpr Range reverse(Range const& r) noexcept {
     };
 }
 
-// more optimal implementation of std::ranges::find for Range
-constexpr Range::iterator find(Range const& range, Range::value_type value) {
+namespace detail {
+
+constexpr std::optional<Range::value_type> offset_of(
+    Range const& range, Range::value_type value
+) {
     if (range.direction == Direction::TO) {
         if (value < range.left || value > range.right) {
-            return range.end();
+            return std::nullopt;
         }
-        return range.begin() + (value - range.left);
+        return value - range.left;
     } else {
         if (value > range.left || value < range.right) {
-            return range.end();
+            return std::nullopt;
         }
-        return range.begin() + (range.left - value);
+        return range.left - value;
     }
 }
+
+constexpr bool contains(Range const& range, Range::value_type value) {
+    if (range.direction == Direction::TO) {
+        return value >= range.left && value <= range.right;
+    }
+    return value <= range.left && value >= range.right;
+}
+
+}  // namespace detail
 
 static_assert(std::ranges::random_access_range<Range>);
 

@@ -25,9 +25,6 @@ TEST(TestRange, ToRange) {
     EXPECT_EQ(r[0], 1);
     EXPECT_EQ(r[7], 8);
     EXPECT_THROW((void)r[8], std::out_of_range);
-
-    EXPECT_NE(find(r, 8), r.end());
-    EXPECT_EQ(find(r, 10), r.end());
 }
 
 TEST(TestRange, DowntoRange) {
@@ -46,9 +43,6 @@ TEST(TestRange, DowntoRange) {
     EXPECT_EQ(r[0], 4);
     EXPECT_EQ(r[7], -3);
     EXPECT_THROW((void)r[8], std::out_of_range);
-
-    EXPECT_NE(find(r, 0), r.end());
-    EXPECT_EQ(find(r, 10), r.end());
 }
 
 TEST(TestRange, NullRange) {
@@ -65,14 +59,6 @@ TEST(TestRange, NullRange) {
     EXPECT_TRUE(reverse.empty());
 
     EXPECT_THROW((void)r[0], std::out_of_range);
-    EXPECT_EQ(find(r, 2), r.end());
-}
-
-TEST(TestRange, BadArgumentsEquivalent) {
-    EXPECT_THROW((void)to_direction("BAD DIRECTION"), std::invalid_argument);
-    EXPECT_THROW((void)to_direction("nope"), std::invalid_argument);
-    EXPECT_THROW((void)to_direction("xx"), std::invalid_argument);
-    EXPECT_THROW((void)to_direction("nottto"), std::invalid_argument);
 }
 
 TEST(TestRange, Equality) {
@@ -105,11 +91,6 @@ TEST(TestRange, Formatter) {
 TEST(TestDirection, Formatter) {
     EXPECT_EQ(std::format("{}", Direction::TO), "Direction{to}");
     EXPECT_EQ(std::format("{}", Direction::DOWNTO), "Direction{downto}");
-}
-
-TEST(TestRange, UppercaseDirection) {
-    Range const r(1, to_direction("TO"), 8);
-    EXPECT_EQ(r.direction, Direction::TO);
 }
 
 TEST(TestRange, Copy) {
@@ -199,45 +180,11 @@ TEST(TestRange, IsSubsequenceConstexpr) {
     );
 }
 
-// -- Length overflow protection --------------------------------------------
+// -- Near-max length -------------------------------------------------------
 //
-// A Range spanning the full int64_t domain (INT64_MIN..INT64_MAX in TO, or
-// reversed in DOWNTO) would mathematically have length 2^64 -- doesn't fit
-// in size_t. length() is the only place this check can live: Range's fields
-// are public and a Range can be mutated into the full-span state after
-// construction, so a construction-time check would be bypassable. Throws
-// std::length_error when invoked on such a Range.
-
-TEST(TestRange, LengthFullSpanTOThrows) {
-    constexpr auto lo = std::numeric_limits<Range::value_type>::min();
-    constexpr auto hi = std::numeric_limits<Range::value_type>::max();
-    Range r1{lo, Direction::TO, hi};
-    EXPECT_THROW((void)r1.length(), std::length_error);
-    // Two-arg auto-direction picks TO since lo < hi -- same behavior.
-    Range r2{lo, hi};
-    EXPECT_THROW((void)r2.length(), std::length_error);
-}
-
-TEST(TestRange, LengthFullSpanDOWNTOThrows) {
-    constexpr auto lo = std::numeric_limits<Range::value_type>::min();
-    constexpr auto hi = std::numeric_limits<Range::value_type>::max();
-    Range r1{hi, Direction::DOWNTO, lo};
-    EXPECT_THROW((void)r1.length(), std::length_error);
-    // Two-arg auto-direction picks DOWNTO since hi > lo -- same behavior.
-    Range r2{hi, lo};
-    EXPECT_THROW((void)r2.length(), std::length_error);
-}
-
-TEST(TestRange, LengthAfterPostConstructionMutationThrows) {
-    // Confirms that the check fires when fields are mutated into the full-
-    // span state after construction (the case construction-time checks
-    // can't catch).
-    Range r{0, Direction::TO, 5};
-    EXPECT_EQ(r.length(), 6U);  // sanity
-    r.left = std::numeric_limits<Range::value_type>::min();
-    r.right = std::numeric_limits<Range::value_type>::max();
-    EXPECT_THROW((void)r.length(), std::length_error);
-}
+// One step short of the full int64_t domain: the largest representable length
+// (SIZE_MAX on a 64-bit platform). Full-domain spans are Undefined Behavior
+// per the spec (no runtime check anywhere), so we don't test them.
 
 TEST(TestRange, NearMaxLengthIsValidTO) {
     // One step short of the full span: max representable length (SIZE_MAX

@@ -34,10 +34,7 @@ struct require_constant {};
 // optional `Elem` template parameter constrains the element type: `Elem = void`
 // (the default) matches any element type; a concrete type requires the element
 // to match exactly. So `RangedSequence T` matches any ranged sequence,
-// `RangedSequence<Logic> T` matches only ranged sequences of Logic. Concepts
-// can't be passed as template arguments in C++20, so element-concept
-// constraints (e.g. "any LogicType element") still need a composed concept or
-// a separate requires clause.
+// `RangedSequence<Logic> T` matches only ranged sequences of Logic.
 template <typename T, typename Elem = void>
 concept RangedSequence = std::ranges::random_access_range<T> && requires(T const& t) {
     { t.range() } -> std::convertible_to<Range>;
@@ -61,19 +58,8 @@ constexpr void subsequence_check(Range parent, Range child) {
     }
 }
 
-// Convert a 0-based offset into the data buffer (iteration order) to the
-// corresponding HDL coordinate for the given range's direction.
-constexpr Range::value_type offset_to_hdl_coord(
-    Range r, size_t offset_from_begin
-) noexcept {
-    auto const off = static_cast<Range::value_type>(offset_from_begin);
-    return r.direction == Direction::TO ? r.left + off : r.left - off;
-}
-
 }  // namespace detail
 
-// First HDL coordinate (from the left in iteration order) whose element equals
-// `v`, or nullopt if not found.
 template <RangedSequence S>
 constexpr std::optional<Range::value_type> index_of(
     S const& s, std::ranges::range_value_t<S> const& v
@@ -82,13 +68,9 @@ constexpr std::optional<Range::value_type> index_of(
     if (it == s.end()) {
         return std::nullopt;
     }
-    return detail::offset_to_hdl_coord(
-        s.range(), static_cast<size_t>(std::ranges::distance(s.begin(), it))
-    );
+    return s.range()[static_cast<size_t>(std::ranges::distance(s.begin(), it))];
 }
 
-// First HDL coordinate from the right (i.e. the last matching element in
-// iteration order), or nullopt if not found.
 template <RangedSequence S>
 constexpr std::optional<Range::value_type> rindex_of(
     S const& s, std::ranges::range_value_t<S> const& v
@@ -97,8 +79,9 @@ constexpr std::optional<Range::value_type> rindex_of(
     if (rit == s.rend()) {
         return std::nullopt;
     }
-    auto const off_from_end = static_cast<size_t>(std::distance(s.rbegin(), rit));
-    return detail::offset_to_hdl_coord(s.range(), s.range().length() - 1 - off_from_end);
+    return s.range()
+        [s.range().length() - 1
+         - static_cast<size_t>(std::ranges::distance(s.rbegin(), rit))];
 }
 
 template <typename ArrayT>
@@ -125,24 +108,18 @@ class ArraySliceImpl {
     constexpr ArraySliceImpl(ArraySliceImpl const&) = default;
     constexpr ArraySliceImpl(ArraySliceImpl&&) = default;
     constexpr ArraySliceImpl(ArrayT* arr, Range range) noexcept
-        : arr_(arr), range_(range), begin_(compute_begin(arr, range)) {}
+        : arr_(arr), range_(range) {}
 
     constexpr Range const& range() const noexcept { return range_; }
     constexpr size_t size() const noexcept { return range_.length(); }
 
     // Element access bounds-checks against this slice's range_, not the owner's range.
     constexpr reference operator[](index_type idx) const {
-        if (range_.direction == Direction::TO) {
-            if (idx < range_.left || idx > range_.right) {
-                throw std::out_of_range("Index out of bounds");
-            }
-            return *(begin_ + (idx - range_.left));
-        } else {
-            if (idx > range_.left || idx < range_.right) {
-                throw std::out_of_range("Index out of bounds");
-            }
-            return *(begin_ + (range_.left - idx));
+        auto const offset = offset_of(range_, idx);
+        if (!offset.has_value()) {
+            throw std::out_of_range("Index out of bounds");
         }
+        return *(begin() + offset.value());
     }
 
     // Slicing a slice flattens to a new ArraySlice of the same underlying array.
@@ -222,32 +199,24 @@ class ArraySliceImpl {
         return *this;
     }
 
-    constexpr iterator begin() const noexcept { return begin_; }
-    constexpr iterator end() const noexcept { return begin_ + range_.length(); }
+    constexpr iterator begin() const noexcept {
+        if (range_.length() == 0) {
+            return arr_->begin();
+        }
+        return arr_->begin() + offset_of(arr_->range(), range_.left).value();
+    }
+    constexpr iterator end() const noexcept {
+        if (range_.length() == 0) {
+            return arr_->begin();
+        }
+        return arr_->begin() + offset_of(arr_->range(), range_.right).value() + 1;
+    }
     constexpr auto rbegin() const noexcept { return std::reverse_iterator(end()); }
     constexpr auto rend() const noexcept { return std::reverse_iterator(begin()); }
 
   private:
-    // Cache the begin pointer. This is just one stack pointer for a temporary object, and
-    // it saves recomputing the offset on every element access.
-    static constexpr iterator compute_begin(ArrayT* arr, Range range) noexcept {
-        // Null slices may carry bounds outside the parent's range (the
-        // validity rule allows that). Pin them to the parent's begin so
-        // begin()/end() form a well-formed empty iterator pair.
-        if (range.length() == 0) {
-            return arr->begin();
-        }
-        auto start = find(arr->range(), range.left);
-        assert(
-            start != arr->range().end()
-            && "slice range not a sub-range of the owner's range"
-        );
-        return arr->begin() + std::distance(arr->range().begin(), start);
-    }
-
     ArrayT* arr_;
     Range range_;
-    iterator begin_;
 };
 
 template <typename ArrayT, Range R>
@@ -264,26 +233,16 @@ class StaticArraySliceImpl {
     constexpr StaticArraySliceImpl(StaticArraySliceImpl&&) = default;
     constexpr explicit StaticArraySliceImpl(ArrayT* arr) noexcept : arr_(arr) {}
 
-    // The range, exposed two ways: `static_range` for type-level access
-    // (`T::static_range`, used by the StaticRangedSequence concept), and a
-    // plain constexpr `range()` member matching ArraySlice's instance
-    // accessor so generic code can write `obj.range()` uniformly across both.
     static constexpr Range static_range = R;
-    constexpr Range range() const noexcept { return static_range; }
-    constexpr size_t size() const noexcept { return static_range.length(); }
+    static constexpr Range range() noexcept { return static_range; }
+    static constexpr size_t size() noexcept { return static_range.length(); }
 
     constexpr reference operator[](index_type idx) const {
-        if constexpr (R.direction == Direction::TO) {
-            if (idx < R.left || idx > R.right) {
-                throw std::out_of_range("Index out of bounds");
-            }
-            return *(begin() + (idx - R.left));
-        } else {
-            if (idx > R.left || idx < R.right) {
-                throw std::out_of_range("Index out of bounds");
-            }
-            return *(begin() + (R.left - idx));
+        auto const offset = offset_of(R, idx);
+        if (!offset.has_value()) {
+            throw std::out_of_range("Index out of bounds");
         }
+        return *(begin() + offset.value());
     }
 
     template <Range R2>
@@ -297,7 +256,7 @@ class StaticArraySliceImpl {
 
     template <index_type I>
     constexpr reference index() const {
-        static_assert(find(R, I) != R.end(), "index is out of range");
+        static_assert(contains(R, I), "index is out of range");
         return (*this)[I];
     }
 
@@ -309,8 +268,6 @@ class StaticArraySliceImpl {
     constexpr ArraySlice<ArrayT> operator[](
         Range::value_type left, Range::value_type right
     ) const {
-        // StaticArraySliceImpl has a compile-time range R, not a runtime range_ member,
-        // so the direction comes from the template parameter.
         return (*this)[Range{left, R.direction, right}];
     }
     constexpr ArraySlice<ArrayT> operator[](
@@ -364,32 +321,27 @@ class StaticArraySliceImpl {
     }
 
     constexpr iterator begin() const noexcept {
-        // We don't cache the begin pointer here since we can conditionally leverage the
-        // compile-time range to fold the offset to a constant.
-
-        // Null slices may carry bounds outside the parent's range (the
-        // validity rule allows that). Pin them to the parent's begin so
-        // begin()/end() form a well-formed empty iterator pair.
         if constexpr (R.length() == 0) {
             return arr_->begin();
         } else if constexpr (StaticRangedSequence<ArrayT>) {
-            // Parent's range is a compile-time constant; fold the offset to
-            // a constant instead of recomputing it via find()/distance().
             constexpr auto parent = std::remove_cvref_t<ArrayT>::static_range;
-            constexpr auto offset = parent.direction == Direction::TO
-                                      ? R.left - parent.left
-                                      : parent.left - R.left;
+            constexpr auto offset = offset_of(parent, R.left).value();
             return arr_->begin() + offset;
         } else {
-            auto start = find(arr_->range(), R.left);
-            assert(
-                start != arr_->range().end()
-                && "slice range not a sub-range of the owner's range"
-            );
-            return arr_->begin() + std::distance(arr_->range().begin(), start);
+            return arr_->begin() + offset_of(arr_->range(), R.left).value();
         }
     }
-    constexpr iterator end() const noexcept { return begin() + R.length(); }
+    constexpr iterator end() const noexcept {
+        if constexpr (R.length() == 0) {
+            return arr_->begin();
+        } else if constexpr (StaticRangedSequence<ArrayT>) {
+            constexpr auto parent = std::remove_cvref_t<ArrayT>::static_range;
+            constexpr auto offset = offset_of(parent, R.right).value();
+            return arr_->begin() + offset + 1;
+        } else {
+            return arr_->begin() + offset_of(arr_->range(), R.right).value() + 1;
+        }
+    }
     constexpr auto rbegin() const noexcept { return std::reverse_iterator(end()); }
     constexpr auto rend() const noexcept { return std::reverse_iterator(begin()); }
 
@@ -427,10 +379,6 @@ class StaticArraySlice : public detail::StaticArraySliceImpl<ArrayT, R> {
 
 namespace detail {
 
-// Emit "<prefix>[range]{e0, e1, ...}". Used by the per-type std::formatter
-// specializations for Array/Vector/ArraySlice/StaticArraySlice on non-logic
-// element types. Logic/Bit arrays use a quoted-bit-string body instead; see
-// logic_array.hpp.
 template <RangedSequence ArrayT, typename OutIt>
     requires Formattable<std::ranges::range_value_t<ArrayT>>
 OutIt format_array(std::string_view prefix, ArrayT const& arr, OutIt out) {
@@ -451,11 +399,6 @@ OutIt format_array(std::string_view prefix, ArrayT const& arr, OutIt out) {
 
 }  // namespace coconext::types
 
-// Formatters for ArraySlice and StaticArraySlice. Both print with the
-// "ArraySlice" prefix; the static-vs-runtime distinction isn't useful to a
-// reader of the printed output. The Logic/Bit specializations in
-// logic_array.hpp are more-specialized partial specs and win when both
-// headers are visible.
 #define COCONEXT_DEFINE_ARRAY_SLICE_FORMATTER(...)                                         \
     struct std::formatter<__VA_ARGS__> {                                                   \
         constexpr auto parse(std::format_parse_context& ctx) {                             \

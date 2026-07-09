@@ -13,83 +13,83 @@ using namespace coconext::types;
 TEST(TestLogic, LogicConversions) {
     EXPECT_EQ('U'_l, 'u'_l);
     EXPECT_EQ(Logic('U'_l), 'U'_l);
-    EXPECT_EQ(to_logic('U'), 'U'_l);
-    EXPECT_EQ(to_logic('u'), 'U'_l);
-    EXPECT_EQ(to_logic("U"), 'U'_l);
-    EXPECT_EQ(to_logic("u"), 'U'_l);
+    EXPECT_EQ(Logic('U'), 'U'_l);
+    EXPECT_EQ(Logic('u'), 'U'_l);
+    EXPECT_EQ(Logic("U"), 'U'_l);
+    EXPECT_EQ(Logic("u"), 'U'_l);
 
     EXPECT_EQ('X'_l, 'x'_l);
     EXPECT_EQ(Logic('X'_l), 'X'_l);
-    EXPECT_EQ(to_logic('X'), 'X'_l);
-    EXPECT_EQ(to_logic('x'), 'X'_l);
-    EXPECT_EQ(to_logic("X"), 'X'_l);
-    EXPECT_EQ(to_logic("x"), 'X'_l);
+    EXPECT_EQ(Logic('X'), 'X'_l);
+    EXPECT_EQ(Logic('x'), 'X'_l);
+    EXPECT_EQ(Logic("X"), 'X'_l);
+    EXPECT_EQ(Logic("x"), 'X'_l);
 
-    EXPECT_EQ('0'_l, to_logic('0'));
-    EXPECT_EQ('0'_l, to_logic("0"));
-    EXPECT_EQ('0'_l, to_logic(0));
-    EXPECT_EQ('0'_l, to_logic(false));
+    EXPECT_EQ('0'_l, Logic('0'));
+    EXPECT_EQ('0'_l, Logic("0"));
+    EXPECT_EQ('0'_l, Logic(0));
+    EXPECT_EQ('0'_l, Logic(false));
     EXPECT_EQ(Logic('0'_l), '0'_l);
 
-    EXPECT_EQ('1'_l, to_logic('1'));
-    EXPECT_EQ('1'_l, to_logic("1"));
-    EXPECT_EQ('1'_l, to_logic(1));
-    EXPECT_EQ('1'_l, to_logic(true));
+    EXPECT_EQ('1'_l, Logic('1'));
+    EXPECT_EQ('1'_l, Logic("1"));
+    EXPECT_EQ('1'_l, Logic(1));
+    EXPECT_EQ('1'_l, Logic(true));
     EXPECT_EQ(Logic('1'_l), '1'_l);
 
     EXPECT_EQ('Z'_l, 'z'_l);
     EXPECT_EQ(Logic('Z'_l), 'Z'_l);
-    EXPECT_EQ(to_logic('Z'), 'Z'_l);
-    EXPECT_EQ(to_logic('z'), 'Z'_l);
-    EXPECT_EQ(to_logic("Z"), 'Z'_l);
-    EXPECT_EQ(to_logic("z"), 'Z'_l);
+    EXPECT_EQ(Logic('Z'), 'Z'_l);
+    EXPECT_EQ(Logic('z'), 'Z'_l);
+    EXPECT_EQ(Logic("Z"), 'Z'_l);
+    EXPECT_EQ(Logic("z"), 'Z'_l);
 
     EXPECT_EQ('W'_l, 'w'_l);
     EXPECT_EQ(Logic('W'_l), 'W'_l);
-    EXPECT_EQ(to_logic('W'), 'W'_l);
-    EXPECT_EQ(to_logic('w'), 'W'_l);
-    EXPECT_EQ(to_logic("W"), 'W'_l);
-    EXPECT_EQ(to_logic("w"), 'W'_l);
+    EXPECT_EQ(Logic('W'), 'W'_l);
+    EXPECT_EQ(Logic('w'), 'W'_l);
+    EXPECT_EQ(Logic("W"), 'W'_l);
+    EXPECT_EQ(Logic("w"), 'W'_l);
 
     EXPECT_EQ('L'_l, 'l'_l);
     EXPECT_EQ(Logic('L'_l), 'L'_l);
-    EXPECT_EQ(to_logic('L'), 'L'_l);
-    EXPECT_EQ(to_logic('l'), 'L'_l);
-    EXPECT_EQ(to_logic("L"), 'L'_l);
-    EXPECT_EQ(to_logic("l"), 'L'_l);
+    EXPECT_EQ(Logic('L'), 'L'_l);
+    EXPECT_EQ(Logic('l'), 'L'_l);
+    EXPECT_EQ(Logic("L"), 'L'_l);
+    EXPECT_EQ(Logic("l"), 'L'_l);
 
     EXPECT_EQ('H'_l, 'h'_l);
     EXPECT_EQ(Logic('H'_l), 'H'_l);
-    EXPECT_EQ(to_logic('H'), 'H'_l);
-    EXPECT_EQ(to_logic('h'), 'H'_l);
-    EXPECT_EQ(to_logic("H"), 'H'_l);
-    EXPECT_EQ(to_logic("h"), 'H'_l);
+    EXPECT_EQ(Logic('H'), 'H'_l);
+    EXPECT_EQ(Logic('h'), 'H'_l);
+    EXPECT_EQ(Logic("H"), 'H'_l);
+    EXPECT_EQ(Logic("h"), 'H'_l);
 
     EXPECT_EQ('-'_l, Logic::DC);
     EXPECT_EQ(Logic('-'_l), '-'_l);
-    EXPECT_EQ(to_logic('-'), '-'_l);
-    EXPECT_EQ(to_logic("-"), '-'_l);
+    EXPECT_EQ(Logic('-'), '-'_l);
+    EXPECT_EQ(Logic("-"), '-'_l);
 
     // Test invalid conversions
-    EXPECT_THROW(to_logic('j'), std::invalid_argument);
-    EXPECT_THROW(to_logic(2), std::invalid_argument);
-    EXPECT_THROW(to_logic("lol"), std::invalid_argument);
+    EXPECT_THROW(Logic('j'), std::invalid_argument);
+    EXPECT_THROW(Logic(2), std::invalid_argument);
+    EXPECT_THROW(Logic("lol"), std::invalid_argument);
 }
 
 TEST(TestBit, BitConversions) {
-    EXPECT_EQ('0'_b, to_bit('0'));
-    EXPECT_EQ('1'_b, to_bit('1'));
-    EXPECT_EQ('0'_b, to_bit("0"));
-    EXPECT_EQ('1'_b, to_bit("1"));
-    EXPECT_EQ('0'_b, to_bit(0));
-    EXPECT_EQ('1'_b, to_bit(1));
-    EXPECT_EQ('0'_b, to_bit(false));
-    EXPECT_EQ('1'_b, to_bit(true));
+    EXPECT_EQ('0'_b, Bit('0'));
+    EXPECT_EQ('1'_b, Bit('1'));
+    EXPECT_EQ('0'_b, Bit("0"));
+    EXPECT_EQ('1'_b, Bit("1"));
+    EXPECT_EQ('0'_b, Bit(0));
+    EXPECT_EQ('1'_b, Bit(1));
+    EXPECT_EQ('0'_b, Bit(false));
+    EXPECT_EQ('1'_b, Bit(true));
 
     // Test invalid conversions
-    EXPECT_THROW(to_bit('2'), std::invalid_argument);
-    EXPECT_THROW(to_bit("10"), std::invalid_argument);
-    EXPECT_THROW(to_bit(2), std::invalid_argument);
+    EXPECT_THROW(Bit('2'), std::invalid_argument);
+    EXPECT_THROW(Bit("10"), std::invalid_argument);
+    EXPECT_THROW(Bit(2), std::invalid_argument);
 }
 
 // Test Logic bool conversions
@@ -173,35 +173,37 @@ TEST(TestBit, BitFormatter) {
 }
 
 TEST(TestLogic, LogicCharConversions) {
-    EXPECT_EQ(to_char('0'_l), '0');
-    EXPECT_EQ(to_char('1'_l), '1');
-    EXPECT_EQ(to_char('X'_l), 'X');
-    EXPECT_EQ(to_char('Z'_l), 'Z');
+    EXPECT_EQ(char('0'_l), '0');
+    EXPECT_EQ(char('1'_l), '1');
+    EXPECT_EQ(char('X'_l), 'X');
+    EXPECT_EQ(char('Z'_l), 'Z');
 }
 
 TEST(TestBit, BitCharConversions) {
-    EXPECT_EQ(to_char('0'_b), '0');
-    EXPECT_EQ(to_char('1'_b), '1');
+    EXPECT_EQ(char('0'_b), '0');
+    EXPECT_EQ(char('1'_b), '1');
 }
 
 // Test Logic int conversions
 TEST(TestLogic, LogicIntConversions) {
-    EXPECT_EQ(to_int('0'_l), 0);
-    EXPECT_EQ(to_int('1'_l), 1);
-    EXPECT_EQ(to_int('L'_l), 0);
-    EXPECT_EQ(to_int('H'_l), 1);
+    EXPECT_EQ(int('0'_l), 0);
+    EXPECT_EQ(int('1'_l), 1);
+    EXPECT_EQ(int('L'_l), 0);
+    EXPECT_EQ(int('H'_l), 1);
 
-    // Non-convertible values should throw
-    EXPECT_THROW(to_int('X'_l), std::invalid_argument);
-    EXPECT_THROW(to_int('Z'_l), std::invalid_argument);
-    EXPECT_THROW(to_int('U'_l), std::invalid_argument);
-    EXPECT_THROW(to_int('W'_l), std::invalid_argument);
-    EXPECT_THROW(to_int('-'_l), std::invalid_argument);
+    // Non-convertible values should throw. Casting to (void) inside
+    // EXPECT_THROW silences clang's unused-value warning without changing
+    // when the operator conversion runs.
+    EXPECT_THROW((void)int('X'_l), std::invalid_argument);
+    EXPECT_THROW((void)int('Z'_l), std::invalid_argument);
+    EXPECT_THROW((void)int('U'_l), std::invalid_argument);
+    EXPECT_THROW((void)int('W'_l), std::invalid_argument);
+    EXPECT_THROW((void)int('-'_l), std::invalid_argument);
 }
 
 TEST(TestBit, BitIntConversions) {
-    EXPECT_EQ(to_int('0'_b), 0);
-    EXPECT_EQ(to_int('1'_b), 1);
+    EXPECT_EQ(int('0'_b), 0);
+    EXPECT_EQ(int('1'_b), 1);
 }
 
 // Test Logic AND operator
@@ -378,16 +380,16 @@ TEST(TestBit, BitResolveNoArgAlwaysEngaged) {
 // These can be evaluated at compile time and reduce observed coverage.
 TEST(TestLogic, RuntimeIntAndBitConversions) {
     std::vector<int> const ints{0, 1, 2};
-    EXPECT_EQ(to_logic(ints[0]), '0'_l);
-    EXPECT_EQ(to_logic(ints[1]), '1'_l);
-    EXPECT_THROW((void)to_logic(ints[2]), std::invalid_argument);
-    EXPECT_EQ(to_bit(ints[0]), '0'_b);
-    EXPECT_EQ(to_bit(ints[1]), '1'_b);
-    EXPECT_THROW((void)to_bit(ints[2]), std::invalid_argument);
+    EXPECT_EQ(Logic(ints[0]), '0'_l);
+    EXPECT_EQ(Logic(ints[1]), '1'_l);
+    EXPECT_THROW((void)Logic(ints[2]), std::invalid_argument);
+    EXPECT_EQ(Bit(ints[0]), '0'_b);
+    EXPECT_EQ(Bit(ints[1]), '1'_b);
+    EXPECT_THROW((void)Bit(ints[2]), std::invalid_argument);
 
     std::vector<Bit> const bits{'0'_b, '1'_b};
-    EXPECT_EQ(to_logic(bits[0]), '0'_l);
-    EXPECT_EQ(to_logic(bits[1]), '1'_l);
+    EXPECT_EQ(Logic(bits[0]), '0'_l);
+    EXPECT_EQ(Logic(bits[1]), '1'_l);
     EXPECT_EQ(bits[0].resolve(ResolveMethod::WEAK), '0'_b);
     EXPECT_EQ(bits[1].resolve(ResolveMethod::ZEROS), '1'_b);
 }
@@ -512,17 +514,7 @@ TEST(TestLogic, InplaceNotReturnsReference) {
     EXPECT_EQ(&ref, &v);
 }
 
-// -- Bit implicit conversions to int and bool ------------------------------
-//
-// Bit is a 2-element numeric domain so the conversions are lossless and
-// implicit. Logic has no such conversions because they can fail on metavalues.
-
-TEST(TestBit, BitImplicitToInt) {
-    int x = '1'_b;
-    EXPECT_EQ(x, 1);
-    int y = '0'_b;
-    EXPECT_EQ(y, 0);
-}
+// -- Bit contextual conversion to bool -------------------------------------
 
 TEST(TestBit, BitImplicitToBool) {
     // `operator bool` is explicit, but contextual conversion in `if`/`while`/
@@ -533,12 +525,6 @@ TEST(TestBit, BitImplicitToBool) {
     if ('0'_b) {
         FAIL() << "Bit('0') should convert to false";
     }
-}
-
-TEST(TestBit, BitInArithmeticExpression) {
-    // Bit -> int conversion lets it participate in integer arithmetic.
-    EXPECT_EQ('1'_b + 2, 3);
-    EXPECT_EQ('0'_b + '1'_b, 1);
 }
 
 // LCOV_EXCL_BR_STOP
