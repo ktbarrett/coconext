@@ -527,4 +527,97 @@ TEST(TestBit, BitImplicitToBool) {
     }
 }
 
+// -- Logic contextual conversion to bool -----------------------------------
+
+TEST(TestLogic, LogicContextualBool) {
+    if (!static_cast<bool>('1'_l)) {
+        FAIL() << "Logic('1') should convert to true";
+    }
+    if (static_cast<bool>('0'_l)) {
+        FAIL() << "Logic('0') should convert to false";
+    }
+    if (!static_cast<bool>('H'_l)) {
+        FAIL() << "Logic('H') should convert to true";
+    }
+    if (static_cast<bool>('L'_l)) {
+        FAIL() << "Logic('L') should convert to false";
+    }
+}
+
+TEST(TestLogic, LogicBoolConversionThrowsOnMetavalue) {
+    // operator bool throws for values outside {0, 1, L, H}.
+    std::vector<Logic> const bad{'X'_l, 'Z'_l, 'U'_l, 'W'_l, '-'_l};
+    for (auto const& v : bad) {
+        EXPECT_THROW((void)static_cast<bool>(v), std::out_of_range);
+    }
+}
+
+// -- Bit(Logic) explicit constructor ---------------------------------------
+
+TEST(TestBit, BitFromLogic) {
+    EXPECT_EQ(Bit('0'_l), '0'_b);
+    EXPECT_EQ(Bit('1'_l), '1'_b);
+    EXPECT_EQ(Bit('L'_l), '0'_b);
+    EXPECT_EQ(Bit('H'_l), '1'_b);
+}
+
+TEST(TestBit, BitFromLogicThrowsOnMetavalue) {
+    std::vector<Logic> const bad{'X'_l, 'Z'_l, 'U'_l, 'W'_l, '-'_l};
+    for (auto const& v : bad) {
+        EXPECT_THROW((void)Bit(v), std::invalid_argument);
+    }
+}
+
+// -- Templated egress conversions ------------------------------------------
+//
+// The int/char egress operators are templates on Integer/Character; existing
+// tests only exercise them at `int` / `char`. Confirm they also instantiate
+// (and produce the right result) for other integer widths and character
+// types.
+
+TEST(TestLogic, LogicEgressToOtherIntTypes) {
+    EXPECT_EQ(static_cast<int64_t>('1'_l), int64_t{1});
+    EXPECT_EQ(static_cast<uint8_t>('L'_l), uint8_t{0});
+    EXPECT_EQ(static_cast<unsigned long>('H'_l), 1UL);
+}
+
+TEST(TestBit, BitEgressToOtherIntTypes) {
+    EXPECT_EQ(static_cast<int64_t>('1'_b), int64_t{1});
+    EXPECT_EQ(static_cast<uint8_t>('0'_b), uint8_t{0});
+    EXPECT_EQ(static_cast<unsigned long>('1'_b), 1UL);
+}
+
+TEST(TestLogic, LogicEgressToWchar) {
+    EXPECT_EQ(static_cast<wchar_t>('X'_l), L'X');
+    EXPECT_EQ(static_cast<char32_t>('-'_l), U'-');
+}
+
+TEST(TestBit, BitEgressToWchar) {
+    EXPECT_EQ(static_cast<wchar_t>('1'_b), L'1');
+    EXPECT_EQ(static_cast<char32_t>('0'_b), U'0');
+}
+
+// -- Cross-type equality is deleted ---------------------------------------
+
+TEST(TestLogic, CrossTypeEqualityDeleted) {
+    // Logic == Bit and Bit == Logic are deleted overloads; only the
+    // same-type == operators are viable. Compile-time check.
+    static_assert(std::equality_comparable<Logic>);
+    static_assert(std::equality_comparable<Bit>);
+    static_assert(!std::equality_comparable_with<Logic, Bit>);
+}
+
+// -- consteval UDLs reject bad values at compile time ----------------------
+
+TEST(TestLogic, UdlConsteval) {
+    // `_l` and `_b` are consteval, so evaluation happens at compile time. Any
+    // non-constant argument or invalid char is a hard compile error rather
+    // than a runtime throw. This test just documents the successful cases;
+    // negative cases live in the language's static checking.
+    constexpr auto l = 'X'_l;
+    constexpr auto b = '1'_b;
+    static_assert(l == Logic::X);
+    static_assert(b == Bit::_1);
+}
+
 // LCOV_EXCL_BR_STOP

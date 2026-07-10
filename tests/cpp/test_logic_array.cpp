@@ -1306,3 +1306,95 @@ TEST(TestLogicArray, IndexOfLogicSlice) {
     EXPECT_EQ(s.index<2>(), '1'_l);
     EXPECT_EQ(s.index<1>(), 'X'_l);
 }
+
+// -- Vector<Logic/Bit>(string_view, Range) with explicit range -------------
+
+TEST(TestLogicArray, LogicVectorStringWithRange) {
+    Vector<Logic> a("01XZ", Range{3, Direction::DOWNTO, 0});
+    EXPECT_EQ(a.range(), (Range{3, Direction::DOWNTO, 0}));
+    EXPECT_EQ(a[3], '0'_l);
+    EXPECT_EQ(a[0], 'Z'_l);
+}
+
+TEST(TestLogicArray, LogicVectorStringWithToRange) {
+    // Explicit TO range overrides the default DOWNTO used by the sv-only ctor.
+    Vector<Logic> a("01XZ", Range{0, Direction::TO, 3});
+    EXPECT_EQ(a.range(), (Range{0, Direction::TO, 3}));
+    EXPECT_EQ(a[0], '0'_l);  // storage order matches HDL coord for TO
+    EXPECT_EQ(a[3], 'Z'_l);
+}
+
+TEST(TestLogicArray, LogicVectorStringLengthMismatchThrows) {
+    EXPECT_THROW(
+        (void)Vector<Logic>("01XZ", Range{2, Direction::DOWNTO, 0}), std::invalid_argument
+    );
+    EXPECT_THROW(
+        (void)Vector<Logic>("01", Range{3, Direction::DOWNTO, 0}), std::invalid_argument
+    );
+}
+
+TEST(TestBitArray, BitVectorStringWithRange) {
+    Vector<Bit> a("0110", Range{3, Direction::DOWNTO, 0});
+    EXPECT_EQ(a[3], '0'_b);
+    EXPECT_EQ(a[0], '0'_b);
+}
+
+TEST(TestBitArray, BitVectorStringLengthMismatchThrows) {
+    EXPECT_THROW(
+        (void)Vector<Bit>("011", Range{3, Direction::DOWNTO, 0}), std::invalid_argument
+    );
+}
+
+// -- Array<Logic/Bit, R>(string) static ctors ------------------------------
+
+TEST(TestLogicArray, LogicStaticArrayFromString) {
+    LogicArray<4> a("01XZ");
+    EXPECT_EQ(a[3], '0'_l);
+    EXPECT_EQ(a[2], '1'_l);
+    EXPECT_EQ(a[1], 'X'_l);
+    EXPECT_EQ(a[0], 'Z'_l);
+}
+
+TEST(TestLogicArray, LogicStaticArrayFromStringLengthMismatchThrows) {
+    EXPECT_THROW((void)LogicArray<4>("01X"), std::invalid_argument);
+    EXPECT_THROW((void)LogicArray<3>("01XZ"), std::invalid_argument);
+}
+
+TEST(TestLogicArray, LogicStaticArrayFromStringInvalidCharThrows) {
+    EXPECT_THROW((void)LogicArray<3>("01?"), std::invalid_argument);
+}
+
+TEST(TestBitArray, BitStaticArrayFromString) {
+    BitArray<4> a("0110");
+    EXPECT_EQ(a[3], '0'_b);
+    EXPECT_EQ(a[2], '1'_b);
+    EXPECT_EQ(a[1], '1'_b);
+    EXPECT_EQ(a[0], '0'_b);
+}
+
+TEST(TestBitArray, BitStaticArrayFromStringLengthMismatchThrows) {
+    EXPECT_THROW((void)BitArray<4>("011"), std::invalid_argument);
+}
+
+TEST(TestBitArray, BitStaticArrayFromStringInvalidCharThrows) {
+    EXPECT_THROW((void)BitArray<3>("01X"), std::invalid_argument);
+    EXPECT_THROW((void)BitArray<3>("012"), std::invalid_argument);
+}
+
+// -- Formatter for StaticArraySlice of Logic/Bit --------------------------
+//
+// Static slice of a Logic/Bit array picks the per-type formatter, whose
+// prefix ("LogicStaticArraySlice" / "BitStaticArraySlice") distinguishes it
+// from the runtime-slice formatter ("LogicArraySlice" / "BitArraySlice").
+
+TEST(TestLogicArray, FormatterLogicStaticSlice) {
+    auto a = "01XZ"_l;  // static LogicArray<4>
+    auto s = a.slice<Range{2, Direction::DOWNTO, 1}>();
+    EXPECT_EQ(std::format("{}", s), "LogicStaticArraySlice[2 downto 1]{\"1X\"}");
+}
+
+TEST(TestBitArray, FormatterBitStaticSlice) {
+    auto a = "0101"_b;  // static BitArray<4>
+    auto s = a.slice<Range{2, Direction::DOWNTO, 1}>();
+    EXPECT_EQ(std::format("{}", s), "BitStaticArraySlice[2 downto 1]{\"10\"}");
+}

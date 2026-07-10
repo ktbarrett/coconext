@@ -234,4 +234,63 @@ TEST(TestRange, DirectionMismatchStillEmpty) {
     Range r2{3, Direction::DOWNTO, 5};
     EXPECT_EQ(r2.length(), 0U);
 }
+
+// -- size() alias ----------------------------------------------------------
+
+TEST(TestRange, SizeAliasesLength) {
+    Range const to{1, Direction::TO, 8};
+    EXPECT_EQ(to.size(), to.length());
+    Range const dt{4, Direction::DOWNTO, -3};
+    EXPECT_EQ(dt.size(), dt.length());
+    Range const empty{1, Direction::DOWNTO, 4};
+    EXPECT_EQ(empty.size(), empty.length());
+    EXPECT_EQ(empty.size(), 0U);
+}
+
+// -- detail::offset_of / detail::contains ---------------------------------
+
+TEST(TestRange, OffsetOfTO) {
+    Range const r{1, Direction::TO, 8};
+    EXPECT_EQ(detail::offset_of(r, 1).value(), 0);
+    EXPECT_EQ(detail::offset_of(r, 8).value(), 7);
+    EXPECT_EQ(detail::offset_of(r, 5).value(), 4);
+    EXPECT_FALSE(detail::offset_of(r, 0).has_value());
+    EXPECT_FALSE(detail::offset_of(r, 9).has_value());
+}
+
+TEST(TestRange, OffsetOfDOWNTO) {
+    Range const r{4, Direction::DOWNTO, -3};
+    EXPECT_EQ(detail::offset_of(r, 4).value(), 0);
+    EXPECT_EQ(detail::offset_of(r, -3).value(), 7);
+    EXPECT_EQ(detail::offset_of(r, 0).value(), 4);
+    EXPECT_FALSE(detail::offset_of(r, 5).has_value());
+    EXPECT_FALSE(detail::offset_of(r, -4).has_value());
+}
+
+TEST(TestRange, ContainsTO) {
+    Range const r{1, Direction::TO, 8};
+    EXPECT_TRUE(detail::contains(r, 1));
+    EXPECT_TRUE(detail::contains(r, 8));
+    EXPECT_TRUE(detail::contains(r, 5));
+    EXPECT_FALSE(detail::contains(r, 0));
+    EXPECT_FALSE(detail::contains(r, 9));
+}
+
+TEST(TestRange, ContainsDOWNTO) {
+    Range const r{4, Direction::DOWNTO, -3};
+    EXPECT_TRUE(detail::contains(r, 4));
+    EXPECT_TRUE(detail::contains(r, -3));
+    EXPECT_TRUE(detail::contains(r, 0));
+    EXPECT_FALSE(detail::contains(r, 5));
+    EXPECT_FALSE(detail::contains(r, -4));
+}
+
+TEST(TestRange, ContainsConstexpr) {
+    // `contains` is used in the compile-time index<I>() bounds check; verify
+    // it's actually constexpr-evaluable at both directions.
+    static_assert(detail::contains(Range{0, Direction::TO, 4}, 2));
+    static_assert(!detail::contains(Range{0, Direction::TO, 4}, 99));
+    static_assert(detail::contains(Range{4, Direction::DOWNTO, 0}, 2));
+    static_assert(!detail::contains(Range{4, Direction::DOWNTO, 0}, -1));
+}
 // LCOV_EXCL_BR_STOP
