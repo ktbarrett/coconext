@@ -3,45 +3,51 @@
 
 #include <coroutine>
 #include <exception>
+#include <functional>
 #include <optional>
 #include <stdexcept>
 
 #include <coconext/cancelled.hpp>
+#include <coconext/event_loop.hpp>
+#include <vector>
 
 namespace coconext::futures {
 
 template <typename T>
 class Future;
 
-// The Awaiter for a Future
+namespace detail {
+
 template <typename T>
-class FutureAwaiter {
-    template <typename U>
-    friend class Future;
-
-    Future<T>& future_;
-
-    explicit FutureAwaiter(Future<T>& future) : future_(future) {}
+class Awaiter {
+    friend class Future<T>;
+    explicit Awaiter(Future<T>& future) : future_(future) {}
 
   public:
-    bool await_ready() const noexcept { return not future_.done(); }
+    bool await_ready() const noexcept { return future_.done(); }
     void await_suspend(std::coroutine_handle<> h) {
         // Implementation for suspending the coroutine until the future is ready.
     }
     T await_resume() { return future_.result(); }
+
+  private:
+    Future<T>& future_;
 };
+
+}  // namespace detail
 
 // Single-shot, multiple-consumer awaitable object.
 template <typename T>
 class Future {
-    std::optional<T> value_ = std::nullopt;
-    std::exception_ptr exc_ = nullptr;
-    bool cancelled_ = false;
+  public:
+    // Future is not copyable as it represents a single event.
+    Future(Future const&) = delete;
+    Future& operator=(Future const&) = delete;
 
   public:
-    bool done() noexcept { return value_.has_value() || exc_ != nullptr; }
+    bool done() const noexcept { return value_.has_value() || exc_ != nullptr; }
     bool cancelled() const noexcept { return cancelled_; }
-    T result() {
+    T result() const {
         if (exc_) {
             std::rethrow_exception(exc_);
         }
@@ -51,20 +57,53 @@ class Future {
         throw std::runtime_error("Future does not have a result");
     }
     std::exception_ptr exception() const noexcept { return exc_; }
-    void set_result(T const& value) { value_ = value; }
-    void set_exception(std::exception_ptr exc) noexcept { exc_ = exc; }
+
+  private:
+    void do_callbacks() noexcept {
+        for (auto& cb : callbacks_) {
+            cb();
+        }
+    }
+
+  public:
+    void set_result(T const& value) noexcept {
+        value_ = value;
+        do_callbacks();
+    }
+    void set_exception(std::exception_ptr exc) noexcept {
+        exc_ = exc;
+        do_callbacks();
+    }
     void cancel() noexcept {
         exc_ = std::make_exception_ptr(coconext::Cancelled());
         cancelled_ = true;
+        do_callbacks();
     }
-    FutureAwaiter<T> operator co_await() { return FutureAwaiter<T>(*this); }
+
+  public:
+    template <typename F>
+    void add_callback(F&& f) {
+        callbacks_.emplace_back(std::forward<F>(f));
+    }
+
+    detail::Awaiter<T> operator co_await() {
+        // TODO
+        return detail::Awaiter(*this);
+    }
+
+  private:
+    std::optional<T> value_ = std::nullopt;
+    std::exception_ptr exc_ = nullptr;
+    bool cancelled_ = false;
+    std::vector<std::function<void()>> callbacks_;
 };
 
 template <>
 class Future<void> {
-    std::exception_ptr exc_ = nullptr;
-    bool done_ = false;
-    bool cancelled_ = false;
+  public:
+    // Future is not copyable as it represents a single event.
+    Future(Future const&) = delete;
+    Future& operator=(Future const&) = delete;
 
   public:
     bool done() noexcept { return done_; }
@@ -79,17 +118,39 @@ class Future<void> {
         throw std::runtime_error("Future does not have a result");
     }
     std::exception_ptr exception() const noexcept { return exc_; }
-    void set_result() { done_ = true; }
+
+  private:
+    void do_callbacks() noexcept {
+        for (auto& cb : callbacks_) {
+            cb();
+        }
+    }
+
+  public:
+    void set_result() {
+        done_ = true;
+        do_callbacks();
+    }
     void set_exception(std::exception_ptr exc) noexcept {
         exc_ = exc;
         done_ = true;
+        do_callbacks();
     }
     void cancel() noexcept {
         exc_ = std::make_exception_ptr(coconext::Cancelled());
         done_ = true;
         cancelled_ = true;
+        do_callbacks();
     }
-    FutureAwaiter<void> operator co_await() { return FutureAwaiter<void>(*this); }
+
+  public:
+    detail::Awaiter<void> operator co_await() { return detail::Awaiter<void>(*this); }
+
+  private:
+    std::exception_ptr exc_ = nullptr;
+    bool done_ = false;
+    bool cancelled_ = false;
+    std::vector<std::function<void()>> callbacks_;
 };
 
 }  // namespace coconext::futures
