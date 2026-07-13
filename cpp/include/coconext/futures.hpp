@@ -9,6 +9,7 @@
 
 #include <coconext/cancelled.hpp>
 #include <coconext/event_loop.hpp>
+#include <coconext/tasks.hpp>
 
 namespace coconext::futures {
 
@@ -27,13 +28,20 @@ class FutureAwaiter : coconext::event_loop::Event {
 
   public:
     bool await_ready() const noexcept { return future_.done(); }
-    void await_suspend(std::coroutine_handle<> h) {
-        // Implementation for suspending the coroutine until the future is ready.
+    template <typename PromiseType>
+    void await_suspend(std::coroutine_handle<PromiseType> h) {
+        task_promise_ = h.promise().get_promise_base();
     }
-    T await_resume() { return future_.result(); }
+    T await_resume() {
+        if (task_promise_->cancelled()) {
+            throw coconext::Cancelled{};
+        }
+        return future_.result();
+    }
 
   private:
     Future<T>& future_;
+    coconext::tasks::detail::PromiseBase* task_promise_;
 };
 
 }  // namespace detail
@@ -41,7 +49,6 @@ class FutureAwaiter : coconext::event_loop::Event {
 // Single-shot, multiple-consumer awaitable object.
 template <typename T>
 class Future {
-  public:
   public:
     // Future is not copyable as it represents a single event.
     Future(Future const&) = delete;

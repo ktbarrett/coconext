@@ -9,12 +9,24 @@
 
 namespace coconext::tasks {
 
-template <typename T>
-class Task;
+namespace detail {
+// These are interfaces we want Awaiters to have access to. We can't expose the full Promise
+// since the types are different between Coro::Promise, Task::Promise, and of course the
+// various return types. Each Awaiter's await_suspend is templated and upcasts each concrete
+// type to this base class for storage.
+class PromiseBase {
+  public:
+    bool cancelled() const noexcept { return cancelled_; }
+
+  protected:
+    bool cancelled_ = false;
+};
+
+}  // namespace detail
 
 template <typename T>
 class Task {
-    class Promise {
+    class Promise : public detail::PromiseBase {
         std::optional<T> value_ = std::nullopt;
         std::exception_ptr exception_ = nullptr;
 
@@ -37,6 +49,9 @@ class Task {
         std::suspend_never final_suspend() noexcept { return {}; }
         void return_value(T value) { value_ = value; }
         void unhandled_exception() { exception_ = std::current_exception(); }
+
+      public:
+        detail::PromiseBase* get_promise_base() noexcept { return this; }
     };
 
   public:
@@ -51,7 +66,7 @@ class Task {
 
   public:
     bool done() const noexcept { return handle.done(); }
-    bool cancelled() const noexcept { return false; }
+    bool cancelled() const noexcept { return handle.promise().cancelled_; }
     T result() {
         if (!done()) {
             throw std::runtime_error("Task not completed yet.");
@@ -64,10 +79,7 @@ class Task {
     std::exception_ptr exception() const noexcept { return handle.promise().exception_; }
 
   public:
-    void cancel() noexcept {
-        // TODO We need to coordinate with the Future we are awaiting to inform it of the
-        // CancelledError it must raise.
-    }
+    void cancel() noexcept { handle.promise().cancelled_ = true; }
 
   private:
     std::coroutine_handle<Promise> handle;
@@ -77,17 +89,75 @@ class Task {
 template <typename T>
 class Coro {
     class Promise {
+      public:
         Coro<T> get_return_object() {
             return Coro<T>{std::coroutine_handle<Promise>::from_promise(*this)};
         }
         std::suspend_always initial_suspend() noexcept { return {}; }
-        std::suspend_never final_suspend() noexcept { return {}; }
-        void return_value(T value) { /* store the value */ }
-        void unhandled_exception() { std::terminate(); }
+        auto final_suspend() noexcept {
+            // This exists to "chain" coros together.
+            class TransferAwaitable {
+              public:
+                explicit TransferAwaitable(std::coroutine_handle<> parent)
+                    : parent_(parent) {}
+
+              public:  // Awaitable API
+                bool await_ready() noexcept { return false; }
+                // Returning the coroutine_handle here is what transfers control back to the
+                // parent coroutine.
+                std::coroutine_handle<> await_suspend(std::coroutine_handle<>) noexcept {
+                    return parent_;
+                }
+                void await_resume() noexcept {}
+
+              private:
+                std::coroutine_handle<> parent_;
+            };
+            return TransferAwaitable{parent_};
+        }
+        void return_value(T value) { value_ = value; }
+        void unhandled_exception() { exception_ = std::current_exception(); }
+
+        T result() {
+            if (exception_) {
+                std::rethrow_exception(exception_);
+            }
+            if (value_.has_value()) {
+                return *value_;
+            }
+            throw std::runtime_error("Coro does not have a result");
+        }
+
+      public:
+        detail::PromiseBase* get_promise_base() noexcept { return task_promise_; }
+
+      private:
+        std::optional<T> value_;
+        std::exception_ptr exception_;
+        std::coroutine_handle<> parent_;
+        detail::PromiseBase* task_promise_;
     };
 
   public:
-    explicit Coro(std::coroutine_handle<Promise> h) : handle(h) {}
+    class Awaiter {
+      public:
+        Awaiter(Coro& coro) : coro_(coro) {}
+
+      public:
+        bool await_ready() const noexcept { return false; }
+        template <typename PromiseType>
+        void await_suspend(std::coroutine_handle<PromiseType> h) noexcept {
+            coro_.handle_.promise().task_promise_ = h.promise().get_promise_base();
+            coro_.handle_.promise().parent_ = h;
+        }
+        T await_resume() { return coro_.handle_.promise().result(); }
+
+      private:
+        Coro& coro_;
+    };
+
+  public:
+    explicit Coro(std::coroutine_handle<Promise> h) : handle_(h) {}
     ~Coro() {}
 
     // Coro is only used once, so it's move-only
@@ -97,12 +167,10 @@ class Coro {
     Coro& operator=(Coro&&) = default;
 
   public:
-    void operator co_await() {
-        // TODO
-    }
+    auto operator co_await() { return Awaiter{*this}; }
 
   private:
-    std::coroutine_handle<Promise> handle;
+    std::coroutine_handle<Promise> handle_;
 };
 
 }  // namespace coconext::tasks
