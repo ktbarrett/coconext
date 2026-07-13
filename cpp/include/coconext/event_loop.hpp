@@ -15,31 +15,37 @@ class EventLoop {
     class Handle {
         friend class EventLoop;
 
-        Handle(EventLoop& loop, std::unique_lock<std::mutex>&& lock)
-            : loop(loop), lock(std::move(lock)) {}
+        Handle(EventLoop& loop) : loop_(loop) {}
+        Handle(Handle&& other) = default;
+        ~Handle();
 
       public:
         void run() {
-            while (!loop.queue_.empty()) {
-                auto entry = loop.queue_.pop_front();
-                entry->coro_handle.resume();
+            while (!loop_.queue_.empty()) {
+                auto event = loop_.queue_.pop_front();
+                event->coro_handle.resume();
             }
         }
 
+        template <typename DequeT>
+        void schedule_all_back(DequeT&& deque) {
+            loop_.queue_.extend_back(std::forward<DequeT>(deque));
+        }
+
       private:
-        EventLoop& loop;
-        std::unique_lock<std::mutex> lock;
+        EventLoop& loop_;
     };
+    friend class Handle;
 
   public:
-    [[nodiscard]] Handle acquire() {
-        return Handle(*this, std::unique_lock<std::mutex>(mtx_));
-    }
+    [[nodiscard]] Handle acquire();
 
   private:
     Cmarqueue queue_;
     std::mutex mtx_;
 };
+
+EventLoop::Handle& get_current_event_loop();
 
 }  // namespace coconext::event_loop
 

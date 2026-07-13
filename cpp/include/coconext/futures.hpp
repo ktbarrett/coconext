@@ -70,7 +70,8 @@ class Future {
 
   private:
     void schedule_task_resumes() noexcept {
-        // TODO Get EventLoop::Handle and steal_extend_back(deque_)
+        coconext::event_loop::get_current_event_loop().schedule_all_back(std::move(deque_));
+        deque_.clear();
     }
 
   public:
@@ -124,7 +125,8 @@ class Future<void> {
 
   private:
     void schedule_task_resumes() noexcept {
-        // TODO Get EventLoop::Handle and steal_extend_back(deque_)
+        coconext::event_loop::get_current_event_loop().schedule_all_back(std::move(deque_));
+        deque_.clear();
     }
 
   public:

@@ -107,7 +107,7 @@ class Cmarqueue {
         node->remove();
         return node;
     }
-    void steal_extend_back(Cmarqueue& other) noexcept {
+    void extend_back(Cmarqueue&& other) noexcept {
         if (other.empty()) {
             return;
         }
@@ -116,7 +116,7 @@ class Cmarqueue {
         set_back(other.back());
         other.clear();
     }
-    void steal_extend_front(Cmarqueue& other) noexcept {
+    void extend_front(Cmarqueue&& other) noexcept {
         if (other.empty()) {
             return;
         }
