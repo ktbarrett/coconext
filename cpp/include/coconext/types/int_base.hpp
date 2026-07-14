@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <coconext/types/logic.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
@@ -254,6 +255,14 @@ class BigInt {
         return BitWidth;
     }
 
+    constexpr size_t popcount() const {
+        size_t n = 0;
+        for (int i = 0; i < num_of_words; ++i) {
+            n += std::popcount(data[i]);
+        }
+        return n;
+    }
+
     template <size_t BW>
     friend void shift_right_logical(BigInt<BW>& val, size_t amount);
 
@@ -428,6 +437,164 @@ class Bits {
     constexpr Bits(std::string_view val)
         requires is_not_native_int
         : storage_(val) {}
+
+    template <bool IsConst, bool Downto>
+    class IteratorImpl;
+
+    class BitReference {
+      private:
+        Bits<W>* parent_;
+        size_t index_;
+
+        template <bool C, bool D>
+        friend class IteratorImpl;
+
+      public:
+        constexpr BitReference(Bits<W>* parent, size_t index)
+            : parent_(parent), index_(index) {}
+
+        constexpr operator coconext::types::Bit() const {
+            return parent_->get_bit(index_) ? coconext::types::Bit('1')
+                                            : coconext::types::Bit('0');
+        }
+
+        constexpr explicit operator char() const {
+            return parent_->get_bit(index_) ? '1' : '0';
+        }
+
+        constexpr BitReference& operator=(coconext::types::Bit val) {
+            parent_->set_bit(index_, static_cast<bool>(val));
+            return *this;
+        }
+    };
+
+    template <bool IsConst, bool Downto = true>
+    class IteratorImpl {
+      private:
+        using ParentType = std::conditional_t<IsConst, Bits<W> const, Bits<W>>;
+        ParentType* parent_ = nullptr;
+        size_t index_ = 0;
+
+      public:
+        using iterator_concept = std::random_access_iterator_tag;
+        using iterator_category = std::random_access_iterator_tag;
+        using value_type = coconext::types::Bit;
+        using difference_type = std::ptrdiff_t;
+        using pointer = void;
+        using reference = std::conditional_t<IsConst, coconext::types::Bit, BitReference>;
+
+        constexpr IteratorImpl() = default;
+
+        constexpr IteratorImpl(ParentType* parent, size_t index)
+            : parent_(parent), index_(index) {}
+
+        constexpr reference operator*() const {
+            size_t bit_pos = Downto ? (W > 0 ? W - 1 - index_ : 0) : index_;
+
+            if constexpr (IsConst) {
+                return parent_->get_bit(bit_pos) ? coconext::types::Bit('1')
+                                                 : coconext::types::Bit('0');
+            } else {
+                return BitReference(parent_, bit_pos);
+            }
+        }
+
+        constexpr reference operator[](difference_type n) const { return *(*this + n); }
+
+        constexpr IteratorImpl& operator++() {
+            ++index_;
+            return *this;
+        }
+        constexpr IteratorImpl operator++(int) {
+            IteratorImpl tmp = *this;
+            ++(*this);
+            return tmp;
+        }
+        constexpr IteratorImpl& operator--() {
+            --index_;
+            return *this;
+        }
+        constexpr IteratorImpl operator--(int) {
+            IteratorImpl tmp = *this;
+            --(*this);
+            return tmp;
+        }
+
+        constexpr IteratorImpl& operator+=(difference_type n) {
+            index_ += n;
+            return *this;
+        }
+        constexpr IteratorImpl& operator-=(difference_type n) {
+            index_ -= n;
+            return *this;
+        }
+
+        constexpr IteratorImpl operator+(difference_type n) const {
+            return IteratorImpl(parent_, index_ + n);
+        }
+        constexpr IteratorImpl operator-(difference_type n) const {
+            return IteratorImpl(parent_, index_ - n);
+        }
+        friend constexpr IteratorImpl operator+(difference_type n, IteratorImpl const& it) {
+            return it + n;
+        }
+
+        constexpr difference_type operator-(IteratorImpl const& other) const {
+            return static_cast<difference_type>(index_)
+                 - static_cast<difference_type>(other.index_);
+        }
+
+        constexpr bool operator==(IteratorImpl const& other) const {
+            return parent_ == other.parent_ && index_ == other.index_;
+        }
+
+        constexpr bool operator<(IteratorImpl const& other) const {
+            return index_ < other.index_;
+        }
+        constexpr bool operator>(IteratorImpl const& other) const {
+            return index_ > other.index_;
+        }
+        constexpr bool operator<=(IteratorImpl const& other) const {
+            return index_ <= other.index_;
+        }
+        constexpr bool operator>=(IteratorImpl const& other) const {
+            return index_ >= other.index_;
+        }
+    };
+
+    template <bool Downto = true>
+    constexpr auto begin() {
+        return IteratorImpl<false, Downto>(this, 0);
+    }
+
+    template <bool Downto = true>
+    constexpr auto begin() const {
+        return IteratorImpl<true, Downto>(this, 0);
+    }
+
+    template <bool Downto = true>
+    constexpr auto end() {
+        return IteratorImpl<false, Downto>(this, W);
+    }
+
+    template <bool Downto = true>
+    constexpr auto end() const {
+        return IteratorImpl<true, Downto>(this, W);
+    }
+
+    constexpr BitReference operator[](size_t index) {
+        if (index >= W) {
+            throw std::out_of_range("Bit index out of bounds");
+        }
+        return BitReference(this, index);
+    }
+
+    constexpr coconext::types::Bit operator[](size_t index) const {
+        if (index >= W) {
+            throw std::out_of_range("Bit index out of bounds");
+        }
+        return get_bit(index) ? coconext::types::Bit('1') : coconext::types::Bit('0');
+    }
 
     constexpr Bits operator+(Bits<W> const& other) const {
         static_assert(
@@ -665,7 +832,41 @@ class Bits {
         }
     }
 
-    IntType raw() const {
+    constexpr size_t popcount() const {
+        if constexpr (!is_not_native_int) {
+            return std::popcount(raw());
+        } else {
+            return storage_.popcount();
+        }
+    }
+
+    constexpr bool get_bit(size_t index) const {
+        if constexpr (!is_not_native_int) {
+            return (raw() >> index) & 1;
+        } else {
+            return srl(index).storage_.get_word(0) & 1;
+        }
+    }
+
+    constexpr void set_bit(size_t index, bool val) {
+        if constexpr (!is_not_native_int) {
+            IntType mask = static_cast<IntType>(1) << index;
+            if (val) {
+                storage_ |= mask;
+            } else {
+                storage_ &= ~mask;
+            }
+        } else {
+            Bits<W> mask = Bits<W>(1) << index;
+            if (val) {
+                storage_ = (*this | mask).storage_;
+            } else {
+                storage_ = (*this & ~mask).storage_;
+            }
+        }
+    }
+
+    constexpr IntType raw() const {
         if constexpr (is_not_native_int) {
             return storage_;
         } else {
