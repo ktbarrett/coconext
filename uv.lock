@@ -293,8 +293,8 @@ docs = [
 
 [[package]]
 name = "cocotb"
-version = "2.1.dev102+r64fa52d5.dirty"
-source = { git = "https://github.com/cocotb/cocotb.git#64fa52d526c4a5efc2b9ef2b36a6311498884ccd" }
+version = "2.1.dev104+rb94257ce.dirty"
+source = { git = "https://github.com/cocotb/cocotb.git#b94257ce9246b7c6e1d6ba4ca4a9d04defd8d4fc" }
 dependencies = [
     { name = "exceptiongroup", marker = "python_full_version < '3.11'" },
     { name = "find-libpython" },
