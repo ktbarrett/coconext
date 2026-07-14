@@ -31,14 +31,7 @@ auto or_reduce(detail::Array<Bit, R> const& s) {
 
 template <Range R>
 auto xor_reduce(detail::Array<Bit, R> const& s) {
-    auto bits = s.value_;
-
-    if constexpr (!decltype(bits)::is_not_native_int) {
-        uint64_t val = static_cast<uint64_t>(bits.raw());
-        return (std::popcount(val) % 2 == 1) ? '1'_b : '0'_b;
-    } else {
-        return (bits.popcount() % 2 == 1) ? '1'_b : '0'_b;
-    }
+    return (s.value_.popcount() % 2 == 1) ? '1'_b : '0'_b;
 }
 
 namespace detail {
@@ -46,7 +39,25 @@ namespace detail {
 template <Range R>
 class Array<Bit, R> {
   public:
+    static constexpr Range static_range = R;
+    static constexpr Range range() noexcept { return static_range; }
+
     constexpr Array() : value_(0) {}
+
+    explicit constexpr Array(std::string_view s) {
+        if (s.size() != R.length()) {
+            throw std::invalid_argument(
+                "String of length " + std::to_string(s.size())
+                + " does not match Array length " + std::to_string(R.length())
+            );
+        }
+        auto out = this->begin();
+        for (char c : s) {
+            *out++ = Bit(c);
+        }
+    }
+
+    explicit constexpr Array(char const* s) : Array(std::string_view(s)) {}
 
     template <typename U>
         requires std::convertible_to<U, Bit>
@@ -72,6 +83,62 @@ class Array<Bit, R> {
 
             i++;
         }
+    }
+
+    constexpr auto begin() {
+        return value_.template begin<R.direction == Direction::DOWNTO>();
+    }
+
+    constexpr auto end() { return value_.template end<R.direction == Direction::DOWNTO>(); }
+
+    constexpr auto begin() const {
+        return value_.template begin<R.direction == Direction::DOWNTO>();
+    }
+
+    constexpr auto end() const {
+        return value_.template end<R.direction == Direction::DOWNTO>();
+    }
+
+    constexpr auto operator[](Range::value_type idx) {
+        auto const offset = offset_of(R, idx);
+        if (!offset.has_value()) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        size_t bit_pos = (R.direction == Direction::DOWNTO)
+                           ? (R.length() - 1 - offset.value())
+                           : offset.value();
+
+        return value_[bit_pos];
+    }
+
+    constexpr auto operator[](Range::value_type idx) const {
+        auto const offset = offset_of(R, idx);
+        if (!offset.has_value()) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        size_t bit_pos = (R.direction == Direction::DOWNTO)
+                           ? (R.length() - 1 - offset.value())
+                           : offset.value();
+
+        return value_[bit_pos];
+    }
+
+    constexpr auto operator[](Range r) {
+        return coconext::types::ArraySlice<Array<Bit, R>>(this, r);
+    }
+
+    constexpr auto operator[](Range r) const {
+        return coconext::types::ArraySlice<Array<Bit, R> const>(this, r);
+    }
+
+    template <size_t N>
+    constexpr auto index() const {
+        return value_.get_bit(N) ? '1'_b : '0'_b;
+    }
+
+    template <Range R2>
+    constexpr auto slice() const {
+        return coconext::types::StaticArraySlice<Array<Bit, R> const, R2>(this);
     }
 
     template <Range R2>

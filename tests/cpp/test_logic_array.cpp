@@ -362,18 +362,17 @@ TEST(TestLogicArray, ResolveErrorPass) {
     EXPECT_EQ(to_string(*b), "01");
 }
 
-// TEST(TestLogicArray, ResolveStaticReturnsStaticArray) {
-//     auto a = "01XZ"_l;  // static LogicArray<Range{3, DOWNTO, 0}>
-//     auto b = resolve(a, ResolveMethod::ZEROS);
-//     // Static-bound input -> static-bound output of matching range. The
-//     // StaticRangedSequence branch of the free resolve preserves T's static
-//     // range, and resolve always returns an optional Bit-valued container.
-//     static_assert(
-//         std::is_same_v<decltype(b), std::optional<BitArray<Range{3, Direction::DOWNTO,
-//         0}>>>
-//     );
-//     EXPECT_EQ(to_string(*b), "0100");
-// }
+TEST(TestLogicArray, ResolveStaticReturnsStaticArray) {
+    auto a = "01XZ"_l;  // static LogicArray<Range{3, DOWNTO, 0}>
+    auto b = resolve(a, ResolveMethod::ZEROS);
+    // Static-bound input -> static-bound output of matching range. The
+    // StaticRangedSequence branch of the free resolve preserves T's static
+    // range, and resolve always returns an optional Bit-valued container.
+    static_assert(
+        std::is_same_v<decltype(b), std::optional<BitArray<Range{3, Direction::DOWNTO, 0}>>>
+    );
+    EXPECT_EQ(to_string(*b), "0100");
+}
 
 // No-arg resolve() defaults to WEAK -- engages iff every element is 0/1/L/H,
 // matching the scalar Logic::resolve() shortcut.
@@ -415,30 +414,29 @@ TEST(TestLogicArray, DynSliceResolveReturnsVector) {
     EXPECT_EQ(to_string(*r), "0100");
 }
 
-// TEST(TestLogicArray, StaticSliceResolveReturnsStaticArray) {
-//     auto a = "01XZ"_l;  // LogicArray<Range{3, DOWNTO, 0}>
-//     auto s = a.slice<Range{2, Direction::DOWNTO, 1}>();
-//     auto r = resolve(s, ResolveMethod::ZEROS);
-//     static_assert(
-//         std::is_same_v<decltype(r), std::optional<BitArray<Range{2, Direction::DOWNTO,
-//         1}>>>
-//     );
-//     EXPECT_EQ(to_string(*r), "10");  // X->0, 1->1; slice was {X, 1} in storage order
-// }
+TEST(TestLogicArray, StaticSliceResolveReturnsStaticArray) {
+    auto a = "01XZ"_l;  // LogicArray<Range{3, DOWNTO, 0}>
+    auto s = a.slice<Range{2, Direction::DOWNTO, 1}>();
+    auto r = resolve(s, ResolveMethod::ZEROS);
+    static_assert(
+        std::is_same_v<decltype(r), std::optional<BitArray<Range{2, Direction::DOWNTO, 1}>>>
+    );
+    EXPECT_EQ(to_string(*r), "10");  // X->0, 1->1; slice was {X, 1} in storage order
+}
 
-// TEST(TestLogicArray, StaticSliceIsResolvable) {
-//     // Exercises resolve() on StaticArraySlice<LogicArray<R>, R2> -- a regression
-//     // that drops StaticArraySlice from the RangedSequence-with-LogicType set
-//     // would only be caught when user code calls resolve(...).has_value() on a
-//     // sliced LogicArray and fails to compile.
-//     auto a = "01XZ"_l;  // a[3]='0', a[2]='1', a[1]='X', a[0]='Z'
-//     auto s_with_x = a.slice<Range{2, Direction::DOWNTO, 1}>();
-//     EXPECT_FALSE(
-//         resolve(s_with_x, ResolveMethod::WEAK).has_value()
-//     );  // contains '1' and 'X'
-//     auto s_clean = a.slice<Range{3, Direction::DOWNTO, 2}>();
-//     EXPECT_TRUE(resolve(s_clean, ResolveMethod::WEAK).has_value());  // '0' and '1'
-// }
+TEST(TestLogicArray, StaticSliceIsResolvable) {
+    // Exercises resolve() on StaticArraySlice<LogicArray<R>, R2> -- a regression
+    // that drops StaticArraySlice from the RangedSequence-with-LogicType set
+    // would only be caught when user code calls resolve(...).has_value() on a
+    // sliced LogicArray and fails to compile.
+    auto a = "01XZ"_l;  // a[3]='0', a[2]='1', a[1]='X', a[0]='Z'
+    auto s_with_x = a.slice<Range{2, Direction::DOWNTO, 1}>();
+    EXPECT_FALSE(
+        resolve(s_with_x, ResolveMethod::WEAK).has_value()
+    );  // contains '1' and 'X'
+    auto s_clean = a.slice<Range{3, Direction::DOWNTO, 2}>();
+    EXPECT_TRUE(resolve(s_clean, ResolveMethod::WEAK).has_value());  // '0' and '1'
+}
 
 TEST(TestLogicArray, ConstOwnerDynSliceResolves) {
     // Exercises resolve() on ArraySlice<const Vector<Logic>> -- a regression
@@ -762,14 +760,14 @@ TEST(TestLogicArray, ConcatThreeArgs) {
     EXPECT_EQ(to_string(c), "10100");
 }
 
-// TEST(TestLogicArray, ConcatMixedBitLogicReturnsLogic) {
-//     auto a = "01"_b;
-//     auto b = "X1"_l;
-//     auto c = concat(a, b);
-//     // Bit converts implicitly to Logic; common type is Logic.
-//     static_assert(std::same_as<std::ranges::range_value_t<decltype(c)>, Logic>);
-//     EXPECT_EQ(to_string(c), "01X1");
-// }
+TEST(TestLogicArray, ConcatMixedBitLogicReturnsLogic) {
+    auto a = "01"_b;
+    auto b = "X1"_l;
+    auto c = concat(a, b);
+    // Bit converts implicitly to Logic; common type is Logic.
+    static_assert(std::same_as<std::ranges::range_value_t<decltype(c)>, Logic>);
+    EXPECT_EQ(to_string(c), "01X1");
+}
 
 TEST(TestLogicArray, ConcatAllStaticReturnsStatic) {
     LogicArray<3> a({'1'_l, '0'_l, '1'_l});
@@ -829,13 +827,13 @@ TEST(TestLogicArray, ConcatOnSlice) {
     EXPECT_EQ(to_string(c), "110");
 }
 
-// TEST(TestBitArray, ConcatBitArrays) {
-//     auto a = "10"_b;
-//     auto b = "01"_b;
-//     auto c = concat(a, b);
-//     static_assert(std::same_as<std::ranges::range_value_t<decltype(c)>, Bit>);
-//     EXPECT_EQ(to_string(c), "1001");
-// }
+TEST(TestBitArray, ConcatBitArrays) {
+    auto a = "10"_b;
+    auto b = "01"_b;
+    auto c = concat(a, b);
+    static_assert(std::same_as<std::ranges::range_value_t<decltype(c)>, Bit>);
+    EXPECT_EQ(to_string(c), "1001");
+}
 
 // -- DOWNTO defaults for length-only construction --------------------------
 
@@ -972,10 +970,10 @@ TEST(TestLogicArray, FormatterStatic) {
     EXPECT_EQ(std::format("{}", a), "LogicArray[3 downto 0]{\"01XZ\"}");
 }
 
-// TEST(TestBitArray, FormatterStatic) {
-//     auto a = "0101"_b;  // BitArray<Range{3, DOWNTO, 0}>
-//     EXPECT_EQ(std::format("{}", a), "BitArray[3 downto 0]{\"0101\"}");
-// }
+TEST(TestBitArray, FormatterStatic) {
+    auto a = "0101"_b;  // BitArray<Range{3, DOWNTO, 0}>
+    EXPECT_EQ(std::format("{}", a), "BitArray[3 downto 0]{\"0101\"}");
+}
 
 TEST(TestLogicArray, UdlBitwiseOps) {
     auto a = "0101"_l & "1100"_l;
@@ -1060,117 +1058,124 @@ TEST(TestBitArray, XorBit) {
 
 // -- Cross-type promotion (Logic wins) -------------------------------------
 
-// TEST(TestBitArray, StaticLogicBitAndPromotesToLogic) {
-//     auto l = "0101"_l;  // static LogicArray<4>
-//     auto b = "1100"_b;  // static BitArray<4>
-//     auto c = l & b;
-//     static_assert(std::is_same_v<decltype(c), LogicArray<Range{3, Direction::DOWNTO,
-//     0}>>); EXPECT_EQ(c[3], '0'_l); EXPECT_EQ(c[2], '1'_l); EXPECT_EQ(c[1], '0'_l);
-//     EXPECT_EQ(c[0], '0'_l);
-// }
+TEST(TestBitArray, StaticLogicBitAndPromotesToLogic) {
+    auto l = "0101"_l;  // static LogicArray<4>
+    auto b = "1100"_b;  // static BitArray<4>
+    auto c = l & b;
+    static_assert(std::is_same_v<decltype(c), LogicArray<Range{3, Direction::DOWNTO, 0}>>);
+    EXPECT_EQ(c[3], '0'_l);
+    EXPECT_EQ(c[2], '1'_l);
+    EXPECT_EQ(c[1], '0'_l);
+    EXPECT_EQ(c[0], '0'_l);
+}
 
-// TEST(TestBitArray, StaticLogicBitOrPromotesToLogic) {
-//     auto l = "0100"_l;
-//     auto b = "1010"_b;
-//     auto c = l | b;
-//     static_assert(std::is_same_v<decltype(c), LogicArray<Range{3, Direction::DOWNTO,
-//     0}>>); EXPECT_EQ(c[3], '1'_l); EXPECT_EQ(c[2], '1'_l); EXPECT_EQ(c[1], '1'_l);
-//     EXPECT_EQ(c[0], '0'_l);
-// }
+TEST(TestBitArray, StaticLogicBitOrPromotesToLogic) {
+    auto l = "0100"_l;
+    auto b = "1010"_b;
+    auto c = l | b;
+    static_assert(std::is_same_v<decltype(c), LogicArray<Range{3, Direction::DOWNTO, 0}>>);
+    EXPECT_EQ(c[3], '1'_l);
+    EXPECT_EQ(c[2], '1'_l);
+    EXPECT_EQ(c[1], '1'_l);
+    EXPECT_EQ(c[0], '0'_l);
+}
 
-// TEST(TestBitArray, StaticLogicBitXorPromotesToLogic) {
-//     auto l = "0011"_l;
-//     auto b = "0101"_b;
-//     auto c = l ^ b;
-//     static_assert(std::is_same_v<decltype(c), LogicArray<Range{3, Direction::DOWNTO,
-//     0}>>); EXPECT_EQ(c[3], '0'_l); EXPECT_EQ(c[2], '1'_l); EXPECT_EQ(c[1], '1'_l);
-//     EXPECT_EQ(c[0], '0'_l);
-// }
+TEST(TestBitArray, StaticLogicBitXorPromotesToLogic) {
+    auto l = "0011"_l;
+    auto b = "0101"_b;
+    auto c = l ^ b;
+    static_assert(std::is_same_v<decltype(c), LogicArray<Range{3, Direction::DOWNTO, 0}>>);
+    EXPECT_EQ(c[3], '0'_l);
+    EXPECT_EQ(c[2], '1'_l);
+    EXPECT_EQ(c[1], '1'_l);
+    EXPECT_EQ(c[0], '0'_l);
+}
 
-// TEST(TestBitArray, StaticLogicXAndBitPromotesToLogic) {
-//     // Logic side carries 'X' -- result must remain Logic to preserve it.
-//     auto l = "X1"_l;
-//     auto b = "11"_b;
-//     auto c = l & b;
-//     static_assert(std::is_same_v<decltype(c), LogicArray<Range{1, Direction::DOWNTO,
-//     0}>>); EXPECT_EQ(c[1], 'X'_l); EXPECT_EQ(c[0], '1'_l);
-// }
+TEST(TestBitArray, StaticLogicXAndBitPromotesToLogic) {
+    // Logic side carries 'X' -- result must remain Logic to preserve it.
+    auto l = "X1"_l;
+    auto b = "11"_b;
+    auto c = l & b;
+    static_assert(std::is_same_v<decltype(c), LogicArray<Range{1, Direction::DOWNTO, 0}>>);
+    EXPECT_EQ(c[1], 'X'_l);
+    EXPECT_EQ(c[0], '1'_l);
+}
 
-// TEST(TestBitArray, StaticBitBitStaysBit) {
-//     auto a = "0101"_b;  // static BitArray<4>
-//     auto b = "1100"_b;
-//     auto c = a & b;
-//     static_assert(std::is_same_v<decltype(c), BitArray<Range{3, Direction::DOWNTO, 0}>>);
-//     EXPECT_EQ(c[3], '0'_b);
-//     EXPECT_EQ(c[2], '1'_b);
-//     EXPECT_EQ(c[1], '0'_b);
-//     EXPECT_EQ(c[0], '0'_b);
+TEST(TestBitArray, StaticBitBitStaysBit) {
+    auto a = "0101"_b;  // static BitArray<4>
+    auto b = "1100"_b;
+    auto c = a & b;
+    static_assert(std::is_same_v<decltype(c), BitArray<Range{3, Direction::DOWNTO, 0}>>);
+    EXPECT_EQ(c[3], '0'_b);
+    EXPECT_EQ(c[2], '1'_b);
+    EXPECT_EQ(c[1], '0'_b);
+    EXPECT_EQ(c[0], '0'_b);
 
-//     auto d = ~a;
-//     static_assert(std::is_same_v<decltype(d), BitArray<Range{3, Direction::DOWNTO, 0}>>);
-//     EXPECT_EQ(d[3], '1'_b);
-//     EXPECT_EQ(d[2], '0'_b);
-//     EXPECT_EQ(d[1], '1'_b);
-//     EXPECT_EQ(d[0], '0'_b);
-// }
+    auto d = ~a;
+    static_assert(std::is_same_v<decltype(d), BitArray<Range{3, Direction::DOWNTO, 0}>>);
+    EXPECT_EQ(d[3], '1'_b);
+    EXPECT_EQ(d[2], '0'_b);
+    EXPECT_EQ(d[1], '1'_b);
+    EXPECT_EQ(d[0], '0'_b);
+}
 
-// TEST(TestBitArray, DynLogicBitAndPromotesToLogic) {
-//     LogicVector l({'0'_l, '1'_l, 'X'_l, '0'_l});
-//     BitVector b({'1'_b, '1'_b, '1'_b, '0'_b});
-//     auto c = l & b;
-//     static_assert(std::is_same_v<decltype(c), LogicVector>);
-//     EXPECT_EQ(c[3], '0'_l);
-//     EXPECT_EQ(c[2], '1'_l);
-//     EXPECT_EQ(c[1], 'X'_l);
-//     EXPECT_EQ(c[0], '0'_l);
-// }
+TEST(TestBitArray, DynLogicBitAndPromotesToLogic) {
+    LogicVector l({'0'_l, '1'_l, 'X'_l, '0'_l});
+    BitVector b({'1'_b, '1'_b, '1'_b, '0'_b});
+    auto c = l & b;
+    static_assert(std::is_same_v<decltype(c), LogicVector>);
+    EXPECT_EQ(c[3], '0'_l);
+    EXPECT_EQ(c[2], '1'_l);
+    EXPECT_EQ(c[1], 'X'_l);
+    EXPECT_EQ(c[0], '0'_l);
+}
 
-// TEST(TestBitArray, DynBitLogicOrPromotesToLogic) {
-//     // BitArray on LHS, LogicArray on RHS -- promotion still happens.
-//     BitVector b({'0'_b, '0'_b, '1'_b, '0'_b});
-//     LogicVector l({'1'_l, '0'_l, '0'_l, 'X'_l});
-//     auto c = b | l;
-//     static_assert(std::is_same_v<decltype(c), LogicVector>);
-//     EXPECT_EQ(c[3], '1'_l);
-//     EXPECT_EQ(c[2], '0'_l);
-//     EXPECT_EQ(c[1], '1'_l);
-//     EXPECT_EQ(c[0], 'X'_l);
-// }
+TEST(TestBitArray, DynBitLogicOrPromotesToLogic) {
+    // BitArray on LHS, LogicArray on RHS -- promotion still happens.
+    BitVector b({'0'_b, '0'_b, '1'_b, '0'_b});
+    LogicVector l({'1'_l, '0'_l, '0'_l, 'X'_l});
+    auto c = b | l;
+    static_assert(std::is_same_v<decltype(c), LogicVector>);
+    EXPECT_EQ(c[3], '1'_l);
+    EXPECT_EQ(c[2], '0'_l);
+    EXPECT_EQ(c[1], '1'_l);
+    EXPECT_EQ(c[0], 'X'_l);
+}
 
-// TEST(TestBitArray, StaticDynMixedYieldsDynLogic) {
-//     // Static LogicArray + dynamic BitArray -- dynamic operand forces Vector,
-//     // and Logic wins for the element type.
-//     auto l = "0101"_l;
-//     BitVector b({'1'_b, '1'_b, '0'_b, '0'_b});
-//     auto c = l & b;
-//     static_assert(std::is_same_v<decltype(c), LogicVector>);
-//     EXPECT_EQ(c[3], '0'_l);
-//     EXPECT_EQ(c[0], '0'_l);
-// }
+TEST(TestBitArray, StaticDynMixedYieldsDynLogic) {
+    // Static LogicArray + dynamic BitArray -- dynamic operand forces Vector,
+    // and Logic wins for the element type.
+    auto l = "0101"_l;
+    BitVector b({'1'_b, '1'_b, '0'_b, '0'_b});
+    auto c = l & b;
+    static_assert(std::is_same_v<decltype(c), LogicVector>);
+    EXPECT_EQ(c[3], '0'_l);
+    EXPECT_EQ(c[0], '0'_l);
+}
 
-// TEST(TestBitArray, DynBitStaticLogicAndPromotesToDynLogic) {
-//     BitVector b({'1'_b, '1'_b, '0'_b, '0'_b});
-//     auto l = "0101"_l;
-//     auto c = b & l;
-//     static_assert(std::is_same_v<decltype(c), LogicVector>);
-//     EXPECT_EQ(c[3], '0'_l);
-//     EXPECT_EQ(c[2], '1'_l);
-//     EXPECT_EQ(c[1], '0'_l);
-//     EXPECT_EQ(c[0], '0'_l);
-// }
+TEST(TestBitArray, DynBitStaticLogicAndPromotesToDynLogic) {
+    BitVector b({'1'_b, '1'_b, '0'_b, '0'_b});
+    auto l = "0101"_l;
+    auto c = b & l;
+    static_assert(std::is_same_v<decltype(c), LogicVector>);
+    EXPECT_EQ(c[3], '0'_l);
+    EXPECT_EQ(c[2], '1'_l);
+    EXPECT_EQ(c[1], '0'_l);
+    EXPECT_EQ(c[0], '0'_l);
+}
 
-// TEST(TestBitArray, StaticBitDynLogicOrPromotesToDynLogic) {
-//     auto b = "0010"_b;
-//     LogicVector l({'1'_l, '0'_l, '0'_l, 'X'_l});
-//     auto c = b | l;
-//     static_assert(std::is_same_v<decltype(c), LogicVector>);
-//     EXPECT_EQ(c[3], '1'_l);
-//     EXPECT_EQ(c[2], '0'_l);
-//     EXPECT_EQ(c[1], '1'_l);
-//     EXPECT_EQ(c[0], 'X'_l);
-// }
+TEST(TestBitArray, StaticBitDynLogicOrPromotesToDynLogic) {
+    auto b = "0010"_b;
+    LogicVector l({'1'_l, '0'_l, '0'_l, 'X'_l});
+    auto c = b | l;
+    static_assert(std::is_same_v<decltype(c), LogicVector>);
+    EXPECT_EQ(c[3], '1'_l);
+    EXPECT_EQ(c[2], '0'_l);
+    EXPECT_EQ(c[1], '1'_l);
+    EXPECT_EQ(c[0], 'X'_l);
+}
 
-// // -- to_bit_array from string ----------------------------------------------
+// -- to_bit_array from string ----------------------------------------------
 
 TEST(TestBitArray, ToBitArray) {
     auto a = Vector<Bit>("0110");
@@ -1196,19 +1201,19 @@ TEST(TestBitArray, ToBitArrayInvalidChar) {
     EXPECT_THROW(Vector<Bit>("2"), std::invalid_argument);
 }
 
-// // -- to_string on BitArray -------------------------------------------------
+// -- to_string on BitArray -------------------------------------------------
 
 TEST(TestBitArray, ToStringBit) {
     auto a = Vector<Bit>("0110");
     EXPECT_EQ(to_string(a), "0110");
 }
 
-// TEST(TestBitArray, ToStringStaticBit) {
-//     auto a = "0101"_b;
-//     EXPECT_EQ(to_string(a), "0101");
-// }
+TEST(TestBitArray, ToStringStaticBit) {
+    auto a = "0101"_b;
+    EXPECT_EQ(to_string(a), "0101");
+}
 
-// // -- resolve on BitArray (always engaged) ----------------------------------
+// -- resolve on BitArray (always engaged) ----------------------------------
 
 TEST(TestBitArray, ResolveAlwaysEngaged) {
     auto a = Vector<Bit>("0110");
@@ -1217,7 +1222,7 @@ TEST(TestBitArray, ResolveAlwaysEngaged) {
     EXPECT_TRUE(resolve(empty, ResolveMethod::WEAK).has_value());
 }
 
-// // -- resolve on BitArray ---------------------------------------------------
+// -- resolve on BitArray ---------------------------------------------------
 
 TEST(TestBitArray, ResolveBitIsIdentity) {
     auto a = Vector<Bit>("0110");
@@ -1235,34 +1240,34 @@ TEST(TestBitArray, ResolveBitIsIdentity) {
     }
 }
 
-// // -- String-literal UDL ----------------------------------------------------
+// -- String-literal UDL ----------------------------------------------------
 
-// TEST(TestBitArray, UdlBit) {
-//     auto a = "0101"_b;
-//     static_assert(std::is_same_v<decltype(a), BitArray<Range{3, Direction::DOWNTO, 0}>>);
-//     EXPECT_EQ(a.range(), (Range{3, Direction::DOWNTO, 0}));
-//     EXPECT_EQ(a[3], '0'_b);
-//     EXPECT_EQ(a[2], '1'_b);
-//     EXPECT_EQ(a[1], '0'_b);
-//     EXPECT_EQ(a[0], '1'_b);
-// }
+TEST(TestBitArray, UdlBit) {
+    auto a = "0101"_b;
+    static_assert(std::is_same_v<decltype(a), BitArray<Range{3, Direction::DOWNTO, 0}>>);
+    EXPECT_EQ(a.range(), (Range{3, Direction::DOWNTO, 0}));
+    EXPECT_EQ(a[3], '0'_b);
+    EXPECT_EQ(a[2], '1'_b);
+    EXPECT_EQ(a[1], '0'_b);
+    EXPECT_EQ(a[0], '1'_b);
+}
 
-// TEST(TestBitArray, UdlBitConstexpr) {
-//     constexpr auto a = "0101"_b;
-//     static_assert(a[3] == '0'_b);
-//     static_assert(a[2] == '1'_b);
-//     static_assert(a[1] == '0'_b);
-//     static_assert(a[0] == '1'_b);
-// }
+TEST(TestBitArray, UdlBitConstexpr) {
+    constexpr auto a = "0101"_b;
+    static_assert(a[3] == '0'_b);
+    static_assert(a[2] == '1'_b);
+    static_assert(a[1] == '0'_b);
+    static_assert(a[0] == '1'_b);
+}
 
-// TEST(TestBitArray, UdlBitUnderscore) {
-//     auto a = "01_10"_b;
-//     static_assert(std::is_same_v<decltype(a), BitArray<Range{3, Direction::DOWNTO, 0}>>);
-//     EXPECT_EQ(a[3], '0'_b);
-//     EXPECT_EQ(a[2], '1'_b);
-//     EXPECT_EQ(a[1], '1'_b);
-//     EXPECT_EQ(a[0], '0'_b);
-// }
+TEST(TestBitArray, UdlBitUnderscore) {
+    auto a = "01_10"_b;
+    static_assert(std::is_same_v<decltype(a), BitArray<Range{3, Direction::DOWNTO, 0}>>);
+    EXPECT_EQ(a[3], '0'_b);
+    EXPECT_EQ(a[2], '1'_b);
+    EXPECT_EQ(a[1], '1'_b);
+    EXPECT_EQ(a[0], '0'_b);
+}
 
 // Note: "<bad>"_b is a compile-time error (throw in constant evaluation), so
 // the UDL invalid-character path cannot be exercised by a runtime test. The
@@ -1283,11 +1288,11 @@ TEST(TestLogicArray, IndexOfLogicArray) {
     EXPECT_EQ(a.index<0>(), 'Z'_l);
 }
 
-// TEST(TestLogicArray, IndexOfBitArray) {
-//     auto a = "0110"_b;
-//     EXPECT_EQ(a.index<3>(), '0'_b);
-//     EXPECT_EQ(a.index<2>(), '1'_b);
-// }
+TEST(TestLogicArray, IndexOfBitArray) {
+    auto a = "0110"_b;
+    EXPECT_EQ(a.index<3>(), '0'_b);
+    EXPECT_EQ(a.index<2>(), '1'_b);
+}
 
 TEST(TestLogicArray, IndexOfLogicVector) {
     auto a = Vector<Logic>("01XZ");  // Vector<Logic>, DOWNTO {3..0}
@@ -1359,22 +1364,22 @@ TEST(TestLogicArray, LogicStaticArrayFromStringInvalidCharThrows) {
     EXPECT_THROW((void)LogicArray<3>("01?"), std::invalid_argument);
 }
 
-// TEST(TestBitArray, BitStaticArrayFromString) {
-//     BitArray<4> a("0110");
-//     EXPECT_EQ(a[3], '0'_b);
-//     EXPECT_EQ(a[2], '1'_b);
-//     EXPECT_EQ(a[1], '1'_b);
-//     EXPECT_EQ(a[0], '0'_b);
-// }
+TEST(TestBitArray, BitStaticArrayFromString) {
+    BitArray<4> a("0110");
+    EXPECT_EQ(a[3], '0'_b);
+    EXPECT_EQ(a[2], '1'_b);
+    EXPECT_EQ(a[1], '1'_b);
+    EXPECT_EQ(a[0], '0'_b);
+}
 
-// TEST(TestBitArray, BitStaticArrayFromStringLengthMismatchThrows) {
-//     EXPECT_THROW((void)BitArray<4>("011"), std::invalid_argument);
-// }
+TEST(TestBitArray, BitStaticArrayFromStringLengthMismatchThrows) {
+    EXPECT_THROW((void)BitArray<4>("011"), std::invalid_argument);
+}
 
-// TEST(TestBitArray, BitStaticArrayFromStringInvalidCharThrows) {
-//     EXPECT_THROW((void)BitArray<3>("01X"), std::invalid_argument);
-//     EXPECT_THROW((void)BitArray<3>("012"), std::invalid_argument);
-// }
+TEST(TestBitArray, BitStaticArrayFromStringInvalidCharThrows) {
+    EXPECT_THROW((void)BitArray<3>("01X"), std::invalid_argument);
+    EXPECT_THROW((void)BitArray<3>("012"), std::invalid_argument);
+}
 
 // -- Formatter for StaticArraySlice of Logic/Bit --------------------------
 //
@@ -1388,8 +1393,8 @@ TEST(TestLogicArray, FormatterLogicStaticSlice) {
     EXPECT_EQ(std::format("{}", s), "LogicStaticArraySlice[2 downto 1]{\"1X\"}");
 }
 
-// TEST(TestBitArray, FormatterBitStaticSlice) {
-//     auto a = "0101"_b;  // static BitArray<4>
-//     auto s = a.slice<Range{2, Direction::DOWNTO, 1}>();
-//     EXPECT_EQ(std::format("{}", s), "BitStaticArraySlice[2 downto 1]{\"10\"}");
-// }
+TEST(TestBitArray, FormatterBitStaticSlice) {
+    auto a = "0101"_b;  // static BitArray<4>
+    auto s = a.slice<Range{2, Direction::DOWNTO, 1}>();
+    EXPECT_EQ(std::format("{}", s), "BitStaticArraySlice[2 downto 1]{\"10\"}");
+}

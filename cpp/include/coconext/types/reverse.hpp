@@ -13,7 +13,7 @@ namespace coconext::types {
 template <typename T, Range R>
 constexpr detail::Array<T, reverse(R)> reverse(detail::Array<T, R> const& a) {
     detail::Array<T, reverse(R)> result;
-    std::ranges::reverse_copy(a, result.begin());
+    std::reverse_copy(a.begin(), a.end(), result.begin());
     return result;
 }
 
