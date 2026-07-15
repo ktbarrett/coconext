@@ -438,37 +438,64 @@ class Bits {
         requires is_not_native_int
         : storage_(val) {}
 
-    template <bool IsConst, bool Downto>
+    // BigInt or native int from initializer list
+    template <typename U>
+        requires std::convertible_to<U, Bit>
+    constexpr Bits(std::initializer_list<U> init) : storage_(0) {
+        if (init.size() != W) {
+            throw std::invalid_argument(
+                "Initializer list of size " + std::to_string(init.size())
+                + " does not match Bits width " + std::to_string(W)
+            );
+        }
+
+        size_t bit_pos = W > 0 ? W - 1 : 0;
+
+        for (auto const& val : init) {
+            if (static_cast<bool>(Bit(val))) {
+                set_bit(bit_pos, true);
+            }
+            if (bit_pos > 0) {
+                bit_pos--;
+            }
+        }
+    }
+
+    template <bool IsConst>
     class IteratorImpl;
 
     class BitReference {
       private:
-        Bits<W>* parent_;
+        Bits<W>& parent_;
         size_t index_;
 
-        template <bool C, bool D>
+        template <bool C>
         friend class IteratorImpl;
 
       public:
-        constexpr BitReference(Bits<W>* parent, size_t index)
+        constexpr BitReference(Bits<W>& parent, size_t index)
             : parent_(parent), index_(index) {}
 
-        constexpr operator coconext::types::Bit() const {
-            return parent_->get_bit(index_) ? coconext::types::Bit('1')
-                                            : coconext::types::Bit('0');
+        constexpr operator Bit() const {
+            return parent_.get_bit(index_) ? Bit('1') : Bit('0');
         }
 
         constexpr explicit operator char() const {
-            return parent_->get_bit(index_) ? '1' : '0';
+            return parent_.get_bit(index_) ? '1' : '0';
         }
 
-        constexpr BitReference& operator=(coconext::types::Bit val) {
-            parent_->set_bit(index_, static_cast<bool>(val));
+        constexpr BitReference const& operator=(Bit val) const {
+            parent_.set_bit(index_, static_cast<bool>(val));
+            return *this;
+        }
+
+        constexpr BitReference const& operator=(BitReference const& other) const {
+            parent_.set_bit(index_, static_cast<bool>(static_cast<Bit>(other)));
             return *this;
         }
     };
 
-    template <bool IsConst, bool Downto = true>
+    template <bool IsConst>
     class IteratorImpl {
       private:
         using ParentType = std::conditional_t<IsConst, Bits<W> const, Bits<W>>;
@@ -478,10 +505,10 @@ class Bits {
       public:
         using iterator_concept = std::random_access_iterator_tag;
         using iterator_category = std::random_access_iterator_tag;
-        using value_type = coconext::types::Bit;
+        using value_type = Bit;
         using difference_type = std::ptrdiff_t;
         using pointer = void;
-        using reference = std::conditional_t<IsConst, coconext::types::Bit, BitReference>;
+        using reference = std::conditional_t<IsConst, Bit, BitReference>;
 
         constexpr IteratorImpl() = default;
 
@@ -489,13 +516,12 @@ class Bits {
             : parent_(parent), index_(index) {}
 
         constexpr reference operator*() const {
-            size_t bit_pos = Downto ? (W > 0 ? W - 1 - index_ : 0) : index_;
+            size_t bit_pos = W > 0 ? W - 1 - index_ : 0;
 
             if constexpr (IsConst) {
-                return parent_->get_bit(bit_pos) ? coconext::types::Bit('1')
-                                                 : coconext::types::Bit('0');
+                return parent_->get_bit(bit_pos) ? '1'_b : '0'_b;
             } else {
-                return BitReference(parent_, bit_pos);
+                return BitReference(*parent_, bit_pos);
             }
         }
 
@@ -562,38 +588,26 @@ class Bits {
         }
     };
 
-    template <bool Downto = true>
-    constexpr auto begin() {
-        return IteratorImpl<false, Downto>(this, 0);
-    }
+    constexpr auto begin() { return IteratorImpl<false>(this, 0); }
 
-    template <bool Downto = true>
-    constexpr auto begin() const {
-        return IteratorImpl<true, Downto>(this, 0);
-    }
+    constexpr auto begin() const { return IteratorImpl<true>(this, 0); }
 
-    template <bool Downto = true>
-    constexpr auto end() {
-        return IteratorImpl<false, Downto>(this, W);
-    }
+    constexpr auto end() { return IteratorImpl<false>(this, W); }
 
-    template <bool Downto = true>
-    constexpr auto end() const {
-        return IteratorImpl<true, Downto>(this, W);
-    }
+    constexpr auto end() const { return IteratorImpl<true>(this, W); }
 
     constexpr BitReference operator[](size_t index) {
         if (index >= W) {
             throw std::out_of_range("Bit index out of bounds");
         }
-        return BitReference(this, index);
+        return BitReference(*this, index);
     }
 
-    constexpr coconext::types::Bit operator[](size_t index) const {
+    constexpr Bit operator[](size_t index) const {
         if (index >= W) {
             throw std::out_of_range("Bit index out of bounds");
         }
-        return get_bit(index) ? coconext::types::Bit('1') : coconext::types::Bit('0');
+        return get_bit(index) ? '1'_b : '0'_b;
     }
 
     constexpr Bits operator+(Bits<W> const& other) const {
