@@ -5,6 +5,7 @@
 #include <coconext/types/int_base.hpp>
 #include <coconext/types/logic.hpp>
 #include <coconext/types/string_literal.hpp>
+#include <format>
 
 namespace coconext::types {
 
@@ -61,52 +62,22 @@ class Array<Bit, R> {
 
     template <typename U>
         requires std::convertible_to<U, Bit>
-    constexpr Array(std::initializer_list<U> init) : value_(0) {
-        if (init.size() != R.length()) {
-            throw std::invalid_argument(
-                "Initializer list of size " + std::to_string(init.size())
-                + " does not match Array length " + std::to_string(R.length())
-            );
-        }
+    constexpr Array(std::initializer_list<U> init) : value_(init) {}
 
-        Bits<R.length()> zero(0);
-        Bits<R.length()> one(1);
+    constexpr auto begin() { return value_.begin(); }
 
-        size_t i = 0;  // position in initializer_list
-        bool downto = R.direction == Direction::DOWNTO;
+    constexpr auto end() { return value_.end(); }
 
-        for (Bit const& val : init) {
-            size_t bit_pos = downto ? (R.length() - 1 - i) : i;
+    constexpr auto begin() const { return value_.begin(); }
 
-            auto raw_bit = static_cast<bool>(val) ? one : zero;
-            value_ = value_ | (raw_bit << bit_pos);
-
-            i++;
-        }
-    }
-
-    constexpr auto begin() {
-        return value_.template begin<R.direction == Direction::DOWNTO>();
-    }
-
-    constexpr auto end() { return value_.template end<R.direction == Direction::DOWNTO>(); }
-
-    constexpr auto begin() const {
-        return value_.template begin<R.direction == Direction::DOWNTO>();
-    }
-
-    constexpr auto end() const {
-        return value_.template end<R.direction == Direction::DOWNTO>();
-    }
+    constexpr auto end() const { return value_.end(); }
 
     constexpr auto operator[](Range::value_type idx) {
         auto const offset = offset_of(R, idx);
         if (!offset.has_value()) {
             throw std::out_of_range("Index out of bounds");
         }
-        size_t bit_pos = (R.direction == Direction::DOWNTO)
-                           ? (R.length() - 1 - offset.value())
-                           : offset.value();
+        size_t bit_pos = R.length() - 1 - offset.value();
 
         return value_[bit_pos];
     }
@@ -116,19 +87,20 @@ class Array<Bit, R> {
         if (!offset.has_value()) {
             throw std::out_of_range("Index out of bounds");
         }
-        size_t bit_pos = (R.direction == Direction::DOWNTO)
-                           ? (R.length() - 1 - offset.value())
-                           : offset.value();
+        size_t bit_pos = R.length() - 1 - offset.value();
 
         return value_[bit_pos];
     }
 
-    constexpr auto operator[](Range r) {
-        return coconext::types::ArraySlice<Array<Bit, R>>(this, r);
-    }
+    constexpr auto operator[](Range r) { return ArraySlice<Array<Bit, R>>(this, r); }
 
     constexpr auto operator[](Range r) const {
-        return coconext::types::ArraySlice<Array<Bit, R> const>(this, r);
+        return ArraySlice<Array<Bit, R> const>(this, r);
+    }
+
+    template <size_t N>
+    constexpr auto index() {
+        return value_[N];
     }
 
     template <size_t N>
@@ -137,8 +109,13 @@ class Array<Bit, R> {
     }
 
     template <Range R2>
+    constexpr auto slice() {
+        return StaticArraySlice<Array<Bit, R>, R2>(this);
+    }
+
+    template <Range R2>
     constexpr auto slice() const {
-        return coconext::types::StaticArraySlice<Array<Bit, R> const, R2>(this);
+        return StaticArraySlice<Array<Bit, R> const, R2>(this);
     }
 
     template <Range R2>
@@ -183,27 +160,16 @@ constexpr std::optional<Range::value_type> index_of(
     detail::Array<Bit, R> const& s, Bit const& v
 ) {
     auto bits = s.value_;
-
     if (!static_cast<bool>(v)) {
         bits = ~bits;
     }
 
-    size_t offset_from_begin;
-    if constexpr (R.direction == Direction::DOWNTO) {
-        size_t clz = bits.count_leading_zeros();
-        if (clz == R.length()) {
-            return std::nullopt;
-        }
-        offset_from_begin = clz;
-    } else {
-        size_t ctz = bits.count_trailing_zeros();
-        if (ctz == R.length()) {
-            return std::nullopt;
-        }
-        offset_from_begin = ctz;
+    size_t clz = bits.count_leading_zeros();
+    if (clz == R.length()) {
+        return std::nullopt;
     }
 
-    return detail::offset_to_hdl_coord(R, offset_from_begin);
+    return detail::offset_to_hdl_coord(R, clz);
 }
 
 template <Range R>
@@ -211,25 +177,15 @@ constexpr std::optional<Range::value_type> rindex_of(
     detail::Array<Bit, R> const& s, Bit const& v
 ) {
     auto bits = s.value_;
-
     if (!static_cast<bool>(v)) {
         bits = ~bits;
     }
 
-    size_t offset_from_begin;
-    if constexpr (R.direction == Direction::DOWNTO) {
-        size_t ctz = bits.count_trailing_zeros();
-        if (ctz == R.length()) {
-            return std::nullopt;
-        }
-        offset_from_begin = R.length() - 1 - ctz;
-    } else {
-        size_t clz = bits.count_leading_zeros();
-        if (clz == R.length()) {
-            return std::nullopt;
-        }
-        offset_from_begin = R.length() - 1 - clz;
+    size_t ctz = bits.count_trailing_zeros();
+    if (ctz == R.length()) {
+        return std::nullopt;
     }
+    size_t offset_from_begin = R.length() - 1 - ctz;
 
     return detail::offset_to_hdl_coord(R, offset_from_begin);
 }
