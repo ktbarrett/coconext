@@ -1,11 +1,11 @@
 #ifndef COCONEXT_BIT_ARRAY_HPP
 #define COCONEXT_BIT_ARRAY_HPP
 
-#include <bit>
+#include <coconext/types/array.hpp>
 #include <coconext/types/int_base.hpp>
 #include <coconext/types/logic.hpp>
+#include <coconext/types/range.hpp>
 #include <coconext/types/string_literal.hpp>
-#include <format>
 
 namespace coconext::types {
 
@@ -15,12 +15,10 @@ class Array;
 }
 
 // all reductions are better off without a loop
-// popcount is one asm instruction so we get O(1)
+// All bits set iff every one of the R.length() bits is counted.
 template <Range R>
 auto and_reduce(detail::Array<Bit, R> const& s) {
-    auto bits = s.value_;
-    detail::Bits<R.length()> zero(0);
-    return (~bits == zero) ? '1'_b : '0'_b;
+    return (s.value_.popcount() == R.length()) ? '1'_b : '0'_b;
 }
 
 template <Range R>

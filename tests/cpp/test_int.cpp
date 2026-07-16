@@ -6,12 +6,6 @@
 
 using namespace coconext::types;
 
-#ifdef COCONEXT_USE_APINT
-
-// Test detail::Bits with APInt
-
-#else
-
 #if defined(__SIZEOF_INT128__)
 
 TEST(TestBits, JustAbove128) {
@@ -77,15 +71,15 @@ TEST(TestBits, comparison_operations_supports_128) {
     __uint128_t large_raw = ((__uint128_t)0xAAAULL << 64) | 0x0ULL;
     detail::Bits<128> b128_large(large_raw);
 
-    EXPECT_TRUE(b128_small < b128_large);
-    EXPECT_TRUE(b128_large >= b128_small);
+    EXPECT_TRUE(b128_small.ult(b128_large));
+    EXPECT_TRUE(b128_large.uge(b128_small));
 
     // 93 bits max: 29 high bits + 64 low bits
     detail::Bits<93> b93_max(-1);
     detail::Bits<93> b93_zero(0);
 
-    EXPECT_TRUE(b93_max > b93_zero);
-    EXPECT_TRUE(b93_zero < b93_max);
+    EXPECT_TRUE(b93_max.ugt(b93_zero));
+    EXPECT_TRUE(b93_zero.ult(b93_max));
     EXPECT_TRUE(b93_max != b93_zero);
 }
 
@@ -207,13 +201,26 @@ TEST(TestBits, single_word_constructor) {
 }
 
 TEST(TestBits, string_constructor) {
+    // Same in-range value written with and without leading zeros.
     detail::Bits<232> a{
-        "0x10000_4F33_000000000000_9FF0_000000000000_BD73_000000000000_9AF0_000000"
+        "0x0000_4F33_000000000000_9FF0_000000000000_BD73_000000000000_9AF0_000000"
     };
     detail::Bits<232> b{
-        "0x10_4F33_000000000000_9FF0_000000000000_BD73_000000000000_9AF0_000000"
+        "0x4F33_000000000000_9FF0_000000000000_BD73_000000000000_9AF0_000000"
     };
     EXPECT_EQ(a, b);
+
+    // A literal wider than the type throws rather than silently truncating.
+    EXPECT_THROW(
+        (detail::Bits<232>{
+            "0x10000_4F33_000000000000_9FF0_000000000000_BD73_000000000000_9AF0_000000"
+        }),
+        std::out_of_range
+    );
+    // A decimal literal that does not fit also throws.
+    EXPECT_THROW(
+        (detail::Bits<130>{"1361129467683753853853498429727072845824"}), std::out_of_range
+    );
 
     detail::Bits<264> expected_hex{
         "0x"
@@ -241,16 +248,19 @@ TEST(TestBits, comparison_operations) {
     EXPECT_TRUE(b32_a != b32_diff);
     EXPECT_FALSE(b32_a == b32_diff);
 
+    // Ordering is via named unsigned (u*) / signed (s*) comparisons; Bits has
+    // no operator< because the interpretation of the bit pattern is the
+    // caller's. This mirrors LLVM APInt's ult/slt API.
     detail::Bits<12> b12_small(0x055);
     detail::Bits<12> b12_large(0xAAA);
-    EXPECT_TRUE(b12_small < b12_large);
-    EXPECT_TRUE(b12_large >= b12_small);
+    EXPECT_TRUE(b12_small.ult(b12_large));
+    EXPECT_TRUE(b12_large.uge(b12_small));
 
     detail::Bits<63> b63_max(0x7FFFFFFFFFFFFFFF);
     detail::Bits<63> b63_zero(0);
 
-    EXPECT_TRUE(b63_max > b63_zero);
-    EXPECT_TRUE(b63_zero < b63_max);
+    EXPECT_TRUE(b63_max.ugt(b63_zero));
+    EXPECT_TRUE(b63_zero.ult(b63_max));
     EXPECT_TRUE(b63_max != b63_zero);
 
     detail::Bits<200> a{"0xABCDEF01_00000000_00000000"};
@@ -268,38 +278,47 @@ TEST(TestBits, comparison_operations) {
 
     detail::Bits<256> u_massive{"0x22222222_00000000_00000000_00000000"};
 
-    EXPECT_TRUE(u_small < u_large);
-    EXPECT_TRUE(u_large > u_small);
-    EXPECT_TRUE(u_large < u_massive);
-    EXPECT_TRUE(u_massive > u_large);
+    EXPECT_TRUE(u_small.ult(u_large));
+    EXPECT_TRUE(u_large.ugt(u_small));
+    EXPECT_TRUE(u_large.ult(u_massive));
+    EXPECT_TRUE(u_massive.ugt(u_large));
 
-    EXPECT_TRUE(u_small <= u_large);
-    EXPECT_TRUE(u_large >= u_small);
+    EXPECT_TRUE(u_small.ule(u_large));
+    EXPECT_TRUE(u_large.uge(u_small));
 
-    EXPECT_TRUE(u_small <= u_small);
-    EXPECT_TRUE(u_small >= u_small);
-    EXPECT_FALSE(u_small < u_small);
-    EXPECT_FALSE(u_small > u_small);
+    EXPECT_TRUE(u_small.ule(u_small));
+    EXPECT_TRUE(u_small.uge(u_small));
+    EXPECT_FALSE(u_small.ult(u_small));
+    EXPECT_FALSE(u_small.ugt(u_small));
 
+    // A negative literal stores its two's-complement pattern. Under the signed
+    // interpretation (s*) it orders below a positive value; under the unsigned
+    // interpretation (u*) its high bit makes it the larger magnitude.
     detail::Bits<150> pos("5000000");
     detail::Bits<150> neg("-5000000");
     detail::Bits<150> zero(0);
 
-    EXPECT_TRUE(neg < pos);
-    EXPECT_TRUE(pos > neg);
-    EXPECT_TRUE(neg <= pos);
-    EXPECT_TRUE(pos >= neg);
+    EXPECT_TRUE(neg.slt(pos));
+    EXPECT_TRUE(pos.sgt(neg));
+    EXPECT_TRUE(neg.sle(pos));
+    EXPECT_TRUE(pos.sge(neg));
+    EXPECT_TRUE(neg.slt(zero));
+    EXPECT_TRUE(pos.sgt(zero));
 
-    EXPECT_TRUE(neg < zero);
-    EXPECT_TRUE(pos > zero);
+    EXPECT_TRUE(pos.ult(neg));  // unsigned: neg's pattern is larger
+    EXPECT_TRUE(neg.ugt(pos));
 
+    // Signed: -10 > -20. Unsigned: -10's pattern is also larger than -20's.
     detail::Bits<150> neg_10("-10");
     detail::Bits<150> neg_20("-20");
 
-    EXPECT_TRUE(neg_10 > neg_20);
-    EXPECT_TRUE(neg_20 < neg_10);
-    EXPECT_TRUE(neg_10 >= neg_20);
-    EXPECT_TRUE(neg_20 <= neg_10);
+    EXPECT_TRUE(neg_10.sgt(neg_20));
+    EXPECT_TRUE(neg_20.slt(neg_10));
+    EXPECT_TRUE(neg_10.sge(neg_20));
+    EXPECT_TRUE(neg_20.sle(neg_10));
+
+    EXPECT_TRUE(neg_10.ugt(neg_20));
+    EXPECT_TRUE(neg_20.ult(neg_10));
 }
 
 TEST(TestBits, and_or_op) {
@@ -369,7 +388,7 @@ TEST(TestBits, not_op) {
     detail::Bits<170> not_a = ~a;
 
     detail::Bits<170> expected_not_a{
-        "0x3FFF'FFFF'FFFF'FFFF'FFFF'FFFF'FFFF'FFFF'FFFF'FFFF'FFFF"
+        "0x3FF'FFFF'FFFF'FFFF'FFFF'FFFF'FFFF'FFFF'FFFF'FFFF'FFFF"
     };
     EXPECT_EQ(not_a, expected_not_a);
 }
@@ -502,6 +521,96 @@ TEST(TestBits, shift_left) {
     EXPECT_EQ(a, b);
 }
 
-#endif  // COCONEXT_USE_APINT
+// Wide (BigInt-backed) arithmetic. Reference values computed with Python's
+// arbitrary-precision integers.
+TEST(TestBits, arithmetic_operations_wide) {
+    detail::Bits<200> a{"0x1234567890ABCDEF1122334455667788AABBCCDD"};
+    detail::Bits<200> b{"0xFEDCBA98765432100123456789"};
+
+    EXPECT_EQ(
+        (a + b).to_decimal_string(), "103929005307927776916288754849918835164314678374"
+    );
+    EXPECT_EQ(
+        (a - b).to_decimal_string(), "103929005307927736531757632912370613094305916244"
+    );
+    EXPECT_EQ(
+        (a * b).to_decimal_string(),
+        "329963546613616313339723066835445579609796160260803833793861"
+    );
+    EXPECT_EQ(a.udiv(b).to_decimal_string(), "5146971002046463");
+    EXPECT_EQ(a.umod(b).to_decimal_string(), "20112278405973339191843622874214");
+
+    // Division identity holds.
+    EXPECT_EQ(a.udiv(b) * b + a.umod(b), a);
+
+    // Degenerate cases.
+    detail::Bits<200> zero(0);
+    detail::Bits<200> one(1);
+    EXPECT_EQ(a.udiv(a), one);
+    EXPECT_EQ(a.umod(a), zero);
+    EXPECT_EQ(b.udiv(a), zero);  // b < a
+    EXPECT_EQ(b.umod(a), b);
+    EXPECT_EQ(zero.udiv(a), zero);
+    EXPECT_EQ(a.udiv(one), a);
+
+    EXPECT_THROW(a.udiv(zero), std::domain_error);
+    EXPECT_THROW(a.umod(zero), std::domain_error);
+    EXPECT_THROW(a.sdiv(zero), std::domain_error);
+    EXPECT_THROW(a.smod(zero), std::domain_error);
+}
+
+TEST(TestBits, signed_arithmetic_wide) {
+    detail::Bits<200> neg{"-1000000000000000000000"};
+    detail::Bits<200> pos{"7"};
+
+    EXPECT_EQ(neg.sdiv(pos).to_decimal_string(true), "-142857142857142857142");
+    EXPECT_EQ(neg.smod(pos).to_decimal_string(true), "-6");
+
+    detail::Bits<200> neg2{"-3"};
+    EXPECT_EQ(neg.sdiv(neg2).to_decimal_string(true), "333333333333333333333");
+    EXPECT_EQ(neg.smod(neg2).to_decimal_string(true), "-1");
+
+    // MIN / -1 wraps to MIN rather than invoking UB. On the wide path MIN is
+    // -2^(W-1); dividing by -1 yields the same pattern back.
+    detail::Bits<200> min = detail::Bits<200>(1) << 199;  // sign bit only
+    detail::Bits<200> neg_one = ~detail::Bits<200>(0);    // all ones == -1
+    EXPECT_EQ(min.sdiv(neg_one), min);
+    EXPECT_EQ(min.smod(neg_one), detail::Bits<200>(0));
+}
+
+TEST(TestBits, string_overflow_throws_wide) {
+    // Exactly-fitting literals are accepted.
+    EXPECT_NO_THROW((detail::Bits<200>{"0x" + std::string(50, 'F')}));  // 200 ones
+    // One nibble too many throws.
+    EXPECT_THROW((detail::Bits<200>{"0x" + std::string(51, 'F')}), std::out_of_range);
+}
+
+TEST(TestBits, to_string_wide) {
+    detail::Bits<200> a{"0x1234567890ABCDEF1122334455667788AABBCCDD"};
+    EXPECT_EQ(
+        a.to_hexadecimal_string(), "00000000001234567890abcdef1122334455667788aabbccdd"
+    );
+    EXPECT_EQ(a.to_decimal_string(), "103929005307927756724023193881144724129310297309");
+
+    detail::Bits<200> neg{"-5"};
+    EXPECT_EQ(neg.to_decimal_string(true), "-5");
+    EXPECT_EQ(detail::Bits<200>(0).to_decimal_string(), "0");
+}
+
+#if defined(__SIZEOF_INT128__)
+// Proof that the wide (BigInt) path remains fully usable in constant
+// expressions: division, multiplication and comparison all evaluate at compile
+// time, and the division identity holds.
+TEST(TestBits, constexpr_wide) {
+    constexpr detail::Bits<200> a{"0xFEDCBA9876543210FEDCBA98"};
+    constexpr detail::Bits<200> b(uint64_t{1000000007});
+    constexpr auto q = a.udiv(b);
+    constexpr auto r = a.umod(b);
+    static_assert(q * b + r == a, "division identity at compile time");
+    static_assert(a.ugt(b));
+    static_assert(a.umod(a) == detail::Bits<200>(0));
+    SUCCEED();
+}
+#endif
 
 // LCOV_EXCL_BR_STOP
