@@ -3,11 +3,6 @@ add_library(coconext SHARED
     src/random.cpp
 )
 
-option(COCONEXT_USE_APINT "Use LLVM APInt backend" OFF)
-if(COCONEXT_USE_APINT)
-    target_compile_definitions(coconext PUBLIC COCONEXT_USE_APINT)
-endif()
-
 target_include_directories(coconext PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:coconext/include>)
