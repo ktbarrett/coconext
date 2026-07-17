@@ -1,34 +1,25 @@
-#ifndef COCONEXT_EVENT_DEQUE_HPP
-#define COCONEXT_EVENT_DEQUE_HPP
+#ifndef COCONEXT_CMARQUEUE_HPP
+#define COCONEXT_CMARQUEUE_HPP
 
-#include <coroutine>
-
-// This is a special deque implementation seen in both the EventLoop and Futures in this
-// library. This deque does not own the nodes it contains (beyond the default-constructed
+// This is a special deque implementation seen in the EventLoop, Futures, TaskManagers, and
+// more. This deque does not own the nodes it contains (beyond the default-constructed
 // anchors), so it is unconcerned with object lifetimes. Nodes are inserted into the deque
 // and by nature of their structure, can be removed anonymously in O(1). Node is a base
 // class for all types that wish to be added to the EventDeque.
 
-namespace coconext::event_loop {
+#include <concepts>
+#include <type_traits>
 
-class Event {
-    friend class Cmarqueue;
-    Event* prev = nullptr;
-    Event* next = nullptr;
+namespace coconext::detail {
 
-  public:
-    // Consider making this a virtual run() function to support things other than
-    // coroutines.
-    std::coroutine_handle<> coro_handle = nullptr;
+template <typename EntryT>
+concept CmarqueueEntry = requires(EntryT* e) {
+    requires std::same_as<decltype(e->prev), EntryT*>;
+    requires std::same_as<decltype(e->next), EntryT*>;
+} && std::is_default_constructible_v<EntryT> && std::is_destructible_v<EntryT>;
 
-    void remove() noexcept {
-        prev->next = next;
-        next->prev = prev;
-    }
-};
-
+template <CmarqueueEntry EntryT>
 class Cmarqueue {
-
   public:
     Cmarqueue() noexcept {
         head.next = &tail;
@@ -56,58 +47,58 @@ class Cmarqueue {
         bool operator!=(Iterator const& other) const { return current != other.current; }
     };
 
-    using iterator = Iterator<Event, true>;
-    using const_iterator = Iterator<Event const, true>;
-    using reverse_iterator = Iterator<Event, false>;
-    using const_reverse_iterator = Iterator<Event const, false>;
+    using iterator = Iterator<EntryT, true>;
+    using const_iterator = Iterator<EntryT const, true>;
+    using reverse_iterator = Iterator<EntryT, false>;
+    using const_reverse_iterator = Iterator<EntryT const, false>;
 
-    iterator begin() noexcept { return Iterator<Event, true>(front()); }
-    iterator end() noexcept { return Iterator<Event, true>(&tail); }
-    const_iterator begin() const noexcept { return Iterator<Event const, true>(front()); }
-    const_iterator end() const noexcept { return Iterator<Event const, true>(&tail); }
-    reverse_iterator rbegin() noexcept { return Iterator<Event, false>(back()); }
-    reverse_iterator rend() noexcept { return Iterator<Event, false>(&head); }
+    iterator begin() noexcept { return Iterator<EntryT, true>(front()); }
+    iterator end() noexcept { return Iterator<EntryT, true>(&tail); }
+    const_iterator begin() const noexcept { return Iterator<EntryT const, true>(front()); }
+    const_iterator end() const noexcept { return Iterator<EntryT const, true>(&tail); }
+    reverse_iterator rbegin() noexcept { return Iterator<EntryT, false>(back()); }
+    reverse_iterator rend() noexcept { return Iterator<EntryT, false>(&head); }
     const_reverse_iterator rbegin() const noexcept {
-        return Iterator<Event const, false>(back());
+        return Iterator<EntryT const, false>(back());
     }
     const_reverse_iterator rend() const noexcept {
-        return Iterator<Event const, false>(&head);
+        return Iterator<EntryT const, false>(&head);
     }
 
   public:
-    Event* front() const noexcept { return head.next == &tail ? nullptr : head.next; }
-    Event* back() const noexcept { return tail.prev == &head ? nullptr : tail.prev; }
+    EntryT* front() const noexcept { return head.next == &tail ? nullptr : head.next; }
+    EntryT* back() const noexcept { return tail.prev == &head ? nullptr : tail.prev; }
     bool empty() const noexcept { return head.next == &tail; }
-    Event* push_back(Event* node) noexcept {
+    EntryT* push_back(EntryT* node) noexcept {
         back()->next = node;
         node->prev = back();
         set_back(node);
         return node;
     }
-    Event* push_front(Event* node) noexcept {
+    EntryT* push_front(EntryT* node) noexcept {
         front()->prev = node;
         node->next = front();
         node->prev = &head;
         set_front(node);
         return node;
     }
-    Event* pop_back() {
+    EntryT* pop_back() {
         if (empty()) {
             return nullptr;
         }
-        Event* node = back();
+        EntryT* node = back();
         node->remove();
         return node;
     }
-    Event* pop_front() {
+    EntryT* pop_front() {
         if (empty()) {
             return nullptr;
         }
-        Event* node = front();
+        EntryT* node = front();
         node->remove();
         return node;
     }
-    void extend_back(Cmarqueue&& other) noexcept {
+    void extend_back(Cmarqueue<EntryT>&& other) noexcept {
         if (other.empty()) {
             return;
         }
@@ -116,7 +107,7 @@ class Cmarqueue {
         set_back(other.back());
         other.clear();
     }
-    void extend_front(Cmarqueue&& other) noexcept {
+    void extend_front(Cmarqueue<EntryT>&& other) noexcept {
         if (other.empty()) {
             return;
         }
@@ -131,12 +122,12 @@ class Cmarqueue {
     }
 
   private:
-    void set_back(Event* node) noexcept { tail.prev = node; }
-    void set_front(Event* node) noexcept { head.next = node; }
-    Event head;
-    Event tail;
+    void set_back(EntryT* node) noexcept { tail.prev = node; }
+    void set_front(EntryT* node) noexcept { head.next = node; }
+    EntryT head;
+    EntryT tail;
 };
 
-}  // namespace coconext::event_loop
+}  // namespace coconext::detail
 
-#endif  // COCONEXT_EVENT_DEQUE_HPP
+#endif  // COCONEXT_CMARQUEUE_HPP

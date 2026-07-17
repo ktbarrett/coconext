@@ -1,7 +1,8 @@
 #ifndef COCONEXT_EVENT_LOOP_HPP
 #define COCONEXT_EVENT_LOOP_HPP
 
-#include <coconext/event_deque.hpp>
+#include <coconext/cmarqueue.hpp>
+#include <coroutine>
 #include <mutex>
 
 namespace coconext::event_loop {
@@ -12,12 +13,28 @@ namespace coconext::event_loop {
 // their scheduling and invocation. Task lifetime is managed by TaskManagers.
 class EventLoop {
   public:
-    class Handle {
+    class Event {
+      public:
+        Event* prev = nullptr;
+        Event* next = nullptr;
+        // Consider making this a virtual run() function to support things other than
+        // coroutines.
+        std::coroutine_handle<> coro_handle = nullptr;
+
+        Event() noexcept = default;
+
+        void remove() noexcept {
+            prev->next = next;
+            next->prev = prev;
+        }
+    };
+
+    class ExternalHandle {
         friend class EventLoop;
 
-        Handle(EventLoop& loop) : loop_(loop) {}
-        Handle(Handle&& other) = default;
-        ~Handle();
+        ExternalHandle(EventLoop& loop) : loop_(loop) {}
+        ExternalHandle(ExternalHandle&& other) = default;
+        ~ExternalHandle() { loop_.mtx_.unlock(); }
 
       public:
         void run() {
@@ -27,6 +44,18 @@ class EventLoop {
             }
         }
 
+      private:
+        EventLoop& loop_;
+    };
+    friend class ExternalHandle;
+
+    class InternalHandle {
+        friend class EventLoop;
+
+        InternalHandle(EventLoop& loop) : loop_(loop) {}
+        InternalHandle(InternalHandle&& other) = default;
+
+      public:
         template <typename DequeT>
         void schedule_all_back(DequeT&& deque) {
             loop_.queue_.extend_back(std::forward<DequeT>(deque));
@@ -35,17 +64,17 @@ class EventLoop {
       private:
         EventLoop& loop_;
     };
-    friend class Handle;
 
   public:
-    [[nodiscard]] Handle acquire();
+    [[nodiscard]] ExternalHandle acquire() {
+        mtx_.lock();
+        return ExternalHandle(*this);
+    }
 
   private:
-    Cmarqueue queue_;
+    coconext::detail::Cmarqueue<Event> queue_;
     std::mutex mtx_;
 };
-
-EventLoop::Handle& get_current_event_loop();
 
 }  // namespace coconext::event_loop
 
