@@ -803,14 +803,13 @@ template <typename T>
 
 }  // namespace detail
 
-template <typename Target, typename Source>
-    requires detail::uses_Bits<Target> && detail::uses_Bits<Source>
+template <detail::HasBits Target, detail::HasBits Source>
 constexpr Target as(Source const& source) noexcept {
     static_assert(
         Target::static_range.length() == Source::static_range.length(),
         "as() requires equal widths."
     );
-    return Target(static_cast<detail::Array<Bit, Source::static_range>>(source));
+    return Target(detail::bits(source));
 }
 
 }  // namespace coconext::types

@@ -53,10 +53,8 @@ class Unsigned {
     static constexpr Range range() noexcept { return R; }
     static constexpr size_t size() noexcept { return R.length(); }
 
-    // Allow different width Unsigned templates to read our private value_ (required for
-    // resize and Signed constructor)
-    template <Range R2>
-    friend class Signed;
+    // Allow different-width Unsigned instantiations to read our private value_
+    // (required for resize and cross-width Unsigned constructor).
     template <Range R2>
     friend class Unsigned;
 
@@ -125,17 +123,18 @@ class Unsigned {
     // or is negative.
     template <Range R2>
     explicit constexpr Unsigned(Signed<R2> const& other) {
+        auto const& src_bits = bits(other);
         bool is_negative = false;
         if constexpr (!detail::Bits<R2.length()>::is_not_native_int) {
-            is_negative = (other.value_.srl(R2.length() - 1).raw() & 1) != 0;
+            is_negative = (src_bits.srl(R2.length() - 1).raw() & 1) != 0;
         } else {
-            is_negative = (other.value_.srl(R2.length() - 1).raw().get_word(0) & 1) != 0;
+            is_negative = (src_bits.srl(R2.length() - 1).raw().get_word(0) & 1) != 0;
         }
 
         if (is_negative) {
             throw std::out_of_range("Cannot construct Unsigned from negative Signed value");
         }
-        *this = Unsigned<R>(Unsigned<R2>(other.value_));
+        *this = Unsigned<R>(Unsigned<R2>(src_bits));
     }
 
     // Construct from a BitArray. Throws if the source value is not exactly N bits.
@@ -145,7 +144,7 @@ class Unsigned {
             R.length() == R2.length(), "BitArray reinterpret requires identical width"
         );
 
-        value_ = other.value_;
+        value_ = bits(other);
     }
 
     // Implicit conversion to supertype BitArray
@@ -670,14 +669,13 @@ class Unsigned {
     friend struct std::hash;
 
   private:
+    friend struct bits_fn;
+
     Bits<R.length()> value_;
 };
 
 template <Range R>
 inline constexpr bool is_coconext_unsigned_v<Unsigned<R>> = true;
-
-template <Range R>
-inline constexpr bool uses_Bits<Unsigned<R>> = true;
 
 }  // namespace detail
 

@@ -75,8 +75,24 @@ inline constexpr bool is_coconext_unsigned_v = false;
 template <typename T>
 inline constexpr bool is_coconext_signed_v = false;
 
+// Niebloid that reads a HasBits type's packed storage. Implementers declare
+// `friend struct detail::bits_fn;` and keep `value_` private; ADL cannot find
+// this call because `bits` is an object, so users can only reach it via the
+// qualified `detail::bits(x)`.
+struct bits_fn {
+    template <typename T>
+    constexpr auto const& operator()(T const& t) const noexcept {
+        return t.value_;
+    }
+};
+
+inline constexpr bits_fn bits{};
+
 template <typename T>
-inline constexpr bool uses_Bits = false;
+concept HasBits = requires(T const& t) {
+    T::static_range;
+    { detail::bits(t) };
+};
 
 template <typename T>
 concept Formattable = std::semiregular<std::formatter<std::remove_cvref_t<T>, char>>;
