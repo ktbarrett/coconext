@@ -2,7 +2,6 @@
 #define COCONEXT_INT_BASE_HPP
 
 #include <algorithm>
-#include <array>
 #include <bit>
 #include <coconext/types/bigint.hpp>
 #include <coconext/types/logic.hpp>
@@ -58,24 +57,20 @@ class Bits {
 
     constexpr Bits() = default;
 
-    // native ints
-    constexpr Bits(IntType val)
-        requires(!is_not_native_int)
-        : storage_(std::move(val)) {}
+    // From native ints
+    template <Integer IntT>
+    constexpr Bits(IntT val) : storage_(val) {}
 
     // BigInt from a BigInt
-    constexpr Bits(BigInt<W> val)
-        requires is_not_native_int
-        : storage_(std::move(val)) {}
-
-    // BigInt from a native uint64_t
-    constexpr Bits(uint64_t val, bool is_signed = false)
-        requires is_not_native_int
-        : storage_(std::move(val), is_signed) {}
+    template <typename BigIntT>
+        requires std::is_same_v<std::remove_cvref_t<BigIntT>, BigInt<W>>
+    constexpr Bits(BigIntT&& val)
+        requires(is_not_native_int)
+        : storage_(std::forward<BigIntT>(val)) {}
 
     // BigInt from a string
     constexpr Bits(std::string_view val)
-        requires is_not_native_int
+        requires(is_not_native_int)
         : storage_(val) {}
 
     // BigInt or native int from initializer list
@@ -254,7 +249,7 @@ class Bits {
         if constexpr (is_not_native_int) {
             return Bits<W>(storage_ + other.storage_);
         } else {
-            return Bits<W>(static_cast<IntType>(storage_ + other.storage_));
+            return Bits<W>(storage_ + other.storage_);
         }
     }
 
@@ -262,7 +257,7 @@ class Bits {
         if constexpr (is_not_native_int) {
             return Bits<W>(storage_ - other.storage_);
         } else {
-            return Bits<W>(static_cast<IntType>(storage_ - other.storage_));
+            return Bits<W>(storage_ - other.storage_);
         }
     }
 
@@ -270,7 +265,7 @@ class Bits {
         if constexpr (is_not_native_int) {
             return Bits<W>(storage_ * other.storage_);
         } else {
-            return Bits<W>(static_cast<IntType>(storage_ * other.storage_));
+            return Bits<W>(storage_ * other.storage_);
         }
     }
 
@@ -281,7 +276,7 @@ class Bits {
         if constexpr (is_not_native_int) {
             return Bits<W>(storage_.udiv(other.storage_));
         } else {
-            return Bits<W>(static_cast<IntType>(this->raw() / other.raw()));
+            return Bits<W>(this->raw() / other.raw());
         }
     }
 
@@ -299,7 +294,7 @@ class Bits {
             if (rhs_ext == -1 && lhs_ext == std::numeric_limits<SType>::min()) {
                 return *this;
             }
-            return Bits<W>(static_cast<IntType>(lhs_ext / rhs_ext));
+            return Bits<W>(lhs_ext / rhs_ext);
         }
     }
 
@@ -310,7 +305,7 @@ class Bits {
         if constexpr (is_not_native_int) {
             return Bits<W>(storage_.umod(other.storage_));
         } else {
-            return Bits<W>(static_cast<IntType>(this->raw() % other.raw()));
+            return Bits<W>(this->raw() % other.raw());
         }
     }
 
@@ -328,7 +323,7 @@ class Bits {
             if (rhs_ext == -1 && lhs_ext == std::numeric_limits<SType>::min()) {
                 return Bits<W>{};
             }
-            return Bits<W>(static_cast<IntType>(lhs_ext % rhs_ext));
+            return Bits<W>(lhs_ext % rhs_ext);
         }
     }
 
@@ -338,7 +333,7 @@ class Bits {
             shift_left(result, amount);
             return Bits<W>(result);
         } else {
-            return Bits<W>(static_cast<IntType>(raw() << amount));
+            return Bits<W>(raw() << amount);
         }
     }
 
@@ -349,7 +344,7 @@ class Bits {
             return Bits<W>(result);
         } else {
             auto ext = this->sign_extended();
-            return Bits<W>(static_cast<IntType>(ext >> amount));
+            return Bits<W>(ext >> amount);
         }
     }
 
@@ -359,7 +354,7 @@ class Bits {
             shift_right_logical(result, amount);
             return Bits<W>(result);
         } else {
-            return Bits<W>(static_cast<IntType>(raw() >> amount));
+            return Bits<W>(raw() >> amount);
         }
     }
 
@@ -505,7 +500,7 @@ class Bits {
         if constexpr (is_not_native_int) {
             return storage_;
         } else {
-            return static_cast<IntType>(storage_ & topMask);
+            return storage_ & topMask;
         }
     }
 
@@ -531,7 +526,7 @@ class Bits {
     template <size_t bits>
     constexpr auto max_unsigned_bigInt() const {
         static_assert(is_not_native_int, "Not a BigInt");
-        return BigInt<bits>(~uint64_t{0}, true);
+        return BigInt<bits>(int64_t{-1});
     }
 
     template <size_t bits>
