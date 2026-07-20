@@ -11,6 +11,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "coconext/types/concepts.hpp"
 #include <array>
 #include <bit>
 #include <climits>
@@ -509,21 +510,45 @@ class BigInt {
         unsigned sign_bit = (BitWidth - 1) % word_width;
         return (data.back() >> sign_bit) & 1;
     }
-
     constexpr WordType get_word(size_t index) const { return data[index]; }
-    constexpr std::array<WordType, num_of_words> get_data() const { return data; }
+    constexpr std::array<WordType, num_of_words> const& get_data() const { return data; }
 
     constexpr BigInt() = default;
 
-    constexpr BigInt(WordType val, bool is_signed = false) {
-        data[0] = val;
-        if (is_signed && (static_cast<int64_t>(val) < 0)) {
-            for (unsigned i = 1; i < num_of_words; ++i) {
+    template <Integer T>
+        requires(sizeof(T) <= sizeof(WordType))
+    constexpr BigInt(T val) {
+        data[0] = static_cast<WordType>(val);
+        if constexpr (std::is_signed_v<T>) {
+            if (val < 0) {
+                for (unsigned i = 1; i < num_of_words; ++i) {
+                    data[i] = ~WordType(0);
+                }
+            }
+        }
+        clear_unused_bits();
+    }
+
+#if defined(__SIZEOF_INT128__)
+    constexpr BigInt(__int128_t val) {
+        data[0] = static_cast<WordType>(val);
+        data[1] = static_cast<WordType>(val >> 64);
+        if (val < 0) {
+            for (unsigned i = 2; i < num_of_words; ++i) {
                 data[i] = ~WordType(0);
             }
         }
         clear_unused_bits();
     }
+    constexpr BigInt(__uint128_t val) {
+        data[0] = static_cast<WordType>(val);
+        data[1] = static_cast<WordType>(val >> 64);
+        for (unsigned i = 2; i < num_of_words; ++i) {
+            data[i] = 0;
+        }
+        clear_unused_bits();
+    }
+#endif
 
     explicit constexpr BigInt(std::string_view str) {
         if (str.empty()) {

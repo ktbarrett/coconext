@@ -189,7 +189,7 @@ TEST(TestBits, single_word_constructor) {
     detail::Bits<200> b(0xABCD);
     EXPECT_EQ(b, detail::Bits<200>{0xABCD});
 
-    detail::Bits<200> e0(-1, true);
+    detail::Bits<200> e0(-1);
     detail::Bits<200> e1 = e0;
     detail::Bits<200> e2(e1);
     detail::Bits<200> e = std::move(e2);
@@ -230,7 +230,7 @@ TEST(TestBits, string_constructor) {
         "FFDCE95615E366F4"                  // 16 hex chars = 64 bits (Total 264 bits)
     };
     detail::Bits<264> neg_str_val{"-9876543217899788"};
-    detail::Bits<264> expected_native(-9876543217899788ll, true);
+    detail::Bits<264> expected_native(-9876543217899788ll);
     EXPECT_EQ(neg_str_val, expected_native);
     EXPECT_EQ(neg_str_val, expected_hex);
 
