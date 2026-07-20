@@ -28,38 +28,38 @@ template <>
 struct is_char<char32_t> : public std::true_type {};
 
 template <typename T>
-struct is_int : public std::false_type {};
+struct is_native_int : public std::false_type {};
 
 template <typename T>
-concept Integer =
-    is_int<std::remove_cv_t<T>>::value && requires { std::numeric_limits<T>::is_integer; };
+concept NativeInteger =
+    is_native_int<std::remove_cv_t<T>>::value && std::numeric_limits<T>::is_integer;
 
 template <>
-struct is_int<signed char> : public std::true_type {};
+struct is_native_int<signed char> : public std::true_type {};
 template <>
-struct is_int<unsigned char> : public std::true_type {};
+struct is_native_int<unsigned char> : public std::true_type {};
 template <>
-struct is_int<short> : public std::true_type {};
+struct is_native_int<short> : public std::true_type {};
 template <>
-struct is_int<unsigned short> : public std::true_type {};
+struct is_native_int<unsigned short> : public std::true_type {};
 template <>
-struct is_int<int> : public std::true_type {};
+struct is_native_int<int> : public std::true_type {};
 template <>
-struct is_int<unsigned int> : public std::true_type {};
+struct is_native_int<unsigned int> : public std::true_type {};
 template <>
-struct is_int<long> : public std::true_type {};
+struct is_native_int<long> : public std::true_type {};
 template <>
-struct is_int<unsigned long> : public std::true_type {};
+struct is_native_int<unsigned long> : public std::true_type {};
 template <>
-struct is_int<long long> : public std::true_type {};
+struct is_native_int<long long> : public std::true_type {};
 template <>
-struct is_int<unsigned long long> : public std::true_type {};
+struct is_native_int<unsigned long long> : public std::true_type {};
 
 #if defined(__SIZEOF_INT128__)
 template <>
-struct is_int<__int128_t> : public std::true_type {};
+struct is_native_int<__int128_t> : public std::true_type {};
 template <>
-struct is_int<__uint128_t> : public std::true_type {};
+struct is_native_int<__uint128_t> : public std::true_type {};
 #endif
 
 namespace detail {

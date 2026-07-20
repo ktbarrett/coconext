@@ -87,7 +87,7 @@ class Logic {
               (s.size() == 1) ? s[0] : throw std::invalid_argument("Invalid logic value")
           ) {}
     constexpr explicit Logic(char const* s) : Logic(std::string_view(s)) {}
-    template <Integer I>
+    template <NativeInteger I>
     constexpr explicit Logic(I v) {
         if (v == 0) {
             value_ = _0;
@@ -102,7 +102,7 @@ class Logic {
     constexpr value_type value() const noexcept { return value_; }
 
     // Egress conversion operators.
-    template <Integer T>
+    template <NativeInteger T>
     constexpr explicit operator T() const {
         if (value_ == _0 || value_ == L) {
             return T(0);
@@ -166,7 +166,7 @@ class Bit {
     constexpr explicit Bit(std::string_view s)
         : Bit((s.size() == 1) ? s[0] : throw std::invalid_argument("Invalid bit value")) {}
     constexpr explicit Bit(char const* s) : Bit(std::string_view(s)) {}
-    template <Integer I>
+    template <NativeInteger I>
     constexpr explicit Bit(I v) {
         if (v == 0) {
             value_ = _0;
@@ -192,7 +192,7 @@ class Bit {
     constexpr std::optional<Bit> resolve(ResolveMethod) const noexcept { return *this; }
     constexpr std::optional<Bit> resolve() const noexcept { return *this; }
 
-    template <Integer T>
+    template <NativeInteger T>
     constexpr explicit operator T() const noexcept {
         return value_ == _0 ? T(0) : T(1);
     }

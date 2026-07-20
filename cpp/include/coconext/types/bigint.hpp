@@ -515,7 +515,7 @@ class BigInt {
 
     constexpr BigInt() = default;
 
-    template <Integer T>
+    template <NativeInteger T>
         requires(sizeof(T) <= sizeof(WordType))
     constexpr BigInt(T val) {
         data[0] = static_cast<WordType>(val);
