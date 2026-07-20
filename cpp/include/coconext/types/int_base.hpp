@@ -58,7 +58,7 @@ class Bits {
     constexpr Bits() = default;
 
     // From native ints
-    template <Integer IntT>
+    template <NativeInteger IntT>
     constexpr Bits(IntT val) : storage_(val) {}
 
     // BigInt from a BigInt
