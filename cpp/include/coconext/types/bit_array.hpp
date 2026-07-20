@@ -18,19 +18,18 @@ class Array;
 // All bits set iff every one of the R.length() bits is counted.
 template <Range R>
 auto and_reduce(detail::Array<Bit, R> const& s) {
-    return (s.value_.popcount() == R.length()) ? '1'_b : '0'_b;
+    return (detail::bits(s).popcount() == R.length()) ? '1'_b : '0'_b;
 }
 
 template <Range R>
 auto or_reduce(detail::Array<Bit, R> const& s) {
-    auto bits = s.value_;
     detail::Bits<R.length()> zero(0);
-    return (bits != zero) ? '1'_b : '0'_b;
+    return (detail::bits(s) != zero) ? '1'_b : '0'_b;
 }
 
 template <Range R>
 auto xor_reduce(detail::Array<Bit, R> const& s) {
-    return (s.value_.popcount() % 2 == 1) ? '1'_b : '0'_b;
+    return (detail::bits(s).popcount() % 2 == 1) ? '1'_b : '0'_b;
 }
 
 namespace detail {
@@ -118,39 +117,13 @@ class Array<Bit, R> {
         return StaticArraySlice<Array<Bit, R> const, R2>(this);
     }
 
-    template <Range R2>
-    friend constexpr std::optional<Range::value_type> coconext::types::index_of(
-        detail::Array<Bit, R2> const&, Bit const&
-    );
-
-    template <Range R2>
-    friend constexpr std::optional<Range::value_type> coconext::types::rindex_of(
-        detail::Array<Bit, R2> const&, Bit const&
-    );
-
-    template <Range R2>
-    friend auto coconext::types::and_reduce(detail::Array<Bit, R2> const& s);
-    template <Range R2>
-    friend auto coconext::types::or_reduce(detail::Array<Bit, R2> const& s);
-    template <Range R2>
-    friend auto coconext::types::xor_reduce(detail::Array<Bit, R2> const& s);
-
-    template <StringLiteral S>
-    friend constexpr auto coconext::types::operator""_b();
-
-    template <Range R2>
-    friend class Unsigned;
-    template <Range R2>
-    friend class Signed;
+    constexpr Array(Bits<R.length()> const& packed_val) : value_(packed_val) {}
 
   private:
-    constexpr Array(Bits<R.length()> const& packed_val) : value_(packed_val) {}
+    friend struct bits_fn;
 
     Bits<R.length()> value_;
 };
-
-template <Range R>
-inline constexpr bool uses_Bits<Array<Bit, R>> = true;
 
 constexpr Range::value_type offset_to_hdl_coord(
     Range r, size_t offset_from_begin
@@ -167,12 +140,12 @@ template <Range R>
 constexpr std::optional<Range::value_type> index_of(
     detail::Array<Bit, R> const& s, Bit const& v
 ) {
-    auto bits = s.value_;
+    auto packed = detail::bits(s);
     if (!static_cast<bool>(v)) {
-        bits = ~bits;
+        packed = ~packed;
     }
 
-    size_t clz = bits.count_leading_zeros();
+    size_t clz = packed.count_leading_zeros();
     if (clz == R.length()) {
         return std::nullopt;
     }
@@ -184,12 +157,12 @@ template <Range R>
 constexpr std::optional<Range::value_type> rindex_of(
     detail::Array<Bit, R> const& s, Bit const& v
 ) {
-    auto bits = s.value_;
+    auto packed = detail::bits(s);
     if (!static_cast<bool>(v)) {
-        bits = ~bits;
+        packed = ~packed;
     }
 
-    size_t ctz = bits.count_trailing_zeros();
+    size_t ctz = packed.count_trailing_zeros();
     if (ctz == R.length()) {
         return std::nullopt;
     }

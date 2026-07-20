@@ -66,19 +66,15 @@ class Signed {
 
     template <Range R2>
     friend class Signed;
-    template <Range R2>
-    friend class Unsigned;
 
     constexpr Signed() noexcept : value_(0) {}
 
-  private:
     template <size_t W>
     constexpr Signed(Bits<W> const& val) {
         static_assert(W == R.length(), "Construction from Bits requires identical width");
         value_ = val;
     }
 
-  public:
     template <NativeInteger T>
     explicit(
         (std::is_signed_v<T> && std::numeric_limits<T>::digits >= R.length())
@@ -127,16 +123,17 @@ class Signed {
 
     template <Range R2>
     explicit(R.length() <= R2.length()) constexpr Signed(Unsigned<R2> const& other) {
+        auto const& src_bits = bits(other);
         if constexpr (R.length() <= R2.length()) {
             bool fits = true;
             if constexpr (!detail::Bits<R2.length()>::is_not_native_int) {
-                auto src_val = other.value_.raw();
+                auto src_val = src_bits.raw();
                 auto max_val = max_unsigned<R.length() - 1>();
                 if (src_val > max_val) {
                     fits = false;
                 }
             } else {
-                auto src_val = other.value_.raw();
+                auto src_val = src_bits.raw();
                 auto max_val = max_unsigned<R.length() - 1>();
                 if (src_val > max_val) {
                     fits = false;
@@ -156,10 +153,10 @@ class Signed {
         )
         {
             value_ = detail::Bits<R.length()>(
-                static_cast<typename detail::Bits<R.length()>::IntType>(other.value_.raw())
+                static_cast<typename detail::Bits<R.length()>::IntType>(src_bits.raw())
             );
         } else {
-            value_ = detail::Bits<R.length()>(other.value_.raw());
+            value_ = detail::Bits<R.length()>(src_bits.raw());
         }
     }
 
@@ -687,14 +684,13 @@ class Signed {
     friend struct std::hash;
 
   private:
+    friend struct bits_fn;
+
     Bits<R.length()> value_;
 };
 
 template <Range R>
 inline constexpr bool is_coconext_signed_v<Signed<R>> = true;
-
-template <Range R>
-inline constexpr bool uses_Bits<Signed<R>> = true;
 
 template <Range R1, Range R2>
 constexpr auto operator+(Unsigned<R1> const& lhs, Signed<R2> const& rhs) {
