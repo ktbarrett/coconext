@@ -36,7 +36,6 @@ jobs:
 
     - name: Open pull request
       uses: peter-evans/create-pull-request@v8
-      id: cpr
       with:
         commit-message: "Upgrade locked dependencies"
         title: "Upgrade locked dependencies"
@@ -44,10 +43,3 @@ jobs:
         branch: "upgrade-locked-dependencies"
         sign-commits: true
         token: ${{ steps.app-token.outputs.token }}
-
-    - name: Enable Auto-Merge
-      if: steps.cpr.outputs.pull-request-number
-      env:
-        PR_URL: ${{ steps.cpr.outputs.pull-request-url }}
-        GH_TOKEN: ${{ steps.app-token.outputs.token }}
-      run: gh pr merge --auto --squash "$PR_URL"
