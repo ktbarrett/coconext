@@ -1,7 +1,7 @@
 #ifndef COCONEXT_EVENT_LOOP_HPP
 #define COCONEXT_EVENT_LOOP_HPP
 
-#include <coconext/cmarqueue.hpp>
+#include <coconext/intrusive_deque.hpp>
 #include <coroutine>
 #include <mutex>
 
@@ -72,7 +72,7 @@ class EventLoop {
     }
 
   private:
-    coconext::detail::Cmarqueue<Event> queue_;
+    coconext::detail::IntrusiveDeque<Event> queue_;
     std::mutex mtx_;
 };
 

@@ -1,7 +1,7 @@
 #ifndef COCONEXT_FUTURES_HPP
 #define COCONEXT_FUTURES_HPP
 
-#include "coconext/cmarqueue.hpp"
+#include <coconext/intrusive_deque.hpp>
 #include <coroutine>
 #include <exception>
 #include <optional>
@@ -99,7 +99,7 @@ class Future {
     std::optional<T> value_ = std::nullopt;
     std::exception_ptr exc_ = nullptr;
     bool cancelled_ = false;
-    coconext::detail::Cmarqueue<coconext::event_loop::EventLoop::Event> deque_;
+    coconext::detail::IntrusiveDeque<coconext::event_loop::EventLoop::Event> deque_;
 };
 
 template <>
@@ -156,7 +156,7 @@ class Future<void> {
     std::exception_ptr exc_ = nullptr;
     bool done_ = false;
     bool cancelled_ = false;
-    coconext::detail::Cmarqueue<coconext::event_loop::EventLoop::Event> deque_;
+    coconext::detail::IntrusiveDeque<coconext::event_loop::EventLoop::Event> deque_;
 };
 
 }  // namespace coconext::futures

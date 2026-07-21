@@ -1,5 +1,5 @@
-#ifndef COCONEXT_CMARQUEUE_HPP
-#define COCONEXT_CMARQUEUE_HPP
+#ifndef COCONEXT_INTRUSIVE_DEQUE_HPP
+#define COCONEXT_INTRUSIVE_DEQUE_HPP
 
 // This is a special deque implementation seen in the EventLoop, Futures, TaskManagers, and
 // more. This deque does not own the nodes it contains (beyond the default-constructed
@@ -9,6 +9,7 @@
 
 #include <concepts>
 #include <type_traits>
+#include <utility>
 
 namespace coconext::detail {
 
@@ -19,13 +20,28 @@ concept CmarqueueEntry = requires(EntryT* e) {
 } && std::is_default_constructible_v<EntryT> && std::is_destructible_v<EntryT>;
 
 template <CmarqueueEntry EntryT>
-class Cmarqueue {
+class IntrusiveDeque {
   public:
-    Cmarqueue() noexcept {
+    IntrusiveDeque() noexcept {
         head.next = &tail;
         tail.prev = &head;
     }
-    // EventDeque doesn't own anything, so there's nothing to clean up.
+    // IntrusiveDeque doesn't own anything, so there's nothing to clean up.
+    IntrusiveDeque(IntrusiveDeque&& other)
+        : head(std::move(other.head)), tail(std::move(other.tail)) {
+        other.clear();
+    }
+    IntrusiveDeque& operator=(IntrusiveDeque&& other) noexcept {
+        if (this != &other) {
+            head = std::move(other.head);
+            tail = std::move(other.tail);
+            other.clear();
+        }
+        return *this;
+    }
+    // Not copyable, entries are non-owning so they must be unique.
+    IntrusiveDeque(IntrusiveDeque const&) = delete;
+    IntrusiveDeque& operator=(IntrusiveDeque const&) = delete;
 
   public:
     template <typename NodeType, bool Forward>
@@ -98,7 +114,7 @@ class Cmarqueue {
         node->remove();
         return node;
     }
-    void extend_back(Cmarqueue<EntryT>&& other) noexcept {
+    void extend_back(IntrusiveDeque<EntryT>&& other) noexcept {
         if (other.empty()) {
             return;
         }
@@ -107,7 +123,7 @@ class Cmarqueue {
         set_back(other.back());
         other.clear();
     }
-    void extend_front(Cmarqueue<EntryT>&& other) noexcept {
+    void extend_front(IntrusiveDeque<EntryT>&& other) noexcept {
         if (other.empty()) {
             return;
         }
@@ -130,4 +146,4 @@ class Cmarqueue {
 
 }  // namespace coconext::detail
 
-#endif  // COCONEXT_CMARQUEUE_HPP
+#endif  // COCONEXT_INTRUSIVE_DEQUE_HPP
