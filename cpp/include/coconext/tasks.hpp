@@ -115,7 +115,10 @@ class Coro {
             };
             return TransferAwaitable{parent_};
         }
-        void return_value(T value) { value_ = value; }
+        template <typename U>
+        void return_value(U&& value) {
+            value_ = std::forward<U>(value);
+        }
         void unhandled_exception() { exception_ = std::current_exception(); }
 
         T result() {
@@ -123,7 +126,7 @@ class Coro {
                 std::rethrow_exception(exception_);
             }
             if (value_.has_value()) {
-                return *value_;
+                return std::move(*value_);
             }
             throw std::runtime_error("Coro does not have a result");
         }
