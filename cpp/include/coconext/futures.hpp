@@ -62,6 +62,24 @@ struct FutureState {
     coconext::detail::IntrusiveDeque<coconext::EventLoop::Event> deque_;
     std::vector<std::function<void()>> callbacks_;
 
+    bool done() const noexcept { return value_.has_value() || exc_ != nullptr; }
+    bool cancelled() const noexcept { return cancelled_; }
+    T result() const {
+        if (exc_) {
+            std::rethrow_exception(exc_);
+        }
+        if (value_.has_value()) {
+            return *(value_);
+        }
+        throw std::runtime_error("Future does not have a result");
+    }
+    std::exception_ptr exception() const noexcept { return exc_; }
+
+    template <typename F>
+    void add_callback(F&& callback) {
+        callbacks_.emplace_back(std::forward<F>(callback));
+    }
+
     void schedule_task_resumes() noexcept {
         detail::schedule_all_back(*event_loop_, std::move(deque_));
     }
@@ -106,6 +124,24 @@ struct FutureState<void> {
     coconext::detail::IntrusiveDeque<coconext::EventLoop::Event> deque_;
     std::vector<std::function<void()>> callbacks_;
 
+    bool done() noexcept { return done_; }
+    bool cancelled() const noexcept { return cancelled_; }
+    void result() {
+        if (exc_) {
+            std::rethrow_exception(exc_);
+        }
+        if (done_) {
+            return;
+        }
+        throw std::runtime_error("Future does not have a result");
+    }
+    std::exception_ptr exception() const noexcept { return exc_; }
+
+    template <typename F>
+    void add_callback(F&& callback) {
+        callbacks_.emplace_back(std::forward<F>(callback));
+    }
+
     void schedule_task_resumes() noexcept {
         detail::schedule_all_back(*event_loop_, std::move(deque_));
     }
@@ -149,24 +185,14 @@ struct FutureState<void> {
 template <typename T>
 class Future {
   public:
-    bool done() const noexcept {
-        return state_->value_.has_value() || state_->exc_ != nullptr;
-    }
-    bool cancelled() const noexcept { return state_->cancelled_; }
-    T result() const {
-        if (state_->exc_) {
-            std::rethrow_exception(state_->exc_);
-        }
-        if (state_->value_.has_value()) {
-            return *(state_->value_);
-        }
-        throw std::runtime_error("Future does not have a result");
-    }
-    std::exception_ptr exception() const noexcept { return state_->exc_; }
+    bool done() const noexcept { return state_->done(); }
+    bool cancelled() const noexcept { return state_->cancelled(); }
+    T result() const { return state_->result(); }
+    std::exception_ptr exception() const noexcept { return state_->exception(); }
 
     template <typename F>
     void add_callback(F&& callback) {
-        state_->callbacks_.emplace_back(std::forward<F>(callback));
+        state_->add_callback(std::forward<F>(callback));
     }
 
     detail::FutureAwaiter<T> operator co_await() { return detail::FutureAwaiter<T>(*this); }
@@ -179,22 +205,14 @@ class Future {
 template <>
 class Future<void> {
   public:
-    bool done() noexcept { return state_->done_; }
-    bool cancelled() const noexcept { return state_->cancelled_; }
-    void result() {
-        if (state_->exc_) {
-            std::rethrow_exception(state_->exc_);
-        }
-        if (state_->done_) {
-            return;
-        }
-        throw std::runtime_error("Future does not have a result");
-    }
-    std::exception_ptr exception() const noexcept { return state_->exc_; }
+    bool done() noexcept { return state_->done(); }
+    bool cancelled() const noexcept { return state_->cancelled(); }
+    void result() { state_->result(); }
+    std::exception_ptr exception() const noexcept { return state_->exception(); }
 
     template <typename F>
     void add_callback(F&& callback) {
-        state_->callbacks_.emplace_back(std::forward<F>(callback));
+        state_->add_callback(std::forward<F>(callback));
     }
 
     detail::FutureAwaiter<void> operator co_await() {
