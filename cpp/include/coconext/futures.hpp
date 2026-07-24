@@ -6,12 +6,12 @@
 #include <exception>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <stdexcept>
 
 #include <coconext/cancelled.hpp>
 #include <coconext/event_loop.hpp>
 #include <coconext/tasks.hpp>
+#include <variant>
 #include <vector>
 
 namespace coconext {
@@ -52,28 +52,33 @@ class FutureAwaiter : coconext::EventLoop::Event {
 };
 
 template <typename T>
-struct FutureState {
-    std::optional<T> value_ = std::nullopt;
-    std::exception_ptr exc_ = nullptr;
-    bool cancelled_ = false;
-    // The Future starts un-bound to an EventLoop, and is bound when the first task
-    // awaits it.
-    coconext::EventLoop* event_loop_ = nullptr;
-    coconext::detail::IntrusiveDeque<coconext::EventLoop::Event> deque_;
-    std::vector<std::function<void()>> callbacks_;
+struct Value {
+    T value;
+};
 
-    bool done() const noexcept { return value_.has_value() || exc_ != nullptr; }
-    bool cancelled() const noexcept { return cancelled_; }
+template <>
+struct Value<void> {};
+
+template <typename T>
+class FutureState {
+  public:
+    bool done() const noexcept { return !std::holds_alternative<std::monostate>(result_); }
+    bool cancelled() const noexcept { return std::holds_alternative<Cancelled>(result_); }
     T result() const {
-        if (exc_) {
-            std::rethrow_exception(exc_);
+        if (std::holds_alternative<std::exception_ptr>(result_)) {
+            std::rethrow_exception(std::get<std::exception_ptr>(result_));
         }
-        if (value_.has_value()) {
-            return *(value_);
+        if (std::holds_alternative<Value<T>>(result_)) {
+            return std::get<Value<T>>(result_).value;
         }
         throw std::runtime_error("Future does not have a result");
     }
-    std::exception_ptr exception() const noexcept { return exc_; }
+    std::exception_ptr exception() const noexcept {
+        if (std::holds_alternative<std::exception_ptr>(result_)) {
+            return std::get<std::exception_ptr>(result_);
+        }
+        return nullptr;
+    }
 
     template <typename F>
     void add_callback(F&& callback) {
@@ -90,18 +95,17 @@ struct FutureState {
     }
 
     void set_result(T const& value) noexcept {
-        value_ = value;
+        result_ = Value<T>{value};
         schedule_task_resumes();
         do_callbacks();
     }
     void set_exception(std::exception_ptr exc) noexcept {
-        exc_ = exc;
+        result_ = exc;
         schedule_task_resumes();
         do_callbacks();
     }
     void cancel() noexcept {
-        exc_ = std::make_exception_ptr(coconext::Cancelled{});
-        cancelled_ = true;
+        result_ = Cancelled{};
         schedule_task_resumes();
         do_callbacks();
     }
@@ -113,70 +117,14 @@ struct FutureState {
             throw std::runtime_error("Future is already bound to another EventLoop");
         }
     }
-};
 
-template <>
-struct FutureState<void> {
-    std::exception_ptr exc_ = nullptr;
-    bool done_ = false;
-    bool cancelled_ = false;
+  private:
+    std::variant<std::monostate, Value<T>, std::exception_ptr, Cancelled> result_;
+    // The Future starts un-bound to an EventLoop, and is bound when the first task
+    // awaits it.
     coconext::EventLoop* event_loop_ = nullptr;
     coconext::detail::IntrusiveDeque<coconext::EventLoop::Event> deque_;
     std::vector<std::function<void()>> callbacks_;
-
-    bool done() noexcept { return done_; }
-    bool cancelled() const noexcept { return cancelled_; }
-    void result() {
-        if (exc_) {
-            std::rethrow_exception(exc_);
-        }
-        if (done_) {
-            return;
-        }
-        throw std::runtime_error("Future does not have a result");
-    }
-    std::exception_ptr exception() const noexcept { return exc_; }
-
-    template <typename F>
-    void add_callback(F&& callback) {
-        callbacks_.emplace_back(std::forward<F>(callback));
-    }
-
-    void schedule_task_resumes() noexcept {
-        detail::schedule_all_back(*event_loop_, std::move(deque_));
-    }
-    void do_callbacks() noexcept {
-        for (auto& callback : callbacks_) {
-            callback();
-        }
-    }
-
-    void set_result() {
-        done_ = true;
-        schedule_task_resumes();
-        do_callbacks();
-    }
-    void set_exception(std::exception_ptr exc) noexcept {
-        exc_ = exc;
-        done_ = true;
-        schedule_task_resumes();
-        do_callbacks();
-    }
-    void cancel() noexcept {
-        exc_ = std::make_exception_ptr(coconext::Cancelled{});
-        done_ = true;
-        cancelled_ = true;
-        schedule_task_resumes();
-        do_callbacks();
-    }
-
-    void bind_event_loop(coconext::EventLoop* loop) {
-        if (event_loop_ == nullptr) {
-            event_loop_ = loop;
-        } else if (event_loop_ != loop) {
-            throw std::runtime_error("Future is already bound to another EventLoop");
-        }
-    }
 };
 
 }  // namespace detail
@@ -200,28 +148,6 @@ class Future {
   private:
     std::shared_ptr<detail::FutureState<T>> state_ =
         std::make_shared<detail::FutureState<T>>();
-};
-
-template <>
-class Future<void> {
-  public:
-    bool done() noexcept { return state_->done(); }
-    bool cancelled() const noexcept { return state_->cancelled(); }
-    void result() { state_->result(); }
-    std::exception_ptr exception() const noexcept { return state_->exception(); }
-
-    template <typename F>
-    void add_callback(F&& callback) {
-        state_->add_callback(std::forward<F>(callback));
-    }
-
-    detail::FutureAwaiter<void> operator co_await() {
-        return detail::FutureAwaiter<void>(*this);
-    }
-
-  private:
-    std::shared_ptr<detail::FutureState<void>> state_ =
-        std::make_shared<detail::FutureState<void>>();
 };
 
 }  // namespace coconext
