@@ -14,12 +14,12 @@
 namespace coconext::detail {
 
 template <typename EntryT>
-concept CmarqueueEntry = requires(EntryT* e) {
+concept IntrusiveDequeEntry = requires(EntryT* e) {
     requires std::same_as<decltype(e->prev), EntryT*>;
     requires std::same_as<decltype(e->next), EntryT*>;
 } && std::is_default_constructible_v<EntryT> && std::is_destructible_v<EntryT>;
 
-template <CmarqueueEntry EntryT>
+template <IntrusiveDequeEntry EntryT>
 class IntrusiveDeque {
   public:
     IntrusiveDeque() noexcept {

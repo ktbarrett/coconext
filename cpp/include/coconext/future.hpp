@@ -11,25 +11,9 @@
 #include <coconext/cancelled.hpp>
 #include <coconext/event_loop.hpp>
 #include <coconext/tasks.hpp>
-#include <variant>
 #include <vector>
 
 namespace coconext {
-
-template <typename T>
-class Future;
-
-namespace detail {
-
-template <typename T>
-struct Value {
-    T value;
-};
-
-template <>
-struct Value<void> {};
-
-}  // namespace detail
 
 // Single-shot, multiple-consumer awaitable object.
 template <typename T>
@@ -140,8 +124,7 @@ class Future {
             }
         }
 
-        std::variant<std::monostate, detail::Value<T>, std::exception_ptr, Cancelled>
-            result_;
+        detail::Result<T> result_;
         // The Future starts un-bound to an EventLoop, and is bound when the first task
         // awaits it.
         coconext::EventLoop* event_loop_ = nullptr;
