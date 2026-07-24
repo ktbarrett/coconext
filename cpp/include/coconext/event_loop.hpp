@@ -1,11 +1,11 @@
 #ifndef COCONEXT_EVENT_LOOP_HPP
 #define COCONEXT_EVENT_LOOP_HPP
 
+#include <cassert>
 #include <coconext/intrusive_deque.hpp>
-#include <coroutine>
 #include <mutex>
 
-namespace coconext::event_loop {
+namespace coconext {
 
 // An external source of events drives the loop by acquiring a handle, scheduling callbacks,
 // and running the loop until exhaustion before releasing ownership to allow another
@@ -17,15 +17,18 @@ class EventLoop {
       public:
         Event* prev = nullptr;
         Event* next = nullptr;
-        // Consider making this a virtual run() function to support things other than
-        // coroutines.
-        std::coroutine_handle<> coro_handle = nullptr;
-
         Event() noexcept = default;
 
-        void remove() noexcept {
+      protected:
+        virtual void event_run() = 0;
+
+        void event_unschedule() noexcept {
+            assert(prev != nullptr);
             prev->next = next;
             next->prev = prev;
+#ifndef NDEBUG
+            prev = nullptr;
+#endif
         }
     };
 
@@ -40,7 +43,7 @@ class EventLoop {
         void run() {
             while (!loop_.queue_.empty()) {
                 auto event = loop_.queue_.pop_front();
-                event->coro_handle.resume();
+                event->event_run();
             }
         }
 
@@ -49,33 +52,29 @@ class EventLoop {
     };
     friend class ExternalHandle;
 
-    class InternalHandle {
-        friend class EventLoop;
-
-        InternalHandle(EventLoop& loop) : loop_(loop) {}
-        InternalHandle(InternalHandle&& other) = default;
-
-      public:
-        template <typename DequeT>
-        void schedule_all_back(DequeT&& deque) {
-            loop_.queue_.extend_back(std::forward<DequeT>(deque));
-        }
-
-      private:
-        EventLoop& loop_;
-    };
-
-  public:
-    [[nodiscard]] ExternalHandle acquire() {
+    [[nodiscard]] ExternalHandle acquire_external() {
         mtx_.lock();
         return ExternalHandle(*this);
     }
+
+  private:
+    template <typename DequeT>
+    friend void detail::schedule_all_back(EventLoop& loop, DequeT&& deque);
 
   private:
     coconext::detail::IntrusiveDeque<Event> queue_;
     std::mutex mtx_;
 };
 
-}  // namespace coconext::event_loop
+namespace detail {
+
+template <typename DequeT>
+void schedule_all_back(EventLoop& loop, DequeT&& deque) {
+    loop.queue_.extend_back(std::forward<DequeT>(deque));
+}
+
+}  // namespace detail
+
+}  // namespace coconext
 
 #endif  // COCONEXT_EVENT_LOOP_HPP
