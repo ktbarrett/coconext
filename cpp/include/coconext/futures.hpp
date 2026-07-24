@@ -51,6 +51,98 @@ class FutureAwaiter : coconext::EventLoop::Event {
     coconext::detail::TaskContext* task_context_;
 };
 
+template <typename T>
+struct FutureState {
+    std::optional<T> value_ = std::nullopt;
+    std::exception_ptr exc_ = nullptr;
+    bool cancelled_ = false;
+    // The Future starts un-bound to an EventLoop, and is bound when the first task
+    // awaits it.
+    coconext::EventLoop* event_loop_ = nullptr;
+    coconext::detail::IntrusiveDeque<coconext::EventLoop::Event> deque_;
+    std::vector<std::function<void()>> callbacks_;
+
+    void schedule_task_resumes() noexcept {
+        detail::schedule_all_back(*event_loop_, std::move(deque_));
+    }
+    void do_callbacks() noexcept {
+        for (auto& callback : callbacks_) {
+            callback();
+        }
+    }
+
+    void set_result(T const& value) noexcept {
+        value_ = value;
+        schedule_task_resumes();
+        do_callbacks();
+    }
+    void set_exception(std::exception_ptr exc) noexcept {
+        exc_ = exc;
+        schedule_task_resumes();
+        do_callbacks();
+    }
+    void cancel() noexcept {
+        exc_ = std::make_exception_ptr(coconext::Cancelled{});
+        cancelled_ = true;
+        schedule_task_resumes();
+        do_callbacks();
+    }
+
+    void bind_event_loop(coconext::EventLoop* loop) {
+        if (event_loop_ == nullptr) {
+            event_loop_ = loop;
+        } else if (event_loop_ != loop) {
+            throw std::runtime_error("Future is already bound to another EventLoop");
+        }
+    }
+};
+
+template <>
+struct FutureState<void> {
+    std::exception_ptr exc_ = nullptr;
+    bool done_ = false;
+    bool cancelled_ = false;
+    coconext::EventLoop* event_loop_ = nullptr;
+    coconext::detail::IntrusiveDeque<coconext::EventLoop::Event> deque_;
+    std::vector<std::function<void()>> callbacks_;
+
+    void schedule_task_resumes() noexcept {
+        detail::schedule_all_back(*event_loop_, std::move(deque_));
+    }
+    void do_callbacks() noexcept {
+        for (auto& callback : callbacks_) {
+            callback();
+        }
+    }
+
+    void set_result() {
+        done_ = true;
+        schedule_task_resumes();
+        do_callbacks();
+    }
+    void set_exception(std::exception_ptr exc) noexcept {
+        exc_ = exc;
+        done_ = true;
+        schedule_task_resumes();
+        do_callbacks();
+    }
+    void cancel() noexcept {
+        exc_ = std::make_exception_ptr(coconext::Cancelled{});
+        done_ = true;
+        cancelled_ = true;
+        schedule_task_resumes();
+        do_callbacks();
+    }
+
+    void bind_event_loop(coconext::EventLoop* loop) {
+        if (event_loop_ == nullptr) {
+            event_loop_ = loop;
+        } else if (event_loop_ != loop) {
+            throw std::runtime_error("Future is already bound to another EventLoop");
+        }
+    }
+};
+
 }  // namespace detail
 
 // Single-shot, multiple-consumer awaitable object.
@@ -80,51 +172,8 @@ class Future {
     detail::FutureAwaiter<T> operator co_await() { return detail::FutureAwaiter<T>(*this); }
 
   private:
-    struct State {
-        std::optional<T> value_ = std::nullopt;
-        std::exception_ptr exc_ = nullptr;
-        bool cancelled_ = false;
-        // The Future starts un-bound to an EventLoop, and is bound when the first task
-        // awaits it.
-        coconext::EventLoop* event_loop_ = nullptr;
-        coconext::detail::IntrusiveDeque<coconext::EventLoop::Event> deque_;
-        std::vector<std::function<void()>> callbacks_;
-
-        void schedule_task_resumes() noexcept {
-            detail::schedule_all_back(*event_loop_, std::move(deque_));
-        }
-        void do_callbacks() noexcept {
-            for (auto& callback : callbacks_) {
-                callback();
-            }
-        }
-
-        void set_result(T const& value) noexcept {
-            value_ = value;
-            schedule_task_resumes();
-            do_callbacks();
-        }
-        void set_exception(std::exception_ptr exc) noexcept {
-            exc_ = exc;
-            schedule_task_resumes();
-            do_callbacks();
-        }
-        void cancel() noexcept {
-            exc_ = std::make_exception_ptr(coconext::Cancelled{});
-            cancelled_ = true;
-            schedule_task_resumes();
-            do_callbacks();
-        }
-
-        void bind_event_loop(coconext::EventLoop* loop) {
-            if (event_loop_ == nullptr) {
-                event_loop_ = loop;
-            } else if (event_loop_ != loop) {
-                throw std::runtime_error("Future is already bound to another EventLoop");
-            }
-        }
-    };
-    std::shared_ptr<State> state_ = std::make_shared<State>();
+    std::shared_ptr<detail::FutureState<T>> state_ =
+        std::make_shared<detail::FutureState<T>>();
 };
 
 template <>
@@ -153,51 +202,8 @@ class Future<void> {
     }
 
   private:
-    struct State {
-        std::exception_ptr exc_ = nullptr;
-        bool done_ = false;
-        bool cancelled_ = false;
-        coconext::EventLoop* event_loop_ = nullptr;
-        coconext::detail::IntrusiveDeque<coconext::EventLoop::Event> deque_;
-        std::vector<std::function<void()>> callbacks_;
-
-        void schedule_task_resumes() noexcept {
-            detail::schedule_all_back(*event_loop_, std::move(deque_));
-        }
-        void do_callbacks() noexcept {
-            for (auto& callback : callbacks_) {
-                callback();
-            }
-        }
-
-        void set_result() {
-            done_ = true;
-            schedule_task_resumes();
-            do_callbacks();
-        }
-        void set_exception(std::exception_ptr exc) noexcept {
-            exc_ = exc;
-            done_ = true;
-            schedule_task_resumes();
-            do_callbacks();
-        }
-        void cancel() noexcept {
-            exc_ = std::make_exception_ptr(coconext::Cancelled{});
-            done_ = true;
-            cancelled_ = true;
-            schedule_task_resumes();
-            do_callbacks();
-        }
-
-        void bind_event_loop(coconext::EventLoop* loop) {
-            if (event_loop_ == nullptr) {
-                event_loop_ = loop;
-            } else if (event_loop_ != loop) {
-                throw std::runtime_error("Future is already bound to another EventLoop");
-            }
-        }
-    };
-    std::shared_ptr<State> state_ = std::make_shared<State>();
+    std::shared_ptr<detail::FutureState<void>> state_ =
+        std::make_shared<detail::FutureState<void>>();
 };
 
 }  // namespace coconext
