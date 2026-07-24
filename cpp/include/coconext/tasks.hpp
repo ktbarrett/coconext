@@ -7,26 +7,30 @@
 #include <optional>
 #include <stdexcept>
 
-namespace coconext::tasks {
+#include <coconext/event_loop.hpp>
+
+namespace coconext {
 
 namespace detail {
 // These are interfaces we want Awaiters to have access to. We can't expose the full Promise
 // since the types are different between Coro::Promise, Task::Promise, and of course the
 // various return types. Each Awaiter's await_suspend is templated and upcasts each concrete
 // type to this base class for storage.
-class PromiseBase {
+class TaskContext {
   public:
     bool cancelled() const noexcept { return cancelled_; }
+    coconext::EventLoop* get_event_loop() noexcept { return event_loop_; }
 
   protected:
     bool cancelled_ = false;
+    coconext::EventLoop* event_loop_ = nullptr;
 };
 
 }  // namespace detail
 
 template <typename T>
 class Task {
-    class Promise : public detail::PromiseBase {
+    class Promise : public detail::TaskContext {
         std::optional<T> value_ = std::nullopt;
         std::exception_ptr exception_ = nullptr;
 
@@ -51,7 +55,7 @@ class Task {
         void unhandled_exception() { exception_ = std::current_exception(); }
 
       public:
-        detail::PromiseBase* get_promise_base() noexcept { return this; }
+        detail::TaskContext* get_context() noexcept { return this; }
     };
 
   public:
@@ -132,13 +136,13 @@ class Coro {
         }
 
       public:
-        detail::PromiseBase* get_promise_base() noexcept { return task_promise_; }
+        detail::TaskContext* get_context() noexcept { return task_context_; }
 
       private:
         std::optional<T> value_;
         std::exception_ptr exception_;
         std::coroutine_handle<> parent_;
-        detail::PromiseBase* task_promise_;
+        detail::TaskContext* task_context_;
     };
 
   public:
@@ -150,7 +154,7 @@ class Coro {
         bool await_ready() const noexcept { return false; }
         template <typename PromiseType>
         void await_suspend(std::coroutine_handle<PromiseType> h) noexcept {
-            coro_.handle_.promise().task_promise_ = h.promise().get_promise_base();
+            coro_.handle_.promise().task_promise_ = h.promise().get_context();
             coro_.handle_.promise().parent_ = h;
         }
         T await_resume() { return coro_.handle_.promise().result(); }
@@ -176,6 +180,6 @@ class Coro {
     std::coroutine_handle<Promise> handle_;
 };
 
-}  // namespace coconext::tasks
+}  // namespace coconext
 
 #endif  // COCONEXT_TASKS_HPP
