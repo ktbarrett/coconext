@@ -4,8 +4,18 @@
 #include <cassert>
 #include <coconext/intrusive_deque.hpp>
 #include <mutex>
+#include <stdexcept>
 
 namespace coconext {
+
+class EventLoop;
+
+namespace detail {
+
+template <typename DequeT>
+void schedule_all_back(EventLoop& loop, DequeT&& deque);
+
+}  // namespace detail
 
 // An external source of events drives the loop by acquiring a handle, scheduling callbacks,
 // and running the loop until exhaustion before releasing ownership to allow another
@@ -19,9 +29,9 @@ class EventLoop {
         Event* next = nullptr;
         Event() noexcept = default;
 
-      protected:
-        virtual void event_run() = 0;
+        virtual void event_run() { throw std::runtime_error("Event run not implemented"); }
 
+      protected:
         void event_unschedule() noexcept {
             assert(prev != nullptr);
             prev->next = next;
