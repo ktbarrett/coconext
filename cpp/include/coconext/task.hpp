@@ -1,5 +1,5 @@
-#ifndef COCONEXT_TASKS_HPP
-#define COCONEXT_TASKS_HPP
+#ifndef COCONEXT_TASK_HPP
+#define COCONEXT_TASK_HPP
 
 #include <atomic>
 #include <coroutine>
@@ -18,12 +18,12 @@ class Task;
 
 namespace detail {
 
-class TaskStateBase {
+class TaskStateTypeErased {
   public:
     // While all of these methods are virtual, the compiler will almost certainly
     // devirtualize them in practice since there is only one implementing class.
 
-    virtual TaskStateBase* get_task() noexcept = 0;
+    virtual TaskStateTypeErased* get_task() noexcept = 0;
     virtual coconext::EventLoop* get_event_loop() noexcept = 0;
 
     virtual bool cancelled() const noexcept = 0;
@@ -37,19 +37,25 @@ class TaskStateBase {
 };
 
 template <typename T>
-class TaskState : public TaskStateBase {
-    struct Value {
-        T value;
-    };
+struct ResultValue {
+    T value;
+};
 
+template <>
+struct ResultValue<void> {};
+
+template <typename T>
+class TaskState;
+
+template <typename T>
+class TaskStateBase : public TaskStateTypeErased {
   public:
     Task<T> get_return_object() { return Task<T>{this}; }
     std::suspend_always initial_suspend() noexcept { return {}; }
     std::suspend_never final_suspend() noexcept { return {}; }
-    void return_value(T value) { result_ = Value{std::move(value)}; }
     void unhandled_exception() { result_ = std::current_exception(); }
 
-    TaskStateBase* get_task() noexcept override { return this; }
+    TaskStateTypeErased* get_task() noexcept override { return this; }
     coconext::EventLoop* get_event_loop() noexcept override { return event_loop_; }
 
     bool cancelled() const noexcept override {
@@ -65,8 +71,12 @@ class TaskState : public TaskStateBase {
         if (std::holds_alternative<std::exception_ptr>(result_)) {
             std::rethrow_exception(std::get<std::exception_ptr>(result_));
         }
-        if (std::holds_alternative<Value>(result_)) {
-            return std::get<Value>(result_).value;
+        if (std::holds_alternative<ResultValue<T>>(result_)) {
+            if constexpr (std::is_void_v<T>) {
+                return;
+            } else {
+                return std::get<ResultValue<T>>(result_).value;
+            }
         }
         throw std::runtime_error("Task does not have a result");
     }
@@ -81,22 +91,38 @@ class TaskState : public TaskStateBase {
     void dec_ref() noexcept override {
         auto prev = ref_count_.fetch_sub(1, std::memory_order_relaxed);
         if (prev == 1) {
-            std::coroutine_handle<TaskState>::from_promise(*this).destroy();
+            std::coroutine_handle<TaskState<T>>::from_promise(*this).destroy();
             // The above is basically a "delete this", so no more code should follow this
             // line.
         }
     }
 
-  private:
+  protected:
     std::atomic<size_t> ref_count_{0};
-    std::variant<std::monostate, Value, std::exception_ptr, Cancelled> result_;
+    std::variant<std::monostate, ResultValue<T>, std::exception_ptr, Cancelled> result_;
     coconext::EventLoop* event_loop_ = nullptr;
+};
+
+template <typename T>
+class TaskState : public TaskStateBase<T> {
+    using Base = TaskStateBase<T>;
+
+  public:
+    void return_value(T value) { Base::result_ = ResultValue<T>{value}; }
+};
+
+template <>
+class TaskState<void> : public TaskStateBase<void> {
+    using Base = TaskStateBase<void>;
+
+  public:
+    void return_void() { Base::result_ = ResultValue<void>{}; }
 };
 
 class Erased {};
 
 template <typename HandleType>
-    requires std::is_base_of_v<TaskStateBase, HandleType>
+    requires std::is_base_of_v<TaskStateTypeErased, HandleType>
 class TaskBase {
   public:
     ~TaskBase() { handle_->dec_ref(); }
@@ -143,68 +169,9 @@ class Task : public detail::TaskBase<detail::TaskState<T>> {
     explicit Task(detail::TaskState<T>* h) : Base(h) { Base::handle_->inc_ref(); }
 };
 
-namespace detail {
-
 template <>
-class TaskState<void> : public TaskStateBase {
-    class Done {};
-
-  public:
-    Task<void> get_return_object() { return Task<void>{this}; }
-    std::suspend_always initial_suspend() noexcept { return {}; }
-    std::suspend_never final_suspend() noexcept { return {}; }
-    void return_void() { result_ = Done{}; }
-    void unhandled_exception() { result_ = std::current_exception(); }
-
-    TaskStateBase* get_task() noexcept override { return this; }
-    coconext::EventLoop* get_event_loop() noexcept override { return event_loop_; }
-
-    bool cancelled() const noexcept override {
-        return std::holds_alternative<Cancelled>(result_);
-    }
-    bool done() const noexcept override {
-        return !std::holds_alternative<std::monostate>(result_);
-    }
-    void result() {
-        if (!done()) {
-            throw std::runtime_error("Task not completed yet.");
-        }
-        if (std::holds_alternative<std::exception_ptr>(result_)) {
-            std::rethrow_exception(std::get<std::exception_ptr>(result_));
-        }
-        if (std::holds_alternative<Done>(result_)) {
-            return;
-        }
-        throw std::runtime_error("Task does not have a result");
-    }
-    std::exception_ptr exception() const noexcept override {
-        if (std::holds_alternative<std::exception_ptr>(result_)) {
-            return std::get<std::exception_ptr>(result_);
-        }
-        return nullptr;
-    }
-
-    void inc_ref() noexcept override { ref_count_.fetch_add(1, std::memory_order_relaxed); }
-    void dec_ref() noexcept override {
-        auto prev = ref_count_.fetch_sub(1, std::memory_order_relaxed);
-        if (prev == 1) {
-            std::coroutine_handle<TaskState<void>>::from_promise(*this).destroy();
-            // The above is basically a "delete this", so no more code should follow this
-            // line.
-        }
-    }
-
-  private:
-    std::atomic<size_t> ref_count_{0};
-    std::variant<std::monostate, Done, std::exception_ptr, Cancelled> result_;
-    coconext::EventLoop* event_loop_ = nullptr;
-};
-
-}  // namespace detail
-
-template <>
-class Task<detail::Erased> : public detail::TaskBase<detail::TaskStateBase> {
-    using Base = detail::TaskBase<detail::TaskStateBase>;
+class Task<detail::Erased> : public detail::TaskBase<detail::TaskStateTypeErased> {
+    using Base = detail::TaskBase<detail::TaskStateTypeErased>;
 
   public:
     template <typename T>
@@ -237,4 +204,4 @@ class Task<detail::Erased> : public detail::TaskBase<detail::TaskStateBase> {
 
 }  // namespace coconext
 
-#endif  // COCONEXT_TASKS_HPP
+#endif  // COCONEXT_TASK_HPP
