@@ -4,6 +4,7 @@
 #include <coroutine>
 #include <exception>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 #include <variant>
 
@@ -11,60 +12,90 @@
 
 namespace coconext {
 
+template <typename T>
+class Coro;
+
+template <typename T>
+class CoroState;
+
+namespace detail {
+
+template <typename T>
+class CoroStateBase {
+  public:
+    Coro<T> get_return_object() {
+        return Coro<T>{std::coroutine_handle<CoroState<T>>::from_promise(*this)};
+    }
+    std::suspend_always initial_suspend() noexcept { return {}; }
+    auto final_suspend() noexcept {
+        // This exists to "chain" coros together.
+        class TransferAwaitable {
+          public:
+            explicit TransferAwaitable(std::coroutine_handle<> parent) : parent_(parent) {}
+
+          public:  // Awaitable API
+            bool await_ready() noexcept { return false; }
+            // Returning the coroutine_handle here is what transfers control back to the
+            // parent coroutine.
+            std::coroutine_handle<> await_suspend(std::coroutine_handle<>) noexcept {
+                return parent_;
+            }
+            void await_resume() noexcept {}
+
+          private:
+            std::coroutine_handle<> parent_;
+        };
+        return TransferAwaitable{parent_};
+    }
+    void unhandled_exception() { value_ = std::current_exception(); }
+
+    T result() {
+        if (std::holds_alternative<std::exception_ptr>(value_)) {
+            std::rethrow_exception(std::get<std::exception_ptr>(value_));
+        }
+        if (std::holds_alternative<T>(value_)) {
+            if constexpr (std::is_void_v<T>) {
+                return;
+            } else {
+                return std::move(std::get<T>(value_).get());
+            }
+        }
+        throw std::runtime_error("Coro does not have a result");
+    }
+
+    Task<>* get_task() noexcept { return task_; }
+
+  protected:
+    std::variant<std::monostate, ResultValue<T>, std::exception_ptr> value_;
+    std::coroutine_handle<> parent_;
+    Task<>* task_;
+};
+
+template <typename T>
+class CoroState : public CoroStateBase<T> {
+    using Base = CoroStateBase<T>;
+
+  public:
+    template <typename U>
+        requires std::is_convertible_v<U, T>
+    void return_value(U&& value) {
+        Base::value_ = ResultValue<T>{std::forward<U>(value)};
+    }
+};
+
+template <>
+class CoroState<void> : public CoroStateBase<void> {
+    using Base = CoroStateBase<void>;
+
+  public:
+    void return_void() { Base::value_ = ResultValue<void>{}; }
+};
+
+}  // namespace detail
+
 // Passthrough coroutine, keeps a reference to the owning Task's Promise
 template <typename T>
 class Coro {
-    class Promise {
-      public:
-        Coro<T> get_return_object() {
-            return Coro<T>{std::coroutine_handle<Promise>::from_promise(*this)};
-        }
-        std::suspend_always initial_suspend() noexcept { return {}; }
-        auto final_suspend() noexcept {
-            // This exists to "chain" coros together.
-            class TransferAwaitable {
-              public:
-                explicit TransferAwaitable(std::coroutine_handle<> parent)
-                    : parent_(parent) {}
-
-              public:  // Awaitable API
-                bool await_ready() noexcept { return false; }
-                // Returning the coroutine_handle here is what transfers control back to the
-                // parent coroutine.
-                std::coroutine_handle<> await_suspend(std::coroutine_handle<>) noexcept {
-                    return parent_;
-                }
-                void await_resume() noexcept {}
-
-              private:
-                std::coroutine_handle<> parent_;
-            };
-            return TransferAwaitable{parent_};
-        }
-        template <typename U>
-        void return_value(U&& value) {
-            value_ = std::forward<U>(value);
-        }
-        void unhandled_exception() { value_ = std::current_exception(); }
-
-        T result() {
-            if (std::holds_alternative<std::exception_ptr>(value_)) {
-                std::rethrow_exception(std::get<std::exception_ptr>(value_));
-            }
-            if (std::holds_alternative<T>(value_)) {
-                return std::move(std::get<T>(value_));
-            }
-            throw std::runtime_error("Coro does not have a result");
-        }
-
-        Task<>* get_task() noexcept { return task_; }
-
-      private:
-        std::variant<std::monostate, T, std::exception_ptr> value_;
-        std::coroutine_handle<> parent_;
-        Task<>* task_;
-    };
-
   public:
     class Awaiter {
       public:
@@ -84,7 +115,7 @@ class Coro {
     };
 
   public:
-    explicit Coro(std::coroutine_handle<Promise> h) : handle_(h) {}
+    explicit Coro(std::coroutine_handle<detail::CoroState<T>> h) : handle_(h) {}
     ~Coro() {}
 
     // Coro is only used once, so it's move-only
@@ -97,7 +128,7 @@ class Coro {
     auto operator co_await() { return Awaiter{*this}; }
 
   private:
-    std::coroutine_handle<Promise> handle_;
+    std::coroutine_handle<detail::CoroState<T>> handle_;
 };
 
 }  // namespace coconext
