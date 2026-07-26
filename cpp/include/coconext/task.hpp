@@ -98,6 +98,9 @@ class TaskStateBase : public TaskStateTypeErased {
     }
 
   protected:
+    void set_result(ResultValue<T> value) noexcept { result_ = std::move(value); }
+
+  private:
     std::atomic<size_t> ref_count_{0};
     std::variant<std::monostate, ResultValue<T>, std::exception_ptr, Cancelled> result_;
     coconext::EventLoop* event_loop_ = nullptr;
@@ -108,7 +111,11 @@ class TaskState : public TaskStateBase<T> {
     using Base = TaskStateBase<T>;
 
   public:
-    void return_value(T value) { Base::result_ = ResultValue<T>{value}; }
+    void return_value(T value) { set_result(ResultValue<T>{std::move(value)}); }
+
+  private:
+    // This makes set_result private for subclasses.
+    using Base::set_result;
 };
 
 template <>
@@ -116,7 +123,11 @@ class TaskState<void> : public TaskStateBase<void> {
     using Base = TaskStateBase<void>;
 
   public:
-    void return_void() { Base::result_ = ResultValue<void>{}; }
+    void return_void() { set_result(ResultValue<void>{}); }
+
+  private:
+    // This makes set_result private for subclasses.
+    using Base::set_result;
 };
 
 class Erased {};

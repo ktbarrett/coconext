@@ -66,6 +66,9 @@ class CoroStateBase {
     Task<>* get_task() noexcept { return task_; }
 
   protected:
+    void set_result(ResultValue<T> value) noexcept { value_ = std::move(value); }
+
+  private:
     std::variant<std::monostate, ResultValue<T>, std::exception_ptr> value_;
     std::coroutine_handle<> parent_;
     Task<>* task_;
@@ -79,8 +82,12 @@ class CoroState : public CoroStateBase<T> {
     template <typename U>
         requires std::is_convertible_v<U, T>
     void return_value(U&& value) {
-        Base::value_ = ResultValue<T>{std::forward<U>(value)};
+        Base::set_result(ResultValue<T>{std::forward<U>(value)});
     }
+
+  private:
+    // This makes set_result private for subclasses.
+    using Base::set_result;
 };
 
 template <>
@@ -88,7 +95,11 @@ class CoroState<void> : public CoroStateBase<void> {
     using Base = CoroStateBase<void>;
 
   public:
-    void return_void() { Base::value_ = ResultValue<void>{}; }
+    void return_void() { Base::set_result(ResultValue<void>{}); }
+
+  private:
+    // This makes set_result private for subclasses.
+    using Base::set_result;
 };
 
 }  // namespace detail
