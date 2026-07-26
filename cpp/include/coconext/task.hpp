@@ -1,7 +1,6 @@
 #ifndef COCONEXT_TASK_HPP
 #define COCONEXT_TASK_HPP
 
-#include <atomic>
 #include <coroutine>
 #include <exception>
 #include <stdexcept>
@@ -87,10 +86,10 @@ class TaskStateBase : public TaskStateTypeErased {
         return nullptr;
     }
 
-    void inc_ref() noexcept override { ref_count_.fetch_add(1, std::memory_order_relaxed); }
+    void inc_ref() noexcept override { ref_count_++; }
     void dec_ref() noexcept override {
-        auto prev = ref_count_.fetch_sub(1, std::memory_order_relaxed);
-        if (prev == 1) {
+        ref_count_--;
+        if (ref_count_ == 0) {
             std::coroutine_handle<TaskState<T>>::from_promise(*this).destroy();
             // The above is basically a "delete this", so no more code should follow this
             // line.
@@ -101,9 +100,9 @@ class TaskStateBase : public TaskStateTypeErased {
     void set_result(ResultValue<T> value) noexcept { result_ = std::move(value); }
 
   private:
-    std::atomic<size_t> ref_count_{0};
     std::variant<std::monostate, ResultValue<T>, std::exception_ptr, Cancelled> result_;
     coconext::EventLoop* event_loop_ = nullptr;
+    size_t ref_count_{0};
 };
 
 template <typename T>
