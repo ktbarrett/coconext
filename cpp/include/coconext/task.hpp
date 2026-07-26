@@ -138,6 +138,8 @@ class TaskBase {
   public:
     ~TaskBase() { handle_->dec_ref(); }
 
+    EventLoop* get_event_loop() noexcept { return handle_->get_event_loop(); }
+
     bool done() const noexcept { return handle_->done(); }
     bool cancelled() const noexcept { return handle_->cancelled(); }
     std::exception_ptr exception() const noexcept { return handle_->exception(); }
