@@ -137,35 +137,35 @@ class FutureState<void> : public FutureStateBase<void> {
 template <typename T>
 class Future {
   public:
-    Future() : state_(new detail::FutureState<T>{}) {}
-    ~Future() { state_->dec_ref(); }
-    Future(Future const& other) : state_(other.state_) { state_->inc_ref(); }
-    Future(Future&& other) noexcept : state_(other.state_) { other.state_ = nullptr; }
+    Future() : handle_(new detail::FutureState<T>{}) {}
+    ~Future() { handle_->dec_ref(); }
+    Future(Future const& other) : handle_(other.handle_) { handle_->inc_ref(); }
+    Future(Future&& other) noexcept : handle_(other.handle_) { other.handle_ = nullptr; }
     Future& operator=(Future const& other) {
         if (this != &other) {
-            state_->dec_ref();
-            state_ = other.state_;
-            state_->inc_ref();
+            handle_->dec_ref();
+            handle_ = other.handle_;
+            handle_->inc_ref();
         }
         return *this;
     }
     Future& operator=(Future&& other) noexcept {
         if (this != &other) {
-            state_->dec_ref();
-            state_ = other.state_;
-            other.state_ = nullptr;
+            handle_->dec_ref();
+            handle_ = other.handle_;
+            other.handle_ = nullptr;
         }
         return *this;
     }
-    T result() const { return state_->result(); }
+    T result() const { return handle_->result(); }
 
-    bool done() const noexcept { return state_->done(); }
-    bool cancelled() const noexcept { return state_->cancelled(); }
-    std::exception_ptr exception() const noexcept { return state_->exception(); }
+    bool done() const noexcept { return handle_->done(); }
+    bool cancelled() const noexcept { return handle_->cancelled(); }
+    std::exception_ptr exception() const noexcept { return handle_->exception(); }
 
     template <typename F>
     void add_callback(F&& callback) {
-        state_->add_callback(std::forward<F>(callback));
+        handle_->add_callback(std::forward<F>(callback));
     }
 
     class Awaiter : coconext::EventLoop::Event {
@@ -174,7 +174,7 @@ class Future {
         template <typename PromiseType>
         void await_suspend(std::coroutine_handle<PromiseType> h) {
             task_ = h.promise().get_task();
-            future_.state_->bind_event_loop(task_->get_event_loop());
+            future_.handle_->bind_event_loop(task_->get_event_loop());
         }
         T await_resume() {
             if (task_->cancelled()) {
@@ -198,7 +198,7 @@ class Future {
     auto operator co_await() { return Awaiter(*this); }
 
   protected:
-    detail::FutureState<T>* state_;
+    detail::FutureState<T>* handle_;
 };
 
 }  // namespace coconext

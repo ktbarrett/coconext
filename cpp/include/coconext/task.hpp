@@ -133,47 +133,47 @@ template <>
 class Task<detail::Erased> {
   public:
     ~Task() {
-        if (state_) {
-            state_->dec_ref();
+        if (handle_) {
+            handle_->dec_ref();
         }
     }
-    Task(Task const& other) : state_(other.state_) { state_->inc_ref(); }
-    Task(Task&& other) noexcept : state_(std::exchange(other.state_, nullptr)) {}
+    Task(Task const& other) : handle_(other.handle_) { handle_->inc_ref(); }
+    Task(Task&& other) noexcept : handle_(std::exchange(other.handle_, nullptr)) {}
     Task& operator=(Task const& other) {
         if (this != &other) {
-            state_->dec_ref();
-            state_ = other.state_;
-            state_->inc_ref();
+            handle_->dec_ref();
+            handle_ = other.handle_;
+            handle_->inc_ref();
         }
         return *this;
     }
     Task& operator=(Task&& other) noexcept {
         if (this != &other) {
-            state_->dec_ref();
-            state_ = std::exchange(other.state_, nullptr);
+            handle_->dec_ref();
+            handle_ = std::exchange(other.handle_, nullptr);
         }
         return *this;
     }
 
-    EventLoop* get_event_loop() noexcept { return state_->get_event_loop(); }
-    bool done() const noexcept { return state_->done(); }
-    bool cancelled() const noexcept { return state_->cancelled(); }
-    std::exception_ptr exception() const noexcept { return state_->exception(); }
-    void cancel() noexcept { state_->cancel(); }
+    EventLoop* get_event_loop() noexcept { return handle_->get_event_loop(); }
+    bool done() const noexcept { return handle_->done(); }
+    bool cancelled() const noexcept { return handle_->cancelled(); }
+    std::exception_ptr exception() const noexcept { return handle_->exception(); }
+    void cancel() noexcept { handle_->cancel(); }
 
   private:
     template <typename>
     friend class Task;
 
-    explicit Task(detail::TaskStateTypeErased* s) : state_(s) { state_->inc_ref(); }
-    detail::TaskStateTypeErased* state_;
+    explicit Task(detail::TaskStateTypeErased* s) : handle_(s) { handle_->inc_ref(); }
+    detail::TaskStateTypeErased* handle_;
 };
 
 template <typename T>
 class Task : public Task<detail::Erased> {
   public:
     T result() {
-        return static_cast<detail::TaskState<T>*>(Task<detail::Erased>::state_)->result();
+        return static_cast<detail::TaskState<T>*>(Task<detail::Erased>::handle_)->result();
     }
 };
 
