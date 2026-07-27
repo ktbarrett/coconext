@@ -5,6 +5,7 @@
 #include <exception>
 #include <stdexcept>
 #include <type_traits>
+#include <utility>
 #include <variant>
 
 #include <coconext/cancelled.hpp>
@@ -12,7 +13,11 @@
 
 namespace coconext {
 
-template <typename T>
+namespace detail {
+class Erased {};
+}  // namespace detail
+
+template <typename T = detail::Erased>
 class Task;
 
 namespace detail {
@@ -49,7 +54,7 @@ class TaskState;
 template <typename T>
 class TaskStateBase : public TaskStateTypeErased {
   public:
-    Task<T> get_return_object() { return Task<T>{this}; }
+    Task<T> get_return_object() { return Task<T>{static_cast<TaskState<T>*>(this)}; }
     std::suspend_always initial_suspend() noexcept { return {}; }
     std::suspend_never final_suspend() noexcept { return {}; }
     void unhandled_exception() { result_ = std::current_exception(); }
@@ -90,16 +95,19 @@ class TaskStateBase : public TaskStateTypeErased {
     void dec_ref() noexcept override {
         ref_count_--;
         if (ref_count_ == 0) {
-            std::coroutine_handle<TaskState<T>>::from_promise(*this).destroy();
+            std::coroutine_handle<TaskState<T>>::from_promise(
+                *static_cast<TaskState<T>*>(this)
+            )
+                .destroy();
             // The above is basically a "delete this", so no more code should follow this
             // line.
         }
     }
 
-  protected:
+  private:
+    friend class TaskState<T>;
     void set_result(ResultValue<T> value) noexcept { result_ = std::move(value); }
 
-  private:
     std::variant<std::monostate, ResultValue<T>, std::exception_ptr, Cancelled> result_;
     coconext::EventLoop* event_loop_ = nullptr;
     size_t ref_count_{0};
@@ -107,110 +115,63 @@ class TaskStateBase : public TaskStateTypeErased {
 
 template <typename T>
 class TaskState : public TaskStateBase<T> {
-    using Base = TaskStateBase<T>;
-
   public:
     void return_value(T value) { set_result(ResultValue<T>{std::move(value)}); }
-
-  private:
-    // This makes set_result private for subclasses.
-    using Base::set_result;
 };
 
 template <>
 class TaskState<void> : public TaskStateBase<void> {
-    using Base = TaskStateBase<void>;
-
   public:
     void return_void() { set_result(ResultValue<void>{}); }
-
-  private:
-    // This makes set_result private for subclasses.
-    using Base::set_result;
-};
-
-class Erased {};
-
-template <typename HandleType>
-    requires std::is_base_of_v<TaskStateTypeErased, HandleType>
-class TaskBase {
-  public:
-    ~TaskBase() { handle_->dec_ref(); }
-
-    EventLoop* get_event_loop() noexcept { return handle_->get_event_loop(); }
-
-    bool done() const noexcept { return handle_->done(); }
-    bool cancelled() const noexcept { return handle_->cancelled(); }
-    std::exception_ptr exception() const noexcept { return handle_->exception(); }
-
-    void cancel() noexcept { handle_->cancel(); }
-
-  protected:
-    explicit TaskBase(HandleType* h) : handle_(h) {}
-    HandleType* handle_;
 };
 
 }  // namespace detail
 
-template <typename T = detail::Erased>
-class Task : public detail::TaskBase<detail::TaskState<T>> {
-    using Base = detail::TaskBase<detail::TaskState<T>>;
-    friend class detail::TaskState<T>;
-
+template <>
+class Task<detail::Erased> {
   public:
-    Task(Task const& other) : Base(other.handle_) { Base::handle_->inc_ref(); }
-    Task(Task&& other) noexcept : Base(other.handle_) { other.handle_ = nullptr; }
+    ~Task() {
+        if (state_) {
+            state_->dec_ref();
+        }
+    }
+    Task(Task const& other) : state_(other.state_) { state_->inc_ref(); }
+    Task(Task&& other) noexcept : state_(std::exchange(other.state_, nullptr)) {}
     Task& operator=(Task const& other) {
         if (this != &other) {
-            Base::handle_->dec_ref();
-            Base::handle_ = other.handle_;
-            Base::handle_->inc_ref();
+            state_->dec_ref();
+            state_ = other.state_;
+            state_->inc_ref();
         }
         return *this;
     }
     Task& operator=(Task&& other) noexcept {
         if (this != &other) {
-            Base::handle_->dec_ref();
-            Base::handle_ = other.handle_;
-            other.handle_ = nullptr;
+            state_->dec_ref();
+            state_ = std::exchange(other.state_, nullptr);
         }
         return *this;
     }
+
+    EventLoop* get_event_loop() noexcept { return state_->get_event_loop(); }
+    bool done() const noexcept { return state_->done(); }
+    bool cancelled() const noexcept { return state_->cancelled(); }
+    std::exception_ptr exception() const noexcept { return state_->exception(); }
+    void cancel() noexcept { state_->cancel(); }
 
   private:
-    explicit Task(detail::TaskState<T>* h) : Base(h) { Base::handle_->inc_ref(); }
+    template <typename>
+    friend class Task;
+
+    explicit Task(detail::TaskStateTypeErased* s) : state_(s) { state_->inc_ref(); }
+    detail::TaskStateTypeErased* state_;
 };
 
-template <>
-class Task<detail::Erased> : public detail::TaskBase<detail::TaskStateTypeErased> {
-    using Base = detail::TaskBase<detail::TaskStateTypeErased>;
-
+template <typename T>
+class Task : public Task<detail::Erased> {
   public:
-    template <typename T>
-    Task(Task<T> const& other) : Base(other) {
-        Base::handle_->inc_ref();
-    }
-    template <typename T>
-    Task(Task<T>&& other) noexcept : Base(other.handle_) {
-#ifndef NDEBUG
-        other.handle_ = nullptr;
-#endif
-    }
-    template <typename T>
-    Task& operator=(Task<T> const& other) {
-        if (this != &other) {
-            handle_ = other.handle_;
-            handle_->inc_ref();
-        }
-        return *this;
-    }
-    template <typename T>
-    Task& operator=(Task<T>&& other) noexcept {
-        if (this != &other) {
-            handle_ = other.handle_;
-            other.handle_ = nullptr;
-        }
-        return *this;
+    T result() {
+        return static_cast<detail::TaskState<T>*>(Task<detail::Erased>::state_)->result();
     }
 };
 
