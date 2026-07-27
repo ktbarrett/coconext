@@ -185,7 +185,10 @@ class Future {
 
       private:
         explicit Awaiter(Future<T>& future) : future_(future) {}
-        void event_run() override { parent_.resume(); }
+        void event_run() override {
+            detail::current_task_ = task_;
+            parent_.resume();
+        }
 
         Future<T>& future_;
         std::coroutine_handle<> parent_;

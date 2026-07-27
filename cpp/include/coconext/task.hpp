@@ -177,6 +177,12 @@ class Task : public Task<detail::Erased> {
     }
 };
 
+namespace detail {
+
+extern thread_local coconext::Task<>* current_task_;
+
+}  // namespace detail
+
 }  // namespace coconext
 
 #endif  // COCONEXT_TASK_HPP
