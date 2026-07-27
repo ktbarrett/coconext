@@ -14,7 +14,9 @@
 namespace coconext {
 
 namespace detail {
+
 class Erased {};
+
 }  // namespace detail
 
 template <typename T = detail::Erased>
