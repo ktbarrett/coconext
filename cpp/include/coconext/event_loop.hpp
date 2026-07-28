@@ -6,16 +6,26 @@
 #include <mutex>
 #include <stdexcept>
 
-namespace coconext {
+namespace coconext::detail {
 
-class EventLoop;
+class Event {
+  public:
+    Event* prev = nullptr;
+    Event* next = nullptr;
+    Event() noexcept = default;
 
-namespace detail {
+    virtual void event_run() { throw std::runtime_error("Event run not implemented"); }
 
-template <typename DequeT>
-void schedule_all_back(EventLoop& loop, DequeT&& deque);
-
-}  // namespace detail
+  private:
+    void event_unschedule() noexcept {
+        assert(prev != nullptr);
+        prev->next = next;
+        next->prev = prev;
+#ifndef NDEBUG
+        prev = nullptr;
+#endif
+    }
+};
 
 // An external source of events drives the loop by acquiring a handle, scheduling callbacks,
 // and running the loop until exhaustion before releasing ownership to allow another
@@ -23,33 +33,23 @@ void schedule_all_back(EventLoop& loop, DequeT&& deque);
 // their scheduling and invocation. Task lifetime is managed by TaskManagers.
 class EventLoop {
   public:
-    class Event {
+    class Handle {
+        friend class detail::EventLoop;
+
       public:
-        Event* prev = nullptr;
-        Event* next = nullptr;
-        Event() noexcept = default;
-
-        virtual void event_run() { throw std::runtime_error("Event run not implemented"); }
-
-      protected:
-        void event_unschedule() noexcept {
-            assert(prev != nullptr);
-            prev->next = next;
-            next->prev = prev;
-#ifndef NDEBUG
-            prev = nullptr;
-#endif
+        Handle(Handle&& other) = default;
+        ~Handle() {
+            run();
+            loop_.mtx_.unlock();
         }
-    };
 
-    class ExternalHandle {
-        friend class EventLoop;
+        void schedule(Event* event) { loop_.queue_.push_back(event); }
 
-        ExternalHandle(EventLoop& loop) : loop_(loop) {}
-        ExternalHandle(ExternalHandle&& other) = default;
-        ~ExternalHandle() { loop_.mtx_.unlock(); }
+        template <typename DequeT>
+        void schedule_all_back(DequeT&& deque) {
+            loop_.queue_.extend_back(std::forward<DequeT>(deque));
+        }
 
-      public:
         void run() {
             while (!loop_.queue_.empty()) {
                 auto event = loop_.queue_.pop_front();
@@ -58,33 +58,22 @@ class EventLoop {
         }
 
       private:
-        EventLoop& loop_;
-    };
-    friend class ExternalHandle;
+        Handle(detail::EventLoop& loop) : loop_(loop) {}
 
-    [[nodiscard]] ExternalHandle acquire_external() {
+        detail::EventLoop& loop_;
+    };
+    friend class Handle;
+
+    [[nodiscard]] Handle acquire() {
         mtx_.lock();
-        return ExternalHandle(*this);
+        return Handle(*this);
     }
 
   private:
-    template <typename DequeT>
-    friend void detail::schedule_all_back(EventLoop& loop, DequeT&& deque);
-
-  private:
     coconext::detail::IntrusiveDeque<Event> queue_;
-    std::mutex mtx_;
+    std::recursive_mutex mtx_;
 };
 
-namespace detail {
-
-template <typename DequeT>
-void schedule_all_back(EventLoop& loop, DequeT&& deque) {
-    loop.queue_.extend_back(std::forward<DequeT>(deque));
-}
-
-}  // namespace detail
-
-}  // namespace coconext
+}  // namespace coconext::detail
 
 #endif  // COCONEXT_EVENT_LOOP_HPP

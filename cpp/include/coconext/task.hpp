@@ -30,7 +30,7 @@ class TaskStateTypeErased {
     // devirtualize them in practice since there is only one implementing class.
 
     virtual TaskStateTypeErased* get_task() noexcept = 0;
-    virtual coconext::EventLoop* get_event_loop() noexcept = 0;
+    virtual detail::EventLoop* get_event_loop() noexcept = 0;
 
     virtual bool cancelled() const noexcept = 0;
     virtual bool done() const noexcept = 0;
@@ -62,7 +62,7 @@ class TaskStateBase : public TaskStateTypeErased {
     void unhandled_exception() { result_ = std::current_exception(); }
 
     TaskStateTypeErased* get_task() noexcept override { return this; }
-    coconext::EventLoop* get_event_loop() noexcept override { return event_loop_; }
+    detail::EventLoop* get_event_loop() noexcept override { return event_loop_; }
 
     bool cancelled() const noexcept override {
         return std::holds_alternative<Cancelled>(result_);
@@ -111,7 +111,7 @@ class TaskStateBase : public TaskStateTypeErased {
     void set_result(ResultValue<T> value) noexcept { result_ = std::move(value); }
 
     std::variant<std::monostate, ResultValue<T>, std::exception_ptr, Cancelled> result_;
-    coconext::EventLoop* event_loop_ = nullptr;
+    detail::EventLoop* event_loop_ = nullptr;
     size_t ref_count_{0};
 };
 
@@ -155,7 +155,7 @@ class Task<detail::Erased> {
         return *this;
     }
 
-    EventLoop* get_event_loop() noexcept { return handle_->get_event_loop(); }
+    detail::EventLoop* get_event_loop() noexcept { return handle_->get_event_loop(); }
     bool done() const noexcept { return handle_->done(); }
     bool cancelled() const noexcept { return handle_->cancelled(); }
     std::exception_ptr exception() const noexcept { return handle_->exception(); }

@@ -48,7 +48,7 @@ class FutureStateBase {
     }
 
     void schedule_task_resumes() noexcept {
-        detail::schedule_all_back(*event_loop_, std::move(deque_));
+        event_loop_->schedule_all_back(std::move(deque_));
     }
     void do_callbacks() noexcept {
         for (auto& callback : callbacks_) {
@@ -67,7 +67,7 @@ class FutureStateBase {
         do_callbacks();
     }
 
-    void bind_event_loop(coconext::EventLoop* loop) {
+    void bind_event_loop(detail::EventLoop* loop) {
         if (event_loop_ == nullptr) {
             event_loop_ = loop;
         } else if (event_loop_ != loop) {
@@ -92,13 +92,13 @@ class FutureStateBase {
     }
 
   private:
-    coconext::detail::IntrusiveDeque<coconext::EventLoop::Event> deque_;
+    detail::IntrusiveDeque<detail::Event> deque_;
     std::vector<std::function<void()>> callbacks_;
     std::variant<std::monostate, detail::ResultValue<T>, std::exception_ptr, Cancelled>
         result_;
     // The Future starts un-bound to an EventLoop, and is bound when the first task
     // awaits it.
-    coconext::EventLoop* event_loop_ = nullptr;
+    detail::EventLoop* event_loop_ = nullptr;
     size_t ref_count_{0};
 };
 
@@ -168,7 +168,7 @@ class Future {
         handle_->add_callback(std::forward<F>(callback));
     }
 
-    class Awaiter : coconext::EventLoop::Event {
+    class Awaiter : detail::Event {
       public:
         bool await_ready() const noexcept { return future_.done(); }
         template <typename PromiseType>
