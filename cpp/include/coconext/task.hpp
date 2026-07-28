@@ -43,6 +43,7 @@ class TaskState<Erased> {
 
     virtual void start_soon(EventLoop* loop) = 0;
     virtual void cancel() noexcept = 0;
+    virtual void uncancel() noexcept = 0;
 
     virtual void inc_ref() noexcept = 0;
     virtual void dec_ref() noexcept = 0;
@@ -80,8 +81,14 @@ class TaskStateBase : public TaskState<Erased> {
   public:
     Task<T> get_return_object() { return Task<T>{static_cast<TaskState<T>*>(this)}; }
     std::suspend_always initial_suspend() noexcept { return {}; }
-    std::suspend_never final_suspend() noexcept { return {}; }
-    void unhandled_exception() { state_ = Exception{std::current_exception()}; }
+    std::suspend_never final_suspend() noexcept {
+        // TODO: handle cancelled_ > 0
+        return {};
+    }
+    void unhandled_exception() {
+        // TODO: handle cancelled_ > 0
+        state_ = Exception{std::current_exception()};
+    }
 
     TaskState<>* get_task() noexcept override { return this; }
     EventLoop* get_event_loop() noexcept override { return event_loop_; }
@@ -91,7 +98,8 @@ class TaskStateBase : public TaskState<Erased> {
     }
     bool cancelled() const noexcept override { return cancelled_; }
     bool done() const noexcept override {
-        return !std::holds_alternative<std::monostate>(state_);
+        return std::holds_alternative<Result>(state_)
+            || std::holds_alternative<Exception>(state_);
     }
     T result() {
         if (!done()) {
@@ -120,14 +128,25 @@ class TaskStateBase : public TaskState<Erased> {
         if (done()) {
             return;
         }
-        cancelled_ = true;
+        cancelled_++;
         if (unstarted()) {
+            // We will never get the chance to check cancelled/uncancelled count, so we
+            // force it done now.
+            state_ = Exception{std::make_exception_ptr(Cancelled{})};
             return;
         } else if (std::holds_alternative<Pending>(state_)) {
             auto& pending = std::get<Pending>(state_);
             pending.event->event_unschedule();
+            event_loop_->acquire().schedule_back(&std::get<Scheduled>(state_));
         }
-        event_loop_->acquire().schedule_back(&std::get<Scheduled>(state_));
+        // Not done, unstarted, or pending? Already scheduled, we will steal its place in
+        // line.
+    }
+    void uncancel() noexcept override {
+        if (done()) {
+            return;
+        }
+        cancelled_--;
     }
     void start_soon(EventLoop* loop) override {
         if (!unstarted()) {
@@ -167,7 +186,7 @@ class TaskStateBase : public TaskState<Erased> {
     std::variant<std::monostate, Scheduled, Pending, Result<T>, Exception> state_;
     EventLoop* event_loop_ = nullptr;
     size_t ref_count_{0};
-    bool cancelled_{false};
+    int16_t cancelled_{0};
 };
 
 template <typename T>
