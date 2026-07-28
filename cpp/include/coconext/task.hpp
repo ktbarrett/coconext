@@ -46,6 +46,9 @@ class TaskState<Erased> {
 
     virtual void inc_ref() noexcept = 0;
     virtual void dec_ref() noexcept = 0;
+
+    virtual void bind_event_loop(EventLoop* loop) = 0;
+    virtual void set_pending(Event* future_awaiter) = 0;
 };
 
 // Result and Exception are defined here because FutureState uses it as well.
@@ -70,6 +73,10 @@ class TaskStateBase : public TaskState<Erased> {
         TaskStateBase<Erased>* task_;
     };
 
+    struct Pending {
+        Event* event;
+    };
+
   public:
     Task<T> get_return_object() { return Task<T>{static_cast<TaskState<T>*>(this)}; }
     std::suspend_always initial_suspend() noexcept { return {}; }
@@ -82,9 +89,7 @@ class TaskStateBase : public TaskState<Erased> {
     bool unstarted() const noexcept override {
         return std::holds_alternative<std::monostate>(state_);
     }
-    bool cancelled() const noexcept override {
-        return std::holds_alternative<Cancelled>(state_);
-    }
+    bool cancelled() const noexcept override { return cancelled_; }
     bool done() const noexcept override {
         return !std::holds_alternative<std::monostate>(state_);
     }
@@ -115,24 +120,20 @@ class TaskStateBase : public TaskState<Erased> {
         if (done()) {
             return;
         }
-        state_ = Cancelled{};
-        if (event_loop_ != nullptr) {
-            // This is not correct yet.
-            event_loop_->acquire().schedule_back(&std::get<Scheduled>(state_));
+        cancelled_ = true;
+        if (unstarted()) {
+            return;
+        } else if (std::holds_alternative<Pending>(state_)) {
+            auto& pending = std::get<Pending>(state_);
+            pending.event->event_unschedule();
         }
+        event_loop_->acquire().schedule_back(&std::get<Scheduled>(state_));
     }
-
     void start_soon(EventLoop* loop) override {
         if (!unstarted()) {
             throw std::runtime_error("Task already started");
         }
-        if (event_loop_ != nullptr) {
-            if (event_loop_ != loop) {
-                throw std::runtime_error("Task is already bound to another EventLoop");
-            }
-        } else {
-            event_loop_ = loop;
-        }
+        bind_event_loop(loop);
         state_ = Scheduled{*this};
         event_loop_->acquire().schedule_back(&std::get<Scheduled>(state_));
     }
@@ -149,13 +150,24 @@ class TaskStateBase : public TaskState<Erased> {
         }
     }
 
+    void bind_event_loop(EventLoop* loop) override {
+        if (event_loop_ == nullptr) {
+            event_loop_ = loop;
+        } else if (event_loop_ != loop) {
+            throw std::runtime_error("Task is already bound to another EventLoop");
+        }
+    }
+
+    void set_pending(Event* future_awaiter) override { state_ = Pending{future_awaiter}; }
+
   private:
     friend class TaskState<T>;
     void set_result(Result<T>&& value) noexcept { state_ = std::move(value); }
 
-    std::variant<std::monostate, Scheduled, Result<T>, Exception, Cancelled> state_;
+    std::variant<std::monostate, Scheduled, Pending, Result<T>, Exception> state_;
     EventLoop* event_loop_ = nullptr;
     size_t ref_count_{0};
+    bool cancelled_{false};
 };
 
 template <typename T>

@@ -154,7 +154,9 @@ class Future {
         bool await_ready() const noexcept { return future_.done(); }
         template <typename PromiseType>
         void await_suspend(std::coroutine_handle<PromiseType> h) {
+            parent_ = h;
             task_ = h.promise().get_task();
+            task_->set_pending(this);
             future_.handle_->bind_event_loop(task_->get_event_loop());
         }
         T await_resume() {
@@ -163,13 +165,13 @@ class Future {
             }
             return future_.result();
         }
-
-      private:
-        explicit Awaiter(Future<T>& future) : future_(future) {}
         void event_run() override {
             detail::current_task_ = task_;
             parent_.resume();
         }
+
+      private:
+        explicit Awaiter(Future<T>& future) : future_(future) {}
 
         Future<T>& future_;
         std::coroutine_handle<> parent_;

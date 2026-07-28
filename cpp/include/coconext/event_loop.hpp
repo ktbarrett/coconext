@@ -16,7 +16,6 @@ class Event {
 
     virtual void event_run() { throw std::runtime_error("Event run not implemented"); }
 
-  private:
     void event_unschedule() noexcept {
         assert(prev != nullptr);
         prev->next = next;
