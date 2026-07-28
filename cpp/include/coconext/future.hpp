@@ -187,7 +187,7 @@ class Future {
 
         Future<T>& future_;
         std::coroutine_handle<> parent_;
-        detail::TaskStateTypeErased* task_;
+        detail::TaskState<>* task_;
     };
 
     auto operator co_await() { return Awaiter(*this); }

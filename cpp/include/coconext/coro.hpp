@@ -63,7 +63,7 @@ class CoroStateBase {
         throw std::runtime_error("Coro does not have a result");
     }
 
-    detail::TaskStateTypeErased* get_task() noexcept { return task_; }
+    detail::TaskState<>* get_task() noexcept { return task_; }
 
   protected:
     void set_result(ResultValue<T> value) noexcept { value_ = std::move(value); }
@@ -71,7 +71,7 @@ class CoroStateBase {
   private:
     std::variant<std::monostate, ResultValue<T>, std::exception_ptr> value_;
     std::coroutine_handle<> parent_;
-    detail::TaskStateTypeErased* task_;
+    detail::TaskState<>* task_;
 };
 
 template <typename T>

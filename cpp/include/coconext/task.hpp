@@ -24,13 +24,17 @@ class Task;
 
 namespace detail {
 
-class TaskStateTypeErased {
+template <typename T = Erased>
+class TaskState;
+
+template <>
+class TaskState<Erased> {
   public:
     // While all of these methods are virtual, the compiler will almost certainly
     // devirtualize them in practice since there is only one implementing class.
 
-    virtual TaskStateTypeErased* get_task() noexcept = 0;
-    virtual detail::EventLoop* get_event_loop() noexcept = 0;
+    virtual TaskState<>* get_task() noexcept = 0;
+    virtual EventLoop* get_event_loop() noexcept = 0;
 
     virtual bool unstarted() const noexcept = 0;
     virtual bool cancelled() const noexcept = 0;
@@ -52,18 +56,15 @@ template <>
 struct ResultValue<void> {};
 
 template <typename T>
-class TaskState;
-
-template <typename T>
-class TaskStateBase : public TaskStateTypeErased {
+class TaskStateBase : public TaskState<Erased> {
   public:
     Task<T> get_return_object() { return Task<T>{static_cast<TaskState<T>*>(this)}; }
     std::suspend_always initial_suspend() noexcept { return {}; }
     std::suspend_never final_suspend() noexcept { return {}; }
     void unhandled_exception() { result_ = std::current_exception(); }
 
-    TaskStateTypeErased* get_task() noexcept override { return this; }
-    detail::EventLoop* get_event_loop() noexcept override { return event_loop_; }
+    TaskState<>* get_task() noexcept override { return this; }
+    EventLoop* get_event_loop() noexcept override { return event_loop_; }
 
     bool unstarted() const noexcept override {
         return std::holds_alternative<std::monostate>(result_);
@@ -114,7 +115,7 @@ class TaskStateBase : public TaskStateTypeErased {
     void set_result(ResultValue<T> value) noexcept { result_ = std::move(value); }
 
     std::variant<std::monostate, ResultValue<T>, std::exception_ptr, Cancelled> result_;
-    detail::EventLoop* event_loop_ = nullptr;
+    EventLoop* event_loop_ = nullptr;
     size_t ref_count_{0};
 };
 
@@ -169,8 +170,8 @@ class Task<detail::Erased> {
     template <typename>
     friend class Task;
 
-    explicit Task(detail::TaskStateTypeErased* s) : handle_(s) { handle_->inc_ref(); }
-    detail::TaskStateTypeErased* handle_;
+    explicit Task(detail::TaskState<>* s) : handle_(s) { handle_->inc_ref(); }
+    detail::TaskState<>* handle_;
 };
 
 template <typename T>
@@ -186,7 +187,7 @@ namespace detail {
 // Sticking the current task variable in the header as inline thread_local allows us to
 // stick global dynamic lookup. The initialization cost is also not a problem since this is
 // a simple pointer.
-inline thread_local TaskStateTypeErased* current_task_ = nullptr;
+inline thread_local TaskState<>* current_task_ = nullptr;
 
 }  // namespace detail
 
