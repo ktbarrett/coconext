@@ -18,6 +18,9 @@ namespace coconext {
 namespace detail {
 
 template <typename T>
+class FutureState;
+
+template <typename T>
 class FutureStateBase {
   public:
     bool done() const noexcept { return !std::holds_alternative<std::monostate>(result_); }
@@ -80,13 +83,13 @@ class FutureStateBase {
         }
     }
 
-  protected:
+  private:
     void set_result(detail::ResultValue<T> value) noexcept {
         result_ = std::move(value);
         fire();
     }
+    friend class FutureState<T>;
 
-  private:
     detail::IntrusiveDeque<detail::Event> deque_;
     std::vector<std::function<void()>> callbacks_;
     std::variant<std::monostate, detail::ResultValue<T>, std::exception_ptr, Cancelled>
@@ -99,31 +102,17 @@ class FutureStateBase {
 
 template <typename T>
 class FutureState : public FutureStateBase<T> {
-    using Base = FutureStateBase<T>;
-
   public:
     void set_result(T&& value) noexcept {
-        Base::set_result(detail::ResultValue<T>{std::move(value)});
+        set_result(detail::ResultValue<T>{std::move(value)});
     }
-    void set_result(T const& value) noexcept {
-        Base::set_result(detail::ResultValue<T>{value});
-    }
-
-  private:
-    // This makes set_result private for subclasses.
-    using Base::set_result;
+    void set_result(T const& value) noexcept { set_result(detail::ResultValue<T>{value}); }
 };
 
 template <>
 class FutureState<void> : public FutureStateBase<void> {
-    using Base = FutureStateBase<void>;
-
   public:
-    void set_void() noexcept { Base::set_result(detail::ResultValue<void>{}); }
-
-  private:
-    // This makes set_result private for subclasses.
-    using Base::set_result;
+    void set_void() noexcept { set_result(detail::ResultValue<void>{}); }
 };
 
 }  // namespace detail
