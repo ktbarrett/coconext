@@ -71,7 +71,7 @@ class EventLoop {
             loop_.mtx_.unlock();
         }
 
-        void schedule(Event* event) { loop_.queue_.push_back(event); }
+        void schedule_back(Event* event) { loop_.queue_.push_back(event); }
 
         template <typename DequeT>
         void schedule_all_back(DequeT&& deque) {

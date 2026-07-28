@@ -41,6 +41,7 @@ class TaskState<Erased> {
     virtual bool done() const noexcept = 0;
     virtual std::exception_ptr exception() const noexcept = 0;
 
+    virtual void start_soon(EventLoop* loop) = 0;
     virtual void cancel() noexcept = 0;
 
     virtual void inc_ref() noexcept = 0;
@@ -57,45 +58,77 @@ struct ResultValue<void> {};
 
 template <typename T>
 class TaskStateBase : public TaskState<Erased> {
+    struct Scheduled : detail::Event {
+        explicit Scheduled(TaskStateBase<T>& task) : task_(&task) {}
+        void event_run() override;
+        TaskStateBase<Erased>* task_;
+    };
+
   public:
     Task<T> get_return_object() { return Task<T>{static_cast<TaskState<T>*>(this)}; }
     std::suspend_always initial_suspend() noexcept { return {}; }
     std::suspend_never final_suspend() noexcept { return {}; }
-    void unhandled_exception() { result_ = std::current_exception(); }
+    void unhandled_exception() { state_ = std::current_exception(); }
 
     TaskState<>* get_task() noexcept override { return this; }
     EventLoop* get_event_loop() noexcept override { return event_loop_; }
 
     bool unstarted() const noexcept override {
-        return std::holds_alternative<std::monostate>(result_);
+        return std::holds_alternative<std::monostate>(state_);
     }
     bool cancelled() const noexcept override {
-        return std::holds_alternative<Cancelled>(result_);
+        return std::holds_alternative<Cancelled>(state_);
     }
     bool done() const noexcept override {
-        return !std::holds_alternative<std::monostate>(result_);
+        return !std::holds_alternative<std::monostate>(state_);
     }
     T result() {
         if (!done()) {
             throw std::runtime_error("Task not completed yet.");
         }
-        if (std::holds_alternative<std::exception_ptr>(result_)) {
-            std::rethrow_exception(std::get<std::exception_ptr>(result_));
+        if (std::holds_alternative<std::exception_ptr>(state_)) {
+            std::rethrow_exception(std::get<std::exception_ptr>(state_));
         }
-        if (std::holds_alternative<ResultValue<T>>(result_)) {
+        if (std::holds_alternative<ResultValue<T>>(state_)) {
             if constexpr (std::is_void_v<T>) {
                 return;
             } else {
-                return std::get<ResultValue<T>>(result_).value;
+                return std::get<ResultValue<T>>(state_).value;
             }
         }
         throw std::runtime_error("Task does not have a result");
     }
     std::exception_ptr exception() const noexcept override {
-        if (std::holds_alternative<std::exception_ptr>(result_)) {
-            return std::get<std::exception_ptr>(result_);
+        if (std::holds_alternative<std::exception_ptr>(state_)) {
+            return std::get<std::exception_ptr>(state_);
         }
         return nullptr;
+    }
+
+    void cancel() noexcept override {
+        if (done()) {
+            return;
+        }
+        state_ = Cancelled{};
+        if (event_loop_ != nullptr) {
+            // This is not correct yet.
+            event_loop_->acquire().schedule_back(&std::get<Scheduled>(state_));
+        }
+    }
+
+    void start_soon(EventLoop* loop) override {
+        if (!unstarted()) {
+            throw std::runtime_error("Task already started");
+        }
+        if (event_loop_ != nullptr) {
+            if (event_loop_ != loop) {
+                throw std::runtime_error("Task is already bound to another EventLoop");
+            }
+        } else {
+            event_loop_ = loop;
+        }
+        state_ = Scheduled{*this};
+        event_loop_->acquire().schedule_back(&std::get<Scheduled>(state_));
     }
 
     void inc_ref() noexcept override { ref_count_++; }
@@ -112,9 +145,10 @@ class TaskStateBase : public TaskState<Erased> {
 
   private:
     friend class TaskState<T>;
-    void set_result(ResultValue<T> value) noexcept { result_ = std::move(value); }
+    void set_result(ResultValue<T>&& value) noexcept { state_ = std::move(value); }
 
-    std::variant<std::monostate, ResultValue<T>, std::exception_ptr, Cancelled> result_;
+    std::variant<std::monostate, Scheduled, ResultValue<T>, std::exception_ptr, Cancelled>
+        state_;
     EventLoop* event_loop_ = nullptr;
     size_t ref_count_{0};
 };
@@ -188,6 +222,15 @@ namespace detail {
 // stick global dynamic lookup. The initialization cost is also not a problem since this is
 // a simple pointer.
 inline thread_local TaskState<>* current_task_ = nullptr;
+
+template <typename T>
+void TaskStateBase<T>::Scheduled::event_run() {
+    detail::current_task_ = task_;
+    auto& handle = std::coroutine_handle<TaskState<T>>::from_promise(
+        *static_cast<TaskState<T>*>(task_)
+    );
+    handle.resume();
+}
 
 }  // namespace detail
 
