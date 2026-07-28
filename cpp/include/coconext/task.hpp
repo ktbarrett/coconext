@@ -32,6 +32,7 @@ class TaskStateTypeErased {
     virtual TaskStateTypeErased* get_task() noexcept = 0;
     virtual detail::EventLoop* get_event_loop() noexcept = 0;
 
+    virtual bool unstarted() const noexcept = 0;
     virtual bool cancelled() const noexcept = 0;
     virtual bool done() const noexcept = 0;
     virtual std::exception_ptr exception() const noexcept = 0;
@@ -64,6 +65,9 @@ class TaskStateBase : public TaskStateTypeErased {
     TaskStateTypeErased* get_task() noexcept override { return this; }
     detail::EventLoop* get_event_loop() noexcept override { return event_loop_; }
 
+    bool unstarted() const noexcept override {
+        return std::holds_alternative<std::monostate>(result_);
+    }
     bool cancelled() const noexcept override {
         return std::holds_alternative<Cancelled>(result_);
     }
@@ -97,12 +101,11 @@ class TaskStateBase : public TaskStateTypeErased {
     void dec_ref() noexcept override {
         ref_count_--;
         if (ref_count_ == 0) {
-            std::coroutine_handle<TaskState<T>>::from_promise(
+            auto& handle = std::coroutine_handle<TaskState<T>>::from_promise(
                 *static_cast<TaskState<T>*>(this)
-            )
-                .destroy();
-            // The above is basically a "delete this", so no more code should follow this
-            // line.
+            );
+            // This is basically a "delete this", so no more code should follow this line.
+            handle.destroy();
         }
     }
 
@@ -155,10 +158,11 @@ class Task<detail::Erased> {
         return *this;
     }
 
-    detail::EventLoop* get_event_loop() noexcept { return handle_->get_event_loop(); }
+    bool unstarted() const noexcept { return handle_->unstarted(); }
     bool done() const noexcept { return handle_->done(); }
     bool cancelled() const noexcept { return handle_->cancelled(); }
     std::exception_ptr exception() const noexcept { return handle_->exception(); }
+
     void cancel() noexcept { handle_->cancel(); }
 
   private:
