@@ -48,13 +48,19 @@ class TaskState<Erased> {
     virtual void dec_ref() noexcept = 0;
 };
 
+// Result and Exception are defined here because FutureState uses it as well.
+
 template <typename T>
-struct ResultValue {
+struct Result {
     T value;
 };
 
 template <>
-struct ResultValue<void> {};
+struct Result<void> {};
+
+struct Exception {
+    std::exception_ptr exception;
+};
 
 template <typename T>
 class TaskStateBase : public TaskState<Erased> {
@@ -68,7 +74,7 @@ class TaskStateBase : public TaskState<Erased> {
     Task<T> get_return_object() { return Task<T>{static_cast<TaskState<T>*>(this)}; }
     std::suspend_always initial_suspend() noexcept { return {}; }
     std::suspend_never final_suspend() noexcept { return {}; }
-    void unhandled_exception() { state_ = std::current_exception(); }
+    void unhandled_exception() { state_ = Exception{std::current_exception()}; }
 
     TaskState<>* get_task() noexcept override { return this; }
     EventLoop* get_event_loop() noexcept override { return event_loop_; }
@@ -86,21 +92,21 @@ class TaskStateBase : public TaskState<Erased> {
         if (!done()) {
             throw std::runtime_error("Task not completed yet.");
         }
-        if (std::holds_alternative<std::exception_ptr>(state_)) {
-            std::rethrow_exception(std::get<std::exception_ptr>(state_));
+        if (std::holds_alternative<Exception>(state_)) {
+            std::rethrow_exception(std::get<Exception>(state_).exception);
         }
-        if (std::holds_alternative<ResultValue<T>>(state_)) {
+        if (std::holds_alternative<Result<T>>(state_)) {
             if constexpr (std::is_void_v<T>) {
                 return;
             } else {
-                return std::get<ResultValue<T>>(state_).value;
+                return std::get<Result<T>>(state_).value;
             }
         }
         throw std::runtime_error("Task does not have a result");
     }
     std::exception_ptr exception() const noexcept override {
-        if (std::holds_alternative<std::exception_ptr>(state_)) {
-            return std::get<std::exception_ptr>(state_);
+        if (std::holds_alternative<Exception>(state_)) {
+            return std::get<Exception>(state_).exception;
         }
         return nullptr;
     }
@@ -145,10 +151,9 @@ class TaskStateBase : public TaskState<Erased> {
 
   private:
     friend class TaskState<T>;
-    void set_result(ResultValue<T>&& value) noexcept { state_ = std::move(value); }
+    void set_result(Result<T>&& value) noexcept { state_ = std::move(value); }
 
-    std::variant<std::monostate, Scheduled, ResultValue<T>, std::exception_ptr, Cancelled>
-        state_;
+    std::variant<std::monostate, Scheduled, Result<T>, Exception, Cancelled> state_;
     EventLoop* event_loop_ = nullptr;
     size_t ref_count_{0};
 };
@@ -156,13 +161,13 @@ class TaskStateBase : public TaskState<Erased> {
 template <typename T>
 class TaskState : public TaskStateBase<T> {
   public:
-    void return_value(T value) { set_result(ResultValue<T>{std::move(value)}); }
+    void return_value(T value) { set_result(Result<T>{std::move(value)}); }
 };
 
 template <>
 class TaskState<void> : public TaskStateBase<void> {
   public:
-    void return_void() { set_result(ResultValue<void>{}); }
+    void return_void() { set_result(Result<void>{}); }
 };
 
 }  // namespace detail

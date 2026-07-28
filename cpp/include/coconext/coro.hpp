@@ -47,17 +47,17 @@ class CoroStateBase {
         };
         return TransferAwaitable{parent_};
     }
-    void unhandled_exception() { value_ = std::current_exception(); }
+    void unhandled_exception() { value_ = Exception{std::current_exception()}; }
 
     T result() {
-        if (std::holds_alternative<std::exception_ptr>(value_)) {
-            std::rethrow_exception(std::get<std::exception_ptr>(value_));
+        if (std::holds_alternative<Exception>(value_)) {
+            std::rethrow_exception(std::get<Exception>(value_).exception);
         }
-        if (std::holds_alternative<T>(value_)) {
+        if (std::holds_alternative<Result<T>>(value_)) {
             if constexpr (std::is_void_v<T>) {
                 return;
             } else {
-                return std::move(std::get<T>(value_).get());
+                return std::move(std::get<Result<T>>(value_).value);
             }
         }
         throw std::runtime_error("Coro does not have a result");
@@ -66,10 +66,10 @@ class CoroStateBase {
     detail::TaskState<>* get_task() noexcept { return task_; }
 
   protected:
-    void set_result(ResultValue<T> value) noexcept { value_ = std::move(value); }
+    void set_result(Result<T> value) noexcept { value_ = std::move(value); }
 
   private:
-    std::variant<std::monostate, ResultValue<T>, std::exception_ptr> value_;
+    std::variant<std::monostate, Result<T>, Exception> value_;
     std::coroutine_handle<> parent_;
     detail::TaskState<>* task_;
 };
@@ -82,7 +82,7 @@ class CoroState : public CoroStateBase<T> {
     template <typename U>
         requires std::is_convertible_v<U, T>
     void return_value(U&& value) {
-        Base::set_result(ResultValue<T>{std::forward<U>(value)});
+        Base::set_result(Result<T>{std::forward<U>(value)});
     }
 
   private:
@@ -95,7 +95,7 @@ class CoroState<void> : public CoroStateBase<void> {
     using Base = CoroStateBase<void>;
 
   public:
-    void return_void() { Base::set_result(ResultValue<void>{}); }
+    void return_void() { Base::set_result(Result<void>{}); }
 
   private:
     // This makes set_result private for subclasses.

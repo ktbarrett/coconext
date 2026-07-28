@@ -26,21 +26,21 @@ class FutureStateBase {
     bool done() const noexcept { return !std::holds_alternative<std::monostate>(result_); }
     bool cancelled() const noexcept { return std::holds_alternative<Cancelled>(result_); }
     T result() const {
-        if (std::holds_alternative<std::exception_ptr>(result_)) {
-            std::rethrow_exception(std::get<std::exception_ptr>(result_));
+        if (std::holds_alternative<detail::Exception>(result_)) {
+            std::rethrow_exception(std::get<detail::Exception>(result_).exception);
         }
-        if (std::holds_alternative<detail::ResultValue<T>>(result_)) {
+        if (std::holds_alternative<detail::Result<T>>(result_)) {
             if constexpr (std::is_void_v<T>) {
                 return;
             } else {
-                return std::get<detail::ResultValue<T>>(result_).value;
+                return std::get<detail::Result<T>>(result_).value;
             }
         }
         throw std::runtime_error("Future does not have a result");
     }
     std::exception_ptr exception() const noexcept {
-        if (std::holds_alternative<std::exception_ptr>(result_)) {
-            return std::get<std::exception_ptr>(result_);
+        if (std::holds_alternative<detail::Exception>(result_)) {
+            return std::get<detail::Exception>(result_).exception;
         }
         return nullptr;
     }
@@ -58,7 +58,7 @@ class FutureStateBase {
     }
 
     void set_exception(std::exception_ptr exc) noexcept {
-        result_ = exc;
+        result_ = detail::Exception{exc};
         fire();
     }
     void cancel() noexcept {
@@ -84,7 +84,7 @@ class FutureStateBase {
     }
 
   private:
-    void set_result(detail::ResultValue<T> value) noexcept {
+    void set_result(detail::Result<T> value) noexcept {
         result_ = std::move(value);
         fire();
     }
@@ -92,8 +92,7 @@ class FutureStateBase {
 
     detail::IntrusiveDeque<detail::Event> deque_;
     std::vector<std::function<void()>> callbacks_;
-    std::variant<std::monostate, detail::ResultValue<T>, std::exception_ptr, Cancelled>
-        result_;
+    std::variant<std::monostate, detail::Result<T>, detail::Exception, Cancelled> result_;
     // The Future starts un-bound to an EventLoop, and is bound when the first task
     // awaits it.
     detail::EventLoop* event_loop_ = nullptr;
@@ -103,16 +102,14 @@ class FutureStateBase {
 template <typename T>
 class FutureState : public FutureStateBase<T> {
   public:
-    void set_result(T&& value) noexcept {
-        set_result(detail::ResultValue<T>{std::move(value)});
-    }
-    void set_result(T const& value) noexcept { set_result(detail::ResultValue<T>{value}); }
+    void set_result(T&& value) noexcept { set_result(detail::Result<T>{std::move(value)}); }
+    void set_result(T const& value) noexcept { set_result(detail::Result<T>{value}); }
 };
 
 template <>
 class FutureState<void> : public FutureStateBase<void> {
   public:
-    void set_void() noexcept { set_result(detail::ResultValue<void>{}); }
+    void set_void() noexcept { set_result(detail::Result<void>{}); }
 };
 
 }  // namespace detail
