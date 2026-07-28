@@ -51,10 +51,15 @@ class EventLoop {
         }
 
         void run() {
+            if (loop_.is_running_) {
+                return;
+            }
+            loop_.is_running_ = true;
             while (!loop_.queue_.empty()) {
                 auto event = loop_.queue_.pop_front();
                 event->event_run();
             }
+            loop_.is_running_ = false;
         }
 
       private:
@@ -72,6 +77,7 @@ class EventLoop {
   private:
     coconext::detail::IntrusiveDeque<Event> queue_;
     std::recursive_mutex mtx_;
+    bool is_running_ = false;
 };
 
 }  // namespace coconext::detail

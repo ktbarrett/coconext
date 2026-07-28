@@ -47,10 +47,8 @@ class FutureStateBase {
         callbacks_.emplace_back(std::forward<F>(callback));
     }
 
-    void schedule_task_resumes() noexcept {
-        event_loop_->schedule_all_back(std::move(deque_));
-    }
-    void do_callbacks() noexcept {
+    void fire() noexcept {
+        event_loop_->acquire().schedule_all_back(std::move(deque_));
         for (auto& callback : callbacks_) {
             callback();
         }
@@ -58,13 +56,11 @@ class FutureStateBase {
 
     void set_exception(std::exception_ptr exc) noexcept {
         result_ = exc;
-        schedule_task_resumes();
-        do_callbacks();
+        fire();
     }
     void cancel() noexcept {
         result_ = Cancelled{};
-        schedule_task_resumes();
-        do_callbacks();
+        fire();
     }
 
     void bind_event_loop(detail::EventLoop* loop) {
@@ -87,8 +83,7 @@ class FutureStateBase {
   protected:
     void set_result(detail::ResultValue<T> value) noexcept {
         result_ = std::move(value);
-        schedule_task_resumes();
-        do_callbacks();
+        fire();
     }
 
   private:
