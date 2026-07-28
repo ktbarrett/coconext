@@ -186,7 +186,7 @@ namespace detail {
 // Sticking the current task variable in the header as inline thread_local allows us to
 // stick global dynamic lookup. The initialization cost is also not a problem since this is
 // a simple pointer.
-inline thread_local coconext::Task<>* current_task_ = nullptr;
+inline thread_local TaskStateTypeErased* current_task_ = nullptr;
 
 }  // namespace detail
 
