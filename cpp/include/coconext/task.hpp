@@ -215,6 +215,7 @@ class Task<detail::Erased> {
     bool cancelled() const noexcept { return handle_->cancelled(); }
     std::exception_ptr exception() const noexcept { return handle_->exception(); }
 
+    void start_soon();
     void cancel() noexcept { handle_->cancel(); }
 
   private:
@@ -250,6 +251,13 @@ void TaskStateBase<T>::Scheduled::event_run() {
 }
 
 }  // namespace detail
+
+void Task<detail::Erased>::start_soon() {
+    if (detail::current_task_ == nullptr) {
+        throw std::runtime_error("Task::start_soon() called outside of a Task");
+    }
+    handle_->start_soon(detail::current_task_->get_event_loop());
+}
 
 }  // namespace coconext
 
