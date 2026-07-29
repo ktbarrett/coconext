@@ -15,13 +15,15 @@ namespace coconext {
 template <typename T>
 class Coro;
 
-template <typename T>
-class CoroState;
-
 namespace detail {
 
 template <typename T>
+class CoroState;
+
+template <typename T>
 class CoroStateBase {
+    friend class CoroState<T>;
+
   public:
     Coro<T> get_return_object() {
         return Coro<T>{std::coroutine_handle<CoroState<T>>::from_promise(*this)};
@@ -65,10 +67,9 @@ class CoroStateBase {
 
     detail::TaskState<>* get_task() noexcept { return task_; }
 
-  protected:
+  private:
     void set_result(Result<T> value) noexcept { value_ = std::move(value); }
 
-  private:
     std::variant<std::monostate, Result<T>, Exception> value_;
     std::coroutine_handle<> parent_;
     detail::TaskState<>* task_;
@@ -76,30 +77,18 @@ class CoroStateBase {
 
 template <typename T>
 class CoroState : public CoroStateBase<T> {
-    using Base = CoroStateBase<T>;
-
   public:
     template <typename U>
         requires std::is_convertible_v<U, T>
     void return_value(U&& value) {
-        Base::set_result(Result<T>{std::forward<U>(value)});
+        set_result(Result<T>{std::forward<U>(value)});
     }
-
-  private:
-    // This makes set_result private for subclasses.
-    using Base::set_result;
 };
 
 template <>
 class CoroState<void> : public CoroStateBase<void> {
-    using Base = CoroStateBase<void>;
-
   public:
-    void return_void() { Base::set_result(Result<void>{}); }
-
-  private:
-    // This makes set_result private for subclasses.
-    using Base::set_result;
+    void return_void() { set_result(Result<void>{}); }
 };
 
 }  // namespace detail
