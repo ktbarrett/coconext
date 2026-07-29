@@ -15,6 +15,22 @@ namespace coconext {
 
 namespace detail {
 
+class ManagedObject : public IntrusiveDequeNode {
+  public:
+    virtual void inc_ref() noexcept = 0;
+    virtual void dec_ref() noexcept = 0;
+
+    virtual EventLoop* get_event_loop() noexcept = 0;
+    virtual ManagedObject* get_parent() noexcept = 0;
+
+    virtual bool cancelled() const noexcept = 0;
+    virtual bool done() const noexcept = 0;
+    virtual std::exception_ptr exception() const noexcept = 0;
+
+    virtual void cancel() noexcept = 0;
+    virtual void uncancel() noexcept = 0;
+};
+
 class Erased {};
 
 }  // namespace detail
@@ -28,26 +44,14 @@ template <typename T = Erased>
 class TaskState;
 
 template <>
-class TaskState<Erased> {
+class TaskState<Erased> : public detail::ManagedObject {
   public:
     // While all of these methods are virtual, the compiler will almost certainly
     // devirtualize them in practice since there is only one implementing class.
 
     virtual TaskState<>* get_task() noexcept = 0;
-    virtual EventLoop* get_event_loop() noexcept = 0;
-
     virtual bool unstarted() const noexcept = 0;
-    virtual bool cancelled() const noexcept = 0;
-    virtual bool done() const noexcept = 0;
-    virtual std::exception_ptr exception() const noexcept = 0;
-
     virtual void start_soon(EventLoop* loop) = 0;
-    virtual void cancel() noexcept = 0;
-    virtual void uncancel() noexcept = 0;
-
-    virtual void inc_ref() noexcept = 0;
-    virtual void dec_ref() noexcept = 0;
-
     virtual void bind_event_loop(EventLoop* loop) = 0;
     virtual void set_pending(Event* future_awaiter) = 0;
 };
@@ -92,6 +96,7 @@ class TaskStateBase : public TaskState<Erased> {
 
     TaskState<>* get_task() noexcept override { return this; }
     EventLoop* get_event_loop() noexcept override { return event_loop_; }
+    ManagedObject* get_parent() noexcept override { return parent_; }
 
     bool unstarted() const noexcept override {
         return std::holds_alternative<std::monostate>(state_);
@@ -184,6 +189,7 @@ class TaskStateBase : public TaskState<Erased> {
     void set_result(Result<T>&& value) noexcept { state_ = std::move(value); }
 
     std::variant<std::monostate, Scheduled, Pending, Result<T>, Exception> state_;
+    ManagedObject* parent_ = nullptr;
     EventLoop* event_loop_ = nullptr;
     size_t ref_count_{0};
     int16_t cancelled_{0};
