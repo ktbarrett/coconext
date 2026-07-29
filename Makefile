@@ -77,6 +77,10 @@ generate_report:
 	coverage report
 	gcovr build/ --gcov-executable='$(GCOV_EXECUTABLE)' --print-summary
 
+.PHONY: clean_coverage_report
+clean_coverage_report:
+	rm -rf *.coverage .*.xml build/
+
 .PHONY: clean
 clean:
 	rm -rf build/
