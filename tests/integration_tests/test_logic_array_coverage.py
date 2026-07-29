@@ -60,13 +60,6 @@ def test_construct_from_logic_array_copies() -> None:
     assert a[0] == Logic("0")
 
 
-def test_logic_array_bytes_conversion_invalid_byte_order():
-    with pytest.raises(ValueError, match="byteorder must be either 'big' or 'little'"):
-        assert LogicArray.from_bytes(b"12", byteorder="foo") == LogicArray(
-            "0011000100110010"
-        )
-
-
 def test_logic_array_neg_range():
     with pytest.raises(ValueError, match="range length must be non-negative"):
         LogicArray("1001", -2)
@@ -76,6 +69,47 @@ def test_logic_array_from_bytes():
     assert LogicArray.from_bytes(b"12", byteorder="little") == LogicArray(
         "0011001000110001"
     )
+
+
+def test_logic_array_bytes_conversion_invalid_byte_order():
+    with pytest.raises(ValueError, match="byteorder must be either 'big' or 'little'"):
+        LogicArray.from_bytes(b"12", byteorder="foo")
+
+
+def test_logic_array_to_bytes():
+    assert LogicArray("").to_bytes(byteorder="big") == b""
+    assert LogicArray("0011001000110001").to_bytes(byteorder="little") == b"12"
+    with pytest.raises(ValueError, match="byteorder must be either 'big' or 'little'"):
+        LogicArray("00101010").to_bytes(byteorder="foo")
+    with pytest.raises(ValueError):
+        LogicArray("XZX").to_bytes(byteorder="little")
+
+
+def test_logic_array_deprecated_invalid():
+    with (
+        pytest.warns(DeprecationWarning),
+        pytest.raises(
+            ValueError, match="String length must match the LogicArray length"
+        ),
+    ):
+        LogicArray("101").binstr = "0101"
+
+
+def test_logic_array_invalid_slicing():
+    with pytest.raises(IndexError):
+        LogicArray("10001", Range(0, "to", 4))[4:2]
+    with pytest.raises(IndexError):
+        LogicArray("10001", Range(0, "to", 4))[4:2] = "10"
+
+
+def test_index_invalid():
+    r = LogicArray("0001101", Range(1, "to", 7))
+    assert r.index(Logic("1"), 5, 7) == 5
+
+
+def test_format():
+    l = LogicArray("1010")
+    assert f"{l:\0}" == "10"
 
 
 # -- Properties ------------------------------------------------------------
@@ -453,6 +487,7 @@ def test_equality():
     # fmt: on
     assert BitArray("0101") == "0101"
     assert BitArray("0101") == [0, 1, 0, 1]
+    BitArray("101") != object()
 
 
 def test_repr_eval():
@@ -594,7 +629,7 @@ def test_resolve():
 
 
 def test_copy() -> None:
-    l = LogicArray("X01Z", Range(-2, "to", 1))
+    l = BitArray("0011", Range(-2, "to", 1))
 
     with pytest.raises(NotImplementedError):
         copy.copy(l)
@@ -602,3 +637,40 @@ def test_copy() -> None:
     d = copy.deepcopy(l)
     assert l == d
     assert l.range == d.range
+
+
+def test_format_bit_array():
+    l = BitArray("0110")
+    assert f"{l}" == "0110"
+    assert f"{l!s}" == "0110"
+    assert f"{l!r}" == "BitArray('0110', Range(3, 'downto', 0))"
+
+    l = BitArray("1010")
+    assert f"{l:\0}" == "10"
+    assert f"{l:d}" == "10"
+    assert f"{l:b}" == "1010"
+    assert f"{l:x}" == "a"
+    assert f"{l:X}" == "A"
+    assert f"{l:o}" == "12"
+
+    with pytest.raises(ValueError):
+        f"{l:Q}"
+
+    l = BitArray("00001101001")
+    assert f"{l:#_b}" == "0b000_0110_1001"
+    assert f"{l:#x}" == "0x069"
+    assert f"{l:#_X}" == "0X069"
+    assert f"{l:#_o}" == "0o0_0151"
+    assert f"{l:#,d}" == "0d0,105"
+
+
+def test_direction_string():
+    assert BitArray("1001").direction == "downto"
+
+
+def test_index_invalid_bit_array():
+    r = BitArray("0001101", Range(1, "to", 7))
+    assert r.index(Logic("1"), 5, 7) == 5
+
+    with pytest.raises(ValueError):
+        r.index(Logic("1"), 5, 5)
