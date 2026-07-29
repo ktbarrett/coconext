@@ -15,6 +15,9 @@
 
 namespace coconext {
 
+template <typename T>
+class Future;
+
 namespace detail {
 
 template <typename T>
@@ -22,6 +25,8 @@ class FutureState;
 
 template <typename T>
 class FutureStateBase {
+    friend class FutureState<T>;
+
   public:
     bool done() const noexcept { return !std::holds_alternative<std::monostate>(result_); }
     bool cancelled() const noexcept { return std::holds_alternative<Cancelled>(result_); }
@@ -52,8 +57,9 @@ class FutureStateBase {
 
     void fire() noexcept {
         event_loop_->acquire().schedule_all_back(std::move(deque_));
+        Future<T> future{static_cast<FutureState<T>*>(this)};
         for (auto& callback : callbacks_) {
-            callback();
+            callback(future);
         }
     }
 
@@ -88,10 +94,9 @@ class FutureStateBase {
         result_ = std::move(value);
         fire();
     }
-    friend class FutureState<T>;
 
     detail::IntrusiveDeque<detail::Event> deque_;
-    std::vector<std::function<void()>> callbacks_;
+    std::vector<std::function<void(Future<T>&)>> callbacks_;
     std::variant<std::monostate, detail::Result<T>, detail::Exception, Cancelled> result_;
     // The Future starts un-bound to an EventLoop, and is bound when the first task
     // awaits it.
@@ -117,6 +122,8 @@ class FutureState<void> : public FutureStateBase<void> {
 // Single-shot, multiple-consumer awaitable object.
 template <typename T>
 class Future {
+    friend class detail::FutureStateBase<T>;
+
   public:
     Future() : handle_(new detail::FutureState<T>{}) {}
     ~Future() { handle_->dec_ref(); }
@@ -180,7 +187,9 @@ class Future {
 
     auto operator co_await() { return Awaiter(*this); }
 
-  protected:
+  private:
+    explicit Future(detail::FutureState<T>* state) : handle_(state) { handle_->inc_ref(); }
+
     detail::FutureState<T>* handle_;
 };
 

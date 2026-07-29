@@ -3,6 +3,7 @@
 
 #include <coroutine>
 #include <exception>
+#include <functional>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -10,6 +11,7 @@
 
 #include <coconext/cancelled.hpp>
 #include <coconext/event_loop.hpp>
+#include <vector>
 
 namespace coconext {
 
@@ -87,11 +89,19 @@ class TaskStateBase : public TaskState<Erased> {
     std::suspend_always initial_suspend() noexcept { return {}; }
     std::suspend_never final_suspend() noexcept {
         // TODO: handle cancelled_ > 0
+        on_done();
         return {};
     }
     void unhandled_exception() {
         // TODO: handle cancelled_ > 0
+        on_done();
         state_ = Exception{std::current_exception()};
+    }
+    void on_done() {
+        Task<T> task{static_cast<TaskState<T>*>(this)};
+        for (auto& callback : callbacks_) {
+            callback(&task);
+        }
     }
 
     TaskState<>* get_task() noexcept override { return this; }
@@ -189,6 +199,7 @@ class TaskStateBase : public TaskState<Erased> {
     void set_result(Result<T>&& value) noexcept { state_ = std::move(value); }
 
     std::variant<std::monostate, Scheduled, Pending, Result<T>, Exception> state_;
+    std::vector<std::function<void(Task<T>&)>> callbacks_;
     ManagedObject* parent_ = nullptr;
     EventLoop* event_loop_ = nullptr;
     size_t ref_count_{0};
