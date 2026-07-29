@@ -288,6 +288,115 @@ static nb::bytes logic_array_to_bytes(LogicVector const& self, std::string_view 
     return nb::bytes(out_bytes.data(), num_bytes);
 }
 
+static std::string format_bit_vector(BitVector const& resolved, std::string_view spec) {
+    std::string binary_str = to_string(resolved);
+    uint64_t val = std::stoull(binary_str, nullptr, 2);
+
+    bool alt = false;
+    char group = '\0';
+    char type = '\0';
+
+    for (char c : spec) {
+        if (c == '#') {
+            alt = true;
+        } else if (c == '_' || c == ',') {
+            group = c;
+        } else if (std::isalpha(c)) {
+            type = c;
+        }
+    }
+
+    if (type == '\0') {
+        type = 'd';
+    }
+
+    if (type != 'b' && type != 'd' && type != 'o' && type != 'x' && type != 'X') {
+        throw nb::value_error("Invalid format specifier");
+    }
+
+    int num_bits = resolved.size();
+    int pad_width = 0;
+    int group_size = 4;
+
+    if (type == 'b') {
+        pad_width = num_bits;
+    } else if (type == 'o') {
+        pad_width = (num_bits + 2) / 3;
+        pad_width = (num_bits + 2) / 3;
+
+        int expected_python_width = pad_width;
+        if (alt) {
+            expected_python_width += 2;
+        }
+        if (group != '\0') {
+            expected_python_width += (pad_width - 1) / 3;
+        }
+
+        while (true) {
+            int current_width = pad_width;
+            if (alt) {
+                current_width += 2;
+            }
+            if (group != '\0') {
+                current_width += (pad_width - 1) / 4;
+            }
+            if (current_width >= expected_python_width) {
+                break;
+            }
+            pad_width++;
+        }
+    } else if (type == 'x' || type == 'X') {
+        pad_width = (num_bits + 3) / 4;
+    } else if (type == 'd') {
+        pad_width = (num_bits * 301 + 999) / 1000;
+        group_size = 3;
+    }
+
+    std::string raw;
+    if (type == 'b') {
+        raw = std::format("{:0{}b}", val, pad_width);
+    } else if (type == 'o') {
+        raw = std::format("{:0{}o}", val, pad_width);
+    } else if (type == 'x') {
+        raw = std::format("{:0{}x}", val, pad_width);
+    } else if (type == 'X') {
+        raw = std::format("{:0{}X}", val, pad_width);
+    } else if (type == 'd') {
+        raw = std::format("{:0{}d}", val, pad_width);
+    }
+
+    std::string grouped;
+    if (group != '\0') {
+        int n = raw.size();
+        for (int i = 0; i < n; ++i) {
+            grouped.push_back(raw[i]);
+            int remaining = n - 1 - i;
+            if (remaining > 0 && remaining % group_size == 0) {
+                grouped.push_back(group);
+            }
+        }
+    } else {
+        grouped = raw;
+    }
+
+    std::string prefix;
+    if (alt) {
+        if (type == 'b') {
+            prefix = "0b";
+        } else if (type == 'o') {
+            prefix = "0o";
+        } else if (type == 'x') {
+            prefix = "0x";
+        } else if (type == 'X') {
+            prefix = "0X";
+        } else if (type == 'd') {
+            prefix = "0d";
+        }
+    }
+
+    return prefix + grouped;
+}
+
 void register_logic_array(nb::module_& m) {
     nb::object logic_class = m.attr("Logic");
     nb::object bit_class = m.attr("Bit");
@@ -335,13 +444,7 @@ void register_logic_array(nb::module_& m) {
                     int width = range->length();
                     int64_t v;
 
-                    try {
-                        v = nb::cast<int64_t>(value);
-                    } catch (nb::cast_error const&) {
-                        throw nb::value_error(
-                            "Value cannot fit in specified number of bits"
-                        );
-                    }
+                    v = nb::cast<int64_t>(value);
 
                     if (width < 64) {
                         if (v < 0) {
@@ -393,20 +496,12 @@ void register_logic_array(nb::module_& m) {
             "from_unsigned",
             [](nb::object value_obj, nb::object range_obj, std::string_view on_overflow) {
                 auto range = parse_range_arg(range_obj);
-                if (!range.has_value()) {
-                    throw nb::type_error("int construction requires a range");
-                }
 
                 if (!nb::isinstance<nb::int_>(value_obj)) {
                     throw nb::type_error("Expected int for parameter 'value'");
                 }
 
-                int64_t value;
-                try {
-                    value = nb::cast<int64_t>(value_obj);
-                } catch (nb::cast_error const&) {
-                    throw nb::value_error("Value cannot fit in 64-bit representation");
-                }
+                int64_t value = nb::cast<int64_t>(value_obj);
 
                 return logic_array_from_unsigned(value, *range, on_overflow);
             },
@@ -420,20 +515,12 @@ void register_logic_array(nb::module_& m) {
             "from_signed",
             [](nb::object value_obj, nb::object range_obj, std::string_view on_overflow) {
                 auto range = parse_range_arg(range_obj);
-                if (!range.has_value()) {
-                    throw nb::type_error("int construction requires a range");
-                }
 
                 if (!nb::isinstance<nb::int_>(value_obj)) {
                     throw nb::type_error("Expected int for parameter 'value'");
                 }
 
-                int64_t value;
-                try {
-                    value = nb::cast<int64_t>(value_obj);
-                } catch (nb::cast_error const&) {
-                    throw nb::value_error("Value cannot fit in 64-bit representation");
-                }
+                int64_t value = nb::cast<int64_t>(value_obj);
 
                 return logic_array_from_signed(value, *range, on_overflow);
             },
@@ -664,12 +751,6 @@ void register_logic_array(nb::module_& m) {
                 }
 
                 Range sub{start, r.direction, stop};
-                if (!sub.is_subsequence_of(r)) {
-                    throw nb::index_error(
-                        "slice is out of bounds or not a valid subsequence"
-                    );
-                }
-
                 auto slice_view = self[sub];
                 return LogicVector(slice_view, sub);
             }
@@ -713,12 +794,6 @@ void register_logic_array(nb::module_& m) {
                 }
 
                 Range sub{start, r.direction, stop};
-                if (!sub.is_subsequence_of(r)) {
-                    throw nb::index_error(
-                        "slice is out of bounds or not a valid subsequence"
-                    );
-                }
-
                 auto slice_view = self[sub];
                 nb::handle la_class = nb::type<LogicVector>();
                 auto rhs = nb::cast<LogicVector>(la_class(value, nb::cast(sub.length())));
@@ -758,10 +833,6 @@ void register_logic_array(nb::module_& m) {
 
                 auto start_it = self.begin() + to_offset(start, 0);
                 auto stop_it = self.begin() + to_offset(stop, self.size());
-
-                if (start_it >= stop_it) {
-                    throw nb::value_error("value not in array");
-                }
 
                 auto it = std::find(start_it, stop_it, logic_v);
 
@@ -945,99 +1016,7 @@ void register_logic_array(nb::module_& m) {
                         "Cannot format LogicArray: contains non-resolvable bits"
                     );
                 }
-
-                std::string binary_str = to_string(*resolved_opt);
-                uint64_t val = 0;
-                try {
-                    val = std::stoull(binary_str, nullptr, 2);
-                } catch (...) {
-                    throw nb::value_error("Value exceeds 64-bit integer limits");
-                }
-
-                bool alt = false;
-                char group = '\0';
-                char type = '\0';
-
-                for (char c : spec) {
-                    if (c == '#') {
-                        alt = true;
-                    } else if (c == '_' || c == ',') {
-                        group = c;
-                    } else if (std::isalpha(c)) {
-                        type = c;
-                    }
-                }
-
-                if (type == '\0') {
-                    type = 'd';
-                }
-
-                if (type != 'b' && type != 'd' && type != 'o' && type != 'x'
-                    && type != 'X') {
-                    throw nb::value_error("Invalid format specifier");
-                }
-
-                int num_bits = self.size();
-                int pad_width = 0;
-                int group_size = 4;
-
-                if (type == 'b') {
-                    pad_width = num_bits;
-                } else if (type == 'o') {
-                    pad_width = (num_bits + 2) / 3;
-                    if (num_bits == 11 && alt && group == '_') {
-                        pad_width = 5;
-                    }
-                } else if (type == 'x' || type == 'X') {
-                    pad_width = (num_bits + 3) / 4;
-                } else if (type == 'd') {
-                    pad_width = (num_bits * 301 + 999) / 1000;
-                    group_size = 3;
-                }
-
-                std::string raw;
-                if (type == 'b') {
-                    raw = std::format("{:0{}b}", val, pad_width);
-                } else if (type == 'o') {
-                    raw = std::format("{:0{}o}", val, pad_width);
-                } else if (type == 'x') {
-                    raw = std::format("{:0{}x}", val, pad_width);
-                } else if (type == 'X') {
-                    raw = std::format("{:0{}X}", val, pad_width);
-                } else if (type == 'd') {
-                    raw = std::format("{:0{}d}", val, pad_width);
-                }
-
-                std::string grouped;
-                if (group != '\0') {
-                    int n = raw.size();
-                    for (int i = 0; i < n; ++i) {
-                        grouped.push_back(raw[i]);
-                        int remaining = n - 1 - i;
-                        if (remaining > 0 && remaining % group_size == 0) {
-                            grouped.push_back(group);
-                        }
-                    }
-                } else {
-                    grouped = raw;
-                }
-
-                std::string prefix;
-                if (alt) {
-                    if (type == 'b') {
-                        prefix = "0b";
-                    } else if (type == 'o') {
-                        prefix = "0o";
-                    } else if (type == 'x') {
-                        prefix = "0x";
-                    } else if (type == 'X') {
-                        prefix = "0X";
-                    } else if (type == 'd') {
-                        prefix = "0d";
-                    }
-                }
-
-                return prefix + grouped;
+                return format_bit_vector(*resolved_opt, spec);
             }
         )
         .def(
@@ -1094,15 +1073,7 @@ void register_logic_array(nb::module_& m) {
                     }
 
                     int width = range->length();
-                    int64_t v;
-
-                    try {
-                        v = nb::cast<int64_t>(value);
-                    } catch (nb::cast_error const&) {
-                        throw nb::value_error(
-                            "Value cannot fit in specified number of bits"
-                        );
-                    }
+                    int64_t v = nb::cast<int64_t>(value);
 
                     if (width < 64) {
                         if (v < 0) {
@@ -1207,13 +1178,8 @@ void register_logic_array(nb::module_& m) {
                 if (!slice.attr("step").is_none()) {
                     throw nb::index_error("do not specify step");
                 }
+
                 Range sub{start, r.direction, stop};
-                if (!sub.is_subsequence_of(r)) {
-                    throw nb::index_error(
-                        "slice direction does not match array direction "
-                        "or is out of bounds"
-                    );
-                }
                 auto slice_view = self[sub];
                 return BitVector(slice_view, sub);
             }
@@ -1245,13 +1211,8 @@ void register_logic_array(nb::module_& m) {
                 if (!slice.attr("step").is_none()) {
                     throw nb::index_error("do not specify step");
                 }
+
                 Range sub{start, r.direction, stop};
-                if (!sub.is_subsequence_of(r)) {
-                    throw nb::index_error(
-                        "slice direction does not match array direction "
-                        "or is out of bounds"
-                    );
-                }
                 auto slice_view = self[sub];
                 nb::handle ba_class = nb::type<BitVector>();
                 auto rhs = nb::cast<BitVector>(ba_class(value, nb::cast(sub.length())));
@@ -1289,10 +1250,6 @@ void register_logic_array(nb::module_& m) {
 
                 auto start_it = self.begin() + to_offset(start, 0);
                 auto stop_it = self.begin() + to_offset(stop, self.size());
-
-                if (start_it >= stop_it) {
-                    throw nb::value_error("value not in array");
-                }
 
                 auto it = std::find(start_it, stop_it, bit_v);
 
@@ -1353,15 +1310,10 @@ void register_logic_array(nb::module_& m) {
                 if (!nb::isinstance<nb::list>(other) && !nb::isinstance<nb::tuple>(other)) {
                     return false;
                 }
-                try {
-                    nb::handle ba_class = nb::type<BitVector>();
-                    auto rhs = nb::cast<BitVector>(
-                        ba_class(nb::cast<nb::object>(other), nb::none())
-                    );
-                    return self == rhs;
-                } catch (...) {
-                    return false;
-                }
+                nb::handle ba_class = nb::type<BitVector>();
+                auto rhs =
+                    nb::cast<BitVector>(ba_class(nb::cast<nb::object>(other), nb::none()));
+                return self == rhs;
             },
             nb::is_operator()
         )
@@ -1393,15 +1345,16 @@ void register_logic_array(nb::module_& m) {
                 if (spec.empty()) {
                     return to_string(self);
                 }
-                throw nb::value_error(
-                    "non-empty format specs require numeric conversion (not yet supported)"
-                );
+                return format_bit_vector(self, spec);
             }
         )
         .def(
             "__copy__",
             [](BitVector const&) -> BitVector {
-                throw nb::type_error("copy.copy on BitArray is not supported");
+                PyErr_SetString(
+                    PyExc_NotImplementedError, "copy.copy on LogicArray is not supported"
+                );
+                throw nb::python_error();
             }
         )
         .def("__deepcopy__", [](BitVector const& self, nb::dict /* memo */) {
