@@ -22,7 +22,11 @@ def test_cocotb() -> None:
 
     # TODO this would likely need generalization in future
     # For now maybe we can keep on adding more tests here manually
-    cocotb_pytest_testcases: list[str] = ["test_logic.py", "test_range.py"]
+    cocotb_pytest_testcases: list[str] = [
+        "test_logic.py",
+        "test_range.py",
+        "test_logic_array.py",
+    ]
 
     if cocotb_dir_path is not None:
         cocotb_pytest_dir_path = f"{cocotb_dir_path}/tests/pytest"

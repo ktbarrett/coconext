@@ -12,3 +12,5 @@ def patch_cocotb() -> None:
     setattr(cocotb.types, "Range", coconext.types.Range)
     setattr(cocotb.types, "Bit", coconext.types.Bit)
     setattr(cocotb.types, "Logic", coconext.types.Logic)
+    setattr(cocotb.types, "LogicArray", coconext.types.LogicArray)
+    setattr(cocotb.types, "BitArray", coconext.types.BitArray)

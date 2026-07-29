@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from _pycoconext import Bit, Direction, Logic, Range
+from _pycoconext import Bit, BitArray, Direction, Logic, LogicArray, Range
 
 __all__ = (
     "Bit",
+    "BitArray",
     "Direction",
     "Logic",
+    "LogicArray",
     "Range",
 )
 

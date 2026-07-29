@@ -58,44 +58,6 @@ constexpr void subsequence_check(Range parent, Range child) {
     }
 }
 
-// Convert a 0-based offset into the data buffer (iteration order) to the
-// corresponding HDL coordinate for the given range's direction.
-constexpr Range::value_type offset_to_hdl_coord(
-    Range r, size_t offset_from_begin
-) noexcept {
-    auto const off = static_cast<Range::value_type>(offset_from_begin);
-    return r.direction == Direction::TO ? r.left + off : r.left - off;
-}
-
-// First HDL coordinate (from the left in iteration order) whose element equals
-// `v`, or nullopt if not found. Used by Array/DynArray/slice members.
-template <RangedSequence S>
-constexpr std::optional<Range::value_type> index_in(
-    S const& s, std::ranges::range_value_t<S> const& v
-) {
-    auto const it = std::ranges::find(s, v);
-    if (it == s.end()) {
-        return std::nullopt;
-    }
-    return offset_to_hdl_coord(
-        s.range(), static_cast<size_t>(std::ranges::distance(s.begin(), it))
-    );
-}
-
-// First HDL coordinate from the right (i.e. the last matching element in
-// iteration order), or nullopt if not found.
-template <RangedSequence S>
-constexpr std::optional<Range::value_type> rindex_in(
-    S const& s, std::ranges::range_value_t<S> const& v
-) {
-    auto const rit = std::find(s.rbegin(), s.rend(), v);
-    if (rit == s.rend()) {
-        return std::nullopt;
-    }
-    auto const off_from_end = static_cast<size_t>(std::distance(s.rbegin(), rit));
-    return offset_to_hdl_coord(s.range(), s.range().length() - 1 - off_from_end);
-}
-
 }  // namespace detail
 
 template <RangedSequence S>
@@ -252,15 +214,6 @@ class ArraySliceImpl {
     constexpr auto rbegin() const noexcept { return std::reverse_iterator(end()); }
     constexpr auto rend() const noexcept { return std::reverse_iterator(begin()); }
 
-    // First HDL coordinate (from the left/right respectively) whose element
-    // equals `v`, or nullopt if not found.
-    constexpr std::optional<index_type> index(value_type const& v) const {
-        return detail::index_in(*this, v);
-    }
-    constexpr std::optional<index_type> rindex(value_type const& v) const {
-        return detail::rindex_in(*this, v);
-    }
-
   private:
     ArrayT* arr_;
     Range range_;
@@ -391,13 +344,6 @@ class StaticArraySliceImpl {
     }
     constexpr auto rbegin() const noexcept { return std::reverse_iterator(end()); }
     constexpr auto rend() const noexcept { return std::reverse_iterator(begin()); }
-
-    constexpr std::optional<index_type> index(value_type const& v) const {
-        return detail::index_in(*this, v);
-    }
-    constexpr std::optional<index_type> rindex(value_type const& v) const {
-        return detail::rindex_in(*this, v);
-    }
 
   private:
     ArrayT* arr_;
