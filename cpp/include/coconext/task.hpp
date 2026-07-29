@@ -45,6 +45,11 @@ namespace detail {
 template <typename T = Erased>
 class TaskState;
 
+// Sticking the current task variable in the header as inline thread_local allows us to
+// stick global dynamic lookup. The initialization cost is also not a problem since this is
+// a simple pointer.
+inline thread_local TaskState<>* current_task_ = nullptr;
+
 template <>
 class TaskState<Erased> : public detail::ManagedObject {
   public:
@@ -76,7 +81,15 @@ template <typename T>
 class TaskStateBase : public TaskState<Erased> {
     struct Scheduled : detail::Event {
         explicit Scheduled(TaskStateBase<T>& task) : task_(&task) {}
-        void event_run() override;
+
+        void event_run() override {
+            current_task_ = task_;
+            auto& handle = std::coroutine_handle<TaskState<T>>::from_promise(
+                *static_cast<TaskState<T>*>(task_)
+            );
+            handle.resume();
+        }
+
         TaskStateBase<Erased>* task_;
     };
 
@@ -87,20 +100,16 @@ class TaskStateBase : public TaskState<Erased> {
   public:
     Task<T> get_return_object() { return Task<T>{static_cast<TaskState<T>*>(this)}; }
     std::suspend_always initial_suspend() noexcept { return {}; }
-    std::suspend_never final_suspend() noexcept {
-        // TODO: handle cancelled_ > 0
-        on_done();
-        return {};
-    }
+    std::suspend_never final_suspend() noexcept { return {}; }
     void unhandled_exception() {
         // TODO: handle cancelled_ > 0
-        on_done();
         state_ = Exception{std::current_exception()};
+        on_done();
     }
     void on_done() {
         Task<T> task{static_cast<TaskState<T>*>(this)};
         for (auto& callback : callbacks_) {
-            callback(&task);
+            callback(task);
         }
     }
 
@@ -201,7 +210,11 @@ class TaskStateBase : public TaskState<Erased> {
 
   private:
     friend class TaskState<T>;
-    void set_result(Result<T>&& value) noexcept { state_ = std::move(value); }
+    void set_result(Result<T>&& value) noexcept {
+        state_ = std::move(value);
+        // TODO: handle cancelled_ > 0
+        on_done();
+    }
 
     std::variant<std::monostate, Scheduled, Pending, Result<T>, Exception> state_;
     std::vector<std::function<void(Task<T>&)>> callbacks_;
@@ -264,6 +277,7 @@ class Task<detail::Erased> {
     friend class Task;
 
     explicit Task(detail::TaskState<>* s) : handle_(s) { handle_->inc_ref(); }
+
     detail::TaskState<>* handle_;
 };
 
@@ -273,32 +287,12 @@ class Task : public Task<detail::Erased> {
     T result() {
         return static_cast<detail::TaskState<T>*>(Task<detail::Erased>::handle_)->result();
     }
+
+  private:
+    friend class detail::TaskStateBase<T>;
+
+    explicit Task(detail::TaskState<T>* s) : Task<detail::Erased>{s} {}
 };
-
-namespace detail {
-
-// Sticking the current task variable in the header as inline thread_local allows us to
-// stick global dynamic lookup. The initialization cost is also not a problem since this is
-// a simple pointer.
-inline thread_local TaskState<>* current_task_ = nullptr;
-
-template <typename T>
-void TaskStateBase<T>::Scheduled::event_run() {
-    detail::current_task_ = task_;
-    auto& handle = std::coroutine_handle<TaskState<T>>::from_promise(
-        *static_cast<TaskState<T>*>(task_)
-    );
-    handle.resume();
-}
-
-}  // namespace detail
-
-void Task<detail::Erased>::start_soon() {
-    if (detail::current_task_ == nullptr) {
-        throw std::runtime_error("Task::start_soon() called outside of a Task");
-    }
-    handle_->start_soon(detail::current_task_->get_event_loop());
-}
 
 }  // namespace coconext
 
