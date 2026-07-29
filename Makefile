@@ -25,7 +25,7 @@ dev_build:
 	# Run ruff on the generated stubs to fix formatting and linting issues,
 	# and make `git diff` fail if the stubs are not up to date.
 	python -c 'import coconext; from nanobind.stubgen import main; main(["-m", "_pycoconext", "-o", "python/_pycoconext.pyi"])'
-	ruff check --fix python/_pycoconext.pyi
+	ruff check --fix --unsafe-fixes python/_pycoconext.pyi
 	ruff format python/_pycoconext.pyi
 
 	# Copy compile database to project root for clang-tidy and editor integration.

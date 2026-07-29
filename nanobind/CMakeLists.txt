@@ -10,6 +10,7 @@ nanobind_add_module(
     LTO
     src/bind.cpp
     src/types/bind_logic.cpp
+    src/types/bind_logic_array.cpp
     src/types/bind_range.cpp
 )
 target_link_libraries(_pycoconext PRIVATE coconext_nb)
