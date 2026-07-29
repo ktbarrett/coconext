@@ -30,7 +30,7 @@ class ManagedObject : public IntrusiveDequeNode {
     virtual std::exception_ptr exception() const noexcept = 0;
 
     virtual void cancel() noexcept = 0;
-    virtual void uncancel() noexcept = 0;
+    virtual void uncancel() = 0;
 };
 
 class Erased {};
@@ -152,14 +152,19 @@ class TaskStateBase : public TaskState<Erased> {
         } else if (std::holds_alternative<Pending>(state_)) {
             auto& pending = std::get<Pending>(state_);
             pending.event->event_unschedule();
+            // Must return reference to value in variant, otherwise we have a dangling
+            // pointer.
             event_loop_->acquire().schedule_back(&std::get<Scheduled>(state_));
         }
         // Not done, unstarted, or pending? Already scheduled, we will steal its place in
         // line.
     }
-    void uncancel() noexcept override {
+    void uncancel() override {
         if (done()) {
             return;
+        }
+        if (cancelled_ == 0) {
+            throw std::runtime_error("TaskManager is not cancelled");
         }
         cancelled_--;
     }

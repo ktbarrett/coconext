@@ -48,7 +48,7 @@ class TaskManagerState : public ManagedObject {
         }
         cancelled_++;
     }
-    void uncancel() noexcept override {
+    void uncancel() override {
         if (done()) {
             return;
         }
