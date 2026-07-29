@@ -7,20 +7,36 @@
 // and by nature of their structure, can be removed anonymously in O(1). Node is a base
 // class for all types that wish to be added to the EventDeque.
 
-#include <concepts>
 #include <type_traits>
 #include <utility>
 
 namespace coconext::detail {
 
 template <typename EntryT>
-concept IntrusiveDequeEntry = requires(EntryT* e) {
-    requires std::same_as<decltype(e->prev), EntryT*>;
-    requires std::same_as<decltype(e->next), EntryT*>;
-} && std::is_default_constructible_v<EntryT> && std::is_destructible_v<EntryT>;
+class IntrusiveDeque;
 
-template <IntrusiveDequeEntry EntryT>
+class IntrusiveDequeNode {
+    friend class IntrusiveDeque<IntrusiveDequeNode>;
+
+  protected:
+    void deque_remove() noexcept {
+        if (prev == nullptr) {
+            return;
+        }
+        prev->next = next;
+        next->prev = prev;
+        prev = nullptr;
+    }
+
+  private:
+    IntrusiveDequeNode* prev = nullptr;
+    IntrusiveDequeNode* next;
+};
+
+template <typename EntryT>
 class IntrusiveDeque {
+    static_assert(std::is_base_of_v<IntrusiveDequeNode, EntryT>);
+
   public:
     IntrusiveDeque() noexcept {
         head.next = &tail;
@@ -140,8 +156,8 @@ class IntrusiveDeque {
   private:
     void set_back(EntryT* node) noexcept { tail.prev = node; }
     void set_front(EntryT* node) noexcept { head.next = node; }
-    EntryT head;
-    EntryT tail;
+    IntrusiveDequeNode head;
+    IntrusiveDequeNode tail;
 };
 
 }  // namespace coconext::detail

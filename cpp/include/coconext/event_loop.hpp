@@ -8,22 +8,13 @@
 
 namespace coconext::detail {
 
-class Event {
+class Event : public IntrusiveDequeNode {
   public:
-    Event* prev = nullptr;
-    Event* next = nullptr;
-    Event() noexcept = default;
-
     virtual void event_run() { throw std::runtime_error("Event run not implemented"); }
+    void event_unschedule() noexcept { deque_remove(); }
 
-    void event_unschedule() noexcept {
-        assert(prev != nullptr);
-        prev->next = next;
-        next->prev = prev;
-#ifndef NDEBUG
-        prev = nullptr;
-#endif
-    }
+  private:
+    using IntrusiveDequeNode::deque_remove;
 };
 
 class EventLoop {
@@ -107,7 +98,7 @@ class EventLoop {
     }
 
   private:
-    coconext::detail::IntrusiveDeque<Event> queue_;
+    detail::IntrusiveDeque<Event> queue_;
     std::recursive_mutex mtx_;
     bool is_running_ = false;
 };
