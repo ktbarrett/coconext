@@ -26,12 +26,17 @@ class TaskManagerState {
     }
 
     void add(Task<>& task) {
+        if (task.unstarted()) {
+            task.get_state()->start_soon(this);
+        }
         if (cancelled_ > 0) {
             throw std::runtime_error("Cannot add task to cancelled TaskManager");
         }
         task.get_state()->inc_ref();
         tasks_.push_back(task.get_state());
     }
+
+    EventLoop* get_event_loop() noexcept { return event_loop_; }
 
     bool done() const noexcept;
     bool cancelled() const noexcept;
@@ -98,7 +103,16 @@ class TaskManager {
 
     auto operator co_await() { return state_->result_future().operator co_await(); }
 
+    detail::TaskManagerState* get_state() const noexcept { return state_; }
+    static TaskManager from_state(detail::TaskManagerState* state) {
+        return TaskManager{state};
+    }
+
   private:
+    explicit TaskManager(detail::TaskManagerState* state) : state_(state) {
+        state_->inc_ref();
+    }
+
     detail::TaskManagerState* state_;
 };
 

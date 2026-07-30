@@ -31,6 +31,8 @@ class Coro;
 template <typename T>
 class Future;
 
+class TaskManager;
+
 namespace detail {
 
 class TaskManagerState;
@@ -69,7 +71,7 @@ class TaskState<Erased> : public TaskManagerSharedState {
     virtual bool done() const noexcept = 0;
     virtual std::exception_ptr exception() const noexcept = 0;
 
-    // virtual void start_soon(EventLoop* loop) = 0;
+    virtual void start_soon(TaskManagerState* loop) = 0;
     virtual void cancel() noexcept = 0;
     virtual void uncancel() = 0;
 
@@ -174,14 +176,8 @@ class TaskStateBase : public TaskState<Erased> {
         }
         cancelled_--;
     }
-    void start_soon(EventLoop* loop) {
-        if (!unstarted()) {
-            throw std::runtime_error("Task already started");
-        }
-        bind_event_loop(loop);
-        state_ = Scheduled{*this};
-        event_loop_->acquire().schedule_back(&std::get<Scheduled>(state_));
-    }
+
+    void start_soon(detail::TaskManagerState* tm);
 
     void inc_ref() noexcept override { ref_count_++; }
     void dec_ref() noexcept override {
@@ -221,7 +217,7 @@ class TaskStateBase : public TaskState<Erased> {
     std::variant<std::monostate, Scheduled, Pending, Result<T>, Exception> state_;
     std::vector<std::function<void(Task<T>&)>> callbacks_;
     mutable FutureState<void>* wait_complete_future_ = nullptr;
-    TaskManagerState* task_manager_ = nullptr;
+    detail::TaskManagerState* task_manager_ = nullptr;
     EventLoop* event_loop_ = nullptr;
     size_t ref_count_{0};
     uint16_t cancelled_{0};
@@ -277,7 +273,10 @@ class Task {
     std::exception_ptr exception() const noexcept { return handle_->exception(); }
     T result() { return handle_->result(); }
 
+    void start_soon(TaskManager& loop);
+
     void cancel() noexcept { handle_->cancel(); }
+    void uncancel() { handle_->uncancel(); }
 
     detail::TaskState<T>* get_state() const noexcept { return handle_; }
     static Task<T> from_state(detail::TaskState<T>* state) { return Task<T>{state}; }

@@ -43,6 +43,21 @@ Future<void> Task<T>::wait_complete() const noexcept {
     return handle_->wait_complete();
 }
 
+template <typename T>
+void detail::TaskStateBase<T>::start_soon(detail::TaskManagerState* tm) {
+    if (!unstarted()) {
+        throw std::runtime_error("Task already started");
+    }
+    bind_event_loop(tm->get_event_loop());
+    state_ = Scheduled{*this};
+    event_loop_->acquire().schedule_back(&std::get<Scheduled>(state_));
+}
+
+template <typename T>
+void Task<T>::start_soon(TaskManager& loop) {
+    handle_->start_soon(loop.get_state());
+}
+
 }  // namespace coconext
 
 #endif  // COCONEXT_TASK_IMPL_HPP
