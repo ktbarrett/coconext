@@ -12,10 +12,15 @@ namespace coconext {
 
 class TaskManager;
 
+template <typename T>
+T run(Task<T> task);
+
 namespace detail {
 
 class TaskManagerState {
     friend class ::coconext::TaskManager;
+    template <typename T>
+    friend T(::coconext::run)(Task<T> task);
 
   public:
     void inc_ref() noexcept { ++ref_count_; }
@@ -76,6 +81,14 @@ class TaskManagerState {
 
   private:
     void on_done() noexcept { result_future_.get_state()->set_void(); }
+
+    void bind_event_loop(EventLoop* loop) {
+        if (event_loop_ == nullptr) {
+            event_loop_ = loop;
+        } else if (event_loop_ != loop) {
+            throw std::runtime_error("TaskManager is already bound to another EventLoop");
+        }
+    }
 
     IntrusiveDeque<TaskState<>> tasks_;
     Future<void> result_future_;

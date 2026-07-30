@@ -235,6 +235,11 @@ class TaskState<void> : public TaskStateBase<void> {
     void return_void() { set_result(Result<void>{}); }
 };
 
+template <typename T>
+Task<T> wrap_impl(Coro<T>&& coro) {
+    co_return co_await std::move(coro);
+}
+
 }  // namespace detail
 
 template <typename T>
@@ -245,8 +250,12 @@ class Task {
             handle_->dec_ref();
         }
     }
+
     Task(Task const& other) : handle_(other.handle_) { handle_->inc_ref(); }
     Task(Task&& other) noexcept : handle_(std::exchange(other.handle_, nullptr)) {}
+
+    Task(Coro<T> coro) : Task(std::move(detail::wrap_impl(std::move(coro)))) {}
+
     Task& operator=(Task const& other) {
         if (this != &other) {
             handle_->dec_ref();

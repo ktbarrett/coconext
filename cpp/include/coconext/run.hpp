@@ -11,9 +11,15 @@ namespace coconext {
 
 template <typename T>
 T run(Coro<T> coro) {
-    detail::EventLoop loop;
-    TaskManager manager{&loop};
     Task<T> task = coro;
+    return run(std::move(task));
+}
+
+template <typename T>
+T run(Task<T> task) {
+    detail::EventLoop loop;
+    TaskManager manager;
+    manager.get_state()->bind_event_loop(&loop);
     manager.add(task);
     {
         auto handle = loop.acquire();
