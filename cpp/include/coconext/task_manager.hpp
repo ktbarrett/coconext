@@ -4,6 +4,7 @@
 #include <coconext/future.hpp>
 #include <coconext/intrusive_deque.hpp>
 #include <coconext/task.hpp>
+#include <coconext/task_awaiter.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
@@ -19,8 +20,6 @@ namespace detail {
 
 class TaskManagerState {
     friend class ::coconext::TaskManager;
-    template <typename T>
-    friend T(::coconext::run)(Task<T> task);
 
   public:
     void inc_ref() noexcept { ++ref_count_; }
@@ -31,6 +30,7 @@ class TaskManagerState {
     }
 
     void add(Task<>& task) {
+        bind_event_loop(task.get_state()->get_event_loop());
         if (task.unstarted()) {
             task.get_state()->start_soon(this);
         }
@@ -69,8 +69,6 @@ class TaskManagerState {
         cancelled_--;
     }
 
-    Future<void> result_future() { return result_future_; }
-
     void child_done(TaskState<>* task) {
         task->remove_child();
         task->dec_ref();
@@ -78,9 +76,6 @@ class TaskManagerState {
             on_done();
         }
     }
-
-  private:
-    void on_done() noexcept { result_future_.get_state()->set_void(); }
 
     void bind_event_loop(EventLoop* loop) {
         if (event_loop_ == nullptr) {
@@ -90,8 +85,47 @@ class TaskManagerState {
         }
     }
 
+    class DoneFutureState;
+
+    using DoneFuture = Future<void, DoneFutureState>;
+
+    class DoneFutureState : public FutureState<void> {
+        friend class TaskManagerState;
+
+      public:
+        template <typename PromiseType>
+        void await_suspend(std::coroutine_handle<PromiseType> h) {
+            FutureState<void>::await_suspend(h);
+            task_manager_->bind_event_loop(h.promise().get_task()->get_event_loop());
+        }
+
+      private:
+        explicit DoneFutureState(TaskManagerState* task_manager)
+            : task_manager_(task_manager) {}
+
+        TaskManagerState* task_manager_;
+    };
+
+    DoneFuture wait_complete() {
+        if (!wait_complete_future_) {
+            wait_complete_future_ = new DoneFutureState{this};
+            wait_complete_future_->inc_ref();
+            if (done()) {
+                wait_complete_future_->set_void();
+            }
+        }
+        return wait_complete_future_;
+    }
+
+  private:
+    void on_done() noexcept {
+        if (wait_complete_future_) {
+            wait_complete_future_->set_void();
+        }
+    }
+
     IntrusiveDeque<TaskState<>> tasks_;
-    Future<void> result_future_;
+    mutable DoneFutureState* wait_complete_future_;
     EventLoop* event_loop_;
     size_t ref_count_{0};
     uint16_t cancelled_{0};
@@ -114,7 +148,7 @@ class TaskManager {
     void cancel() noexcept { state_->cancel(); }
     void uncancel() noexcept { state_->uncancel(); }
 
-    auto operator co_await() { return state_->result_future().operator co_await(); }
+    auto operator co_await() { return state_->wait_complete().operator co_await(); }
 
     detail::TaskManagerState* get_state() const noexcept { return state_; }
     static TaskManager from_state(detail::TaskManagerState* state) {

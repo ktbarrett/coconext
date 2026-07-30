@@ -8,15 +8,14 @@
 #include <stdexcept>
 
 #include <coconext/event_loop.hpp>
+#include <coconext/future.hpp>
 #include <coconext/outcome.hpp>
 #include <coconext/task.hpp>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
 namespace coconext {
-
-template <typename T>
-class Future;
 
 namespace detail {
 
@@ -126,12 +125,12 @@ class FutureAwaiter : Event {
     template <typename PromiseType>
     void await_suspend(std::coroutine_handle<PromiseType> h) {
         parent_ = h;
-        task_ = h.promise().get_task();
-        task_->set_pending(this);
-        future_->bind_event_loop(task_->get_event_loop());
+        parent_task_ = h.promise().get_task();
+        parent_task_->set_pending(this);
+        future_->bind_event_loop(parent_task_->get_event_loop());
     }
     T await_resume() {
-        if (task_->cancelled()) {
+        if (parent_task_->cancelled()) {
             throw coconext::Cancelled{};
         }
         return future_->result();
@@ -144,16 +143,17 @@ class FutureAwaiter : Event {
 
     FutureState<T>* future_;
     std::coroutine_handle<> parent_;
-    TaskState<>* task_;
+    TaskState<>* parent_task_;
 };
 
 }  // namespace detail
 
 // Single-shot, multiple-consumer awaitable object.
-template <typename T>
+template <typename T, typename StateT = detail::FutureState<T>>
+    requires std::is_base_of_v<detail::FutureStateBase<T>, StateT>
 class Future {
   public:
-    Future() : handle_(new detail::FutureState<T>{}) {}
+    Future() : handle_(new StateT{}) {}
     ~Future() { handle_->dec_ref(); }
     Future(Future const& other) : handle_(other.handle_) { handle_->inc_ref(); }
     Future(Future&& other) noexcept : handle_(other.handle_) { other.handle_ = nullptr; }
@@ -186,13 +186,13 @@ class Future {
 
     auto operator co_await() { return detail::FutureAwaiter(handle_); }
 
-    static Future from_state(detail::FutureState<T>* state) { return Future{state}; }
-    detail::FutureState<T>* get_state() const noexcept { return handle_; }
+    static Future from_state(StateT* state) { return Future{state}; }
+    StateT* get_state() const noexcept { return handle_; }
 
   private:
-    explicit Future(detail::FutureState<T>* state) : handle_(state) { handle_->inc_ref(); }
+    explicit Future(StateT* state) : handle_(state) { handle_->inc_ref(); }
 
-    detail::FutureState<T>* handle_;
+    StateT* handle_;
 };
 
 }  // namespace coconext

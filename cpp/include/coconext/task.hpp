@@ -28,7 +28,7 @@ class Task;
 template <typename T>
 class Coro;
 
-template <typename T>
+template <typename T, typename StateT>
 class Future;
 
 class TaskManager;
@@ -177,7 +177,7 @@ class TaskStateBase : public TaskState<Erased> {
         cancelled_--;
     }
 
-    void start_soon(detail::TaskManagerState* tm);
+    void start_soon(detail::TaskManagerState* tm) override;
 
     void inc_ref() noexcept override { ref_count_++; }
     void dec_ref() noexcept override {
@@ -191,17 +191,6 @@ class TaskStateBase : public TaskState<Erased> {
         }
     }
 
-    ~TaskStateBase();
-
-  private:
-    void set_result(Result<T>&& value) noexcept {
-        state_ = std::move(value);
-        // TODO: handle cancelled_ > 0
-        on_done();
-    }
-
-    void on_done();
-
     void bind_event_loop(EventLoop* loop) {
         if (event_loop_ == nullptr) {
             event_loop_ = loop;
@@ -210,13 +199,37 @@ class TaskStateBase : public TaskState<Erased> {
         }
     }
 
-    Future<void> wait_complete() const noexcept;
+    ~TaskStateBase();
+
+    class DoneFutureState : public FutureState<void> {
+        template <typename PromiseType>
+        void await_suspend(std::coroutine_handle<PromiseType> h) {
+            FutureState<void>::await_suspend(h);
+            task_->bind_event_loop(h.promise().get_task()->get_event_loop());
+        }
+
+      private:
+        TaskStateBase<T>* task_;
+    };
+
+    using DoneFuture = Future<void, DoneFutureState>;
+
+    DoneFuture wait_complete() const noexcept;
+
+  private:
+    void set_result(Result<T>&& value) {
+        state_ = std::move(value);
+        // TODO handle cancelled_ > 0
+        on_done();
+    }
+
+    void on_done();
 
     void set_pending(Event* future_awaiter) override { state_ = Pending{future_awaiter}; }
 
     std::variant<std::monostate, Scheduled, Pending, Result<T>, Exception> state_;
     std::vector<std::function<void(Task<T>&)>> callbacks_;
-    mutable FutureState<void>* wait_complete_future_ = nullptr;
+    mutable DoneFutureState* wait_complete_future_ = nullptr;
     detail::TaskManagerState* task_manager_ = nullptr;
     EventLoop* event_loop_ = nullptr;
     size_t ref_count_{0};
@@ -290,7 +303,7 @@ class Task {
     detail::TaskState<T>* get_state() const noexcept { return handle_; }
     static Task<T> from_state(detail::TaskState<T>* state) { return Task<T>{state}; }
 
-    Future<void> wait_complete() const noexcept;
+    typename detail::TaskState<T>::DoneFuture wait_complete() const noexcept;
 
     Coro<T> wait_result() {
         co_await wait_complete();
