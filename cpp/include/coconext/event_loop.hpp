@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <coconext/intrusive_deque.hpp>
+#include <condition_variable>
 #include <mutex>
 #include <stdexcept>
 
@@ -78,6 +79,11 @@ class EventLoop {
                 throw std::runtime_error("EventLoop is already running");
             }
             run_();
+        }
+
+        template <typename Predicate>
+        void wait(std::condition_variable_any& cv, Predicate pred) {
+            cv.wait(loop_.mtx_, std::move(pred));
         }
 
       private:
