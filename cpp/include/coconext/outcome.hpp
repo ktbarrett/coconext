@@ -1,10 +1,25 @@
-#ifndef COCONEXT_CANCELLED_HPP
-#define COCONEXT_CANCELLED_HPP
+#ifndef COCONEXT_OUTCOME_HPP
+#define COCONEXT_OUTCOME_HPP
 
+#include <exception>
 #include <string>
 #include <string_view>
 
 namespace coconext {
+
+namespace detail {
+
+template <typename T>
+struct Result {
+    T value;
+};
+
+template <>
+struct Result<void> {};
+
+struct Exception {
+    std::exception_ptr exception;
+};
 
 class Cancelled : public std::exception {
   public:
@@ -17,6 +32,10 @@ class Cancelled : public std::exception {
     std::string msg_;
 };
 
+}  // namespace detail
+
+using Cancelled = detail::Cancelled;
+
 }  // namespace coconext
 
-#endif  // COCONEXT_CANCELLED_HPP
+#endif  // COCONEXT_OUTCOME_HPP

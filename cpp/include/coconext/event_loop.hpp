@@ -8,12 +8,16 @@
 
 namespace coconext::detail {
 
+class EventLoop;
+
 class Event : public IntrusiveDequeNode {
+    friend class EventLoop;
+
   public:
-    virtual void event_run() { throw std::runtime_error("Event run not implemented"); }
     void event_unschedule() noexcept { deque_remove(); }
 
   private:
+    virtual void event_run() { throw std::runtime_error("Event run not implemented"); }
     using IntrusiveDequeNode::deque_remove;
 };
 

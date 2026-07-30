@@ -1,7 +1,8 @@
 #ifndef COCONEXT_TASK_MANAGER_HPP
 #define COCONEXT_TASK_MANAGER_HPP
 
-#include "intrusive_deque.hpp"
+#include <coconext/future.hpp>
+#include <coconext/intrusive_deque.hpp>
 #include <coconext/task.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -13,31 +14,31 @@ class TaskManager;
 
 namespace detail {
 
-class TaskManagerState : public ManagedObject {
+class TaskManagerState {
     friend class ::coconext::TaskManager;
 
   public:
-    void inc_ref() noexcept override { ++ref_count_; }
-    void dec_ref() noexcept override {
+    void inc_ref() noexcept { ++ref_count_; }
+    void dec_ref() noexcept {
         if (--ref_count_ == 0) {
             delete this;
         }
     }
 
-    ManagedObject* get_parent() noexcept override { return parent_; }
-    EventLoop* get_event_loop() noexcept override { return event_loop_; }
-
-    void add(Task<> task) {
-        task.handle_->inc_ref();
-        tasks_.push_back(task.handle_);
+    void add(Task<>& task) {
+        if (cancelled_ > 0) {
+            throw std::runtime_error("Cannot add task to cancelled TaskManager");
+        }
+        task.get_state()->inc_ref();
+        tasks_.push_back(task.get_state());
     }
 
-    bool done() const noexcept override;
-    bool cancelled() const noexcept override;
+    bool done() const noexcept;
+    bool cancelled() const noexcept;
     void result() const {}
-    std::exception_ptr exception() const noexcept override { return nullptr; }
+    std::exception_ptr exception() const noexcept { return nullptr; }
 
-    void cancel() noexcept override {
+    void cancel() noexcept {
         if (done()) {
             return;
         }
@@ -48,7 +49,7 @@ class TaskManagerState : public ManagedObject {
         }
         cancelled_++;
     }
-    void uncancel() override {
+    void uncancel() {
         if (done()) {
             return;
         }
@@ -58,14 +59,21 @@ class TaskManagerState : public ManagedObject {
         cancelled_--;
     }
 
-  private:
-    TaskManagerState(ManagedObject* parent, EventLoop* event_loop)
-        : parent_(parent), event_loop_(event_loop) {
-        inc_ref();
+    Future<void> result_future() { return result_future_; }
+
+    void child_done(TaskState<>* task) {
+        task->remove_child();
+        task->dec_ref();
+        if (cancelled_ > 0 && tasks_.empty()) {
+            on_done();
+        }
     }
 
-    IntrusiveDeque<ManagedObject> tasks_;
-    ManagedObject* parent_;
+  private:
+    void on_done() noexcept { result_future_.get_state()->set_void(); }
+
+    IntrusiveDeque<TaskState<>> tasks_;
+    Future<void> result_future_;
     EventLoop* event_loop_;
     size_t ref_count_{0};
     uint16_t cancelled_{0};
@@ -75,7 +83,10 @@ class TaskManagerState : public ManagedObject {
 
 class TaskManager {
   public:
+    TaskManager() : state_(new detail::TaskManagerState{}) { state_->inc_ref(); }
     ~TaskManager() { state_->dec_ref(); }
+
+    void add(Task<>& task) { state_->add(task); }
 
     bool done() const noexcept { return state_->done(); }
     bool cancelled() const noexcept { return state_->cancelled(); }
@@ -85,10 +96,9 @@ class TaskManager {
     void cancel() noexcept { state_->cancel(); }
     void uncancel() noexcept { state_->uncancel(); }
 
-  private:
-    TaskManager(detail::ManagedObject* parent, detail::EventLoop* event_loop)
-        : state_(new detail::TaskManagerState{parent, event_loop}) {}
+    auto operator co_await() { return state_->result_future().operator co_await(); }
 
+  private:
     detail::TaskManagerState* state_;
 };
 

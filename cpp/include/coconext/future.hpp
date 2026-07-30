@@ -7,8 +7,8 @@
 #include <functional>
 #include <stdexcept>
 
-#include <coconext/cancelled.hpp>
 #include <coconext/event_loop.hpp>
+#include <coconext/outcome.hpp>
 #include <coconext/task.hpp>
 #include <variant>
 #include <vector>
@@ -31,21 +31,21 @@ class FutureStateBase {
     bool done() const noexcept { return !std::holds_alternative<std::monostate>(result_); }
     bool cancelled() const noexcept { return std::holds_alternative<Cancelled>(result_); }
     T result() const {
-        if (std::holds_alternative<detail::Exception>(result_)) {
-            std::rethrow_exception(std::get<detail::Exception>(result_).exception);
+        if (std::holds_alternative<Exception>(result_)) {
+            std::rethrow_exception(std::get<Exception>(result_).exception);
         }
-        if (std::holds_alternative<detail::Result<T>>(result_)) {
+        if (std::holds_alternative<Result<T>>(result_)) {
             if constexpr (std::is_void_v<T>) {
                 return;
             } else {
-                return std::get<detail::Result<T>>(result_).value;
+                return std::get<Result<T>>(result_).value;
             }
         }
         throw std::runtime_error("Future does not have a result");
     }
     std::exception_ptr exception() const noexcept {
-        if (std::holds_alternative<detail::Exception>(result_)) {
-            return std::get<detail::Exception>(result_).exception;
+        if (std::holds_alternative<Exception>(result_)) {
+            return std::get<Exception>(result_).exception;
         }
         return nullptr;
     }
@@ -55,29 +55,17 @@ class FutureStateBase {
         callbacks_.emplace_back(std::forward<F>(callback));
     }
 
-    void fire() noexcept {
-        event_loop_->acquire().schedule_all_back(std::move(deque_));
-        Future<T> future{static_cast<FutureState<T>*>(this)};
-        for (auto& callback : callbacks_) {
-            callback(future);
-        }
-    }
-
     void set_exception(std::exception_ptr exc) noexcept {
-        result_ = detail::Exception{exc};
-        fire();
+        result_ = Exception{exc};
+        on_done();
     }
     void cancel() noexcept {
         result_ = Cancelled{};
-        fire();
+        on_done();
     }
-
-    void bind_event_loop(detail::EventLoop* loop) {
-        if (event_loop_ == nullptr) {
-            event_loop_ = loop;
-        } else if (event_loop_ != loop) {
-            throw std::runtime_error("Future is already bound to another EventLoop");
-        }
+    void set_result(Result<T> value) noexcept {
+        result_ = std::move(value);
+        on_done();
     }
 
     void inc_ref() noexcept { ref_count_++; }
@@ -90,31 +78,73 @@ class FutureStateBase {
     }
 
   private:
-    void set_result(detail::Result<T> value) noexcept {
-        result_ = std::move(value);
-        fire();
+    void on_done() noexcept {
+        Future<T> future =
+            Future<T>::from_state(static_cast<detail::FutureState<T>*>(this));
+        for (auto& callback : callbacks_) {
+            callback(future);
+        }
+        event_loop_->acquire().schedule_all_back(std::move(deque_));
     }
 
-    detail::IntrusiveDeque<detail::Event> deque_;
+    void bind_event_loop(EventLoop* loop) {
+        if (event_loop_ == nullptr) {
+            event_loop_ = loop;
+        } else if (event_loop_ != loop) {
+            throw std::runtime_error("Future is already bound to another EventLoop");
+        }
+    }
+
+    IntrusiveDeque<Event> deque_;
     std::vector<std::function<void(Future<T>&)>> callbacks_;
-    std::variant<std::monostate, detail::Result<T>, detail::Exception, Cancelled> result_;
+    std::variant<std::monostate, Result<T>, Exception, Cancelled> result_;
     // The Future starts un-bound to an EventLoop, and is bound when the first task
     // awaits it.
-    detail::EventLoop* event_loop_ = nullptr;
+    EventLoop* event_loop_ = nullptr;
     size_t ref_count_{0};
 };
 
 template <typename T>
 class FutureState : public FutureStateBase<T> {
   public:
-    void set_result(T&& value) noexcept { set_result(detail::Result<T>{std::move(value)}); }
-    void set_result(T const& value) noexcept { set_result(detail::Result<T>{value}); }
+    void set_result(T&& value) noexcept { set_result(Result<T>{std::move(value)}); }
+    void set_result(T const& value) noexcept { set_result(Result<T>{value}); }
 };
 
 template <>
 class FutureState<void> : public FutureStateBase<void> {
   public:
-    void set_void() noexcept { set_result(detail::Result<void>{}); }
+    void set_void() noexcept { set_result(Result<void>{}); }
+};
+
+template <typename T>
+class FutureAwaiter : Event {
+    friend class Future<T>;
+
+  public:
+    bool await_ready() const noexcept { return future_->done(); }
+    template <typename PromiseType>
+    void await_suspend(std::coroutine_handle<PromiseType> h) {
+        parent_ = h;
+        task_ = h.promise().get_task();
+        task_->set_pending(this);
+        future_->bind_event_loop(task_->get_event_loop());
+    }
+    T await_resume() {
+        if (task_->cancelled()) {
+            throw coconext::Cancelled{};
+        }
+        return future_->result();
+    }
+
+  private:
+    explicit FutureAwaiter(FutureState<T>* future) : future_(future) {}
+
+    void event_run() override { parent_.resume(); }
+
+    FutureState<T>* future_;
+    std::coroutine_handle<> parent_;
+    TaskState<>* task_;
 };
 
 }  // namespace detail
@@ -122,8 +152,6 @@ class FutureState<void> : public FutureStateBase<void> {
 // Single-shot, multiple-consumer awaitable object.
 template <typename T>
 class Future {
-    friend class detail::FutureStateBase<T>;
-
   public:
     Future() : handle_(new detail::FutureState<T>{}) {}
     ~Future() { handle_->dec_ref(); }
@@ -156,36 +184,10 @@ class Future {
         handle_->add_callback(std::forward<F>(callback));
     }
 
-    class Awaiter : detail::Event {
-      public:
-        bool await_ready() const noexcept { return future_.done(); }
-        template <typename PromiseType>
-        void await_suspend(std::coroutine_handle<PromiseType> h) {
-            parent_ = h;
-            task_ = h.promise().get_task();
-            task_->set_pending(this);
-            future_.handle_->bind_event_loop(task_->get_event_loop());
-        }
-        T await_resume() {
-            if (task_->cancelled()) {
-                throw coconext::Cancelled{};
-            }
-            return future_.result();
-        }
-        void event_run() override {
-            detail::current_task_ = task_;
-            parent_.resume();
-        }
+    auto operator co_await() { return detail::FutureAwaiter(handle_); }
 
-      private:
-        explicit Awaiter(Future<T>& future) : future_(future) {}
-
-        Future<T>& future_;
-        std::coroutine_handle<> parent_;
-        detail::TaskState<>* task_;
-    };
-
-    auto operator co_await() { return Awaiter(*this); }
+    static Future from_state(detail::FutureState<T>* state) { return Future{state}; }
+    detail::FutureState<T>* get_state() const noexcept { return handle_; }
 
   private:
     explicit Future(detail::FutureState<T>* state) : handle_(state) { handle_->inc_ref(); }
