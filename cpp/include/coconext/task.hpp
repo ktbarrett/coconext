@@ -25,9 +25,15 @@ class Erased {};
 template <typename T = detail::Erased>
 class Task;
 
+template <typename T>
+class Coro;
+
+template <typename T>
+class Future;
+
 namespace detail {
 
-class TaskManager;
+class TaskManagerState;
 
 class TaskManagerSharedState : public IntrusiveDequeNode {
     friend class TaskManagerState;
@@ -39,6 +45,9 @@ class TaskManagerSharedState : public IntrusiveDequeNode {
 
 template <typename T = Erased>
 class TaskState;
+
+template <typename T>
+class FutureState;
 
 template <typename T>
 class FutureAwaiter;
@@ -179,6 +188,8 @@ class TaskStateBase : public TaskState<Erased> {
         }
     }
 
+    ~TaskStateBase();
+
   private:
     void set_result(Result<T>&& value) noexcept {
         state_ = std::move(value);
@@ -186,14 +197,7 @@ class TaskStateBase : public TaskState<Erased> {
         on_done();
     }
 
-    void on_done() {
-        auto task = Task<T>::from_state(static_cast<TaskState<T>*>(this));
-        for (auto& callback : callbacks_) {
-            callback(task);
-        }
-        task_manager_->child_done(static_cast<TaskState<T>*>(this));
-        wait_complete_future_.get_state()->set_void();
-    }
+    void on_done();
 
     void bind_event_loop(EventLoop* loop) {
         if (event_loop_ == nullptr) {
@@ -203,14 +207,14 @@ class TaskStateBase : public TaskState<Erased> {
         }
     }
 
-    Future<void> wait_complete() { return wait_complete_future_; }
+    Future<void> wait_complete() const noexcept;
 
     void set_pending(Event* future_awaiter) override { state_ = Pending{future_awaiter}; }
 
     std::variant<std::monostate, Scheduled, Pending, Result<T>, Exception> state_;
     std::vector<std::function<void(Task<T>&)>> callbacks_;
-    Future<void> wait_complete_future_;
-    TaskManager* task_manager_ = nullptr;
+    mutable FutureState<void>* wait_complete_future_ = nullptr;
+    TaskManagerState* task_manager_ = nullptr;
     EventLoop* event_loop_ = nullptr;
     size_t ref_count_{0};
     uint16_t cancelled_{0};
@@ -267,7 +271,7 @@ class Task {
     detail::TaskState<T>* get_state() const noexcept { return handle_; }
     static Task<T> from_state(detail::TaskState<T>* state) { return Task<T>{state}; }
 
-    Future<void> wait_complete() { return handle_->wait_complete(); }
+    Future<void> wait_complete() const noexcept;
 
     Coro<T> wait_result() {
         co_await wait_complete();
