@@ -107,6 +107,13 @@ class TaskStateBase : public TaskState<Erased> {
     TaskState<>* get_task() noexcept override { return this; }
     EventLoop* get_event_loop() noexcept override { return event_loop_; }
 
+    void add_done_callback(std::function<void(Task<T>&)> callback) {
+        if (done()) {
+            throw std::runtime_error("Task is already done, cannot add callback");
+        }
+        callbacks_.push_back(std::move(callback));
+    }
+
     bool unstarted() const noexcept override {
         return std::holds_alternative<std::monostate>(state_);
     }
@@ -258,6 +265,10 @@ class Task {
             handle_ = std::exchange(other.handle_, nullptr);
         }
         return *this;
+    }
+
+    void add_done_callback(std::function<void(Task<T>&)> callback) {
+        handle_->add_done_callback(std::move(callback));
     }
 
     bool unstarted() const noexcept { return handle_->unstarted(); }
