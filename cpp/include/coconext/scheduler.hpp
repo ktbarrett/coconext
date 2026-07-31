@@ -69,6 +69,7 @@ class TaskState<Erased> : public TaskManagerSharedState {
     virtual void dec_ref() noexcept = 0;
 
     virtual TaskState<>* get_task() noexcept = 0;
+    virtual TaskManagerState* get_task_manager() noexcept = 0;
     virtual EventLoop* get_event_loop() noexcept = 0;
 
     virtual bool unstarted() const noexcept = 0;
@@ -82,6 +83,7 @@ class TaskState<Erased> : public TaskManagerSharedState {
 
   private:
     virtual void set_pending(Event* future_awaiter) = 0;
+    virtual void on_resume() = 0;
 };
 
 // inline thread_local means this variable is included in the user's code, and lookups are
@@ -212,7 +214,7 @@ class FutureAwaiter : Event {
     explicit FutureAwaiter(StateT* future) : future_(future) {}
 
     void event_run() override {
-        current_task = task_;
+        task_->on_resume();
         parent_.resume();
     }
 
@@ -275,7 +277,7 @@ class TaskStateBase : public TaskState<Erased> {
         explicit Scheduled(TaskStateBase<T>& task) : task_(&task) {}
 
         void event_run() override {
-            current_task = task_;
+            task_->on_resume();
             auto handle = std::coroutine_handle<TaskState<T>>::from_promise(
                 *static_cast<TaskState<T>*>(task_)
             );
@@ -288,6 +290,8 @@ class TaskStateBase : public TaskState<Erased> {
     struct Pending {
         Event* event;
     };
+
+    struct Running {};
 
   public:
     // FutureState<void> subclass whose on_await also binds the owning Task's event loop,
@@ -320,7 +324,7 @@ class TaskStateBase : public TaskState<Erased> {
 
     TaskState<>* get_task() noexcept override { return this; }
     EventLoop* get_event_loop() noexcept override { return event_loop_; }
-    TaskManagerState* get_task_manager() noexcept { return task_manager_; }
+    TaskManagerState* get_task_manager() noexcept override { return task_manager_; }
 
     void add_done_callback(std::function<void(Task<T>&)> callback) {
         if (done()) {
@@ -428,6 +432,11 @@ class TaskStateBase : public TaskState<Erased> {
 
     void on_done();
 
+    void on_resume() override {
+        current_task = this;
+        state_ = Running{};
+    }
+
     DoneFuture wait_complete() const noexcept {
         if (!wait_complete_future_) {
             wait_complete_future_ =
@@ -442,7 +451,7 @@ class TaskStateBase : public TaskState<Erased> {
 
     void set_pending(Event* future_awaiter) override { state_ = Pending{future_awaiter}; }
 
-    std::variant<std::monostate, Scheduled, Pending, Result<T>, Exception> state_;
+    std::variant<std::monostate, Scheduled, Pending, Running, Result<T>, Exception> state_;
     std::vector<std::function<void(Task<T>&)>> callbacks_;
     mutable DoneFutureState* wait_complete_future_ = nullptr;
     detail::TaskManagerState* task_manager_ = nullptr;
@@ -498,6 +507,7 @@ class Task {
     std::exception_ptr exception() const noexcept { return handle_->exception(); }
     T result() { return handle_->result(); }
 
+    void start_soon();
     void start_soon(TaskManager& loop);
 
     void cancel() noexcept { handle_->cancel(); }
@@ -714,6 +724,14 @@ Task<> current_task() {
         throw std::runtime_error("No current task");
     }
     return Task<>::from_state(detail::current_task);
+}
+
+template <typename T>
+void Task<T>::start_soon() {
+    if (!detail::current_task) {
+        throw std::runtime_error("No current task");
+    }
+    handle_->start_soon(detail::current_task->get_task_manager());
 }
 
 }  // namespace coconext
