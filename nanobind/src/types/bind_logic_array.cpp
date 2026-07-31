@@ -161,7 +161,7 @@ static LogicVector logic_array_from_signed(
     return LogicVector(s, range);
 }
 
-static uint64_t logic_array_to_unsigned(LogicVector const& self) {
+static nb::object logic_array_to_unsigned(LogicVector const& self) {
     auto resolved_opt = resolve(self);
     if (!resolved_opt.has_value()) {
         throw nb::value_error(
@@ -176,70 +176,51 @@ static uint64_t logic_array_to_unsigned(LogicVector const& self) {
 
     std::string binary_str = to_string(*resolved_opt);
 
-    return std::stoull(binary_str, nullptr, 2);
+    nb::object py_int = nb::module_::import_("builtins").attr("int");
+    return py_int(binary_str, 2);
 }
 
-static int64_t logic_array_to_signed(LogicVector const& self) {
-    auto resolved_opt = resolve(self);
-
+static nb::object logic_array_to_signed(LogicVector const& self) {
+    nb::object val = logic_array_to_unsigned(self);
     int width = self.size();
-    if (width == 0) {
-        throw nb::value_error("Cannot convert empty LogicArray to integer");
+
+    nb::object py_int = nb::module_::import_("builtins").attr("int");
+    nb::object one = py_int(1);
+    nb::object zero = py_int(0);
+
+    nb::object sign_bit_mask = one.attr("__lshift__")(width - 1);
+    nb::object is_negative = val.attr("__and__")(sign_bit_mask);
+
+    if (!is_negative.equal(zero)) {
+        nb::object extension_mask = one.attr("__lshift__")(width);
+        val = val.attr("__sub__")(extension_mask);
     }
 
-    std::string binary_str = to_string(*resolved_opt);
-    uint64_t val = std::stoull(binary_str, nullptr, 2);
-    ;
-
-    if (width < 64) {
-        uint64_t sign_bit_mask = 1ULL << (width - 1);
-
-        if (val & sign_bit_mask) {
-            uint64_t extension_mask = (~0ULL) << width;
-            val |= extension_mask;
-        }
-    }
-
-    return static_cast<int64_t>(val);
+    return val;
 }
 
 static LogicVector logic_array_from_bytes(
     nb::object value_obj, nb::object range_obj, std::string_view byteorder
 ) {
-    if (byteorder != "big" && byteorder != "little") {
-        throw nb::value_error("byteorder must be either 'big' or 'little'");
-    }
-
-    Py_buffer buffer;
-    PyObject_GetBuffer(value_obj.ptr(), &buffer, PyBUF_SIMPLE);
-
-    uint8_t const* data = static_cast<uint8_t const*>(buffer.buf);
-    Py_ssize_t size = buffer.len;
+    Py_ssize_t size = nb::len(value_obj);
     int expected_width = size * 8;
 
     auto range = parse_range_arg(range_obj);
     if (!range.has_value()) {
         range = Range(expected_width - 1, Direction::DOWNTO, 0);
     } else if (range->length() != expected_width) {
-        PyBuffer_Release(&buffer);  // Fix memory leak on throw
         throw nb::value_error("Range must be exactly equal to bytes width");
     }
 
-    std::string s;
-    s.reserve(expected_width);
+    nb::object py_builtins = nb::module_::import_("builtins");
+    nb::object py_int = py_builtins.attr("int");
+    nb::object py_format = py_builtins.attr("format");
+    nb::object int_val = py_int.attr("from_bytes")(value_obj, byteorder);
+    std::string fmt_spec = std::format("0{}b", expected_width);
+    nb::object bin_str_obj = py_format(int_val, fmt_spec.c_str());
+    std::string bin_str = nb::cast<std::string>(bin_str_obj);
 
-    if (byteorder == "big") {
-        for (Py_ssize_t i = 0; i < size; ++i) {
-            s += std::format("{:08b}", data[i]);
-        }
-    } else {
-        for (Py_ssize_t i = size - 1; i >= 0; --i) {
-            s += std::format("{:08b}", data[i]);
-        }
-    }
-
-    PyBuffer_Release(&buffer);
-    return LogicVector(s, *range);
+    return LogicVector(bin_str, *range);
 }
 
 static nb::bytes logic_array_to_bytes(LogicVector const& self, std::string_view byteorder) {
@@ -544,6 +525,7 @@ void register_logic_array(nb::module_& m) {
         .def("to_signed", &logic_array_to_signed)
         .def("to_bytes", &logic_array_to_bytes, nb::kw_only(), "byteorder"_a)
 
+        // TODO all these deprecations should be removed
         // --cocotb deprecarted-------
         .def_prop_rw(
             "integer",
@@ -895,19 +877,17 @@ void register_logic_array(nb::module_& m) {
         )
         .def(
             "__eq__",
-            [](LogicVector const& self, int64_t other) {
+            [](LogicVector const& self, nb::int_ other) {
                 if (!resolve(self, ResolveMethod::ERROR).has_value()) {
                     return false;
                 }
 
                 try {
-                    if (logic_array_to_signed(self) == other) {
+                    if (logic_array_to_signed(self).equal(other)) {
                         return true;
                     }
 
-                    if (other >= 0
-                        && logic_array_to_unsigned(self) == static_cast<uint64_t>(other))
-                    {
+                    if (logic_array_to_unsigned(self).equal(other)) {
                         return true;
                     }
                 } catch (...) {
@@ -920,18 +900,18 @@ void register_logic_array(nb::module_& m) {
         )
         .def(
             "__eq__",
-            [](LogicVector const& self, nb::handle other) {
+            [](LogicVector const& self, nb::handle other) -> nb::object {
                 if (!nb::isinstance<nb::list>(other) && !nb::isinstance<nb::tuple>(other)) {
-                    return false;
+                    return nb::not_implemented();
                 }
                 try {
                     nb::handle la_class = nb::type<LogicVector>();
                     auto rhs = nb::cast<LogicVector>(
                         la_class(nb::cast<nb::object>(other), nb::none())
                     );
-                    return self == rhs;
+                    return nb::cast(self == rhs);
                 } catch (...) {
-                    return false;
+                    return nb::cast(false);
                 }
             },
             nb::is_operator()
@@ -1019,6 +999,7 @@ void register_logic_array(nb::module_& m) {
                 return format_bit_vector(*resolved_opt, spec);
             }
         )
+        // TODO this should be implemented
         .def(
             "__copy__",
             [](LogicVector const&) -> LogicVector {
@@ -1348,15 +1329,7 @@ void register_logic_array(nb::module_& m) {
                 return format_bit_vector(self, spec);
             }
         )
-        .def(
-            "__copy__",
-            [](BitVector const&) -> BitVector {
-                PyErr_SetString(
-                    PyExc_NotImplementedError, "copy.copy on LogicArray is not supported"
-                );
-                throw nb::python_error();
-            }
-        )
+        .def("__copy__", [](BitVector const& self) { return BitVector(self); })
         .def("__deepcopy__", [](BitVector const& self, nb::dict /* memo */) {
             return BitVector(self);
         });

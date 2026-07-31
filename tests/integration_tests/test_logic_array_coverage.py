@@ -72,7 +72,7 @@ def test_logic_array_from_bytes():
 
 
 def test_logic_array_bytes_conversion_invalid_byte_order():
-    with pytest.raises(ValueError, match="byteorder must be either 'big' or 'little'"):
+    with pytest.raises(ValueError):
         LogicArray.from_bytes(b"12", byteorder="foo")
 
 
@@ -631,8 +631,9 @@ def test_resolve():
 def test_copy() -> None:
     l = BitArray("0011", Range(-2, "to", 1))
 
-    with pytest.raises(NotImplementedError):
-        copy.copy(l)
+    c = copy.copy(l)
+    assert l == c
+    assert l.range == c.range
 
     d = copy.deepcopy(l)
     assert l == d
