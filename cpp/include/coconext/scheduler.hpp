@@ -84,6 +84,10 @@ class TaskState<Erased> : public TaskManagerSharedState {
     virtual void set_pending(Event* future_awaiter) = 0;
 };
 
+// inline thread_local means this variable is included in the user's code, and lookups are
+// fast (Local-Exec mode).
+inline thread_local TaskState<>* current_task = nullptr;
+
 template <typename T>
 class FutureStateBase {
     friend class FutureState<T>;
@@ -207,7 +211,10 @@ class FutureAwaiter : Event {
   private:
     explicit FutureAwaiter(StateT* future) : future_(future) {}
 
-    void event_run() override { parent_.resume(); }
+    void event_run() override {
+        current_task = task_;
+        parent_.resume();
+    }
 
     StateT* future_;
     std::coroutine_handle<> parent_;
@@ -268,6 +275,7 @@ class TaskStateBase : public TaskState<Erased> {
         explicit Scheduled(TaskStateBase<T>& task) : task_(&task) {}
 
         void event_run() override {
+            current_task = task_;
             auto handle = std::coroutine_handle<TaskState<T>>::from_promise(
                 *static_cast<TaskState<T>*>(task_)
             );
@@ -312,6 +320,7 @@ class TaskStateBase : public TaskState<Erased> {
 
     TaskState<>* get_task() noexcept override { return this; }
     EventLoop* get_event_loop() noexcept override { return event_loop_; }
+    TaskManagerState* get_task_manager() noexcept { return task_manager_; }
 
     void add_done_callback(std::function<void(Task<T>&)> callback) {
         if (done()) {
@@ -698,6 +707,13 @@ typename detail::TaskStateBase<T>::DoneFuture Task<T>::wait_complete() const noe
 template <typename T>
 void Task<T>::start_soon(TaskManager& loop) {
     handle_->start_soon(loop.get_state());
+}
+
+Task<> current_task() {
+    if (!detail::current_task) {
+        throw std::runtime_error("No current task");
+    }
+    return Task<>::from_state(detail::current_task);
 }
 
 }  // namespace coconext
