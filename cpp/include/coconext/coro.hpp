@@ -104,9 +104,12 @@ class Coro {
       public:
         bool await_ready() const noexcept { return false; }
         template <typename PromiseType>
-        void await_suspend(std::coroutine_handle<PromiseType> h) noexcept {
+        std::coroutine_handle<> await_suspend(
+            std::coroutine_handle<PromiseType> h
+        ) noexcept {
             coro_.handle_.promise().task_ = h.promise().get_task();
             coro_.handle_.promise().parent_ = h;
+            return coro_.handle_;
         }
         T await_resume() { return coro_.handle_.promise().result(); }
 
