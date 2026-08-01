@@ -4,9 +4,9 @@
 #include <coconext/event_loop.hpp>
 #include <coconext/intrusive_deque.hpp>
 #include <coconext/outcome.hpp>
-#include <coconext/pointers.hpp>
 
 #include <coroutine>
+#include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <functional>
@@ -23,10 +23,13 @@ namespace detail {
 class Erased {};
 
 template <typename T>
-class FutureStateBase;
-
-template <typename T>
 class FutureState;
+
+template <typename T = Erased>
+class TaskManagerState;
+
+template <typename T = Erased>
+class TaskState;
 
 }  // namespace detail
 
@@ -39,16 +42,10 @@ class Task;
 template <typename T>
 class Coro;
 
-template <typename StateT>
+template <typename StateT = detail::TaskManagerState<>>
 class TaskManager;
 
 namespace detail {
-
-template <typename T = Erased>
-class TaskManagerState;
-
-template <typename T = Erased>
-class TaskState;
 
 template <typename StateT>
 class AwaitableAwaiter;
@@ -90,8 +87,6 @@ class TaskManagerState<Erased> {
     friend class TaskStateBase;
 
   public:
-    virtual ~TaskManagerState() = default;
-
     virtual void inc_ref() noexcept = 0;
     virtual void dec_ref() noexcept = 0;
 
@@ -226,9 +221,7 @@ class AwaitableAwaiter : Event {
 };
 
 template <typename T>
-class FutureStateBase : public IntrusiveRefcounted<FutureState<T>>,
-                        public AwaitableStateBase<T> {
-    friend class IntrusiveRefcounted<FutureState<T>>;
+class FutureStateBase : public AwaitableStateBase<T> {
     friend class FutureState<T>;
 
   public:
@@ -243,12 +236,16 @@ class FutureStateBase : public IntrusiveRefcounted<FutureState<T>>,
         }
     }
 
-  private:
-    void destroy() {
-        cancel();
-        delete this;
+    void inc_ref() noexcept { ++ref_count_; }
+    void dec_ref() noexcept {
+        if (--ref_count_ == 0) {
+            cancel();
+            delete this;
+        }
     }
 
+  private:
+    size_t ref_count_{0};
     bool cancelled_ = false;
 };
 
@@ -320,11 +317,8 @@ namespace detail {
 inline thread_local TaskState<>* current_task = nullptr;
 
 template <typename T>
-class TaskStateBase : public TaskState<Erased>,
-                      public IntrusiveRefcounted<TaskStateBase<T>>,
-                      public AwaitableStateBase<T> {
+class TaskStateBase : public TaskState<Erased>, public AwaitableStateBase<T> {
     friend class TaskState<T>;
-    friend class IntrusiveRefcounted<TaskStateBase<T>>;
 
     struct Scheduled : detail::Event {
         explicit Scheduled(TaskStateBase<T>& task) : task_(&task) {}
@@ -404,8 +398,15 @@ class TaskStateBase : public TaskState<Erased>,
 
     void start_soon(detail::TaskManagerState<>* tm) override;
 
-    void inc_ref() noexcept override { IntrusiveRefcounted<TaskStateBase<T>>::inc_ref(); }
-    void dec_ref() noexcept override { IntrusiveRefcounted<TaskStateBase<T>>::dec_ref(); }
+    void inc_ref() noexcept override { ++ref_count_; }
+    void dec_ref() noexcept override {
+        if (--ref_count_ == 0) {
+            auto handle = std::coroutine_handle<TaskState<T>>::from_promise(
+                *static_cast<TaskState<T>*>(this)
+            );
+            handle.destroy();
+        }
+    }
 
   private:
     void on_done() noexcept {
@@ -413,13 +414,6 @@ class TaskStateBase : public TaskState<Erased>,
         if (task_manager_) {
             task_manager_->internal_child_done(static_cast<TaskState<T>*>(this));
         }
-    }
-
-    void destroy() {
-        auto handle = std::coroutine_handle<TaskState<T>>::from_promise(
-            *static_cast<TaskState<T>*>(this)
-        );
-        handle.destroy();
     }
 
     void on_resume() override {
@@ -431,6 +425,7 @@ class TaskStateBase : public TaskState<Erased>,
 
     std::variant<std::monostate, Scheduled, Pending, Running> state_;
     detail::TaskManagerState<>* task_manager_ = nullptr;
+    size_t ref_count_{0};
     uint16_t cancelled_{0};
 };
 
@@ -489,7 +484,7 @@ class Task {
     T result() { return handle_->result(); }
 
     void start_soon();
-    void start_soon(TaskManager<detail::TaskManagerState<detail::Erased>>& tm);
+    void start_soon(TaskManager<>& tm);
 
     void cancel() noexcept { handle_->cancel(); }
     void uncancel() { handle_->uncancel(); }
@@ -510,9 +505,7 @@ class Task {
 namespace detail {
 
 template <typename T>
-class TaskManagerState : public TaskManagerState<Erased>,
-                         public IntrusiveRefcounted<TaskManagerState<T>>,
-                         public AwaitableStateBase<T> {
+class TaskManagerState : public TaskManagerState<Erased>, public AwaitableStateBase<T> {
     // TaskManagers have a couple states:
     // - open: tasks can be added.
     // - closed: no more tasks can be added, existing tasks are being waited until they
@@ -522,14 +515,12 @@ class TaskManagerState : public TaskManagerState<Erased>,
     // Managers can be cancelled in either the open or closed state. Cancellation implies
     // closed(), and like Tasks having to run again to throw CancelledError, a cancelled
     // TaskManager does not have a result until later.
-    friend class IntrusiveRefcounted<TaskManagerState<T>>;
-
   public:
-    void inc_ref() noexcept override {
-        IntrusiveRefcounted<TaskManagerState<T>>::inc_ref();
-    }
+    void inc_ref() noexcept override { ++ref_count_; }
     void dec_ref() noexcept override {
-        IntrusiveRefcounted<TaskManagerState<T>>::dec_ref();
+        if (--ref_count_ == 0) {
+            delete this;
+        }
     }
 
     void add(Task<>& task) override {
@@ -615,15 +606,14 @@ class TaskManagerState : public TaskManagerState<Erased>,
         }
     }
 
-    void destroy() { delete this; }
-
+    size_t ref_count_{0};
     bool cancelled_ = false;
     bool closed_ = false;
 };
 
 }  // namespace detail
 
-template <typename StateT = detail::TaskManagerState<>>
+template <typename StateT>
 class TaskManager {
     static_assert(
         std::is_base_of_v<detail::TaskManagerState<>, StateT>,
