@@ -526,12 +526,7 @@ class Task {
     detail::TaskState<T>* get_state() const noexcept { return handle_; }
     static Task<T> from_state(detail::TaskState<T>* state) { return Task<T>{state}; }
 
-    typename detail::TaskStateBase<T>::DoneFuture wait_complete() const noexcept;
-
-    Coro<T> wait_result() {
-        co_await wait_complete();
-        co_return result();
-    }
+    auto operator co_await() { return handle_->wait_complete().operator co_await(); }
 
   private:
     explicit Task(detail::TaskState<T>* s) : handle_(s) { handle_->inc_ref(); }
@@ -762,13 +757,11 @@ class TaskManager {
 
     bool done() const noexcept { return state_->done(); }
     bool cancelled() const noexcept { return state_->cancelled(); }
-
-    void cancel() noexcept { state_->cancel(); }
-
     auto result() const { return state_->result(); }
     std::exception_ptr exception() const noexcept { return state_->exception(); }
 
-    auto wait_complete() const noexcept { return state_->wait_complete(); }
+    void cancel() noexcept { state_->cancel(); }
+
     auto operator co_await() { return state_->wait_complete().operator co_await(); }
 
     StateT* get_state() const noexcept { return state_; }
@@ -806,11 +799,6 @@ void TaskStateBase<T>::start_soon(TaskManagerState<>* tm) {
 }
 
 }  // namespace detail
-
-template <typename T>
-typename detail::TaskStateBase<T>::DoneFuture Task<T>::wait_complete() const noexcept {
-    return handle_->wait_complete();
-}
 
 Task<> current_task() {
     if (!detail::current_task) {
