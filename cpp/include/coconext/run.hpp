@@ -1,6 +1,7 @@
 #ifndef COCONEXT_RUN_HPP
 #define COCONEXT_RUN_HPP
 
+#include "scheduler.hpp"
 #include <coconext/coro.hpp>
 #include <coconext/event_loop.hpp>
 #include <coconext/outcome.hpp>
@@ -13,17 +14,24 @@ namespace coconext {
 
 namespace detail {
 
-// Minimal TaskManager for run(): finishes as soon as the tracked root task completes.
-// close() cancels any other children; drain completes with the root's outcome.
-class RunTaskManagerState : public TaskManagerState<void> {
+template <typename T>
+class RunTaskManagerState : public TaskManagerState<T> {
   public:
-    void set_root(TaskState<>* root) noexcept { root_ = root; }
+    void set_root(TaskState<>* root) {
+        if (root_) {
+            throw std::runtime_error("Root task already set");
+        }
+        root_ = root;
+    }
 
-  protected:
+  private:
     void on_add(TaskState<>*) override {}
     void on_child_done(TaskState<>* task) override {
         if (task == root_) {
-            close();
+            TaskManagerState<T>::close();
+            for (auto& t : this->tasks_) {
+                t.cancel();
+            }
         }
     }
     Outcome<void> on_drain_complete() override {
@@ -48,7 +56,7 @@ T run(Coro<T> coro) {
 template <typename T>
 T run(Task<T> task) {
     detail::EventLoop loop;
-    TaskManager<detail::RunTaskManagerState> manager;
+    TaskManager<detail::RunTaskManagerState<T>> manager;
     manager.get_state()->set_event_loop(&loop);
     manager.get_state()->set_root(task.get_state());
     manager.add(task);

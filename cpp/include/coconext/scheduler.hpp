@@ -183,14 +183,10 @@ class AwaitableStateBase {
 
 template <typename StateT>
 class AwaitableAwaiter : Event {
-    template <typename, typename>
-    friend class ::coconext::Future;
-    template <typename>
-    friend class Task;
-    template <typename>
-    friend class ::coconext::TaskManager;
-
   public:
+    explicit AwaitableAwaiter(StateT* awaitable) : awaitable_(awaitable) {}
+    ~AwaitableAwaiter() { event_unschedule(); }
+
     bool await_ready() const noexcept { return awaitable_->done(); }
     template <typename PromiseType>
     void await_suspend(std::coroutine_handle<PromiseType> h) {
@@ -207,11 +203,7 @@ class AwaitableAwaiter : Event {
         return awaitable_->result();
     }
 
-    ~AwaitableAwaiter() { event_unschedule(); }
-
   private:
-    explicit AwaitableAwaiter(StateT* awaitable) : awaitable_(awaitable) {}
-
     void event_run() override {
         task_->on_resume();
         parent_.resume();
@@ -224,8 +216,6 @@ class AwaitableAwaiter : Event {
 
 template <typename T>
 class FutureStateBase : public AwaitableStateBase<T> {
-    friend class FutureState<T>;
-
   public:
     virtual ~FutureStateBase() = default;
 
@@ -250,10 +240,8 @@ class FutureStateBase : public AwaitableStateBase<T> {
     }
 
   protected:
-    // Called from cancel() exactly once (guarded by cancelled_). Subclasses that arm
-    // external callbacks in their ctor should override to disarm them here -- this fires
-    // both on explicit cancel() and when the last handle drops, so the disarm always
-    // runs while the state is still alive.
+    // Override to unprime any underlying awaitable, if applicable. Called on cancel() or
+    // object destruction.
     virtual void unprime() noexcept {}
 
   private:
@@ -555,9 +543,6 @@ class TaskManagerState : public TaskManagerState<Erased>, public AwaitableStateB
             return;
         }
         closed_ = true;
-        for (auto& task : tasks_) {
-            task.cancel();
-        }
     }
     bool closed() const noexcept final { return closed_; }
     void reopen() noexcept final {
