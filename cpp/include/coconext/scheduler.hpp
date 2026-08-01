@@ -87,6 +87,8 @@ class TaskManagerState<Erased> {
     friend class TaskStateBase;
 
   public:
+    virtual ~TaskManagerState() = default;
+
     virtual void inc_ref() noexcept = 0;
     virtual void dec_ref() noexcept = 0;
 
@@ -225,12 +227,15 @@ class FutureStateBase : public AwaitableStateBase<T> {
     friend class FutureState<T>;
 
   public:
+    virtual ~FutureStateBase() = default;
+
     bool cancelled() const noexcept { return cancelled_; }
     void cancel() noexcept {
         if (cancelled_) {
             return;
         }
         cancelled_ = true;
+        unprime();
         if (!this->done()) {
             this->set_exception(std::make_exception_ptr(Cancelled{}));
         }
@@ -243,6 +248,13 @@ class FutureStateBase : public AwaitableStateBase<T> {
             delete this;
         }
     }
+
+  protected:
+    // Called from cancel() exactly once (guarded by cancelled_). Subclasses that arm
+    // external callbacks in their ctor should override to disarm them here -- this fires
+    // both on explicit cancel() and when the last handle drops, so the disarm always
+    // runs while the state is still alive.
+    virtual void unprime() noexcept {}
 
   private:
     size_t ref_count_{0};
@@ -349,22 +361,22 @@ class TaskStateBase : public TaskState<Erased>, public AwaitableStateBase<T> {
         on_done();
     }
 
-    TaskState<>* get_task() noexcept override { return this; }
-    EventLoop* get_event_loop() noexcept override {
+    TaskState<>* get_task() noexcept final { return this; }
+    EventLoop* get_event_loop() noexcept final {
         return AwaitableStateBase<T>::get_event_loop();
     }
-    TaskManagerState<>* get_task_manager() noexcept override { return task_manager_; }
+    TaskManagerState<>* get_task_manager() noexcept final { return task_manager_; }
 
-    bool unstarted() const noexcept override {
+    bool unstarted() const noexcept final {
         return std::holds_alternative<std::monostate>(state_);
     }
-    bool cancelled() const noexcept override { return cancelled_ > 0; }
-    bool done() const noexcept override { return AwaitableStateBase<T>::done(); }
-    std::exception_ptr exception() const noexcept override {
+    bool cancelled() const noexcept final { return cancelled_ > 0; }
+    bool done() const noexcept final { return AwaitableStateBase<T>::done(); }
+    std::exception_ptr exception() const noexcept final {
         return AwaitableStateBase<T>::exception();
     }
 
-    void cancel() noexcept override {
+    void cancel() noexcept final {
         if (done()) {
             return;
         }
@@ -386,7 +398,7 @@ class TaskStateBase : public TaskState<Erased>, public AwaitableStateBase<T> {
         // Not done, unstarted, or pending? Already scheduled, we will steal its place in
         // line.
     }
-    void uncancel() override {
+    void uncancel() final {
         if (done()) {
             return;
         }
@@ -396,10 +408,10 @@ class TaskStateBase : public TaskState<Erased>, public AwaitableStateBase<T> {
         cancelled_--;
     }
 
-    void start_soon(detail::TaskManagerState<>* tm) override;
+    void start_soon(detail::TaskManagerState<>* tm) final;
 
-    void inc_ref() noexcept override { ++ref_count_; }
-    void dec_ref() noexcept override {
+    void inc_ref() noexcept final { ++ref_count_; }
+    void dec_ref() noexcept final {
         if (--ref_count_ == 0) {
             auto handle = std::coroutine_handle<TaskState<T>>::from_promise(
                 *static_cast<TaskState<T>*>(this)
@@ -416,12 +428,12 @@ class TaskStateBase : public TaskState<Erased>, public AwaitableStateBase<T> {
         }
     }
 
-    void on_resume() override {
+    void on_resume() final {
         current_task = this;
         state_ = Running{};
     }
 
-    void set_pending(Event* future_awaiter) override { state_ = Pending{future_awaiter}; }
+    void set_pending(Event* future_awaiter) final { state_ = Pending{future_awaiter}; }
 
     std::variant<std::monostate, Scheduled, Pending, Running> state_;
     detail::TaskManagerState<>* task_manager_ = nullptr;
@@ -430,7 +442,7 @@ class TaskStateBase : public TaskState<Erased>, public AwaitableStateBase<T> {
 };
 
 template <typename T>
-class TaskState : public TaskStateBase<T> {
+class TaskState final : public TaskStateBase<T> {
   public:
     void return_value(T value) {
         this->set_result(Result<T>{std::move(value)});
@@ -439,7 +451,7 @@ class TaskState : public TaskStateBase<T> {
 };
 
 template <>
-class TaskState<void> : public TaskStateBase<void> {
+class TaskState<void> final : public TaskStateBase<void> {
   public:
     void return_void() {
         this->set_result(Result<void>{});
@@ -516,14 +528,14 @@ class TaskManagerState : public TaskManagerState<Erased>, public AwaitableStateB
     // closed(), and like Tasks having to run again to throw CancelledError, a cancelled
     // TaskManager does not have a result until later.
   public:
-    void inc_ref() noexcept override { ++ref_count_; }
-    void dec_ref() noexcept override {
+    void inc_ref() noexcept final { ++ref_count_; }
+    void dec_ref() noexcept final {
         if (--ref_count_ == 0) {
             delete this;
         }
     }
 
-    void add(Task<>& task) override {
+    void add(Task<>& task) final {
         if (done()) {
             throw std::runtime_error("Cannot add task to done TaskManager");
         }
@@ -535,9 +547,10 @@ class TaskManagerState : public TaskManagerState<Erased>, public AwaitableStateB
         }
         task.get_state()->inc_ref();
         tasks_.push_back(task.get_state());
+        on_add(task.get_state());
     }
 
-    void close() noexcept override {
+    void close() noexcept final {
         if (done() || closed()) {
             return;
         }
@@ -546,15 +559,15 @@ class TaskManagerState : public TaskManagerState<Erased>, public AwaitableStateB
             task.cancel();
         }
     }
-    bool closed() const noexcept override { return closed_; }
-    void reopen() noexcept override {
+    bool closed() const noexcept final { return closed_; }
+    void reopen() noexcept final {
         if (done()) {
             return;
         }
         closed_ = false;
     }
 
-    void cancel() noexcept override {
+    void cancel() noexcept final {
         if (done() || cancelled()) {
             return;
         }
@@ -564,28 +577,32 @@ class TaskManagerState : public TaskManagerState<Erased>, public AwaitableStateB
         }
     }
 
-    EventLoop* get_event_loop() noexcept override {
+    EventLoop* get_event_loop() noexcept final {
         return AwaitableStateBase<T>::get_event_loop();
     }
-    void set_event_loop(EventLoop* loop) override {
+    void set_event_loop(EventLoop* loop) final {
         AwaitableStateBase<T>::set_event_loop(loop);
     }
 
-    bool done() const noexcept override { return AwaitableStateBase<T>::done(); }
-    bool cancelled() const noexcept override { return cancelled_; }
+    bool done() const noexcept final { return AwaitableStateBase<T>::done(); }
+    bool cancelled() const noexcept final { return cancelled_; }
 
   protected:
-    // Hook 1: called after each child completes and has been removed from tasks_. Override
-    // to decide whether to call close(), inspect the completed task's outcome, etc.
+    // Hook 1: called after a task has been added to tasks_.
+    virtual void on_add(TaskState<>* task) = 0;
+
+    // Hook 2: called after each child completes and has been removed from tasks_.
+    // Override to decide whether to call close(), inspect the completed task's outcome,
+    // etc.
     virtual void on_child_done(TaskState<>* task) = 0;
 
-    // Hook 2: called exactly once after tasks_ drains. Return the manager's outcome.
+    // Hook 3: called exactly once after tasks_ drains. Return the manager's outcome.
     virtual Outcome<T> on_drain_complete() = 0;
 
     IntrusiveDeque<TaskState<>> tasks_;
 
   private:
-    void internal_child_done(TaskState<>* task) override {
+    void internal_child_done(TaskState<>* task) final {
         task->remove_child();
         task->dec_ref();
         on_child_done(task);

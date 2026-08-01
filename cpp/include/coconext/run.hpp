@@ -20,6 +20,7 @@ class RunTaskManagerState : public TaskManagerState<void> {
     void set_root(TaskState<>* root) noexcept { root_ = root; }
 
   protected:
+    void on_add(TaskState<>*) override {}
     void on_child_done(TaskState<>* task) override {
         if (task == root_) {
             close();
@@ -48,7 +49,7 @@ template <typename T>
 T run(Task<T> task) {
     detail::EventLoop loop;
     TaskManager<detail::RunTaskManagerState> manager;
-    manager.get_state()->bind_event_loop(&loop);
+    manager.get_state()->set_event_loop(&loop);
     manager.get_state()->set_root(task.get_state());
     manager.add(task);
     {
