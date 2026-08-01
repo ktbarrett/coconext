@@ -56,7 +56,7 @@ T run(Task<T> task) {
         handle.run();
         if (!task.done()) {
             std::condition_variable_any cv;
-            task.add_done_callback([&cv](Task<T> const&) { cv.notify_one(); });
+            task.add_done_callback([&cv]() { cv.notify_one(); });
             handle.wait(cv, [&task] { return task.done(); });
         }
     }
