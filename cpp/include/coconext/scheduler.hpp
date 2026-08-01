@@ -50,7 +50,7 @@ class TaskManagerState;
 template <typename T = Erased>
 class TaskState;
 
-template <typename T, typename StateT>
+template <typename StateT>
 class FutureAwaiter;
 
 class TaskManagerSharedState : public IntrusiveDequeNode {
@@ -63,7 +63,7 @@ class TaskManagerSharedState : public IntrusiveDequeNode {
 
 template <>
 class TaskState<Erased> : public TaskManagerSharedState {
-    template <typename, typename>
+    template <typename>
     friend class FutureAwaiter;
 
   public:
@@ -113,10 +113,12 @@ class IntrusiveRefcounted {
 // whatever handle they need.
 template <typename T>
 class AwaitableStateBase {
-    template <typename, typename>
+    template <typename>
     friend class FutureAwaiter;
 
   public:
+    using value_type = T;
+
     bool done() const noexcept { return !std::holds_alternative<std::monostate>(result_); }
 
     T result() const {
@@ -227,11 +229,13 @@ class FutureState<void> : public FutureStateBase<void> {
     void set_void() noexcept { AwaitableStateBase<void>::set_result(Result<void>{}); }
 };
 
-// StateT must derive from AwaitableStateBase<T>. Awaiter uses the base's plain-data API
-// -- no per-subclass on_await hook needed.
-template <typename T, typename StateT>
+// StateT must derive from AwaitableStateBase<T> for some T; the T is picked up as
+// StateT::value_type. No per-subclass on_await hook -- the awaiter uses the base's
+// plain-data API only.
+template <typename StateT>
 class FutureAwaiter : Event {
-    friend class Future<T, StateT>;
+    template <typename, typename>
+    friend class ::coconext::Future;
     template <typename>
     friend class Task;
     template <typename>
@@ -247,7 +251,7 @@ class FutureAwaiter : Event {
         awaitable_->bind_event_loop(task_->get_event_loop());
         awaitable_->register_waiter(this);
     }
-    T await_resume() {
+    typename StateT::value_type await_resume() {
         if (task_->cancelled()) {
             throw coconext::Cancelled{};
         }
@@ -302,7 +306,7 @@ class Future {
         handle_->add_done_callback(std::forward<F>(callback));
     }
 
-    auto operator co_await() { return detail::FutureAwaiter<T, StateT>(handle_); }
+    auto operator co_await() { return detail::FutureAwaiter<StateT>(handle_); }
 
     static Future from_state(StateT* state) { return Future{state}; }
     StateT* get_state() const noexcept { return handle_; }
@@ -343,7 +347,6 @@ class TaskStateBase : public TaskState<Erased>,
     struct Running {};
 
   public:
-    using value_type = T;
     Task<T> get_return_object() { return Task<T>{static_cast<TaskState<T>*>(this)}; }
     std::suspend_always initial_suspend() noexcept { return {}; }
     std::suspend_always final_suspend() noexcept { return {}; }
@@ -502,7 +505,7 @@ class Task {
     static Task<T> from_state(detail::TaskState<T>* state) { return Task<T>{state}; }
 
     auto operator co_await() {
-        return detail::FutureAwaiter<T, detail::TaskState<T>>(handle_);
+        return detail::FutureAwaiter<detail::TaskState<T>>(handle_);
     }
 
   private:
@@ -562,8 +565,6 @@ class TaskManagerState : public TaskManagerState<Erased>,
     friend class IntrusiveRefcounted<TaskManagerState<T>>;
 
   public:
-    using value_type = T;
-
     void inc_ref() noexcept override {
         IntrusiveRefcounted<TaskManagerState<T>>::inc_ref();
     }
@@ -697,9 +698,7 @@ class TaskManager {
 
     void cancel() noexcept { state_->cancel(); }
 
-    auto operator co_await() {
-        return detail::FutureAwaiter<typename StateT::value_type, StateT>(state_);
-    }
+    auto operator co_await() { return detail::FutureAwaiter<StateT>(state_); }
 
     StateT* get_state() const noexcept { return state_; }
     static TaskManager from_state(StateT* state) { return TaskManager{state}; }
