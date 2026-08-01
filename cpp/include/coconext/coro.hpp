@@ -119,13 +119,25 @@ class Coro {
 
   public:
     explicit Coro(std::coroutine_handle<detail::CoroState<T>> h) : handle_(h) {}
-    ~Coro() {}
+    ~Coro() {
+        if (handle_) {
+            handle_.destroy();
+        }
+    }
 
     // Coro is only used once, so it's move-only
     Coro(Coro const&) = delete;
     Coro& operator=(Coro const&) = delete;
-    Coro(Coro&&) = default;
-    Coro& operator=(Coro&&) = default;
+    Coro(Coro&& other) noexcept : handle_(std::exchange(other.handle_, {})) {}
+    Coro& operator=(Coro&& other) noexcept {
+        if (this != &other) {
+            if (handle_) {
+                handle_.destroy();
+            }
+            handle_ = std::exchange(other.handle_, {});
+        }
+        return *this;
+    }
 
   public:
     auto operator co_await() { return Awaiter{*this}; }

@@ -39,10 +39,12 @@ class Task;
 template <typename T>
 class Coro;
 
+template <typename StateT>
 class TaskManager;
 
 namespace detail {
 
+template <typename T = Erased>
 class TaskManagerState;
 
 template <typename T = Erased>
@@ -52,7 +54,7 @@ template <typename T, typename StateT>
 class FutureAwaiter;
 
 class TaskManagerSharedState : public IntrusiveDequeNode {
-    friend class TaskManagerState;
+    friend class TaskManagerState<>;
 
   private:
     void remove_child() { deque_remove(); }
@@ -69,7 +71,7 @@ class TaskState<Erased> : public TaskManagerSharedState {
     virtual void dec_ref() noexcept = 0;
 
     virtual TaskState<>* get_task() noexcept = 0;
-    virtual TaskManagerState* get_task_manager() noexcept = 0;
+    virtual TaskManagerState<>* get_task_manager() noexcept = 0;
     virtual EventLoop* get_event_loop() noexcept = 0;
 
     virtual bool unstarted() const noexcept = 0;
@@ -77,7 +79,7 @@ class TaskState<Erased> : public TaskManagerSharedState {
     virtual bool done() const noexcept = 0;
     virtual std::exception_ptr exception() const noexcept = 0;
 
-    virtual void start_soon(TaskManagerState* loop) = 0;
+    virtual void start_soon(TaskManagerState<>* loop) = 0;
     virtual void cancel() noexcept = 0;
     virtual void uncancel() = 0;
 
@@ -329,7 +331,7 @@ class TaskStateBase : public TaskState<Erased> {
 
     TaskState<>* get_task() noexcept override { return this; }
     EventLoop* get_event_loop() noexcept override { return event_loop_; }
-    TaskManagerState* get_task_manager() noexcept override { return task_manager_; }
+    TaskManagerState<>* get_task_manager() noexcept override { return task_manager_; }
 
     void add_done_callback(std::function<void(Task<T>&)> callback) {
         if (done()) {
@@ -399,7 +401,7 @@ class TaskStateBase : public TaskState<Erased> {
         cancelled_--;
     }
 
-    void start_soon(detail::TaskManagerState* tm) override;
+    void start_soon(detail::TaskManagerState<>* tm) override;
 
     void inc_ref() noexcept override { ref_count_++; }
     void dec_ref() noexcept override {
@@ -460,7 +462,7 @@ class TaskStateBase : public TaskState<Erased> {
     std::variant<std::monostate, Scheduled, Pending, Running, Result<T>, Exception> state_;
     std::vector<std::function<void(Task<T>&)>> callbacks_;
     mutable DoneFutureState* wait_complete_future_ = nullptr;
-    detail::TaskManagerState* task_manager_ = nullptr;
+    detail::TaskManagerState<>* task_manager_ = nullptr;
     EventLoop* event_loop_ = nullptr;
     size_t ref_count_{0};
     uint16_t cancelled_{0};
@@ -514,10 +516,12 @@ class Task {
     T result() { return handle_->result(); }
 
     void start_soon();
-    void start_soon(TaskManager& loop);
+    template <typename StateT>
+    void start_soon(TaskManager<StateT>& loop) {
+        handle_->start_soon(loop.get_state());
+    }
 
     void cancel() noexcept { handle_->cancel(); }
-    void uncancel() { handle_->uncancel(); }
 
     detail::TaskState<T>* get_state() const noexcept { return handle_; }
     static Task<T> from_state(detail::TaskState<T>* state) { return Task<T>{state}; }
@@ -540,51 +544,78 @@ T run(Task<T> task);
 
 namespace detail {
 
-class TaskManagerState {
-    friend class ::coconext::TaskManager;
-
+// Pure-virtual untyped interface. All state and impl live in TaskManagerState<T>.
+// Mirrors the TaskState<Erased> / TaskStateBase<T> split.
+template <>
+class TaskManagerState<Erased> {
     template <typename>
     friend class TaskStateBase;
 
   public:
-    class DoneFutureState : public FutureState<void> {
-        friend class TaskManagerState;
+    virtual ~TaskManagerState() = default;
+
+    virtual void inc_ref() noexcept = 0;
+    virtual void dec_ref() noexcept = 0;
+
+    virtual void add(Task<>& task) = 0;
+    virtual void close() noexcept = 0;
+    virtual bool closed() const noexcept = 0;
+    virtual void reopen() noexcept = 0;
+
+    virtual void cancel() noexcept = 0;
+    virtual void uncancel() noexcept = 0;
+
+    virtual EventLoop* get_event_loop() noexcept = 0;
+    virtual void bind_event_loop(EventLoop* loop) = 0;
+
+    virtual bool done() const noexcept = 0;
+    virtual bool cancelled() const noexcept = 0;
+
+  private:
+    virtual void internal_child_done(TaskState<>* task) = 0;
+};
+
+template <typename T>
+class TaskManagerState : public TaskManagerState<Erased> {
+  public:
+    class DoneFutureState : public FutureState<T> {
+        friend class TaskManagerState<T>;
 
       public:
         void on_await(EventLoop* loop) {
-            FutureState<void>::on_await(loop);
+            FutureState<T>::on_await(loop);
             owner_->bind_event_loop(loop);
         }
 
       private:
-        explicit DoneFutureState(TaskManagerState* owner) noexcept : owner_(owner) {}
+        explicit DoneFutureState(TaskManagerState<T>* owner) noexcept : owner_(owner) {}
 
-        TaskManagerState* owner_;
+        TaskManagerState<T>* owner_;
     };
 
-    using DoneFuture = Future<void, DoneFutureState>;
+    using DoneFuture = Future<T, DoneFutureState>;
 
-    TaskManagerState() : result_future_state_(new DoneFutureState{this}) {
-        result_future_state_->inc_ref();
+    TaskManagerState() : wait_complete_state_(new DoneFutureState{this}) {
+        wait_complete_state_->inc_ref();
     }
 
-    ~TaskManagerState() {
-        result_future_state_->owner_ = nullptr;
-        result_future_state_->dec_ref();
+    ~TaskManagerState() override {
+        wait_complete_state_->owner_ = nullptr;
+        wait_complete_state_->dec_ref();
     }
 
-    void inc_ref() noexcept { ++ref_count_; }
-    void dec_ref() noexcept {
+    void inc_ref() noexcept override { ++ref_count_; }
+    void dec_ref() noexcept override {
         if (--ref_count_ == 0) {
             delete this;
         }
     }
 
-    void add(Task<>& task) {
-        if (done()) {
+    void add(Task<>& task) override {
+        if (done_) {
             throw std::runtime_error("Cannot add task to done TaskManager");
         }
-        if (closed()) {
+        if (closed_) {
             throw std::runtime_error("Cannot add task to closed TaskManager");
         }
         if (task.unstarted()) {
@@ -593,45 +624,26 @@ class TaskManagerState {
         task.get_state()->inc_ref();
         tasks_.push_back(task.get_state());
     }
-    void close() noexcept {
-        if (done()) {
+
+    void close() noexcept override {
+        if (done_ || closed_) {
             return;
         }
         closed_ = true;
+        for (auto& task : tasks_) {
+            task.cancel();
+        }
     }
-    bool closed() const noexcept { return closed_; }
-    void reopen() noexcept {
-        if (done()) {
+    bool closed() const noexcept override { return closed_; }
+    void reopen() noexcept override {
+        if (done_) {
             return;
         }
         closed_ = false;
     }
 
-    EventLoop* get_event_loop() noexcept { return event_loop_; }
-
-    bool done() const noexcept { return !std::holds_alternative<std::monostate>(result_); }
-    bool cancelled() const noexcept { return cancelled_ > 0; }
-    void result() const {
-        if (!done()) {
-            throw std::runtime_error("TaskManager not completed yet.");
-        }
-        if (std::holds_alternative<Exception>(result_)) {
-            std::rethrow_exception(std::get<Exception>(result_).exception);
-        }
-    }
-    std::exception_ptr exception() const noexcept {
-        if (std::holds_alternative<Exception>(result_)) {
-            return std::get<Exception>(result_).exception;
-        }
-        return nullptr;
-    }
-
-    void set_result() { set_outcome(Result<void>{}); }
-
-    void set_exception(std::exception_ptr exc) { set_outcome(Exception{exc}); }
-
-    void cancel() noexcept {
-        if (done()) {
+    void cancel() noexcept override {
+        if (done_) {
             return;
         }
         if (!cancelled_) {
@@ -639,23 +651,11 @@ class TaskManagerState {
                 task.cancel();
             }
         }
-        cancelled_++;
-    }
-    void uncancel() {
-        if (done()) {
-            return;
-        }
-        if (cancelled_ == 0) {
-            throw std::runtime_error("TaskManager is not cancelled");
-        }
-        cancelled_--;
+        cancelled_ = true;
     }
 
-    DoneFuture wait_complete() const noexcept {
-        return DoneFuture::from_state(result_future_state_);
-    }
-
-    void bind_event_loop(EventLoop* loop) {
+    EventLoop* get_event_loop() noexcept override { return event_loop_; }
+    void bind_event_loop(EventLoop* loop) override {
         if (event_loop_ == nullptr) {
             event_loop_ = loop;
         } else if (event_loop_ != loop) {
@@ -663,91 +663,105 @@ class TaskManagerState {
         }
     }
 
-    // override this in subclasses to determine the end conditions and call
-    // set_result/set_exception appropriately.
-    void child_done(TaskState<>* task) {
-        if (tasks_.empty()) {
-            set_result();
-        }
+    bool done() const noexcept override { return done_; }
+    bool cancelled() const noexcept override { return cancelled_; }
+
+    DoneFuture wait_complete() const noexcept {
+        return DoneFuture::from_state(wait_complete_state_);
     }
+
+    T result() const { return wait_complete_state_->result(); }
+    std::exception_ptr exception() const noexcept {
+        return wait_complete_state_->exception();
+    }
+
+  protected:
+    // Hook 1: called after each child completes and has been removed from tasks_. Override
+    // to decide whether to call close(), inspect the completed task's outcome, etc. If
+    // tasks_ drains naturally without close() having been called, the base auto-closes
+    // and then invokes on_drain_complete().
+    virtual void on_child_done(TaskState<>* task) = 0;
+
+    // Hook 2: called exactly once after tasks_ drains. Return the manager's outcome.
+    virtual Outcome<T> on_drain_complete() = 0;
+
+    IntrusiveDeque<TaskState<>> tasks_;
 
   private:
-    template <typename V>
-    void set_outcome(V&& value) {
-        if (done()) {
-            return;
-        }
-        result_ = std::forward<V>(value);
-        // Cancel any live children so child_done fires on_done once the last one clears.
-        for (auto& task : tasks_) {
-            task.cancel();
-        }
-    }
-
-    // We know the Task done callback into the TaskManager will always exist, so we special
-    // case it to avoid an allocation.
-    void internal_child_done(TaskState<>* task) {
+    void internal_child_done(TaskState<>* task) override {
         task->remove_child();
         task->dec_ref();
-        // call to the user-overloadable child_done()
-        child_done(task);
-        // Tell the done future that the TaskManager is done, so any waiters can resume.
-        // TODO make TaskManagerState intrusively a Future?
-        if (done()) {
-            if (std::holds_alternative<Exception>(result_)) {
-                result_future_state_->set_exception(std::get<Exception>(result_).exception);
+        on_child_done(task);
+        if (!closed_ && tasks_.empty()) {
+            close();
+        }
+        if (closed_ && tasks_.empty() && !done_) {
+            done_ = true;
+            Outcome<T> outcome = on_drain_complete();
+            if (outcome.has_exception()) {
+                wait_complete_state_->set_exception(outcome.exception());
             } else {
-                result_future_state_->set_void();
+                if constexpr (std::is_void_v<T>) {
+                    wait_complete_state_->set_void();
+                } else {
+                    wait_complete_state_->set_result(outcome.value());
+                }
             }
         }
     }
 
-  protected:
-    IntrusiveDeque<TaskState<>> tasks_;
-
-  private:
-    DoneFutureState* result_future_state_;
-    std::variant<std::monostate, Result<void>, Exception> result_;
+    DoneFutureState* wait_complete_state_;
     EventLoop* event_loop_ = nullptr;
     size_t ref_count_{0};
-    uint16_t cancelled_{0};
+    bool cancelled_ = false;
     bool closed_ = false;
+    bool done_ = false;
 };
 
 }  // namespace detail
 
+template <typename StateT = detail::TaskManagerState<>>
 class TaskManager {
+    static_assert(
+        std::is_base_of_v<detail::TaskManagerState<>, StateT>,
+        "TaskManager's StateT must derive from TaskManagerState<>"
+    );
+
   public:
-    TaskManager() : state_(new detail::TaskManagerState{}) { state_->inc_ref(); }
+    TaskManager() : state_(new StateT{}) { state_->inc_ref(); }
     ~TaskManager() { state_->dec_ref(); }
+
+    TaskManager(TaskManager const& other) : state_(other.state_) { state_->inc_ref(); }
+    TaskManager& operator=(TaskManager const& other) {
+        if (this != &other) {
+            state_->dec_ref();
+            state_ = other.state_;
+            state_->inc_ref();
+        }
+        return *this;
+    }
 
     void add(Task<>& task) { state_->add(task); }
 
     bool done() const noexcept { return state_->done(); }
     bool cancelled() const noexcept { return state_->cancelled(); }
-    void result() const { state_->result(); }
-    std::exception_ptr exception() const noexcept { return state_->exception(); }
 
     void cancel() noexcept { state_->cancel(); }
     void uncancel() noexcept { state_->uncancel(); }
 
+    auto result() const { return state_->result(); }
+    std::exception_ptr exception() const noexcept { return state_->exception(); }
+
+    auto wait_complete() const noexcept { return state_->wait_complete(); }
     auto operator co_await() { return state_->wait_complete().operator co_await(); }
 
-    detail::TaskManagerState::DoneFuture wait_complete() const noexcept {
-        return state_->wait_complete();
-    }
-
-    detail::TaskManagerState* get_state() const noexcept { return state_; }
-    static TaskManager from_state(detail::TaskManagerState* state) {
-        return TaskManager{state};
-    }
+    StateT* get_state() const noexcept { return state_; }
+    static TaskManager from_state(StateT* state) { return TaskManager{state}; }
 
   private:
-    explicit TaskManager(detail::TaskManagerState* state) : state_(state) {
-        state_->inc_ref();
-    }
+    explicit TaskManager(StateT* state) : state_(state) { state_->inc_ref(); }
 
-    detail::TaskManagerState* state_;
+    StateT* state_;
 };
 
 namespace detail {
@@ -765,10 +779,11 @@ void TaskStateBase<T>::on_done() {
 }
 
 template <typename T>
-void TaskStateBase<T>::start_soon(TaskManagerState* tm) {
+void TaskStateBase<T>::start_soon(TaskManagerState<>* tm) {
     if (!unstarted()) {
         throw std::runtime_error("Task already started");
     }
+    task_manager_ = tm;
     bind_event_loop(tm->get_event_loop());
     state_ = Scheduled{*this};
     event_loop_->acquire().schedule_back(&std::get<Scheduled>(state_));
@@ -779,11 +794,6 @@ void TaskStateBase<T>::start_soon(TaskManagerState* tm) {
 template <typename T>
 typename detail::TaskStateBase<T>::DoneFuture Task<T>::wait_complete() const noexcept {
     return handle_->wait_complete();
-}
-
-template <typename T>
-void Task<T>::start_soon(TaskManager& loop) {
-    handle_->start_soon(loop.get_state());
 }
 
 Task<> current_task() {
