@@ -576,6 +576,15 @@ class TaskManagerState<Erased> {
 
 template <typename T>
 class TaskManagerState : public TaskManagerState<Erased> {
+    // TaskManagers have a couple states:
+    // - open: tasks can be added.
+    // - closed: no more tasks can be added, existing tasks are being waited until they
+    //   complete.
+    // - done: all tasks have completed, the manager has a result or exception.
+    //
+    // Managers can be cancelled in either the open or closed state. Cancellation implies
+    // closed(), and like Tasks having to run again to throw CancelledError, a cancelled
+    // TaskManager does not have a result until later.
   public:
     class DoneFutureState : public FutureState<T> {
         friend class TaskManagerState<T>;
@@ -610,10 +619,10 @@ class TaskManagerState : public TaskManagerState<Erased> {
     }
 
     void add(Task<>& task) override {
-        if (done_) {
+        if (done()) {
             throw std::runtime_error("Cannot add task to done TaskManager");
         }
-        if (closed_) {
+        if (closed()) {
             throw std::runtime_error("Cannot add task to closed TaskManager");
         }
         if (task.unstarted()) {
@@ -624,10 +633,11 @@ class TaskManagerState : public TaskManagerState<Erased> {
     }
 
     void close() noexcept override {
-        if (done_ || closed_) {
+        if (done() || closed()) {
             return;
         }
         closed_ = true;
+        // cancel remaining tasks
         for (auto& task : tasks_) {
             task.cancel();
         }
@@ -635,7 +645,7 @@ class TaskManagerState : public TaskManagerState<Erased> {
     bool closed() const noexcept override { return closed_; }
 
     void cancel() noexcept override {
-        if (done_ || cancelled_) {
+        if (done() || cancelled()) {
             return;
         }
         cancelled_ = true;
@@ -665,8 +675,8 @@ class TaskManagerState : public TaskManagerState<Erased> {
         return wait_complete_state_->exception();
     }
 
-    void add_done_callback(std::function<void(Future<void>&)> callback) {
-        if (done_) {
+    void add_done_callback(std::function<void(TaskManager<T>&)> callback) {
+        if (done()) {
             throw std::runtime_error("TaskManager is already done, cannot add callback");
         }
         callbacks_.push_back(std::move(callback));
@@ -674,9 +684,7 @@ class TaskManagerState : public TaskManagerState<Erased> {
 
   protected:
     // Hook 1: called after each child completes and has been removed from tasks_. Override
-    // to decide whether to call close(), inspect the completed task's outcome, etc. If
-    // tasks_ drains naturally without close() having been called, the base auto-closes
-    // and then invokes on_drain_complete().
+    // to decide whether to call close(), inspect the completed task's outcome, etc.
     virtual void on_child_done(TaskState<>* task) = 0;
 
     // Hook 2: called exactly once after tasks_ drains. Return the manager's outcome.
@@ -687,10 +695,10 @@ class TaskManagerState : public TaskManagerState<Erased> {
         task->remove_child();
         task->dec_ref();
         on_child_done(task);
-        if (!closed_ && tasks_.empty()) {
+        if (!closed() && tasks_.empty()) {
             close();
         }
-        if (closed_ && tasks_.empty() && !done_) {
+        if (closed() && tasks_.empty() && !done()) {
             done_ = true;
             Outcome<T> outcome = on_drain_complete();
             if (outcome.has_exception()) {
@@ -702,6 +710,10 @@ class TaskManagerState : public TaskManagerState<Erased> {
                     wait_complete_state_->set_result(outcome.value());
                 }
             }
+            auto tm_handle = TaskManager<T>::from_state(this);
+            for (auto& callback : callbacks_) {
+                callback(tm_handle);
+            }
         }
     }
 
@@ -709,7 +721,7 @@ class TaskManagerState : public TaskManagerState<Erased> {
     IntrusiveDeque<TaskState<>> tasks_;
 
   private:
-    std::vector<std::function<void(Future<void>&)>> callbacks_;
+    std::vector<std::function<void(TaskManager<T>&)>> callbacks_;
     DoneFutureState* wait_complete_state_;
     EventLoop* event_loop_ = nullptr;
     size_t ref_count_{0};
