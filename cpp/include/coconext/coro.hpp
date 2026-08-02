@@ -15,8 +15,6 @@ namespace coconext {
 template <typename T>
 class Coro;
 
-namespace detail {
-
 template <typename T>
 class CoroState;
 
@@ -49,30 +47,30 @@ class CoroStateBase {
         };
         return TransferAwaitable{parent_};
     }
-    void unhandled_exception() { value_ = Exception{std::current_exception()}; }
+    void unhandled_exception() { value_ = detail::Exception{std::current_exception()}; }
 
     T result() {
-        if (std::holds_alternative<Exception>(value_)) {
-            std::rethrow_exception(std::get<Exception>(value_).exception);
+        if (std::holds_alternative<detail::Exception>(value_)) {
+            std::rethrow_exception(std::get<detail::Exception>(value_).exception);
         }
-        if (std::holds_alternative<Result<T>>(value_)) {
+        if (std::holds_alternative<detail::Result<T>>(value_)) {
             if constexpr (std::is_void_v<T>) {
                 return;
             } else {
-                return std::move(std::get<Result<T>>(value_).value);
+                return std::move(std::get<detail::Result<T>>(value_).value);
             }
         }
         throw std::runtime_error("Coro does not have a result");
     }
 
-    detail::TaskState<>* get_task() noexcept { return task_; }
+    TaskState<>* get_task() noexcept { return task_; }
 
   private:
-    void set_result(Result<T> value) noexcept { value_ = std::move(value); }
+    void set_result(detail::Result<T> value) noexcept { value_ = std::move(value); }
 
-    std::variant<std::monostate, Result<T>, Exception> value_;
+    std::variant<std::monostate, detail::Result<T>, detail::Exception> value_;
     std::coroutine_handle<> parent_;
-    detail::TaskState<>* task_;
+    TaskState<>* task_;
 };
 
 template <typename T>
@@ -81,17 +79,15 @@ class CoroState : public CoroStateBase<T> {
     template <typename U>
         requires std::is_convertible_v<U, T>
     void return_value(U&& value) {
-        set_result(Result<T>{std::forward<U>(value)});
+        set_result(detail::Result<T>{std::forward<U>(value)});
     }
 };
 
 template <>
 class CoroState<void> : public CoroStateBase<void> {
   public:
-    void return_void() { set_result(Result<void>{}); }
+    void return_void() { this->set_result(detail::Result<void>{}); }
 };
-
-}  // namespace detail
 
 // Passthrough coroutine, keeps a reference to the owning Task's Promise
 template <typename T>
@@ -107,8 +103,9 @@ class Coro {
         std::coroutine_handle<> await_suspend(
             std::coroutine_handle<PromiseType> h
         ) noexcept {
-            coro_.handle_.promise().task_ = h.promise().get_task();
-            coro_.handle_.promise().parent_ = h;
+            auto p = coro_.handle_.promise();
+            p.task_ = h.promise().get_task();
+            p.parent_ = h;
             return coro_.handle_;
         }
         T await_resume() { return coro_.handle_.promise().result(); }
@@ -118,7 +115,7 @@ class Coro {
     };
 
   public:
-    explicit Coro(std::coroutine_handle<detail::CoroState<T>> h) : handle_(h) {}
+    explicit Coro(std::coroutine_handle<CoroState<T>> h) : handle_(h) {}
     ~Coro() {
         if (handle_) {
             handle_.destroy();
@@ -139,11 +136,14 @@ class Coro {
         return *this;
     }
 
+    CoroState<T>& get_state() const noexcept { return handle_.promise(); }
+    // No from_state() because Coro cannot be copied.
+
   public:
     auto operator co_await() { return Awaiter{*this}; }
 
   private:
-    std::coroutine_handle<detail::CoroState<T>> handle_;
+    std::coroutine_handle<CoroState<T>> handle_;
 };
 
 }  // namespace coconext
