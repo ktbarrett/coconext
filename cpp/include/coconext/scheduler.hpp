@@ -60,16 +60,18 @@ class TaskState<Erased> : public IntrusiveDequeNode {
     virtual void inc_ref() noexcept = 0;
     virtual void dec_ref() noexcept = 0;
 
+    virtual EventLoop* get_event_loop() noexcept = 0;
     virtual TaskState<>* get_task() noexcept = 0;
     virtual TaskManagerState<>* get_task_manager() noexcept = 0;
-    virtual EventLoop* get_event_loop() noexcept = 0;
+    virtual TaskManagerState<>* get_global_task_manager() noexcept = 0;
+    virtual void bind(EventLoop* loop, TaskManagerState<>* global_tm) = 0;
 
     virtual bool unstarted() const noexcept = 0;
     virtual bool cancelled() const noexcept = 0;
     virtual bool done() const noexcept = 0;
     virtual std::exception_ptr exception() const noexcept = 0;
 
-    virtual void start_soon(TaskManagerState<>* loop) = 0;
+    virtual void start_soon(TaskManagerState<>* tm) = 0;
     virtual void cancel() noexcept = 0;
     virtual void uncancel() = 0;
 
@@ -99,8 +101,9 @@ class TaskManagerState<Erased> {
 
     virtual void cancel() noexcept = 0;
 
+    virtual TaskManagerState<>* get_global_task_manager() noexcept = 0;
     virtual EventLoop* get_event_loop() noexcept = 0;
-    virtual void set_event_loop(EventLoop* loop) = 0;
+    virtual void bind(EventLoop* loop, TaskManagerState<>* global_tm) = 0;
 
     virtual bool done() const noexcept = 0;
     virtual bool cancelled() const noexcept = 0;
@@ -165,6 +168,8 @@ class AwaitableStateBase {
         }
     }
 
+    void bind(EventLoop* loop, TaskManagerState<>* /*global_tm*/) { set_event_loop(loop); }
+
     void register_waiter(Event* awaiter) { deque_.push_back(awaiter); }
 
   private:
@@ -193,7 +198,7 @@ class AwaitableAwaiter : Event {
         parent_ = h;
         task_ = h.promise().get_task();
         task_->set_pending(this);
-        awaitable_->set_event_loop(task_->get_event_loop());
+        awaitable_->bind(task_->get_event_loop(), task_->get_global_task_manager());
         awaitable_->register_waiter(this);
     }
     typename StateT::value_type await_resume() {
@@ -354,6 +359,13 @@ class TaskStateBase : public TaskState<Erased>, public AwaitableStateBase<T> {
         return AwaitableStateBase<T>::get_event_loop();
     }
     TaskManagerState<>* get_task_manager() noexcept final { return task_manager_; }
+    TaskManagerState<>* get_global_task_manager() noexcept final {
+        return global_task_manager_;
+    }
+    void bind(EventLoop* loop, TaskManagerState<>* global_tm) final {
+        AwaitableStateBase<T>::set_event_loop(loop);
+        global_task_manager_ = global_tm;
+    }
 
     bool unstarted() const noexcept final {
         return std::holds_alternative<std::monostate>(state_);
@@ -425,6 +437,7 @@ class TaskStateBase : public TaskState<Erased>, public AwaitableStateBase<T> {
 
     std::variant<std::monostate, Scheduled, Pending, Running> state_;
     detail::TaskManagerState<>* task_manager_ = nullptr;
+    detail::TaskManagerState<>* global_task_manager_ = nullptr;
     size_t ref_count_{0};
     uint16_t cancelled_{0};
 };
@@ -565,8 +578,12 @@ class TaskManagerState : public TaskManagerState<Erased>, public AwaitableStateB
     EventLoop* get_event_loop() noexcept final {
         return AwaitableStateBase<T>::get_event_loop();
     }
-    void set_event_loop(EventLoop* loop) final {
+    TaskManagerState<>* get_global_task_manager() noexcept final {
+        return global_task_manager_;
+    }
+    void bind(EventLoop* loop, TaskManagerState<>* global_tm) final {
         AwaitableStateBase<T>::set_event_loop(loop);
+        global_task_manager_ = global_tm;
     }
 
     bool done() const noexcept final { return AwaitableStateBase<T>::done(); }
@@ -608,6 +625,7 @@ class TaskManagerState : public TaskManagerState<Erased>, public AwaitableStateB
         }
     }
 
+    TaskManagerState<>* global_task_manager_ = nullptr;
     size_t ref_count_{0};
     bool cancelled_ = false;
     bool closed_ = false;
@@ -669,36 +687,50 @@ void TaskStateBase<T>::start_soon(TaskManagerState<>* tm) {
         throw std::runtime_error("Task already started");
     }
     task_manager_ = tm;
-    auto event_loop = tm->get_event_loop();
-    AwaitableStateBase<T>::set_event_loop(event_loop);
+    bind(tm->get_event_loop(), tm->get_global_task_manager());
     state_ = Scheduled{*this};
-    event_loop->acquire().schedule_back(&std::get<Scheduled>(state_));
+    AwaitableStateBase<T>::get_event_loop()->acquire().schedule_back(
+        &std::get<Scheduled>(state_)
+    );
 }
 
 }  // namespace detail
 
 Task<> current_task() {
     if (!detail::current_task) {
-        throw std::runtime_error("No current task");
+        throw std::runtime_error("No current Task");
     }
     return Task<>::from_state(detail::current_task);
 }
 
 template <typename T>
-void Task<T>::start_soon() {
-    if (!detail::current_task) {
-        throw std::runtime_error("No current task");
-    }
-    handle_->start_soon(detail::current_task->get_task_manager());
+void Task<T>::start_soon(TaskManager<>& tm) {
+    Task<> erased = Task<>::from_state(handle_);
+    tm.add(erased);
 }
 
 template <typename T>
-void Task<T>::start_soon(TaskManager<>& tm) {
-    handle_->start_soon(tm.get_state());
+void Task<T>::start_soon() {
+    if (!detail::current_task) {
+        throw std::runtime_error("No current Task");
+    }
+    Task<> erased = Task<>::from_state(handle_);
+    detail::current_task->get_global_task_manager()->add(erased);
 }
 
 template <typename T>
 T run(Task<T> task);
+
+template <typename T>
+Task<T> start_soon(Task<T> task) {
+    task.start_soon();
+    return task;
+}
+
+template <typename T>
+Task<T> start_soon(Coro<T> coro) {
+    return start_soon(Task<T>{std::move(coro)});
+}
 
 }  // namespace coconext
 

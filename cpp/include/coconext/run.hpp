@@ -57,7 +57,7 @@ template <typename T>
 T run(Task<T> task) {
     detail::EventLoop loop;
     TaskManager<detail::RunTaskManagerState<T>> manager;
-    manager.get_state()->set_event_loop(&loop);
+    manager.get_state()->bind(&loop, manager.get_state());
     manager.get_state()->set_root(task.get_state());
     manager.add(task);
     {
