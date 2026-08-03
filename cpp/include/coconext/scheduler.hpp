@@ -43,7 +43,7 @@ class Task;
 template <typename T>
 class Coro;
 
-template <typename StateT>
+template <typename T = void, typename StateT = TaskManagerState<T>>
 class TaskManager;
 
 namespace detail {
@@ -190,8 +190,6 @@ class FutureStateBase : public detail::AwaitableState<T> {
     friend class Future;
 
   public:
-    using value_type = T;
-
     virtual ~FutureStateBase() = default;
 
   protected:
@@ -469,7 +467,7 @@ class TaskManagerState<detail::Erased> : public detail::AwaitableState<> {
     friend class TaskState<>;
     template <typename>
     friend class TaskManagerState;
-    template <typename>
+    template <typename, typename>
     friend class TaskManager;
 
   public:
@@ -528,16 +526,23 @@ class TaskManagerState<detail::Erased> : public detail::AwaitableState<> {
 
   protected:
     // Hook 1: called after a task has been added to tasks_.
-    virtual void on_add(TaskState<>* task) = 0;
+    virtual void on_add(TaskState<>* task) {}
 
     // Hook 2: called after each child completes and has been removed from tasks_.
     // Override to decide whether to call close(), inspect the completed task's outcome,
     // etc.
-    virtual void on_child_done(TaskState<>* task) = 0;
+    virtual void on_child_done(TaskState<>* task) {
+        if (task->exception() && !task->cancelled()) {
+            TaskManagerState<>::close();
+            for (auto& t : this->tasks_) {
+                t.cancel();
+            }
+        }
+    }
 
     // Hook 3: called exactly once after tasks_ drains. Users call set_result() or
     // set_exception() to set the result of the TaskManager.
-    virtual void on_drain_complete() = 0;
+    virtual void on_drain_complete() {};
 
   private:
     void inc_ref() noexcept { ++ref_count_; }
@@ -589,7 +594,7 @@ class TaskManagerState : public TaskManagerState<>, public detail::AwaitableStat
     using detail::IntrusiveDequeNode::deque_remove;
 };
 
-template <typename StateT>
+template <typename T, typename StateT>
 class TaskManager {
     static_assert(
         std::is_base_of_v<TaskManagerState<>, StateT>,
@@ -597,7 +602,7 @@ class TaskManager {
     );
 
   public:
-    using value_type = typename StateT::value_type;
+    using value_type = T;
 
     TaskManager() : state_(new StateT{}) { state_->inc_ref(); }
     ~TaskManager() { state_->dec_ref(); }
@@ -619,7 +624,7 @@ class TaskManager {
 
     bool done() const noexcept { return state_.done(); }
     bool cancelled() const noexcept { return state_.cancelled(); }
-    value_type result() const { return state_.result(); }
+    T result() const { return state_.result(); }
     std::exception_ptr exception() const noexcept { return state_.exception(); }
 
     void add(TaskState<>& task) { state_.add(task); }
