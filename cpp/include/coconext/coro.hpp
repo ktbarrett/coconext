@@ -63,7 +63,7 @@ class CoroStateBase {
         throw std::runtime_error("Coro does not have a result");
     }
 
-    TaskState<>* get_task() noexcept { return task_; }
+    TaskState<>& get_task() noexcept { return *task_; }
 
   private:
     void set_result(detail::Result<T> value) noexcept { value_ = std::move(value); }

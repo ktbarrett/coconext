@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <exception>
 #include <functional>
+#include <optional>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -42,7 +43,7 @@ class Task;
 template <typename T>
 class Coro;
 
-template <typename T, typename StateT = TaskManagerState<T>>
+template <typename StateT>
 class TaskManager;
 
 namespace detail {
@@ -51,35 +52,34 @@ namespace detail {
 // are fast (Local-Exec mode).
 inline thread_local TaskState<>* current_task = nullptr;
 
-template <typename T>
-class AwaitableStateBase {
+template <typename T = Erased>
+class AwaitableState;
+
+template <>
+class AwaitableState<detail::Erased> : public detail::IntrusiveDequeNode {
+    template <typename>
+    friend class AwaitableState;
     // This is an implementation detail only used for the following classes, so we avoid
     // protected and make friends.
-    friend class ::coconext::FutureState<T>;
-    friend class ::coconext::TaskState<T>;
-    friend class ::coconext::TaskManagerState<T>;
+    template <typename>
+    friend class ::coconext::FutureState;
+    template <typename>
+    friend class ::coconext::TaskState;
+    template <typename>
+    friend class ::coconext::TaskManagerState;
+
+    // This is a placeholder meaning the result is a value, but we can't store it here
+    // because we don't know the type. The actual value is stored in AwaitableState<T>.
+    struct Value {};
 
   public:
-    using value_type = T;
-
     bool done() const noexcept { return !std::holds_alternative<std::monostate>(result_); }
 
-    T result() const {
-        if (std::holds_alternative<detail::Exception>(result_)) {
-            std::rethrow_exception(std::get<detail::Exception>(result_).exception);
-        }
-        if (std::holds_alternative<detail::Result<T>>(result_)) {
-            if constexpr (std::is_void_v<T>) {
-                return;
-            } else {
-                return std::get<detail::Result<T>>(result_).value;
-            }
-        }
-        throw std::runtime_error("Not done");
-    }
-    std::exception_ptr exception() const noexcept {
-        if (std::holds_alternative<detail::Exception>(result_)) {
-            return std::get<detail::Exception>(result_).exception;
+    std::exception_ptr exception() const {
+        if (!done()) {
+            throw std::runtime_error("Not done");
+        } else if (std::holds_alternative<std::exception_ptr>(result_)) {
+            return std::get<std::exception_ptr>(result_);
         }
         return nullptr;
     }
@@ -90,15 +90,11 @@ class AwaitableStateBase {
     }
 
   private:
-    void set_result(Result<T> value) noexcept {
-        result_ = detail::Result{std::move(value)};
-        on_done();
-    }
     void set_exception(std::exception_ptr exc) noexcept {
-        result_ = detail::Exception{exc};
+        result_ = exc;
         on_done();
     }
-    EventLoop* get_event_loop() noexcept { return event_loop_; }
+
     void set_event_loop(EventLoop* loop) {
         if (event_loop_ == nullptr) {
             event_loop_ = loop;
@@ -107,7 +103,9 @@ class AwaitableStateBase {
         }
     }
 
-    void bind(EventLoop* loop, TaskManagerState<>* /*global_tm*/) { set_event_loop(loop); }
+    // This is virtual to prevent a type from forgetting to define this, it's actually
+    // dispatched to directly since we know AwaitableStateT.
+    virtual void bind(EventLoop* loop, TaskManagerState<>* global_tm) = 0;
 
     void register_waiter(Event* awaiter) { deque_.push_back(awaiter); }
 
@@ -121,52 +119,79 @@ class AwaitableStateBase {
   private:
     IntrusiveDeque<Event> deque_;
     std::vector<std::function<void()>> callbacks_;
-    std::variant<std::monostate, Result<T>, Exception> result_;
+    std::variant<std::monostate, std::exception_ptr, Value> result_;
     EventLoop* event_loop_ = nullptr;
+};
+
+template <typename T>
+class AwaitableState : public AwaitableState<detail::Erased> {
+    // This is an implementation detail only used for the following classes, so we avoid
+    // protected and make friends.
+    template <typename>
+    friend class ::coconext::FutureState;
+    template <typename>
+    friend class ::coconext::TaskState;
+    template <typename>
+    friend class ::coconext::TaskManagerState;
+
+  public:
+    using value_type = T;
+
+    T result() const {
+        if (!AwaitableState<>::done()) {
+            throw std::runtime_error("Not done");
+        }
+        if (std::holds_alternative<std::exception_ptr>(result_)) {
+            std::rethrow_exception(std::get<std::exception_ptr>(result_));
+        } else {
+            if constexpr (std::is_void_v<T>) {
+                return;
+            } else {
+                return result_value_->value;
+            }
+        }
+    }
+
+  private:
+    void set_result(Result<T> value) noexcept {
+        result_value_ = value;
+        AwaitableState<>::on_done();
+    }
+
+  private:
+    std::optional<Result<T>> result_value_;
 };
 
 template <typename AwaitableStateT>
 class AwaitableAwaiter : Event {
   public:
+    using value_type = typename AwaitableStateT::value_type;
+
     ~AwaitableAwaiter() { event_unschedule(); }
 
     bool await_ready() const noexcept { return awaitable_->done(); }
     template <typename PromiseType>
-    void await_suspend(std::coroutine_handle<PromiseType> h) {
-        parent_ = h;
-        task_ = h.promise().get_task_for_awaitable();
-        task_->set_pending(this);
-        awaitable_->bind(task_->get_event_loop(), task_->get_global_task_manager());
-        awaitable_->register_waiter(this);
-    }
-    typename AwaitableStateT::value_type await_resume() {
-        if (task_->cancelled()) {
-            throw coconext::Cancelled{};
-        }
-        return awaitable_->result();
-    }
+    void await_suspend(std::coroutine_handle<PromiseType> h);
+    value_type await_resume();
 
   private:
     explicit AwaitableAwaiter(AwaitableStateT* awaitable) : awaitable_(awaitable) {}
 
-    void event_run() override {
-        task_->on_resume();
-        parent_.resume();
-    }
+    void event_run() override;
 
     AwaitableStateT* awaitable_;
     std::coroutine_handle<> parent_;
     TaskState<>* task_;
 };
 
-}  // namespace detail
-
 template <typename T>
-class FutureStateBase : public detail::AwaitableStateBase<T> {
+class FutureStateBase : public detail::AwaitableState<T> {
     template <typename, typename>
     friend class Future;
 
   public:
+    using value_type = T;
+
     virtual ~FutureStateBase() = default;
 
   protected:
@@ -186,22 +211,24 @@ class FutureStateBase : public detail::AwaitableStateBase<T> {
     size_t ref_count_{0};
 };
 
+}  // namespace detail
+
 template <typename T>
-class FutureState : public FutureStateBase<T> {
+class FutureState : public detail::FutureStateBase<T> {
   public:
     void set_result(T&& value) noexcept {
-        detail::AwaitableStateBase<T>::set_result(detail::Result<T>{std::move(value)});
+        detail::AwaitableState<T>::set_result(detail::Result<T>{std::move(value)});
     }
     void set_result(T const& value) noexcept {
-        detail::AwaitableStateBase<T>::set_result(detail::Result<T>{value});
+        detail::AwaitableState<T>::set_result(detail::Result<T>{value});
     }
 };
 
 template <>
-class FutureState<void> : public FutureStateBase<void> {
+class FutureState<void> : public detail::FutureStateBase<void> {
   public:
     void set_void() noexcept {
-        detail::AwaitableStateBase<void>::set_result(detail::Result<void>{});
+        detail::AwaitableState<void>::set_result(detail::Result<void>{});
     }
 };
 
@@ -209,11 +236,13 @@ class FutureState<void> : public FutureStateBase<void> {
 template <typename T, typename StateT>
 class Future {
     static_assert(
-        std::is_base_of_v<FutureStateBase<T>, StateT>,
+        std::is_base_of_v<FutureState<T>, StateT>,
         "Future's StateT must derive from FutureStateBase<T>"
     );
 
   public:
+    using value_type = T;
+
     Future() : handle_(new StateT{}) { handle_->inc_ref(); }
     ~Future() { handle_->dec_ref(); }
     Future(Future const& other) : handle_(other.handle_) { handle_->inc_ref(); }
@@ -246,24 +275,26 @@ class Future {
     StateT& handle_;
 };
 
-template <typename T>
-class TaskStateBase : public detail::AwaitableStateBase<T> {
-    friend class Task<T>;
+template <>
+class TaskState<detail::Erased> : public detail::AwaitableState<> {
+    template <typename>
+    friend class Task;
+    template <typename>
+    friend class TaskState;
     template <typename>
     friend class TaskManagerState;
+    friend class detail::AwaitableAwaiter<TaskState<>>;
 
     struct Scheduled : detail::Event {
-        explicit Scheduled(TaskStateBase<T>& task) : task_(&task) {}
+        explicit Scheduled(TaskState<>* task) : task_(task) {}
 
         void event_run() override {
             task_->on_resume();
-            auto handle = std::coroutine_handle<TaskState<T>>::from_promise(
-                *static_cast<TaskState<T>*>(task_)
-            );
+            auto handle = std::coroutine_handle<TaskState<>>::from_promise(*task_);
             handle.resume();
         }
 
-        TaskStateBase<T>* task_;
+        TaskState<>* task_;
     };
 
     struct Pending {
@@ -273,14 +304,6 @@ class TaskStateBase : public detail::AwaitableStateBase<T> {
     struct Running {};
 
   public:
-    Task<T> get_return_object() { return Task<T>{static_cast<TaskState<T>*>(this)}; }
-    std::suspend_always initial_suspend() noexcept { return {}; }
-    std::suspend_always final_suspend() noexcept { return {}; }
-    void unhandled_exception() {
-        this->set_exception(std::current_exception());
-        on_done();
-    }
-
     bool unstarted() const noexcept {
         return std::holds_alternative<std::monostate>(state_);
     }
@@ -300,7 +323,7 @@ class TaskStateBase : public detail::AwaitableStateBase<T> {
         } else if (std::holds_alternative<Pending>(state_)) {
             auto& pending = std::get<Pending>(state_);
             pending.event->event_unschedule();
-            state_ = Scheduled{*this};
+            state_ = Scheduled{this};
             this->get_event_loop()->acquire().schedule_back(&std::get<Scheduled>(state_));
         }
         // Not done, unstarted, or pending? Already scheduled, we will steal its place in
@@ -316,41 +339,37 @@ class TaskStateBase : public detail::AwaitableStateBase<T> {
         cancelled_--;
     }
 
-    void start_soon(TaskManagerState<>* tm);
+    void start_soon(TaskManagerState<>& tm);
 
   private:
     void inc_ref() noexcept { ++ref_count_; }
     void dec_ref() noexcept {
         if (--ref_count_ == 0) {
-            auto handle = std::coroutine_handle<TaskState<T>>::from_promise(
-                *static_cast<TaskState<T>*>(this)
-            );
+            auto handle = std::coroutine_handle<TaskState<>>::from_promise(*this);
             handle.destroy();
         }
     }
 
-    TaskState<>* get_task() noexcept { return this; }
+    TaskState<>& get_task() noexcept { return *this; }
     TaskManagerState<>* get_task_manager() noexcept { return task_manager_; }
     TaskManagerState<>* get_global_task_manager() noexcept { return global_task_manager_; }
+    detail::EventLoop* get_event_loop() noexcept { return event_loop_; }
+
     void bind(detail::EventLoop* loop, TaskManagerState<>* global_tm) {
-        detail::AwaitableStateBase<T>::set_event_loop(loop);
+        detail::AwaitableState<>::set_event_loop(loop);
         global_task_manager_ = global_tm;
     }
 
-    void on_done() noexcept {
-        state_ = std::monostate{};
-        if (task_manager_) {
-            task_manager_->internal_child_done(static_cast<TaskState<T>*>(this));
-        }
-    }
+    void on_done() noexcept;
 
     void on_resume() {
-        current_task = this;
+        detail::current_task = this;
         state_ = Running{};
     }
 
-    void set_pending(detail::Event* future_awaiter) { state_ = Pending{future_awaiter}; }
+    void set_pending(detail::Event* awaiter) { state_ = Pending{awaiter}; }
 
+  private:
     std::variant<std::monostate, Scheduled, Pending, Running> state_;
     TaskManagerState<>* task_manager_ = nullptr;
     TaskManagerState<>* global_task_manager_ = nullptr;
@@ -358,27 +377,48 @@ class TaskStateBase : public detail::AwaitableStateBase<T> {
     uint16_t cancelled_{0};
 };
 
+namespace detail {
+
 template <typename T>
-class TaskState : public TaskStateBase<T> {
+class TaskStateBase : public TaskState<>, public detail::AwaitableState<T> {
+    Task<T> get_return_object() const noexcept { return Task<T>{this}; }
+    std::suspend_always initial_suspend() noexcept { return {}; }
+    std::suspend_always final_suspend() noexcept { return {}; }
+};
+
+}  // namespace detail
+
+template <typename T>
+class TaskState : public detail::TaskStateBase<T> {
   public:
-    void return_value(T value) {
-        this->set_result(Result<T>{std::move(value)});
-        this->on_done();
+    void unhandled_exception() noexcept {
+        TaskState<>::set_exception(std::current_exception());
+        TaskState<>::on_done();
+    }
+    void return_value(T value) noexcept {
+        detail::AwaitableState<T>::set_result(detail::Result<T>{std::move(value)});
+        TaskState<>::on_done();
     }
 };
 
 template <>
-class TaskState<void> : public TaskStateBase<void> {
+class TaskState<void> : public detail::TaskStateBase<void> {
   public:
-    void return_void() {
-        this->set_result(Result<void>{});
-        this->on_done();
+    void unhandled_exception() noexcept {
+        TaskState<>::set_exception(std::current_exception());
+        TaskState<>::on_done();
+    }
+    void return_void() noexcept {
+        detail::AwaitableState<void>::set_result(detail::Result<void>{});
+        TaskState<>::on_done();
     }
 };
 
 template <typename T>
 class Task {
   public:
+    using value_type = T;
+
     ~Task() { handle_->dec_ref(); }
 
     Task(Task const& other) : handle_(other.handle_) { handle_->inc_ref(); }
@@ -406,7 +446,7 @@ class Task {
     T result() { return handle_.result(); }
 
     void start_soon();
-    void start_soon(TaskManager<>& tm);
+    void start_soon(TaskManagerState<>& tm);
 
     void cancel() noexcept { handle_.cancel(); }
     void uncancel() { handle_.uncancel(); }
@@ -424,8 +464,14 @@ class Task {
     TaskState<T>& handle_;
 };
 
-template <typename T>
-class TaskManagerState : public detail::AwaitableStateBase<T> {
+template <>
+class TaskManagerState<detail::Erased> : public detail::AwaitableState<> {
+    friend class TaskState<>;
+    template <typename>
+    friend class TaskManagerState;
+    template <typename>
+    friend class TaskManager;
+
   public:
     // TaskManagers have a couple states:
     // - open: tasks can be added.
@@ -437,37 +483,39 @@ class TaskManagerState : public detail::AwaitableStateBase<T> {
     // closed(), and like Tasks having to run again to throw CancelledError, a cancelled
     // TaskManager does not have a result until later.
 
-    void add(TaskState<>* task) {
-        if (this->done()) {
+    virtual ~TaskManagerState() = default;
+
+    void add(TaskState<>& task) {
+        if (detail::AwaitableState<>::done()) {
             throw std::runtime_error("Cannot add task to done TaskManager");
         }
         if (closed()) {
             throw std::runtime_error("Cannot add task to closed TaskManager");
         }
-        if (task->unstarted()) {
-            task->start_soon(this);
+        if (task.unstarted()) {
+            task.start_soon(*this);
         }
-        task->inc_ref();
-        tasks_.push_back(task);
-        on_add(task);
+        task.inc_ref();
+        tasks_.push_back(&task);
+        on_add(&task);
     }
 
     void close() noexcept {
-        if (this->done() || closed()) {
+        if (detail::AwaitableState<>::done() || closed()) {
             return;
         }
         closed_ = true;
     }
     bool closed() const noexcept { return closed_; }
     void reopen() noexcept {
-        if (this->done()) {
+        if (detail::AwaitableState<>::done()) {
             return;
         }
         closed_ = false;
     }
 
     void cancel() noexcept {
-        if (this->done() || cancelled()) {
+        if (detail::AwaitableState<>::done() || cancelled()) {
             return;
         }
         cancelled_ = true;
@@ -487,8 +535,9 @@ class TaskManagerState : public detail::AwaitableStateBase<T> {
     // etc.
     virtual void on_child_done(TaskState<>* task) = 0;
 
-    // Hook 3: called exactly once after tasks_ drains. Return the manager's outcome.
-    virtual Outcome<T> on_drain_complete() = 0;
+    // Hook 3: called exactly once after tasks_ drains. Users call set_result() or
+    // set_exception() to set the result of the TaskManager.
+    virtual void on_drain_complete() = 0;
 
   private:
     void inc_ref() noexcept { ++ref_count_; }
@@ -498,31 +547,28 @@ class TaskManagerState : public detail::AwaitableStateBase<T> {
         }
     }
 
-    detail::EventLoop* get_event_loop() noexcept { return this->get_event_loop(); }
-    TaskManagerState<>* get_global_task_manager() noexcept { return global_task_manager_; }
+    detail::EventLoop* get_event_loop() const noexcept {
+        return detail::AwaitableState<>::event_loop_;
+    }
+
+    TaskManagerState<>* get_global_task_manager() const noexcept {
+        return global_task_manager_;
+    }
+
     void bind(detail::EventLoop* loop, TaskManagerState<>* global_tm) {
-        detail::AwaitableStateBase<T>::set_event_loop(loop);
+        detail::AwaitableState<>::set_event_loop(loop);
         global_task_manager_ = global_tm;
     }
 
-    void internal_child_done(TaskState<>* task) {
-        task->remove_child();
-        task->dec_ref();
-        on_child_done(task);
+    void internal_child_done(TaskState<>& task) {
+        task.deque_remove();
+        task.dec_ref();
+        on_child_done(&task);
         if (!closed() && tasks_.empty()) {
             close();
         }
-        if (closed() && tasks_.empty() && !this->done()) {
-            Outcome<T> outcome = on_drain_complete();
-            if (outcome.has_exception()) {
-                this->set_exception(outcome.exception());
-            } else {
-                if constexpr (std::is_void_v<T>) {
-                    this->set_result(detail::Result<void>{});
-                } else {
-                    this->set_result(detail::Result<T>{outcome.value()});
-                }
-            }
+        if (closed() && tasks_.empty() && !detail::AwaitableState<>::done()) {
+            on_drain_complete();
         }
     }
 
@@ -536,7 +582,14 @@ class TaskManagerState : public detail::AwaitableStateBase<T> {
     bool closed_ = false;
 };
 
-template <typename T, typename StateT>
+template <typename T>
+class TaskManagerState : public TaskManagerState<>, public detail::AwaitableState<T> {
+  private:
+    // prevent this from further subclassing.
+    using detail::IntrusiveDequeNode::deque_remove;
+};
+
+template <typename StateT>
 class TaskManager {
     static_assert(
         std::is_base_of_v<TaskManagerState<>, StateT>,
@@ -544,6 +597,8 @@ class TaskManager {
     );
 
   public:
+    using value_type = typename StateT::value_type;
+
     TaskManager() : state_(new StateT{}) { state_->inc_ref(); }
     ~TaskManager() { state_->dec_ref(); }
 
@@ -564,10 +619,10 @@ class TaskManager {
 
     bool done() const noexcept { return state_.done(); }
     bool cancelled() const noexcept { return state_.cancelled(); }
-    T result() const { return state_.result(); }
+    value_type result() const { return state_.result(); }
     std::exception_ptr exception() const noexcept { return state_.exception(); }
 
-    void add(Task<>& task) { state_.add(task); }
+    void add(TaskState<>& task) { state_.add(task); }
 
     void cancel() noexcept { state_.cancel(); }
 
@@ -583,20 +638,50 @@ class TaskManager {
 };
 
 template <typename T>
-void TaskStateBase<T>::start_soon(TaskManagerState<>* tm) {
-    if (!unstarted()) {
-        throw std::runtime_error("Task already started");
-    }
-    task_manager_ = tm;
-    bind(tm->get_event_loop(), tm->get_global_task_manager());
-    state_ = Scheduled{*this};
-    this->get_event_loop()->acquire().schedule_back(&std::get<Scheduled>(state_));
+template <typename PromiseType>
+void detail::AwaitableAwaiter<T>::await_suspend(std::coroutine_handle<PromiseType> h) {
+    parent_ = h;
+    task_ = h.promise().get_task();
+    task_->set_pending(this);
+    awaitable_->bind(task_->get_event_loop(), task_->get_global_task_manager());
+    awaitable_->register_waiter(this);
 }
 
 template <typename T>
-void Task<T>::start_soon(TaskManager<>& tm) {
-    Task<> erased = Task<>::from_state(handle_);
-    tm.add(erased);
+typename detail::AwaitableAwaiter<T>::value_type detail::AwaitableAwaiter<
+    T>::await_resume() {
+    if (task_->cancelled()) {
+        throw coconext::Cancelled{};
+    }
+    return awaitable_->result();
+}
+
+void TaskState<>::start_soon(TaskManagerState<>& tm) {
+    if (!unstarted()) {
+        throw std::runtime_error("Task already started");
+    }
+    task_manager_ = &tm;
+    bind(tm.get_event_loop(), tm.get_global_task_manager());
+    state_ = TaskState<>::Scheduled{this};
+    this->get_event_loop()->acquire().schedule_back(
+        &std::get<TaskState<>::Scheduled>(state_)
+    );
+}
+
+void TaskState<>::on_done() noexcept {
+    state_ = std::monostate{};
+    task_manager_->internal_child_done(*this);
+}
+
+template <typename AwaitableStateT>
+void detail::AwaitableAwaiter<AwaitableStateT>::event_run() {
+    task_->on_resume();
+    parent_.resume();
+}
+
+template <typename T>
+void Task<T>::start_soon(TaskManagerState<>& tm) {
+    tm.add(handle_);
 }
 
 template <typename T>
@@ -604,8 +689,7 @@ void Task<T>::start_soon() {
     if (!detail::current_task) {
         throw std::runtime_error("No current Task");
     }
-    Task<> erased = Task<>::from_state(handle_);
-    detail::current_task->get_global_task_manager()->add(erased);
+    detail::current_task->get_global_task_manager()->add(handle_);
 }
 
 template <typename T>
