@@ -23,11 +23,11 @@ class CoroStateBase {
     friend class CoroState<T>;
 
   public:
-    Coro<T> get_return_object() {
+    [[nodiscard]] Coro<T> get_return_object() {
         return Coro<T>{std::coroutine_handle<CoroState<T>>::from_promise(*this)};
     }
-    std::suspend_always initial_suspend() noexcept { return {}; }
-    auto final_suspend() noexcept {
+    [[nodiscard]] std::suspend_always initial_suspend() noexcept { return {}; }
+    [[nodiscard]] auto final_suspend() noexcept {
         // This exists to "chain" coros together.
         class TransferAwaitable {
           public:
@@ -49,7 +49,7 @@ class CoroStateBase {
     }
     void unhandled_exception() { value_ = detail::Exception{std::current_exception()}; }
 
-    T result() {
+    [[nodiscard]] T result() {
         if (std::holds_alternative<detail::Exception>(value_)) {
             std::rethrow_exception(std::get<detail::Exception>(value_).exception);
         }
@@ -63,7 +63,9 @@ class CoroStateBase {
         throw std::runtime_error("Coro does not have a result");
     }
 
-    TaskState<>& get_task() noexcept { return *task_; }
+    // This is an abstraction point between Coro and Task to get the current Task from the
+    // awaiting coroutine's promise instead of a TLS lookup.
+    [[nodiscard]] TaskState<>& get_task() noexcept { return *task_; }
 
   private:
     void set_result(detail::Result<T> value) noexcept { value_ = std::move(value); }
@@ -98,9 +100,9 @@ class Coro {
         Awaiter(Coro& coro) : coro_(coro) {}
 
       public:
-        bool await_ready() const noexcept { return false; }
+        [[nodiscard]] bool await_ready() const noexcept { return false; }
         template <typename PromiseType>
-        std::coroutine_handle<> await_suspend(
+        [[nodiscard]] std::coroutine_handle<> await_suspend(
             std::coroutine_handle<PromiseType> h
         ) noexcept {
             auto p = coro_.handle_.promise();
@@ -108,14 +110,14 @@ class Coro {
             p.parent_ = h;
             return coro_.handle_;
         }
-        T await_resume() { return coro_.handle_.promise().result(); }
+        [[nodiscard]] T await_resume() { return coro_.handle_.promise().result(); }
 
       private:
         Coro& coro_;
     };
 
   public:
-    explicit Coro(std::coroutine_handle<CoroState<T>> h) : handle_(h) {}
+    [[nodiscard]] explicit Coro(std::coroutine_handle<CoroState<T>> h) : handle_(h) {}
     ~Coro() {
         if (handle_) {
             handle_.destroy();
@@ -125,7 +127,7 @@ class Coro {
     // Coro is only used once, so it's move-only
     Coro(Coro const&) = delete;
     Coro& operator=(Coro const&) = delete;
-    Coro(Coro&& other) noexcept : handle_(std::exchange(other.handle_, {})) {}
+    [[nodiscard]] Coro(Coro&& other) noexcept : handle_(std::exchange(other.handle_, {})) {}
     Coro& operator=(Coro&& other) noexcept {
         if (this != &other) {
             if (handle_) {
@@ -136,11 +138,11 @@ class Coro {
         return *this;
     }
 
-    CoroState<T>& get_state() const noexcept { return handle_.promise(); }
+    [[nodiscard]] CoroState<T>& get_state() const noexcept { return handle_.promise(); }
     // No from_state() because Coro cannot be copied.
 
   public:
-    auto operator co_await() { return Awaiter{*this}; }
+    [[nodiscard]] auto operator co_await() noexcept { return Awaiter{*this}; }
 
   private:
     std::coroutine_handle<CoroState<T>> handle_;
