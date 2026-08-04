@@ -7,6 +7,22 @@
 
 namespace coconext {
 
+namespace detail {
+
+template <typename T>
+struct Value {
+    T value;
+};
+
+template <>
+struct Value<void> {};
+
+struct Exception {
+    std::exception_ptr exception;
+};
+
+}  // namespace detail
+
 class Cancelled : public std::exception {
   public:
     Cancelled() noexcept : msg_() {}

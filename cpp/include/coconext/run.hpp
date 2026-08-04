@@ -15,35 +15,34 @@ namespace coconext {
 namespace detail {
 
 template <typename T>
-class RunTaskManagerState : public TaskManagerState<T> {
+class RunTaskManagerState final : public TaskManagerState<T> {
   public:
-    void set_root(TaskState<>* root) {
-        if (root_) {
-            throw std::runtime_error("Root task already set");
-        }
-        root_ = root;
-    }
+    RunTaskManagerState(TaskState<>& root) noexcept : root_(root) {}
 
   private:
-    void on_add(TaskState<>*) final {}
-    void on_child_done(TaskState<>* task) final {
-        if (task == root_) {
+    void on_add(TaskState<>&) noexcept final {}
+    void on_child_done(TaskState<>& task) noexcept final {
+        if (root_.done()) {
             TaskManagerState<T>::close();
             for (auto& t : this->tasks_) {
                 t.cancel();
             }
         }
     }
-    void on_drain_complete() final {
-        if (root_->exception()) {
-            set_exception(root_->exception());
+    void on_drain_complete() noexcept final {
+        if (root_.exception()) {
+            this->set_exception(root_.exception());
+        } else {
+            this->set_void();
         }
-        set_void();
     }
 
   private:
-    TaskState<>* root_ = nullptr;
+    TaskState<>& root_;
 };
+
+template <typename T>
+using RunTaskManager = TaskManager<RunTaskManagerState<T>>;
 
 }  // namespace detail
 
@@ -56,9 +55,9 @@ T run(Coro<T> coro) {
 template <typename T>
 T run(Task<T> task) {
     detail::EventLoop loop;
-    TaskManager<detail::RunTaskManagerState<T>> manager;
-    manager.get_state()->bind(&loop, manager.get_state());
-    manager.get_state()->set_root(task.get_state());
+    detail::RunTaskManager<T> manager(task.get_state());
+    task.get_state().bind_event_loop(loop);
+    task.get_state().bind_global_task_manager(manager);
     manager.add(task);
     {
         auto handle = loop.acquire();
