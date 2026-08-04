@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <coconext/intrusive_deque.hpp>
+#include <coconext/not_null.hpp>
 #include <condition_variable>
 #include <mutex>
 #include <stdexcept>
@@ -66,7 +67,9 @@ class EventLoop {
             loop_.mtx_.unlock();
         }
 
-        void schedule_back(Event* event) noexcept { loop_.queue_.push_back(event); }
+        void schedule_back(not_null<Event*> event) noexcept {
+            loop_.queue_.push_back(event);
+        }
 
         template <typename DequeT>
         void schedule_all_back(DequeT&& deque) noexcept {

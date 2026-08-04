@@ -8,6 +8,7 @@
 #include <utility>
 #include <variant>
 
+#include <coconext/not_null.hpp>
 #include <coconext/task.hpp>
 
 namespace coconext {
@@ -68,14 +69,14 @@ class CoroStateBase {
 
     // This is an abstraction point between Coro and Task to get the current Task from the
     // awaiting coroutine's promise instead of a TLS lookup.
-    [[nodiscard]] TaskState<>& get_task() noexcept { return *task_; }
+    [[nodiscard]] not_null<TaskState<>*> get_task() noexcept { return task_; }
 
   private:
     void set_result(detail::Value<T> value) noexcept { value_ = std::move(value); }
 
     std::variant<std::monostate, detail::Value<T>, detail::Exception> value_;
     std::coroutine_handle<> parent_;
-    TaskState<>* task_;
+    TaskState<>* task_ = nullptr;
 };
 
 template <typename T>

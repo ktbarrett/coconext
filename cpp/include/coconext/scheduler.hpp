@@ -3,8 +3,10 @@
 
 #include <coconext/event_loop.hpp>
 #include <coconext/intrusive_deque.hpp>
+#include <coconext/not_null.hpp>
 #include <coconext/outcome.hpp>
 
+#include <concepts>
 #include <coroutine>
 #include <cstddef>
 #include <cstdint>
@@ -52,7 +54,7 @@ namespace detail {
 inline thread_local TaskState<>* current_task = nullptr;
 
 template <typename S>
-concept AwaitableState = requires(S s, Event& e, TaskState<>& t) {
+concept AwaitableState = requires(S s, not_null<Event*> e, not_null<TaskState<>*> t) {
     typename S::value_type;
     { s.done() } -> std::same_as<bool>;
     { s.get_event_loop() } -> std::same_as<EventLoop*>;
@@ -68,7 +70,7 @@ class AwaitableAwaiter : private Event {
 
     ~AwaitableAwaiter() { event_unschedule(); }
 
-    [[nodiscard]] bool await_ready() const noexcept { return awaitable_.done(); }
+    [[nodiscard]] bool await_ready() const noexcept { return awaitable_->done(); }
     template <typename PromiseType>
     void await_suspend(std::coroutine_handle<PromiseType> h) noexcept;
     [[nodiscard]] value_type await_resume();
@@ -81,12 +83,12 @@ class AwaitableAwaiter : private Event {
     template <typename>
     friend class ::coconext::TaskManager;
 
-    [[nodiscard]] explicit AwaitableAwaiter(AwaitableStateT& awaitable)
+    [[nodiscard]] explicit AwaitableAwaiter(not_null<AwaitableStateT*> awaitable)
         : awaitable_(awaitable) {}
 
     void event_run() noexcept override;
 
-    AwaitableStateT& awaitable_;
+    not_null<AwaitableStateT*> awaitable_;
     std::coroutine_handle<> parent_ = nullptr;
     TaskState<>* task_ = nullptr;
 };
@@ -167,14 +169,16 @@ class FutureState {
     }
 
   private:
-    void on_awaited(TaskState<>& task);
+    void on_awaited(not_null<TaskState<>*> task);
 
-    void register_waiter(detail::Event& awaiter) noexcept { waiters_.push_back(&awaiter); }
+    void register_waiter(not_null<detail::Event*> awaiter) noexcept {
+        waiters_.push_back(awaiter);
+    }
 
-    void bind_event_loop(detail::EventLoop& loop) {
+    void bind_event_loop(not_null<detail::EventLoop*> loop) {
         if (event_loop_ == nullptr) {
-            event_loop_ = &loop;
-        } else if (event_loop_ != &loop) {
+            event_loop_ = loop;
+        } else if (event_loop_ != loop) {
             throw std::runtime_error("Awaitable is already bound to another EventLoop");
         }
     }
@@ -239,18 +243,20 @@ class Future {
     }
 
     [[nodiscard]] auto operator co_await() noexcept {
-        return detail::AwaitableAwaiter<StateT>(*handle_);
+        return detail::AwaitableAwaiter<StateT>(handle_);
     }
 
-    [[nodiscard]] static Future from_state(StateT& state) noexcept { return Future{state}; }
-    [[nodiscard]] StateT& get_state() const noexcept { return *handle_; }
+    [[nodiscard]] static Future from_state(not_null<StateT*> state) noexcept {
+        return Future{state};
+    }
+    [[nodiscard]] not_null<StateT*> get_state() const noexcept { return handle_; }
 
   private:
-    [[nodiscard]] explicit Future(StateT& state) noexcept : handle_(&state) {
+    [[nodiscard]] explicit Future(not_null<StateT*> state) noexcept : handle_(state) {
         handle_->inc_ref();
     }
 
-    StateT* handle_;
+    not_null<StateT*> handle_;
 };
 
 template <>
@@ -263,7 +269,7 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
     friend class detail::AwaitableAwaiter;
 
     struct Scheduled : detail::Event {
-        [[nodiscard]] explicit Scheduled(TaskState<>* task) : task_(task) {}
+        [[nodiscard]] explicit Scheduled(not_null<TaskState<>*> task) : task_(task) {}
 
         void event_run() noexcept override {
             task_->on_resume();
@@ -271,13 +277,13 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
             handle.resume();
         }
 
-        TaskState<>* task_;
+        not_null<TaskState<>*> task_;
     };
 
     struct Pending {
-        [[nodiscard]] explicit Pending(detail::Event* event) : event(event) {}
+        [[nodiscard]] explicit Pending(not_null<detail::Event*> event) : event(event) {}
 
-        detail::Event* event;
+        not_null<detail::Event*> event;
     };
 
     struct Running {};
@@ -326,6 +332,7 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
             event_loop_->acquire().schedule_back(&std::get<Scheduled>(state_));
         }
     }
+
     void uncancel() {
         if (done()) {
             return;
@@ -363,48 +370,50 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
         }
     }
 
-    [[nodiscard]] TaskState<>& get_task() noexcept { return *this; }
+    [[nodiscard]] not_null<TaskState<>*> get_task() noexcept { return this; }
 
-    void register_waiter(detail::Event& awaiter) noexcept { waiters_.push_back(&awaiter); }
+    void register_waiter(not_null<detail::Event*> awaiter) noexcept {
+        waiters_.push_back(awaiter);
+    }
 
-    void bind_event_loop(detail::EventLoop& loop) {
+    void bind_event_loop(not_null<detail::EventLoop*> loop) {
         if (event_loop_ == nullptr) {
-            event_loop_ = &loop;
-        } else if (event_loop_ != &loop) {
+            event_loop_ = loop;
+        } else if (event_loop_ != loop) {
             throw std::runtime_error("Awaitable is already bound to another EventLoop");
         }
     }
 
-    void on_awaited(TaskState<>& task) {
-        if (!task.unstarted()) {
+    void on_awaited(not_null<TaskState<>*> task) {
+        if (!task->unstarted()) {
             return;
         }
-        auto event_loop = task.get_event_loop();
+        auto event_loop = task->get_event_loop();
         assert(event_loop != nullptr && "Running Task must have an EventLoop bound");
-        bind_event_loop(*event_loop);
+        bind_event_loop(event_loop);
 
-        auto global_task_manager = task.get_global_task_manager();
+        auto global_task_manager = task->get_global_task_manager();
         assert(
             global_task_manager != nullptr
             && "Running Task must have a global TaskManager bound"
         );
-        bind_global_task_manager(*global_task_manager);
+        bind_global_task_manager(global_task_manager);
 
         event_loop_->acquire().schedule_back(&std::get<Scheduled>(state_));
     }
 
-    void bind_task_manager(TaskManagerState<>& task_manager) {
-        if (task_manager_ != nullptr && task_manager_ != &task_manager) {
+    void bind_task_manager(not_null<TaskManagerState<>*> task_manager) {
+        if (task_manager_ != nullptr && task_manager_ != task_manager) {
             throw std::runtime_error("Task is already bound to a TaskManager");
         }
-        task_manager_ = &task_manager;
+        task_manager_ = task_manager;
     }
 
-    void bind_global_task_manager(TaskManagerState<>& task_manager) noexcept {
+    void bind_global_task_manager(not_null<TaskManagerState<>*> task_manager) noexcept {
         if (global_task_manager_ != nullptr) {
             return;
         }
-        global_task_manager_ = &task_manager;
+        global_task_manager_ = task_manager;
     }
 
     void on_done() noexcept;
@@ -414,7 +423,9 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
         state_ = Running{};
     }
 
-    void on_awaiting(detail::Event& awaiter) noexcept { state_ = Pending{&awaiter}; }
+    void on_awaiting(not_null<detail::Event*> awaiter) noexcept {
+        state_ = Pending{awaiter};
+    }
 
     std::variant<std::monostate, Scheduled, Pending, Running> state_;
     std::variant<std::monostate, std::exception_ptr, detail::Value<detail::Erased>> result_;
@@ -432,9 +443,7 @@ class TaskState : public TaskState<> {
   public:
     using value_type = T;
 
-    [[nodiscard]] Task<T> get_return_object() noexcept {
-        return Task<T>::from_state(*this);
-    }
+    [[nodiscard]] Task<T> get_return_object() noexcept { return Task<T>::from_state(this); }
     [[nodiscard]] std::suspend_always initial_suspend() noexcept { return {}; }
     [[nodiscard]] std::suspend_always final_suspend() noexcept { return {}; }
 
@@ -509,17 +518,17 @@ class Task {
     void cancel() noexcept { handle_->cancel(); }
     void uncancel() { handle_->uncancel(); }
 
-    [[nodiscard]] TaskState<T>& get_state() const noexcept { return *handle_; }
-    [[nodiscard]] static Task<T> from_state(TaskState<T>& state) noexcept {
+    [[nodiscard]] not_null<TaskState<T>*> get_state() const noexcept { return handle_; }
+    [[nodiscard]] static Task<T> from_state(not_null<TaskState<T>*> state) noexcept {
         return Task<T>{state};
     }
 
     [[nodiscard]] auto operator co_await() noexcept {
-        return detail::AwaitableAwaiter<TaskState<T>>(*handle_);
+        return detail::AwaitableAwaiter<TaskState<T>>(handle_);
     }
 
   private:
-    [[nodiscard]] explicit Task(TaskState<T>& s) noexcept : handle_(&s) {
+    [[nodiscard]] explicit Task(not_null<TaskState<T>*> s) noexcept : handle_(s) {
         handle_->inc_ref();
     }
 
@@ -527,7 +536,7 @@ class Task {
         co_return co_await std::move(coro);
     }
 
-    TaskState<T>* handle_;
+    not_null<TaskState<T>*> handle_;
 };
 
 template <>
@@ -564,7 +573,7 @@ class TaskManagerState<detail::Erased> {
 
     [[nodiscard]] detail::EventLoop* get_event_loop() const noexcept { return event_loop_; }
 
-    void add(TaskState<>& task) {
+    void add(not_null<TaskState<>*> task) {
         if (done()) {
             throw std::runtime_error("Cannot add task to done TaskManager");
         }
@@ -575,20 +584,20 @@ class TaskManagerState<detail::Erased> {
         // EventLoop. Bind whichever side is already bound to the other; throws on
         // mismatch. If neither is bound, start_soon() below binds from the caller's
         // current_event_loop() and we propagate to the manager after.
-        if (task.event_loop_ != nullptr) {
-            bind_event_loop(*task.event_loop_);
+        if (task->event_loop_ != nullptr) {
+            bind_event_loop(task->event_loop_);
         } else if (event_loop_ != nullptr) {
-            task.bind_event_loop(*event_loop_);
+            task->bind_event_loop(event_loop_);
         }
-        if (task.unstarted()) {
-            task.start_soon();
+        if (task->unstarted()) {
+            task->start_soon();
         }
         if (event_loop_ == nullptr) {
-            bind_event_loop(*task.event_loop_);
+            bind_event_loop(task->event_loop_);
         }
-        task.bind_task_manager(*this);
-        task.inc_ref();
-        tasks_.push_back(&task);
+        task->bind_task_manager(this);
+        task->inc_ref();
+        tasks_.push_back(task);
         on_add(task);
     }
 
@@ -620,10 +629,10 @@ class TaskManagerState<detail::Erased> {
 
   protected:
     // Hook 1: called after a task has been added to tasks_.
-    virtual void on_add(TaskState<>& task) noexcept = 0;
+    virtual void on_add(not_null<TaskState<>*> task) noexcept = 0;
 
     // Hook 2: called after each child completes and has been removed from tasks_.
-    virtual void on_child_done(TaskState<>& task) noexcept = 0;
+    virtual void on_child_done(not_null<TaskState<>*> task) noexcept = 0;
 
     // Hook 3: called exactly once after tasks_ drains. Users call set_result() or
     // set_exception() to set the result of the TaskManager.
@@ -647,12 +656,14 @@ class TaskManagerState<detail::Erased> {
         }
     }
 
-    void register_waiter(detail::Event& awaiter) noexcept { waiters_.push_back(&awaiter); }
+    void register_waiter(not_null<detail::Event*> awaiter) noexcept {
+        waiters_.push_back(awaiter);
+    }
 
-    void bind_event_loop(detail::EventLoop& loop) {
+    void bind_event_loop(not_null<detail::EventLoop*> loop) {
         if (event_loop_ == nullptr) {
-            event_loop_ = &loop;
-        } else if (event_loop_ != &loop) {
+            event_loop_ = loop;
+        } else if (event_loop_ != loop) {
             throw std::runtime_error("Awaitable is already bound to another EventLoop");
         }
     }
@@ -665,9 +676,9 @@ class TaskManagerState<detail::Erased> {
         event_loop_->acquire().schedule_all_back(std::move(waiters_));
     }
 
-    void internal_child_done(TaskState<>& task) noexcept {
-        task.deque_remove();
-        task.dec_ref();
+    void internal_child_done(not_null<TaskState<>*> task) noexcept {
+        task->deque_remove();
+        task->dec_ref();
         on_child_done(task);
         if (!closed() && tasks_.empty()) {
             close();
@@ -677,10 +688,10 @@ class TaskManagerState<detail::Erased> {
         }
     }
 
-    void on_awaited(TaskState<>& task) {
-        auto event_loop = task.get_event_loop();
+    void on_awaited(not_null<TaskState<>*> task) {
+        auto event_loop = task->get_event_loop();
         assert(event_loop != nullptr && "Running Task must have an EventLoop bound");
-        bind_event_loop(*event_loop);
+        bind_event_loop(event_loop);
     }
 
     std::variant<std::monostate, std::exception_ptr, detail::Value<detail::Erased>> result_;
@@ -737,7 +748,12 @@ class TaskManager {
   public:
     using value_type = typename StateT::value_type;
 
-    [[nodiscard]] TaskManager() noexcept : state_(new StateT{}) { state_->inc_ref(); }
+    template <typename... Args>
+        requires std::constructible_from<StateT, Args...>
+    [[nodiscard]] explicit TaskManager(Args&&... args)
+        : state_(new StateT{std::forward<Args>(args)...}) {
+        state_->inc_ref();
+    }
     [[nodiscard]] TaskManager(TaskManager const& other) noexcept : state_(other.state_) {
         state_->inc_ref();
     }
@@ -763,49 +779,49 @@ class TaskManager {
     [[nodiscard]] value_type result() const { return state_->result(); }
     [[nodiscard]] std::exception_ptr exception() const { return state_->exception(); }
 
-    void add(TaskState<>& task) { state_->add(task); }
+    void add(not_null<TaskState<>*> task) { state_->add(task); }
 
     void cancel() noexcept { state_->cancel(); }
 
     [[nodiscard]] auto operator co_await() noexcept {
-        return detail::AwaitableAwaiter<StateT>(*state_);
+        return detail::AwaitableAwaiter<StateT>(state_);
     }
 
-    [[nodiscard]] StateT& get_state() const noexcept { return *state_; }
-    [[nodiscard]] static TaskManager from_state(StateT& state) noexcept {
+    [[nodiscard]] not_null<StateT*> get_state() const noexcept { return state_; }
+    [[nodiscard]] static TaskManager from_state(not_null<StateT*> state) noexcept {
         return TaskManager{state};
     }
 
   private:
-    [[nodiscard]] explicit TaskManager(StateT& state) noexcept : state_(&state) {
+    [[nodiscard]] explicit TaskManager(not_null<StateT*> state) noexcept : state_(state) {
         state_->inc_ref();
     }
 
-    StateT* state_;
+    not_null<StateT*> state_;
 };
 
-[[nodiscard]] inline TaskState<>& current_task() {
+[[nodiscard]] inline not_null<TaskState<>*> current_task() {
     if (detail::current_task == nullptr) {
         throw std::runtime_error("No current task");
     }
-    return *detail::current_task;
+    return detail::current_task;
 }
 
-[[nodiscard]] inline TaskManagerState<>& current_global_task_manager() {
-    auto& task = current_task();
-    auto global_task_manager = task.get_global_task_manager();
+[[nodiscard]] inline not_null<TaskManagerState<>*> current_global_task_manager() {
+    auto task = current_task();
+    auto global_task_manager = task->get_global_task_manager();
     assert(
         global_task_manager != nullptr
         && "Running Task must have a global TaskManager bound"
     );
-    return *global_task_manager;
+    return global_task_manager;
 }
 
-[[nodiscard]] inline detail::EventLoop& current_event_loop() {
-    auto& task = current_task();
-    auto event_loop = task.get_event_loop();
+[[nodiscard]] inline not_null<detail::EventLoop*> current_event_loop() {
+    auto task = current_task();
+    auto event_loop = task->get_event_loop();
     assert(event_loop != nullptr && "Running Task must have an EventLoop bound");
-    return *event_loop;
+    return event_loop;
 }
 
 template <detail::AwaitableState S>
@@ -814,11 +830,11 @@ void detail::AwaitableAwaiter<S>::await_suspend(
     std::coroutine_handle<PromiseType> h
 ) noexcept {
     parent_ = h;
-    auto& task = h.promise().get_task();
-    task.on_awaiting(*this);
-    task_ = &task;
-    awaitable_.on_awaited(task);
-    awaitable_.register_waiter(*this);
+    auto task = h.promise().get_task();
+    task->on_awaiting(this);
+    task_ = task;
+    awaitable_->on_awaited(task);
+    awaitable_->register_waiter(this);
 }
 
 template <detail::AwaitableState S>
@@ -827,7 +843,7 @@ typename detail::AwaitableAwaiter<S>::value_type detail::AwaitableAwaiter<
     if (task_->cancelled()) {
         throw coconext::Cancelled{};
     }
-    return awaitable_.result();
+    return awaitable_->result();
 }
 
 template <detail::AwaitableState S>
@@ -839,10 +855,10 @@ void detail::AwaitableAwaiter<S>::event_run() noexcept {
 }
 
 template <typename T>
-void FutureState<T>::on_awaited(TaskState<>& task) {
-    auto event_loop = task.get_event_loop();
+void FutureState<T>::on_awaited(not_null<TaskState<>*> task) {
+    auto event_loop = task->get_event_loop();
     assert(event_loop != nullptr && "Running Task must have an EventLoop bound");
-    this->bind_event_loop(*event_loop);
+    this->bind_event_loop(event_loop);
 }
 
 inline void TaskState<>::on_done() noexcept {
@@ -853,7 +869,7 @@ inline void TaskState<>::on_done() noexcept {
     assert(event_loop_ != nullptr);
     event_loop_->acquire().schedule_all_back(std::move(waiters_));
     if (task_manager_) {
-        task_manager_->internal_child_done(*this);
+        task_manager_->internal_child_done(this);
     }
 }
 
@@ -881,7 +897,7 @@ T run(Task<T> task);
 template <typename T>
 Task<T> start_soon(Task<T> task) {
     task.start_soon();
-    current_global_task_manager().add(task.get_state());
+    current_global_task_manager()->add(task.get_state());
     return task;
 }
 

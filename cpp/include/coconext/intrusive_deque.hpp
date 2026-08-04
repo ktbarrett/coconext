@@ -31,7 +31,7 @@ class IntrusiveDequeNode {
 
   private:
     IntrusiveDequeNode* prev = nullptr;
-    IntrusiveDequeNode* next = nullptr;
+    IntrusiveDequeNode* next;
 };
 
 template <typename EntryT>

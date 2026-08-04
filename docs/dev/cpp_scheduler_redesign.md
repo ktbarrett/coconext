@@ -574,6 +574,72 @@ awaiter.event_run():
   Callbacks are for non-coroutine bridges; ordering with respect to waiters
   is defined but not something to rely on for logic.
 
+## One awaitable, one loop
+
+Awaitables belong to exactly one `EventLoop`, decided lazily by the first
+awaiter. `bind_event_loop` throws if a second awaiter arrives from a
+different loop. Cross-loop `co_await` is not supported and is caught at
+`await_suspend`.
+
+Why it can't be relaxed:
+
+- **Waiter list splice targets one loop.** `on_done` moves the entire
+  waiter deque onto `event_loop_->queue_`. Mixed-loop waiters would land
+  half on the wrong queue, resumed by the wrong thread's drain.
+- **Recursive mutex protects one loop.** A resumed coroutine that does
+  `co_await other_future` acquires a different mutex than the resuming
+  drain thought it was holding — no ordering, no exclusion between loops.
+- **`current_task` TLS.** Set by whichever loop's `event_run` fired.
+  TLS-dependent code inside the coroutine would see wrong values on the
+  wrong thread if the awaitable and its task straddled loops.
+
+Late binding is what makes this checkable: an unbound awaitable has no
+loop, so the first awaiter defines the home loop; subsequent awaiters
+either match or throw. A Future created, resolved, and dropped without a
+consumer never binds at all.
+
+## Interface conventions: pointers, references, and `not_null`
+
+Three tiers, applied uniformly across scheduler internals:
+
+1. **`not_null<T*>`** — non-null identity handle across an internal API.
+   The default for scheduler-object parameters and return types where
+   non-null is a real invariant. Callers pay one check on construction;
+   downstream `not_null → not_null` hops skip redundant checks entirely.
+2. **`T*`** — nullable. Only where nullability is actual state
+   (`event_loop_` before binding, `task_manager_` when not in a group,
+   `global_task_manager_` before install, `Pending{event}` slots), not
+   where a reference would have worked.
+3. **`T&` / `T const&` / `T&&`** — value semantics. Reading a result,
+   consuming an rvalue, passing a callback. Never for scheduler-object
+   identity.
+
+**Why not references for non-null identity.** Storage has to be pointers
+(late binding needs nullability, shared-state handles need
+rebindability), so reference parameters force `&x` at every call site,
+and pointer→reference→pointer round-trips lose stable identity — a debug
+table wants to key on the actual object pointer, not `&some_ref` inside
+a callee. `not_null<T*>` gives the non-null signal without the type
+laundering.
+
+**Why not GSL.** `coconext::not_null<T*>` lives in
+`cpp/include/coconext/not_null.hpp`. It's ~40 lines, `constexpr`,
+`noexcept` on the fast path, asserts on construction from null,
+disallows nullptr and default construction, implicitly converts to
+`T*` for API tightening incrementally, and hashes/compares as the
+raw pointer so debug tables treat it the same.
+
+**Where the check fires.** Exactly once per code path: at the boundary
+where a raw `T*` becomes a `not_null<T*>`. Design internal APIs so that
+most parameters *arrive* as `not_null` and the check has already
+happened upstream. Notably, `current_task()` returns `not_null<TaskState<>*>`
+because it just threw on nullptr — every caller inherits the proof.
+
+**Where fields stay raw.** `TaskState<>::event_loop_`,
+`task_manager_`, `global_task_manager_`, `Pending::event` all stay
+`T*` — their nullability *is* meaningful state. Assignment from a
+`not_null<T*>` uses the implicit conversion; no re-check.
+
 ## Symmetric transfer: scope and limits
 
 Symmetric transfer (returning a `coroutine_handle<>` from `await_suspend`,
