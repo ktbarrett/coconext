@@ -571,8 +571,20 @@ class TaskManagerState<detail::Erased> {
         if (closed()) {
             throw std::runtime_error("Cannot add task to closed TaskManager");
         }
+        // Loop affinity: manager, task body, and all sibling tasks must share one
+        // EventLoop. Bind whichever side is already bound to the other; throws on
+        // mismatch. If neither is bound, start_soon() below binds from the caller's
+        // current_event_loop() and we propagate to the manager after.
+        if (task.event_loop_ != nullptr) {
+            bind_event_loop(*task.event_loop_);
+        } else if (event_loop_ != nullptr) {
+            task.bind_event_loop(*event_loop_);
+        }
         if (task.unstarted()) {
             task.start_soon();
+        }
+        if (event_loop_ == nullptr) {
+            bind_event_loop(*task.event_loop_);
         }
         task.bind_task_manager(*this);
         task.inc_ref();

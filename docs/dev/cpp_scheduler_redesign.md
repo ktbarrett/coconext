@@ -1,210 +1,703 @@
 # C++20 Coroutine Scheduler Design Notes
 
-Draft notes for porting cocotb's scheduler/Trigger system to C++20 coroutines,
-while keeping the Python frontend backwards-compatible.
+Design notes for the coconext C++20 coroutine scheduler. Describes the object
+model, state machines, binding rules, and the substrate (`EventLoop`,
+`IntrusiveDeque`) they sit on. The Python-facing surface is out of scope here.
 
-## Core mental model
+## Object model at a glance
 
-- A C++20 coroutine has three associated objects:
-  - **Frame** - heap-allocated activation record (parameters, locals, suspend
-    point, promise). Owned by whoever holds a RAII handle.
-  - **`promise_type`** - lives *inside* the frame. Per-coroutine state machine
-    scratchpad (result slot, waiter list, cancellation flag, refcount, etc.).
-    Not user-facing.
-  - **Return object** (e.g. `Task<T>`, `Coro<T>`) - what the coroutine function
-    returns. RAII handle to the frame, also the awaitable users hold and
-    manipulate.
-- `std::coroutine_handle<P>` is a non-owning, pointer-sized, trivially-copyable
-  token. `.resume()`, `.destroy()`, `.done()`, `.promise()`. Many handles can
-  alias one frame; conventionally one RAII owner exists, others are aliases.
-- `std::promise` from `<future>` is the wrong abstraction here. It's
-  thread-sync, single-producer/single-consumer, not awaitable without adapters.
-  Build awaitables on plain handle lists held by Triggers.
+Five user-visible types plus their per-type "state" holders:
 
-## Trigger / awaiter shape
+| Return object     | State holder            | Role                                          |
+| ----------------- | ----------------------- | --------------------------------------------- |
+| `Coro<T>`         | `CoroState<T>`          | Lightweight chained coroutine. Move-only.     |
+| `Task<T>`         | `TaskState<T>`          | Scheduled, refcounted, shared awaitable.      |
+| `Future<StateT>`  | `FutureState<T>`        | Shared, single-shot, externally-resolved.     |
+| `TaskManager<S>`  | `TaskManagerState<T>`   | Structured-concurrency group of Tasks.        |
+| (none)            | `EventLoop` / `Event`   | The scheduling substrate.                     |
 
-Triggers own a list of waiting `coroutine_handle<>`s. The awaiter is the RAII
-slot in that list.
+Three of these — `Task`, `Future`, `TaskManager` — are refcounted handles to a
+heap-allocated `*State` object. `Coro` is a move-only owner of a coroutine
+frame with no shared state. `EventLoop` is a plain object driven from outside.
 
-- `await_suspend(h)` receives the handle of the coroutine that is suspending.
-  Stash it in the trigger's waiter list, return.
-- `await_resume()` checks the promise's cancellation flag and rethrows if set;
-  otherwise returns `self` or `void` (standardize on one of these two only).
-- Awaiter destructor unregisters from the trigger. Since the awaiter lives in
-  the frame (it's a local of the `co_await` expression that's currently
-  suspended), destroying the frame runs the destructor, which automatically
-  unprimes the trigger if the waiter list goes empty.
-- Multi-consumer Triggers are trivial because we own the list. No
-  `std::promise`/`shared_future` machinery needed.
+All three shared-state types (`FutureState`, `TaskState<>`, `TaskManagerState<>`)
+follow the same shape: a result slot, an awaiter list, a done-callback list,
+a lazily-bound `EventLoop*`, and a refcount. That shape is what
+`AwaitableAwaiter` (below) is written against as a concept.
 
-## Two return types
+### Type-erased bases
 
-### `Coro<T>` - lightweight chaining helper
+Each `*State<T>` derives from a `*State<detail::Erased>` base. The base holds
+everything that doesn't depend on `T` (state machine, waiter list, cancellation
+flag, refcount, event-loop binding). The typed derived class layers only the
+result slot and `return_value` / `return_void` on top.
 
-- Single awaiter, no scheduler awareness, no shared ownership.
-- `promise_type` holds: result/exception slot, single continuation
-  `coroutine_handle<>`.
-- `initial_suspend()` returns `std::suspend_always` (lazy - matches Python's
-  "calling an async fn doesn't run it").
-- `final_suspend()` returns an awaiter that symmetric-transfers to the
-  continuation.
-- Cancellation cascade is automatic via RAII: destroy parent frame -> awaiter
-  destructor -> child Coro destructor -> child frame destroyed -> child's
-  trigger-awaiter destructor unregisters.
+This matters because the scheduler queues, cancels, and links these objects
+without knowing `T`. `current_task` is a `TaskState<>*` (erased); the awaiter
+concept binds to `TaskState<>&`; `TaskManagerState<>::tasks_` is an intrusive
+deque of erased tasks. Only user-facing `result()` / `set_result()` calls need
+the typed layer.
 
-### `Task<T>` - scheduled, shared-ownership top-level
+## Substrate: `EventLoop`, `Event`, `IntrusiveDeque`
 
-- Refcounted public handle. Shared state lives in the promise (no second
-  allocation).
-- Promise holds: result/exception slot, waiter list (multiple consumers can
-  `co_await` the task), cancellation flag, refcount.
-- `final_suspend()` suspends instead of destroying, so consumers can still read
-  the result after completion. Frame destroyed when refcount hits zero.
-- `start_soon` accepts both `Coro<T>` and `Task<T>` - the `Coro` overload wraps
-  in a `Task<T>` returning coroutine.
+### `IntrusiveDeque`
 
-## Result storage
+`IntrusiveDeque<T>` is a doubly-linked list where the links live *inside* the
+node (via `IntrusiveDequeNode`). It owns nothing but its two sentinels.
 
-Three-state slot in the promise (pending / value / exception):
+Why intrusive rather than `std::deque<T*>`:
 
-```cpp
-std::variant<std::monostate, T, std::exception_ptr> result_;
-// or for void:
-std::exception_ptr exception_;
-bool done_ = false;
-```
+- **O(1) anonymous remove.** Any node can unlink itself in O(1) without
+  knowing which deque it's in, without a lookup, and without touching the
+  container. This is what makes cancellation cheap: a suspending awaiter
+  destroys itself (frame destruction runs its dtor), and the dtor calls
+  `deque_remove()` — no scan of the trigger's waiter list, no map from
+  handle-to-position.
+- **No allocations on suspend/resume.** The awaiter lives in the coroutine
+  frame (which is already allocated); pushing it onto a waiter list is a
+  four-pointer store, popping is another four.
+- **Splice in O(1).** `extend_back` moves an entire foreign list onto the tail
+  in constant time. `FutureState::on_done` uses this to move all waiters onto
+  the event loop's ready queue in one call rather than N `schedule_back`
+  invocations.
+- **Same node, many roles.** `Event` is both a waiter (lives in a Future's
+  `waiters_` deque) and a ready item (lives in the EventLoop's `queue_`
+  deque). Being intrusive means "moving a waiter to the ready queue" is a
+  relink of the same node — no allocation, no wrapper object.
 
-- `std::exception_ptr` is refcounted, copying is an atomic bump, rethrow is
-  non-consuming, thread-safe across consumers. No copies of the exception
-  object regardless of how many waiters resume.
+The one cost: nodes can only be in one deque at a time. That constraint
+matches the state machines exactly (see below).
 
-## Symmetric transfer
+### `Event`
 
-`await_suspend` can return `std::coroutine_handle<>` instead of `void`/`bool`.
-The compiler emits a tail call to that handle, popping the current `resume()`
-frame before the next one starts. Stack depth stays O(1) regardless of await
-chain depth.
+Base class for anything the EventLoop can run. Single virtual `event_run()`
+plus `event_unschedule()` (which is just `deque_remove()`). Two concrete
+subclasses today:
 
-Required in the hot paths:
+- `AwaitableAwaiter<S>` — lives in the awaiting coroutine's frame; `event_run`
+  resumes the parent handle.
+- `TaskState<>::Scheduled` — lives in a Task's promise; `event_run` resumes
+  the Task's own coroutine handle.
 
-1. **`Coro` -> `Coro` chaining.** `Coro::operator co_await` returns the child
-   handle from `await_suspend`.
-2. **`Coro` completion.** `final_suspend` returns the continuation handle (or
-   `std::noop_coroutine()` if none).
-3. **Scheduler resume loop.** No special handling needed; a single `.resume()`
-   call now walks the chain via tail calls.
+### `EventLoop` and the recursive mutex
 
-Trigger awaiters that just park in a list and return `void` are fine - nothing
-to tail-call to.
+`EventLoop` holds `IntrusiveDeque<Event> queue_`, a `std::recursive_mutex`,
+and an `is_running_` flag. External callers can't touch the queue directly;
+they must go through `acquire()`, which returns a `Handle` holding the lock.
 
-Gotchas:
+The **critical ownership pattern**: an external event source (a simulator
+callback, a Python entry, `run()`) acquires the handle, schedules whatever
+events it wants, then drops the handle. On drop, if the loop isn't already
+running, the handle drives the queue to exhaustion before releasing the lock.
+So from the outside: "one external event => one batch of scheduled work runs
+to completion." From the inside, events can freely schedule more events; those
+just extend the current drain.
 
-- `await_suspend` returning a handle must be `noexcept`.
-- Return `std::noop_coroutine()`, never a default-constructed (null) handle.
-- Zero state, zero bookkeeping, zero runtime cost. Change the return type and
-  `return handle;` instead of `handle.resume();`.
+Why `std::recursive_mutex` instead of a plain mutex:
 
-Cost of skipping: stack-depth problem (not correctness). Tight
-`for(;;) co_await trig;` loops with immediately-ready triggers blow the stack
-within a few thousand iterations. Hard to retrofit because it changes every
-awaiter's `await_suspend` signature.
+- **Single `on_done()` in `FutureState`.** A Future can be resolved either by
+  an external event (a DPI callback, a user calling `set_result`) or by a
+  coroutine that is *itself* running under the loop lock. Both must schedule
+  the Future's waiters. With a recursive mutex, `FutureState::on_done` can
+  unconditionally `event_loop_->acquire()` — it works whether we already hold
+  the lock or not. With a non-recursive mutex, every resolver would need to
+  know its calling context and pass it in.
+- **Sometimes-recursive callers exist.** A DPI import that resolves a Future
+  can be called directly from the RTL (external, no lock held) or reached
+  via a DPI export invoked from within a Python callback (recursive, lock
+  held). We don't want the resolver to have to distinguish.
 
-## Cancellation
+Recursive-mutex overhead is roughly a `thread_id` compare + atomic bump on
+recursive acquires — cheap enough not to matter next to the coroutine work.
 
-C++ has no equivalent of Python's `coro.throw(exc)`. Pattern:
+The `is_running_` flag catches a different bug: `Handle::run()` called from
+inside an already-running loop, which would corrupt the drain. The recursive
+mutex allows *re-acquisition* (fine, because the Handle dtor won't re-drain
+if `is_running_` is set), but forbids nested `run()`.
 
-1. `Task::cancel()` sets `promise.cancelled_ = true`.
-2. Scheduler resumes the coroutine normally (or it's already running).
-3. The next `await_resume()` checks the flag and throws a cancellation
-   exception.
-4. Exception propagates up via normal C++ unwinding; awaiter destructors
-   unregister from triggers; eventually caught by the top-level `Task`'s
-   promise via `unhandled_exception()` and stored.
+## `AwaitableState` concept and the unified awaiter
 
-Cancellation only takes effect at suspend points - same as Python, different
-mechanism. Every awaiter in the system must have this check in
-`await_resume()`. Design must be fixed early.
-
-## Things we are NOT supporting in C++
-
-- **`First`/`Combine`/"wait for any" combinators.** Skipped in C++. (If
-  reintroduced later, intrusive waiter list nodes are needed for O(1)
-  cancellation of losers.)
-- **Fire-and-forget exception swallowing.** Cocotb-Python warns at GC time. In
-  C++: a fire-and-forget `start_soon`'d Task that throws *always fails the
-  test*. Other Tasks always capture exceptions of awaited Tasks.
-- **Per-Trigger custom value semantics.** All triggers return `self` or
-  `void` from `await_resume()`. No template-per-trigger just because one
-  produces a value.
-
-## Things we DO need
-
-- **Per-task context** (logger, name, test identity, traceback). Lives in
-  `promise_type`. Child `Coro<T>` lookup of enclosing Task: thread-local
-  "current task" updated on every resume is simplest and matches asyncio.
-
-## Python backwards compatibility via narrow waist
-
-Strategy: C++ owns scheduler primitives and Triggers. Python wraps them and
-re-implements the high-level behaviors we dropped from C++.
-
-### Minimum C++ surface exposed to Python
-
-1. **`Trigger`** - opaque handle.
-2. **A way to park a Python task on a Trigger.** Per-Python-task shim
-   coroutine in C++:
-   - Each Python Task is backed by a C++ `Coro<void>` that loops:
-     `co_await trigger_handed_from_python; call_back_into_python_to_resume_pytask();`.
-   - Python tells C++ "park me on T", C++ shim does the parking via real C++
-     machinery, on fire calls back into Python.
-   - Waiter list stays homogeneous (`coroutine_handle<>` only). No polymorphic
-     waiter, no variant dispatch on the hot path.
-3. **`start_soon`** - schedules the shim coroutine.
-4. **Cancellation hook** - Python `Task.cancel()` reaches the C++ cancellation
-   path on the shim, which propagates the exception back into Python.
-
-Unit of scheduling in C++ = one Python Task (1:1 with a shim coroutine). Do
-not try to make C++ schedule individual coroutine steps; that duplicates
-scheduler logic.
-
-### Pure-Python layer on top
-
-- `First` / `Combine` / `with_timeout`: Python constructs N independent shim
-  registrations and manages cancellation of losers itself. C++ waiter-list
-  code never sees combinator structure.
-- Fire-and-forget exception logging / "never retrieved" warnings: Python Task
-  wrapper holds the bookkeeping in Python state, fires from `__del__` /
-  weakref finalizer.
-- Per-task logger / name / traceback: Python Task object. C++ promise carries
-  only a back-pointer (`PyObject*` or `void*` slot).
-
-### Sketch
+All three shared-state types (`FutureState<T>`, `TaskState<>`,
+`TaskManagerState<>`) satisfy the `detail::AwaitableState` concept:
 
 ```cpp
-class PyTask {
-    Coro<void> shim_;
-    PyObject* py_task_;
-public:
-    void park_on(Trigger& t);   // shim does co_await t
-    void cancel();              // sets flag, re-resume injects exception
+template <typename S>
+concept AwaitableState = requires(S s, Event& e, TaskState<>& t) {
+    typename S::value_type;
+    { s.done() } -> std::same_as<bool>;
+    { s.get_event_loop() } -> std::same_as<EventLoop*>;
+    s.register_waiter(e);       // push awaiter into waiters_
+    s.on_awaited(t);            // late-bind, and for Tasks: kick off if unstarted
+    s.result();                 // typed result; throws if not done
 };
-void start_soon(PyTask&);
 ```
 
-Python's Task wraps a `PyTask` and delegates suspend/resume/cancel; keeps all
-high-level bookkeeping in pure Python where it's easy to change. User-defined
-Triggers in either language work the same way - a Python Trigger calls the
-same C++ "fire" entrypoint as a native one, walking the same waiter list.
+One awaiter — `detail::AwaitableAwaiter<S>` — is written against this concept
+and serves `co_await future`, `co_await task`, and `co_await task_manager`.
+It is itself an `Event` (it lives on the awaitable's waiter deque, and later
+gets relinked onto the loop's ready deque). Its dtor calls
+`event_unschedule()`, which is what makes cancellation-of-losers and frame
+destruction correctly de-register from whatever list the awaiter was on.
 
-## Open questions / decisions to revisit
+## Threading and loop affinity
 
-- Exact spelling and ergonomics of `start_soon` accepting both `Coro<T>` and
-  `Task<T>` (overload set, or single function with concept-constrained
-  template?).
-- Cancellation exception type: dedicated `CancelledError` class, or use
-  `std::exception_ptr` wrapping whatever Python threw?
-- How the thread-local "current task" interacts with simulator callbacks
-  re-entering the scheduler (probably fine since we're single-threaded, but
-  document the invariant).
-- Whether to expose `prime`/`unprime` directly to Python or hide them behind
-  the park/fire entrypoints.
+Every `Task`, `TaskManager`, and `Future` belongs to exactly one `EventLoop`,
+and that binding is enforced. Late binding decides *which* loop; from that
+point on, cross-loop use is a caught error.
+
+The invariant differs slightly across the three types:
+
+- **`Future`**: one loop for fan-out. Multiple waiters allowed, all must
+  share a loop. This works because a Future has no body — nothing writes
+  `result_` except an explicit `set_result` from outside, and everything
+  past `on_done` runs under the (single) bound loop's lock.
+- **`Task` and `TaskManager`**: body loop = awaiter loop = every sibling's
+  loop, all the same. Not just "reasonable" — required, because their
+  public state is unprotected by design.
+
+### Why Task/TaskManager can't be cross-loop
+
+Their per-object state has no lock, on the assumption that one loop owns
+each object:
+
+- `done()` reads `result_`, written by the body from `return_value` /
+  `unhandled_exception`.
+- `cancelled()` reads `cancelled_`, written by external `cancel()` calls
+  and read by every `await_resume()` in the body.
+- `state_` (the Scheduled/Pending/Running variant) is written by the body
+  on every suspend/resume and read by `cancel()` from awaiter code.
+- `TaskManagerState::tasks_`, `closed_`, `cancelled_` — touched by
+  `internal_child_done` on the body-loop and by `add` / `close` / `cancel`
+  from awaiter code.
+
+If body-on-B and awaiter-on-A, every one of these becomes a race. The
+`EventLoop` mutex only protects `queue_`; it does not protect per-object
+state. Locking per-object would be strictly worse than the current design
+for the single-loop case that is 100% of real use.
+
+### Where the binding happens
+
+Late binding decides loop affinity at the first operation that needs it.
+For Task/TaskManager, that means every entry point that touches or connects
+the object must reconcile loops:
+
+- `Task::start_soon()` binds `event_loop_` from `current_event_loop()`
+  (the caller's loop). That defines the body's loop.
+- `co_await task` / `co_await manager`: `on_awaited(awaiting_task)` binds
+  the awaitable's loop from the awaiter's. Match → fine. Mismatch → throws.
+  First-awaiter-wins if not yet bound.
+- `TaskManager::add(task)`: reconciles three sides — the manager's loop,
+  the task's loop (if already `start_soon`'d), and the caller's loop
+  (used by `start_soon` if the task is unstarted). Any mismatch among
+  these throws. First one bound wins; the others must agree.
+
+The `add`-time reconciliation matters: without it, a manager could accept
+tasks from two different loops, and later work — `cancel()` iterating
+`tasks_`, `on_child_done` running on whichever loop happened to fire —
+would silently race across loops. The manager itself would be one race
+target (`tasks_`, `closed_`, `cancelled_`); each child's per-object state
+would be another.
+
+### Cross-loop would require a redesign, not more locking
+
+The single-loop model is load-bearing. Making Task/TaskManager cross-loop
+safe would mean either:
+
+- Locks on `state_`, `result_`, `cancelled_`, `tasks_`, etc. — every
+  read from an awaiter and every write from the body. Cost paid by the
+  common case for a use case that doesn't exist.
+- An explicit hand-off protocol (submit-to-loop-X, receive-result-on-loop-Y),
+  which is a different abstraction, not this one.
+
+Neither is planned. Current design: one loop per Task, per Manager,
+per Future.
+
+## Late binding: what and why
+
+Nothing in the scheduler stores a "current EventLoop" TLS. Nothing that
+doesn't strictly need it looks up a `current_task`. Bindings happen **at the
+first operation that actually needs them**, not at construction, not on
+schedule. Concretely:
+
+- A `Future`'s `event_loop_` is nullptr until the first Task awaits it. A
+  Future that is set but never awaited never needs to know about a loop.
+- A `TaskState`'s `event_loop_` and `global_task_manager_` are nullptr until
+  the Task is `start_soon()`'d **or** first awaited by another running Task.
+- A `TaskManagerState`'s `event_loop_` binds when it is first awaited or
+  when a task added to it needs an event loop propagated.
+- `current_task` (a `thread_local TaskState<>*`) is set on Task resume and
+  read only when we genuinely have no cheaper handle — namely on the
+  `start_soon(coro)` free function called from user code, and on the
+  `current_*()` accessors. `Coro`/`Task` awaiting a Future do **not** consult
+  TLS; they get the awaiting Task from the awaiting coroutine's promise.
+
+**Why bind late.** Two reasons:
+
+1. **TLS lookups aren't free.** `inline thread_local` in local-exec mode is a
+   direct offset from `%fs`, but every one is still a load and a branch on
+   nullness. When a Coro nested three deep awaits a Future, we already know
+   the enclosing Task via the promise chain; going to TLS to find it is
+   wasteful and — worse — wrong if the "current" Task doesn't match the
+   actual awaiter (see below).
+2. **Correctness under nesting and cross-loop use.** TLS assumes a single
+   scheduling context per thread. Late binding through the promise chain
+   makes cross-loop misuse a caught error (`bind_event_loop` throws on
+   conflict) rather than a silent state corruption.
+
+**How the promise-chain lookup works.** `AwaitableAwaiter::await_suspend`
+takes `coroutine_handle<PromiseType> h`. It calls `h.promise().get_task()` —
+`CoroStateBase` and `TaskState<T>` both implement this. For a `Task<T>`
+promise it returns `*this`. For a `CoroState<T>` promise it returns a stored
+`TaskState<>*` that was threaded in when the Coro was first awaited (see
+`Coro::Awaiter::await_suspend`, which writes `p.task_ = h.promise().get_task()`
+before symmetric-transferring to the child). So even deep in a chain of
+Coros, the awaiting promise always knows the enclosing Task.
+
+## `co_await` — the choreography
+
+When a running `Task` (directly or through nested `Coro`s) executes
+`co_await future`, four objects are wired up in `await_suspend`:
+
+```cpp
+void AwaitableAwaiter<S>::await_suspend(coroutine_handle<P> h) noexcept {
+    parent_ = h;                          // remember who to resume
+    auto& task = h.promise().get_task();  // enclosing Task (via promise chain, not TLS)
+    task.on_awaiting(*this);              // Task: "I'm parked on this Event"
+    task_ = &task;                        // remember for resume + cancellation check
+    awaitable_.on_awaited(task);          // Future: "propagate my loop; also start if unstarted"
+    awaitable_.register_waiter(*this);    // Future: append me to waiters_
+}
+```
+
+The awaiter holds three references: the parent coroutine handle (to resume),
+the enclosing Task (for cancellation and resume-side bookkeeping), and the
+awaitable (for `await_resume()` to fetch the result). The awaitable holds
+one back-reference — the awaiter as an `Event` on its `waiters_` deque.
+
+`on_awaiting` on the Task stores an `Event*` in the Task's `state_` variant
+(`Pending{&awaiter}`). That's how `Task::cancel()` on a suspended task can
+find the awaiter to un-park it — see the cancellation section.
+
+`on_awaited` on the awaitable does two things:
+
+1. **Late-bind the event loop.** If the awaitable's `event_loop_` is nullptr,
+   set it from the awaiting Task's loop. If it's already bound to a
+   different loop, throw — that's cross-loop misuse.
+2. **Kick, if applicable.** For `TaskState`, if `unstarted()`, schedule the
+   `Scheduled` event on the loop. This is why awaiting an unstarted Task
+   works even if the user never explicitly `start_soon()`'d it.
+
+When the Future is resolved (`set_result` / `set_exception` / `set_void`),
+`on_done()` acquires the loop and calls `schedule_all_back(std::move(waiters_))`.
+Every parked awaiter is now on the ready queue. When the loop runs each one,
+`AwaitableAwaiter::event_run()` marks the enclosing Task as resumed
+(`task_->on_resume()` — sets `Running{}`, updates `current_task` TLS) and
+calls `parent_.resume()`. The resumed coroutine enters `await_resume()`,
+which checks `task_->cancelled()` and either throws `Cancelled` or returns
+`awaitable_.result()`.
+
+**Awaiter destruction.** The awaiter is a local of the currently-suspended
+`co_await` expression, so it lives in the coroutine frame. If the frame is
+destroyed (Coro dropped, Task cancelled and unwound), the awaiter dtor runs
+`event_unschedule()`, which removes it from whichever deque it's in
+(`waiters_` if still parked; the loop's `queue_` if already scheduled but
+not yet run). No dangling waiters.
+
+## `Coro<T>`: lightweight chaining
+
+`Coro<T>` is intentionally minimal:
+
+- `initial_suspend()` = `suspend_always` (lazy — a Coro doesn't start
+  running just because you called the function).
+- `final_suspend()` returns a `TransferAwaitable` whose `await_suspend`
+  **returns the parent handle** — symmetric transfer back to whichever
+  Coro or Task awaited this one. See "Symmetric transfer" below.
+- No refcount, no waiter list, no cancellation flag. Move-only. Dtor
+  destroys the frame if still alive.
+- `CoroState<T>` carries only a `variant<monostate, Value<T>, Exception>`
+  result, a `coroutine_handle<>` parent, and a `TaskState<>* task_`.
+
+`Coro::Awaiter::await_suspend` sets the child promise's `task_` and `parent_`
+and returns the child handle. This is the second symmetric-transfer hop.
+
+The `task_` pointer propagated through the Coro chain is what lets a Coro
+five levels deep still answer `get_task()` in O(1) without TLS. It's set
+once per `co_await`, so the cost is one pointer store per hop.
+
+`Coro` is the natural building block for helpers that don't need
+scheduling — a shift-register model, an intermediary that awaits a Trigger
+and returns processed data, etc. When one of these needs to run
+independently, wrap it in a `Task`.
+
+## `Task<T>`: scheduled shared handle
+
+`TaskState<T>` is a coroutine promise **and** a scheduler item. Its typed
+public API mirrors `Coro`: `initial_suspend()` = `suspend_always`,
+`final_suspend()` = `suspend_always` (frame kept alive so waiters can read
+the result; destroyed when refcount hits zero), `return_value`/`return_void`,
+`unhandled_exception` capturing to `std::exception_ptr`.
+
+The erased base `TaskState<>` holds the state machine and shared plumbing.
+
+### State machine
+
+```
+      +------------+   start_soon()      +-----------+
+      | monostate  | ------------------> | Scheduled |
+      | (unstart.) |    (or awaited)     +-----+-----+
+      +------------+                           |
+             ^                                 |  loop runs Scheduled event
+             |                                 v
+             |                            +---------+
+             |     awaiter fires,         | Running |
+             |     schedules Task         +----+----+
+             |                                 |
+             |                                 | co_await X
+             |                                 v
+             |                            +---------+
+             +---(on_done: monostate)---+ | Pending |
+                                          +---------+
+```
+
+- `monostate` — unstarted. `start_soon()` is legal here; also, being awaited
+  transitions us to `Scheduled` automatically.
+- `Scheduled` — the `Scheduled` event (an `Event` living inside the state)
+  is on the loop's queue. Waiting for the loop to run it.
+- `Running` — coroutine body is executing. `current_task` TLS points here.
+- `Pending` — coroutine has hit a `co_await` and is parked. Holds the awaiter
+  `Event*` so `cancel()` can find it.
+- Back to `monostate` on completion (final_suspend runs `on_done`).
+
+### Late binding on Tasks
+
+A `TaskState` has `event_loop_`, `task_manager_` (the group it belongs to,
+if any), and `global_task_manager_` (the ambient root manager — see below).
+All three are nullptr at construction. They fill in when we cross the first
+threshold that requires them:
+
+- `start_soon()` binds `global_task_manager_` from `current_global_task_manager()`
+  and `event_loop_` from `current_event_loop()` if either is nullptr, then
+  schedules the `Scheduled` event.
+- Being awaited before ever being started: `on_awaited(task)` binds
+  `event_loop_` and `global_task_manager_` from the awaiting Task (both of
+  which must already be bound because the awaiter is running), then
+  schedules `Scheduled`.
+- `TaskManager::add(task)` binds `task_manager_`, reconciles `event_loop_`
+  between manager and task (see "Threading and loop affinity"), and if
+  the task is `unstarted()`, calls `start_soon()` on it (which binds the
+  loop from the caller if neither side had one).
+
+Rebinding to a different loop or a different `TaskManager` throws. Rebinding
+`global_task_manager` is silently a no-op (first binding wins) because tasks
+propagated through several intermediate managers can legitimately be
+re-added.
+
+### `start_soon` vs `TaskManager::add`
+
+Two operations, sharply different:
+
+- **`start_soon(task)`** (free function or member): promotes the task from
+  `unstarted` to `Scheduled`, and — if not already bound — inherits
+  `event_loop_` and `global_task_manager_` from the caller's context.
+  Additionally, the free-function form does
+  `current_global_task_manager().add(task.get_state())` so the task is
+  tracked. It's the "just run this thing under my current context" API.
+- **`TaskManager::add(task)`** takes an existing (possibly already-running)
+  Task and binds it to *this* manager for lifecycle tracking. It refuses if
+  the manager is `done()` or `closed()`. If the task is unstarted, `add`
+  starts it (so the caller doesn't need a separate `start_soon` call). It
+  does not rebind the event loop or the global task manager.
+
+The two compose: `start_soon` schedules under whatever manager is ambient;
+`add` associates with a specific manager whose lifecycle you want to bound.
+
+### Cancellation
+
+`Task::cancel()` is a counter (`uint16_t cancelled_`) not a bool, so nested
+cancel/uncancel scopes compose. Behavior depends on state:
+
+- `done()` — no-op.
+- `unstarted` (monostate) — set exception to `Cancelled{}` directly. The
+  Task never runs.
+- `Pending{event}` — unschedule the parked awaiter
+  (`pending.event->event_unschedule()`, O(1) via intrusive remove), transition
+  to `Scheduled`, and push onto the loop. When the loop runs it, the
+  coroutine resumes into `await_resume()`, sees `cancelled()`, throws
+  `Cancelled`.
+- `Scheduled` or `Running` — nothing to do; the flag will be seen at the
+  next `await_resume()`.
+
+`uncancel()` decrements the counter and throws if it was already zero. Only
+awaiters check the flag, so cancellation is delivered exclusively at suspend
+points — same behavior as Python asyncio, different mechanism.
+
+## `Future<StateT>`: shared externally-resolved
+
+The plainest of the three shared types. `FutureState<T>` has a result slot,
+a waiter deque, done callbacks, an event-loop slot, and a refcount. Users
+subclass `FutureState<T>` to add domain state (e.g. a Timer holds an
+`NTime`, a ValueChange holds a signal handle) and override the virtual
+`unprime()` hook — called from the state's dtor if the refcount reaches
+zero while still pending, so the subclass can un-register from whatever
+external event source it hooked into. `Future<StateT>` is the refcounted
+handle.
+
+Late binding on `FutureState`: `event_loop_` is nullptr until first awaited.
+`on_awaited` propagates from the awaiting Task. If never awaited, never
+bound — a Future that's created, resolved, and dropped without a consumer
+does no loop work at all.
+
+`add_done_callback` runs synchronously from `on_done`, before waiters are
+scheduled. Prefer awaits over callbacks — callbacks are the escape hatch
+for non-coroutine consumers (Python bridge, C++ FFI).
+
+## `TaskManager<StateT>`: structured concurrency
+
+`TaskManagerState<>` owns an `IntrusiveDeque<TaskState<>> tasks_`. When a
+Task is `add()`'d, the manager bumps its refcount and links it into `tasks_`.
+When each child completes, `TaskState::on_done` calls back into
+`internal_child_done`, which unlinks the task, drops the refcount, and
+invokes user hooks. Three virtual hooks let subclasses shape policy:
+
+- `on_add(task)` — right after linking. Used to attach per-task callbacks
+  or bookkeeping.
+- `on_child_done(task)` — after unlinking; the task's result is readable
+  here. Used to make policy decisions (cancel siblings on failure, forward
+  exception, etc.).
+- `on_drain_complete()` — fired exactly once after `tasks_` empties **and**
+  the manager is `closed()`. Subclasses set the manager's own result here.
+
+Closure and cancellation:
+
+- `close()` — no more `add()`s will succeed. Idempotent. If `tasks_` is
+  already empty on close, `on_drain_complete` fires immediately.
+- `cancel()` — sets `cancelled_`, cancels every task in `tasks_`. New
+  children can still be added (which is a legitimate use case for
+  best-effort shutdown), but they'll be cancelled on `close()` if the
+  subclass wires it up.
+- Auto-close: `internal_child_done` calls `close()` when `tasks_` drains
+  and the manager wasn't explicitly closed. This is what makes the common
+  case ("start N children, wait for them all") work with no boilerplate.
+
+`TaskManager` is itself awaitable — it satisfies `AwaitableState`. Waiters
+fire when `on_drain_complete` sets the result (via subclass calls to
+`set_result` / `set_void` / `set_exception`).
+
+### Global task manager and `start_soon`
+
+Every running Task carries a `global_task_manager_` pointer, distinct from
+its group `task_manager_`. This is the ambient scope — the root manager
+that owns all top-level fire-and-forget work in the current run.
+
+- `start_soon(coro)` and `start_soon(task)` (free functions) both call
+  `current_global_task_manager().add(...)`. This means fire-and-forget tasks
+  are still tracked; they don't leak, and their exceptions can be surfaced.
+- New tasks inherit `global_task_manager_` from the parent Task on
+  `start_soon`, so the ambient scope propagates all the way down.
+- User-created `TaskManager`s do *not* replace the global one — they're
+  independent groups. A task added to a user `TaskManager` still points at
+  the same `global_task_manager_` it inherited.
+
+`run()` creates a `RunTaskManagerState` and installs it as both the root
+Task's group manager and its global manager. When the root Task finishes,
+`on_child_done` closes the manager and cancels any surviving siblings
+(fire-and-forget tasks that outlived the root). `on_drain_complete` then
+propagates the root's exception (if any) as the manager's result.
+
+## `run()` — the outer harness
+
+`run(Task<T>)` (in `run.hpp`) is the entry point when there is no external
+driver (no simulator). It builds an `EventLoop`, wraps the task in a
+`RunTaskManager`, `add()`s it, then:
+
+1. `handle = loop.acquire()`
+2. `handle.run()` — drains the queue.
+3. If the root task isn't done (some external event source may still be
+   working — condition variables, threads), block on
+   `condition_variable_any::wait` against the recursive mutex, waking on
+   the task's done callback.
+4. Return `task.result()` (which rethrows if the task failed).
+
+Under a simulator, there is no `run()` — the simulator's callbacks
+`acquire()` the loop, schedule things, and let the Handle dtor drain.
+
+## Interaction summary
+
+```
+User code:                                 Runtime relationships:
+
+Task<T> t = start_soon(my_coro());        t.state_ -> TaskState<T>
+                                              |
+                                              +-- event_loop_ (bound from caller)
+                                              +-- global_task_manager_ (bound; auto-added)
+                                              +-- task_manager_ (nullptr; not in a group)
+                                              +-- state_ = Scheduled{&this}
+                                              +-- Scheduled Event pushed onto loop.queue_
+
+// loop runs, event_run() flips state_ to Running{}, resumes handle.
+// coroutine body runs to `co_await some_future`.
+
+AwaitableAwaiter awaiter(some_future_state);
+  parent_ = task_handle
+  task = task_handle.promise().get_task()   // Task via promise chain, no TLS
+  task.on_awaiting(awaiter)                 // state_ = Pending{&awaiter}
+  task_ = &task
+  some_future_state.on_awaited(task)        // late-binds loop; no-op for Future
+  some_future_state.waiters_.push_back(awaiter)
+
+// external event resolves the Future:
+some_future.set_result(v);
+  -> FutureState::on_done()
+       loop.acquire().schedule_all_back(std::move(waiters_))   // O(1) splice
+
+// loop runs the awaiter's event_run():
+awaiter.event_run():
+  task_->on_resume()          // state_ = Running{}, current_task = task_
+  parent_.resume()            // -> await_resume() -> Cancelled check -> result()
+```
+
+## Design decisions worth noting
+
+- **Cancellation exception is `coconext::Cancelled`** (a concrete type,
+  derived from `std::exception`), not a wrapped `exception_ptr`. Waiters
+  can catch it precisely.
+- **No `First` / `Combine` / `with_timeout` combinators in C++.** The
+  intrusive waiter list would make them cheap to add if needed, but there's
+  no current C++ user; combinators live in the Python layer for now.
+- **Awaiters return `T` or `void` from `await_resume`.** No `self`-returning
+  awaiters, no per-Trigger value semantics. The single templated awaiter
+  is possible because of this uniformity.
+- **`std::exception_ptr` for result storage.** Copies are atomic bumps,
+  rethrow is non-consuming and thread-safe. Suits many-waiter fan-out
+  without exception-object copies.
+- **`add_done_callback` runs synchronously before scheduling waiters.**
+  Callbacks are for non-coroutine bridges; ordering with respect to waiters
+  is defined but not something to rely on for logic.
+
+## Symmetric transfer: scope and limits
+
+Symmetric transfer (returning a `coroutine_handle<>` from `await_suspend`,
+which the compiler emits as a tail call) is only available when the resumer
+is *itself a coroutine*. That constraint decides where we can use it and
+where we cannot.
+
+**Where it applies.** Both hops are inside the Coro world:
+
+- `Coro`→`Coro` chaining. `Coro::Awaiter::await_suspend` (a coroutine
+  awaiter) returns the child handle. Tail-called from the parent's suspend.
+- `Coro`→parent completion. `CoroStateBase::final_suspend`'s awaitable
+  returns the parent handle (either another `Coro` or the enclosing
+  `Task`). Tail-called from the child's final suspend.
+
+So a chain `Task → Coro → Coro → Coro` unwinds and rewinds via tail calls;
+depth of the chain doesn't touch the C stack.
+
+**Where it does not apply.** Any hop initiated from `EventLoop::Handle::run_`.
+The loop's drain is not a coroutine — it's a plain `while (!queue_.empty())
+event->event_run()` — so there is no `await_suspend` frame for the tail call
+to replace. `event_run()` must call `.resume()` on the target handle. That
+covers both scheduler entry points:
+
+- `TaskState<>::Scheduled::event_run` (loop resuming a Task after schedule).
+- `AwaitableAwaiter<S>::event_run` (loop resuming an awaiting Task after
+  its awaitable fired).
+
+This is fine, not a bug. The loop's drain is O(1) on the C stack regardless
+of queue depth: `event_run` calls `.resume()`, the resumed coroutine runs
+until it suspends again (which returns control back to `event_run`), and
+the loop pops the next event. Even a tight
+`while (true) co_await ready_trigger;` in a Task doesn't grow the stack
+because `AwaitableAwaiter::await_ready` short-circuits on
+`awaitable_.done()` — no scheduler round-trip, no `event_run` recursion —
+and if the trigger isn't ready, the coroutine actually suspends and the
+next resume comes from a fresh top-level loop iteration.
+
+The only way stack could grow is if resuming a coroutine synchronously
+re-entered the drain (nested `run()`). That's exactly what `is_running_`
+prevents: an inner `set_result` calls `loop.acquire()`, its Handle's dtor
+sees `is_running_` and does *not* re-drain — it just appends to `queue_`,
+and the outer drain picks the events up.
+
+**Summary.** Symmetric transfer is a Coro-internal optimization. Task
+scheduling is loop-driven and uses `.resume()`. The stack stays O(1) by
+construction.
+
+## Python compatibility layer
+
+The C++ scheduler exposes nothing Python-specific; the bridge is built on top
+using the same primitives everything else uses (Future, Task, Coro). The rule
+that makes it tractable: **awaitability crosses the language boundary only
+via `Future`**. Native coroutines don't cross — neither Python's
+`generator/coroutine` protocol nor C++20 coroutine handles bridge directly,
+so we don't try. Everything on the far side gets wrapped until it is
+Future-shaped.
+
+Nanobind offers no built-in support for this — no coroutine or awaitable
+adapter in either the headers or the 2.13.0 package. Same for pybind11.
+The bridge is hand-written on top of the standard bindings.
+
+### `PyCoro`
+
+Nanobind C++ wrapper whose body is a `Coro<>` driving a Python coroutine
+object with `send()`:
+
+```
+loop:
+  yielded = py_coro.send(last_result)   # or .throw(last_exception) on error
+  # yielded is a nanobinded C++ Future (the only awaitable that crosses)
+  try:
+      last_result = co_await yielded    # native C++ await; parks on the Future
+  except e:
+      last_exception = e; continue
+  # StopIteration on send() -> co_return with its value
+```
+
+Each Python-level `await` in the wrapped coroutine yields a nanobinded
+Future object; Python's coroutine machinery propagates it up to the
+enclosing `send()` call in the C++ wrapper. The wrapper `co_await`s it via
+the normal `AwaitableAwaiter` path (so this Coro parks in the C++
+scheduler on the same waiter list any native awaiter would use), and
+threads the result — or exception — back into the next `send()` /
+`throw()`. `StopIteration` ends the loop and becomes the Coro's return
+value.
+
+Only `PyCoro` exists; there is no `PyTask`. A top-level Python coroutine
+becomes a `PyCoro` and — per the "Coro → Python needs a Task" rule below —
+is wrapped in a `Task<>` when it needs to be scheduled or exposed back to
+Python. Cancellation composes: `Task::cancel()` on the wrapping Task
+causes the next `co_await yielded` inside `PyCoro` to throw `Cancelled`
+on `await_resume`; the wrapper delivers it into the Python coroutine via
+`py_coro.throw(Cancelled(...))`.
+
+### Wrapping native C++ types for Python
+
+Python-side, the wrappers implement the awaitable protocol by hand —
+`__await__` returns a generator that `yield`s the wrapped object itself
+(a Future) so the enclosing `PyCoro`'s `send()`-loop receives it.
+
+- **`Future<StateT>` → Python.** Direct nanobind wrapper implementing
+  `__await__`. This is the load-bearing case — every awaitable that
+  crosses into Python is either already a Future or is wrapped in one
+  under the hood.
+- **`Task<T>` → Python.** Direct nanobind wrapper. Because `Task` is
+  already `AwaitableState`-shaped and refcounted, the wrapper's
+  `__await__` yields it as the awaitable and the `PyCoro` loop drives
+  it just like a Future.
+- **`Coro<T>` → Python.** No direct path. A Python-side awaiter has no
+  way to enter a C++ coroutine handle, so we don't try — the Coro gets
+  wrapped in a `Task<T>` first, and the Task is what Python sees. One
+  extra scheduler round-trip; keeps the bridge trivial.
+
+### Consequences
+
+- The C++ scheduler's public API needs no Python-shaped hooks. Everything
+  Python does — awaiting a native Trigger, wrapping a Python coroutine,
+  cancelling from either side — goes through Future and Task, using their
+  existing APIs.
+- Python-side combinators (`First`, `Combine`, `with_timeout`) can be
+  implemented in pure Python against the wrapped Futures/Tasks without any
+  new C++ surface. The intrusive waiter list underneath makes their
+  cancel-losers pattern O(1) anyway.
+- No polymorphic waiter on the hot path. The scheduler's waiter deque still
+  contains only `Event*` — the Python bridge is layered on top rather than
+  cut into.
