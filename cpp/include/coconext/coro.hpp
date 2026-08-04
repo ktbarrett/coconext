@@ -56,11 +56,11 @@ class CoroStateBase {
         if (std::holds_alternative<detail::Exception>(value_)) {
             std::rethrow_exception(std::get<detail::Exception>(value_).exception);
         }
-        if (std::holds_alternative<detail::Result<T>>(value_)) {
+        if (std::holds_alternative<detail::Value<T>>(value_)) {
             if constexpr (std::is_void_v<T>) {
                 return;
             } else {
-                return std::move(std::get<detail::Result<T>>(value_).value);
+                return std::move(std::get<detail::Value<T>>(value_).value);
             }
         }
         throw std::runtime_error("Coro does not have a result");
@@ -71,9 +71,9 @@ class CoroStateBase {
     [[nodiscard]] TaskState<>& get_task() noexcept { return *task_; }
 
   private:
-    void set_result(detail::Result<T> value) noexcept { value_ = std::move(value); }
+    void set_result(detail::Value<T> value) noexcept { value_ = std::move(value); }
 
-    std::variant<std::monostate, detail::Result<T>, detail::Exception> value_;
+    std::variant<std::monostate, detail::Value<T>, detail::Exception> value_;
     std::coroutine_handle<> parent_;
     TaskState<>* task_;
 };
@@ -84,14 +84,14 @@ class CoroState : public CoroStateBase<T> {
     template <typename U>
         requires std::is_convertible_v<U, T>
     void return_value(U&& value) noexcept(std::is_nothrow_constructible_v<T, U>) {
-        this->set_result(detail::Result<T>{std::forward<U>(value)});
+        this->set_result(detail::Value<T>{std::forward<U>(value)});
     }
 };
 
 template <>
 class CoroState<void> : public CoroStateBase<void> {
   public:
-    void return_void() noexcept { this->set_result(detail::Result<void>{}); }
+    void return_void() noexcept { this->set_result(detail::Value<void>{}); }
 };
 
 // Passthrough coroutine, keeps a reference to the owning Task's Promise

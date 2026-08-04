@@ -158,22 +158,53 @@ class AwaitableState : public AwaitableState<detail::Erased> {
         if (std::holds_alternative<std::exception_ptr>(result_)) {
             std::rethrow_exception(std::get<std::exception_ptr>(result_));
         } else {
-            if constexpr (std::is_void_v<T>) {
-                return;
-            } else {
-                return result_value_->value;
-            }
+            assert(
+                result_value_.has_value()
+                && "AwaitableState is done but result_value_ is not set"
+            );
+            return *result_value_;
         }
     }
 
   private:
-    void set_result(Result<T> value) noexcept {
+    void set_result(T&& value) noexcept {
         result_value_ = value;
-        AwaitableState<>::on_done();
+        result_ = Value{};
+    }
+    void set_result(T const& value) noexcept {
+        result_value_ = value;
+        result_ = Value{};
     }
 
   private:
-    std::optional<Result<T>> result_value_;
+    std::optional<T> result_value_;
+};
+
+template <>
+class AwaitableState<void> : public AwaitableState<detail::Erased> {
+    // This is an implementation detail only used for the following classes, so we avoid
+    // protected and make friends.
+    template <typename>
+    friend class ::coconext::FutureState;
+    template <typename>
+    friend class ::coconext::TaskState;
+    template <typename>
+    friend class ::coconext::TaskManagerState;
+
+  public:
+    using value_type = void;
+
+    void result() const {
+        if (!AwaitableState<>::done()) {
+            throw std::runtime_error("Not done");
+        }
+        if (std::holds_alternative<std::exception_ptr>(result_)) {
+            std::rethrow_exception(std::get<std::exception_ptr>(result_));
+        }
+    }
+
+  private:
+    void set_void() noexcept { result_ = Value{}; }
 };
 
 template <typename AwaitableStateT>
@@ -216,6 +247,8 @@ class FutureStateBase : public detail::AwaitableState<T> {
     // Override to unprime any underlying awaitable if refcount drops to zero.
     virtual void unprime() noexcept {}
 
+    using detail::AwaitableState<>::set_exception;
+
   private:
     void inc_ref() noexcept { ++ref_count_; }
     void dec_ref() noexcept {
@@ -235,21 +268,14 @@ class FutureStateBase : public detail::AwaitableState<T> {
 
 template <typename T>
 class FutureState : public detail::FutureStateBase<T> {
-  public:
-    void set_result(T&& value) noexcept {
-        detail::AwaitableState<T>::set_result(detail::Result<T>{std::move(value)});
-    }
-    void set_result(T const& value) noexcept {
-        detail::AwaitableState<T>::set_result(detail::Result<T>{value});
-    }
+  protected:
+    using detail::AwaitableState<T>::set_result;
 };
 
 template <>
 class FutureState<void> : public detail::FutureStateBase<void> {
-  public:
-    void set_void() noexcept {
-        detail::AwaitableState<void>::set_result(detail::Result<void>{});
-    }
+  protected:
+    using detail::AwaitableState<void>::set_void;
 };
 
 // Single-shot, multiple-consumer awaitable object.
@@ -289,18 +315,18 @@ class Future {
     }
 
     [[nodiscard]] auto operator co_await() noexcept {
-        return detail::AwaitableAwaiter<StateT>(handle_);
+        return detail::AwaitableAwaiter<StateT>(*handle_);
     }
 
     [[nodiscard]] static Future from_state(StateT& state) noexcept { return Future{state}; }
-    [[nodiscard]] StateT& get_state() const noexcept { return handle_; }
+    [[nodiscard]] StateT& get_state() const noexcept { return *handle_; }
 
   private:
-    [[nodiscard]] explicit Future(StateT& state) noexcept : handle_(state) {
-        handle_.inc_ref();
+    [[nodiscard]] explicit Future(StateT& state) noexcept : handle_(&state) {
+        handle_->inc_ref();
     }
 
-    StateT& handle_;
+    StateT* handle_;
 };
 
 template <>
@@ -453,39 +479,38 @@ class TaskState<detail::Erased> : public detail::AwaitableState<> {
     uint16_t cancelled_{0};
 };
 
-namespace detail {
-
 template <typename T>
-class TaskStateBase : public TaskState<>, public detail::AwaitableState<T> {
-    [[nodiscard]] Task<T> get_return_object() const noexcept { return Task<T>{this}; }
+class TaskState : public TaskState<>, public detail::AwaitableState<T> {
+  public:
+    [[nodiscard]] Task<T> get_return_object() noexcept {
+        return Task<T>::from_state(*this);
+    }
     [[nodiscard]] std::suspend_always initial_suspend() noexcept { return {}; }
     [[nodiscard]] std::suspend_always final_suspend() noexcept { return {}; }
-};
 
-}  // namespace detail
-
-template <typename T>
-class TaskState : public detail::TaskStateBase<T> {
-  public:
     void unhandled_exception() noexcept {
         TaskState<>::set_exception(std::current_exception());
         TaskState<>::on_done();
     }
     void return_value(T value) noexcept {
-        detail::AwaitableState<T>::set_result(detail::Result<T>{std::move(value)});
+        set_result(std::move(value));
         TaskState<>::on_done();
     }
 };
 
 template <>
-class TaskState<void> : public detail::TaskStateBase<void> {
+class TaskState<void> : public TaskState<>, public detail::AwaitableState<void> {
   public:
+    [[nodiscard]] Task<void> get_return_object() noexcept;
+    [[nodiscard]] std::suspend_always initial_suspend() noexcept { return {}; }
+    [[nodiscard]] std::suspend_always final_suspend() noexcept { return {}; }
+
     void unhandled_exception() noexcept {
         TaskState<>::set_exception(std::current_exception());
         TaskState<>::on_done();
     }
     void return_void() noexcept {
-        detail::AwaitableState<void>::set_result(detail::Result<void>{});
+        set_void();
         TaskState<>::on_done();
     }
 };
@@ -514,39 +539,39 @@ class Task {
 
     template <typename F>
     void add_done_callback(F&& callback) {
-        handle_.add_done_callback(std::forward<F>(callback));
+        handle_->add_done_callback(std::forward<F>(callback));
     }
 
-    [[nodiscard]] bool unstarted() const noexcept { return handle_.unstarted(); }
-    [[nodiscard]] bool done() const noexcept { return handle_.done(); }
-    [[nodiscard]] bool cancelled() const noexcept { return handle_.cancelled(); }
-    [[nodiscard]] std::exception_ptr exception() const { return handle_.exception(); }
-    [[nodiscard]] T result() const { return handle_.result(); }
+    [[nodiscard]] bool unstarted() const noexcept { return handle_->unstarted(); }
+    [[nodiscard]] bool done() const noexcept { return handle_->done(); }
+    [[nodiscard]] bool cancelled() const noexcept { return handle_->cancelled(); }
+    [[nodiscard]] std::exception_ptr exception() const { return handle_->exception(); }
+    [[nodiscard]] T result() const { return handle_->result(); }
 
     void start_soon();
 
-    void cancel() noexcept { handle_.cancel(); }
-    void uncancel() { handle_.uncancel(); }
+    void cancel() noexcept { handle_->cancel(); }
+    void uncancel() { handle_->uncancel(); }
 
-    [[nodiscard]] TaskState<T>& get_state() const noexcept { return handle_; }
+    [[nodiscard]] TaskState<T>& get_state() const noexcept { return *handle_; }
     [[nodiscard]] static Task<T> from_state(TaskState<T>& state) noexcept {
         return Task<T>{state};
     }
 
     [[nodiscard]] auto operator co_await() noexcept {
-        return detail::AwaitableAwaiter<TaskState<T>>(handle_);
+        return detail::AwaitableAwaiter<TaskState<T>>(*handle_);
     }
 
   private:
-    [[nodiscard]] explicit Task(TaskState<T>& s) noexcept : handle_(s) {
-        handle_.inc_ref();
+    [[nodiscard]] explicit Task(TaskState<T>& s) noexcept : handle_(&s) {
+        handle_->inc_ref();
     }
 
     [[nodiscard]] static Task<T> wrap_impl(Coro<T>&& coro) noexcept {
         co_return co_await std::move(coro);
     }
 
-    TaskState<T>& handle_;
+    TaskState<T>* handle_;
 };
 
 template <>
@@ -614,23 +639,18 @@ class TaskManagerState<detail::Erased> : public detail::AwaitableState<> {
 
   protected:
     // Hook 1: called after a task has been added to tasks_.
-    virtual void on_add(TaskState<>& task) noexcept {}
+    virtual void on_add(TaskState<>& task) noexcept = 0;
 
     // Hook 2: called after each child completes and has been removed from tasks_.
     // Override to decide whether to call close(), inspect the completed task's outcome,
     // etc.
-    virtual void on_child_done(TaskState<>& task) noexcept {
-        if (task.exception() && !task.cancelled()) {
-            TaskManagerState<>::close();
-            for (auto& t : this->tasks_) {
-                t.cancel();
-            }
-        }
-    }
+    virtual void on_child_done(TaskState<>& task) noexcept = 0;
 
     // Hook 3: called exactly once after tasks_ drains. Users call set_result() or
     // set_exception() to set the result of the TaskManager.
-    virtual void on_drain_complete() noexcept {};
+    virtual void on_drain_complete() noexcept = 0;
+
+    using detail::AwaitableState<>::set_exception;
 
   private:
     void inc_ref() noexcept { ++ref_count_; }
@@ -659,6 +679,9 @@ class TaskManagerState<detail::Erased> : public detail::AwaitableState<> {
         bind_event_loop(*event_loop);
     }
 
+    // prevent this from further subclassing.
+    using detail::IntrusiveDequeNode::deque_remove;
+
   protected:
     detail::IntrusiveDeque<TaskState<>> tasks_;
 
@@ -670,9 +693,15 @@ class TaskManagerState<detail::Erased> : public detail::AwaitableState<> {
 
 template <typename T>
 class TaskManagerState : public TaskManagerState<>, public detail::AwaitableState<T> {
-  private:
-    // prevent this from further subclassing.
-    using detail::IntrusiveDequeNode::deque_remove;
+  protected:
+    using detail::AwaitableState<T>::set_result;
+};
+
+template <>
+class TaskManagerState<void> : public TaskManagerState<>,
+                               public detail::AwaitableState<void> {
+  protected:
+    using detail::AwaitableState<void>::set_void;
 };
 
 template <typename T, typename StateT>
@@ -703,33 +732,33 @@ class TaskManager {
 
     template <typename F>
     void add_done_callback(F&& callback) {
-        state_.add_done_callback(std::forward<F>(callback));
+        state_->add_done_callback(std::forward<F>(callback));
     }
 
-    [[nodiscard]] bool done() const noexcept { return state_.done(); }
-    [[nodiscard]] bool cancelled() const noexcept { return state_.cancelled(); }
-    [[nodiscard]] T result() const { return state_.result(); }
-    [[nodiscard]] std::exception_ptr exception() const { return state_.exception(); }
+    [[nodiscard]] bool done() const noexcept { return state_->done(); }
+    [[nodiscard]] bool cancelled() const noexcept { return state_->cancelled(); }
+    [[nodiscard]] T result() const { return state_->result(); }
+    [[nodiscard]] std::exception_ptr exception() const { return state_->exception(); }
 
-    void add(TaskState<>& task) { state_.add(task); }
+    void add(TaskState<>& task) { state_->add(task); }
 
-    void cancel() noexcept { state_.cancel(); }
+    void cancel() noexcept { state_->cancel(); }
 
     [[nodiscard]] auto operator co_await() noexcept {
-        return detail::AwaitableAwaiter<StateT>(state_);
+        return detail::AwaitableAwaiter<StateT>(*state_);
     }
 
-    [[nodiscard]] StateT& get_state() const noexcept { return state_; }
+    [[nodiscard]] StateT& get_state() const noexcept { return *state_; }
     [[nodiscard]] static TaskManager from_state(StateT& state) noexcept {
         return TaskManager{state};
     }
 
   private:
-    [[nodiscard]] explicit TaskManager(StateT& state) noexcept : state_(state) {
-        state_.inc_ref();
+    [[nodiscard]] explicit TaskManager(StateT& state) noexcept : state_(&state) {
+        state_->inc_ref();
     }
 
-    StateT& state_;
+    StateT* state_;
 };
 
 [[nodiscard]] inline TaskState<>& current_task() {
@@ -815,9 +844,13 @@ inline void TaskState<>::start_soon() {
     event_loop_->acquire().schedule_back(&std::get<TaskState<>::Scheduled>(state_));
 }
 
+[[nodiscard]] Task<void> TaskState<void>::get_return_object() noexcept {
+    return Task<void>::from_state(*this);
+}
+
 template <typename T>
 void Task<T>::start_soon() {
-    handle_.start_soon();
+    handle_->start_soon();
 }
 
 template <typename T>

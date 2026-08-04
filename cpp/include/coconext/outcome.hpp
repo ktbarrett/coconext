@@ -7,20 +7,6 @@
 
 namespace coconext {
 
-namespace detail {
-
-template <typename T>
-struct Result {
-    T value;
-};
-
-template <>
-struct Result<void> {};
-
-struct Exception {
-    std::exception_ptr exception;
-};
-
 class Cancelled : public std::exception {
   public:
     Cancelled() noexcept : msg_() {}
@@ -31,10 +17,6 @@ class Cancelled : public std::exception {
   private:
     std::string msg_;
 };
-
-}  // namespace detail
-
-using Cancelled = detail::Cancelled;
 
 }  // namespace coconext
 

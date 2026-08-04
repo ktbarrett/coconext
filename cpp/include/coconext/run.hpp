@@ -25,8 +25,8 @@ class RunTaskManagerState : public TaskManagerState<T> {
     }
 
   private:
-    void on_add(TaskState<>*) override {}
-    void on_child_done(TaskState<>* task) override {
+    void on_add(TaskState<>*) final {}
+    void on_child_done(TaskState<>* task) final {
         if (task == root_) {
             TaskManagerState<T>::close();
             for (auto& t : this->tasks_) {
@@ -34,11 +34,11 @@ class RunTaskManagerState : public TaskManagerState<T> {
             }
         }
     }
-    Outcome<void> on_drain_complete() override {
+    void on_drain_complete() final {
         if (root_->exception()) {
-            return Outcome<void>{root_->exception()};
+            set_exception(root_->exception());
         }
-        return Outcome<void>{};
+        set_void();
     }
 
   private:
