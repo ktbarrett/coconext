@@ -281,9 +281,7 @@ class Future {
 
     [[nodiscard]] bool done() const noexcept { return handle_->done(); }
     [[nodiscard]] T result() const { return handle_->result(); }
-    [[nodiscard]] std::exception_ptr exception() const noexcept {
-        return handle_->exception();
-    }
+    [[nodiscard]] std::exception_ptr exception() const { return handle_->exception(); }
 
     template <typename F>
     void add_done_callback(F&& callback) {
@@ -379,8 +377,10 @@ class TaskState<detail::Erased> : public detail::AwaitableState<> {
 
     void start_soon();
 
-    [[nodiscard]] TaskManagerState<>* get_task_manager() noexcept { return task_manager_; }
-    [[nodiscard]] TaskManagerState<>* get_global_task_manager() noexcept {
+    [[nodiscard]] TaskManagerState<>* get_task_manager() const noexcept {
+        return task_manager_;
+    }
+    [[nodiscard]] TaskManagerState<>* get_global_task_manager() const noexcept {
         return global_task_manager_;
     }
 
@@ -429,7 +429,7 @@ class TaskState<detail::Erased> : public detail::AwaitableState<> {
         task_manager_ = &task_manager;
     }
 
-    void bind_global_task_manager(TaskManagerState<>& task_manager) {
+    void bind_global_task_manager(TaskManagerState<>& task_manager) noexcept {
         if (global_task_manager_ != nullptr) {
             return;
         }
@@ -520,10 +520,8 @@ class Task {
     [[nodiscard]] bool unstarted() const noexcept { return handle_.unstarted(); }
     [[nodiscard]] bool done() const noexcept { return handle_.done(); }
     [[nodiscard]] bool cancelled() const noexcept { return handle_.cancelled(); }
-    [[nodiscard]] std::exception_ptr exception() const noexcept {
-        return handle_.exception();
-    }
-    [[nodiscard]] T result() { return handle_.result(); }
+    [[nodiscard]] std::exception_ptr exception() const { return handle_.exception(); }
+    [[nodiscard]] T result() const { return handle_.result(); }
 
     void start_soon();
 
@@ -711,20 +709,18 @@ class TaskManager {
     [[nodiscard]] bool done() const noexcept { return state_.done(); }
     [[nodiscard]] bool cancelled() const noexcept { return state_.cancelled(); }
     [[nodiscard]] T result() const { return state_.result(); }
-    [[nodiscard]] std::exception_ptr exception() const noexcept {
-        return state_.exception();
-    }
+    [[nodiscard]] std::exception_ptr exception() const { return state_.exception(); }
 
     void add(TaskState<>& task) { state_.add(task); }
 
     void cancel() noexcept { state_.cancel(); }
 
-    [[nodiscard]] auto operator co_await() {
+    [[nodiscard]] auto operator co_await() noexcept {
         return detail::AwaitableAwaiter<StateT>(state_);
     }
 
     [[nodiscard]] StateT& get_state() const noexcept { return state_; }
-    [[nodiscard]] static TaskManager from_state(StateT& state) {
+    [[nodiscard]] static TaskManager from_state(StateT& state) noexcept {
         return TaskManager{state};
     }
 
@@ -736,14 +732,14 @@ class TaskManager {
     StateT& state_;
 };
 
-TaskState<>& current_task() {
+[[nodiscard]] inline TaskState<>& current_task() {
     if (detail::current_task == nullptr) {
         throw std::runtime_error("No current task");
     }
     return *detail::current_task;
 }
 
-TaskManagerState<>& current_global_task_manager() {
+[[nodiscard]] inline TaskManagerState<>& current_global_task_manager() {
     auto& task = current_task();
     auto global_task_manager = task.get_global_task_manager();
     assert(
@@ -753,7 +749,7 @@ TaskManagerState<>& current_global_task_manager() {
     return *global_task_manager;
 }
 
-detail::EventLoop& current_event_loop() {
+[[nodiscard]] inline detail::EventLoop& current_event_loop() {
     auto& task = current_task();
     auto event_loop = task.get_event_loop();
     assert(event_loop != nullptr && "Running Task must have an EventLoop bound");
@@ -798,7 +794,7 @@ void detail::FutureStateBase<T>::on_awaited(TaskState<>& task) {
     this->bind_event_loop(*event_loop);
 }
 
-void TaskState<>::on_done() noexcept {
+inline void TaskState<>::on_done() noexcept {
     state_ = std::monostate{};
     // We may not have a manager for this Task if it was directly awaited.
     if (task_manager_) {
@@ -806,7 +802,7 @@ void TaskState<>::on_done() noexcept {
     }
 }
 
-void TaskState<>::start_soon() {
+inline void TaskState<>::start_soon() {
     if (!unstarted()) {
         throw std::runtime_error("Task is already started");
     }

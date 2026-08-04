@@ -23,7 +23,7 @@ class CoroStateBase {
     friend class CoroState<T>;
 
   public:
-    [[nodiscard]] Coro<T> get_return_object() {
+    [[nodiscard]] Coro<T> get_return_object() noexcept {
         return Coro<T>{std::coroutine_handle<CoroState<T>>::from_promise(*this)};
     }
     [[nodiscard]] std::suspend_always initial_suspend() noexcept { return {}; }
@@ -31,7 +31,8 @@ class CoroStateBase {
         // This exists to "chain" coros together.
         class TransferAwaitable {
           public:
-            explicit TransferAwaitable(std::coroutine_handle<> parent) : parent_(parent) {}
+            explicit TransferAwaitable(std::coroutine_handle<> parent) noexcept
+                : parent_(parent) {}
 
           public:  // Awaitable API
             bool await_ready() noexcept { return false; }
@@ -47,7 +48,9 @@ class CoroStateBase {
         };
         return TransferAwaitable{parent_};
     }
-    void unhandled_exception() { value_ = detail::Exception{std::current_exception()}; }
+    void unhandled_exception() noexcept {
+        value_ = detail::Exception{std::current_exception()};
+    }
 
     [[nodiscard]] T result() {
         if (std::holds_alternative<detail::Exception>(value_)) {
@@ -80,15 +83,15 @@ class CoroState : public CoroStateBase<T> {
   public:
     template <typename U>
         requires std::is_convertible_v<U, T>
-    void return_value(U&& value) {
-        set_result(detail::Result<T>{std::forward<U>(value)});
+    void return_value(U&& value) noexcept(std::is_nothrow_constructible_v<T, U>) {
+        this->set_result(detail::Result<T>{std::forward<U>(value)});
     }
 };
 
 template <>
 class CoroState<void> : public CoroStateBase<void> {
   public:
-    void return_void() { this->set_result(detail::Result<void>{}); }
+    void return_void() noexcept { this->set_result(detail::Result<void>{}); }
 };
 
 // Passthrough coroutine, keeps a reference to the owning Task's Promise
@@ -97,7 +100,7 @@ class Coro {
   public:
     class Awaiter {
       public:
-        Awaiter(Coro& coro) : coro_(coro) {}
+        explicit Awaiter(Coro& coro) noexcept : coro_(coro) {}
 
       public:
         [[nodiscard]] bool await_ready() const noexcept { return false; }
@@ -117,8 +120,9 @@ class Coro {
     };
 
   public:
-    [[nodiscard]] explicit Coro(std::coroutine_handle<CoroState<T>> h) : handle_(h) {}
-    ~Coro() {
+    [[nodiscard]] explicit Coro(std::coroutine_handle<CoroState<T>> h) noexcept
+        : handle_(h) {}
+    ~Coro() noexcept {
         if (handle_) {
             handle_.destroy();
         }

@@ -18,7 +18,7 @@ class Event : public IntrusiveDequeNode {
     void event_unschedule() noexcept { deque_remove(); }
 
   private:
-    virtual void event_run() { throw std::runtime_error("Event run not implemented"); }
+    virtual void event_run() noexcept = 0;
     using IntrusiveDequeNode::deque_remove;
 };
 
@@ -55,8 +55,8 @@ class EventLoop {
         friend class detail::EventLoop;
 
       public:
-        Handle(Handle&& other) = default;
-        ~Handle() {
+        Handle(Handle&& other) noexcept = default;
+        ~Handle() noexcept {
             // Force the loop to run any remaining events before releasing the lock. We
             // don't want to leave any events unprocessed for the next external event to
             // handle.
