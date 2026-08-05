@@ -115,29 +115,35 @@ inside an already-running loop, which would corrupt the drain. The recursive
 mutex allows *re-acquisition* (fine, because the Handle dtor won't re-drain
 if `is_running_` is set), but forbids nested `run()`.
 
-## `AwaitableState` concept and the unified awaiter
+## Shared awaitable state and the unified awaiter
 
-All three shared-state types (`FutureState<T>`, `TaskState<>`,
-`TaskManagerState<>`) satisfy the `detail::AwaitableState` concept:
+The three shared-state types (`FutureState<T>`, `TaskState<>`,
+`TaskManagerState<>`) all expose the same small set of members that the
+awaiter machinery relies on:
 
-```cpp
-template <typename S>
-concept AwaitableState = requires(S s, Event& e, TaskState<>& t) {
-    typename S::value_type;
-    { s.done() } -> std::same_as<bool>;
-    { s.get_event_loop() } -> std::same_as<EventLoop*>;
-    s.register_waiter(e);       // push awaiter into waiters_
-    s.on_awaited(t);            // late-bind, and for Tasks: kick off if unstarted
-    s.result();                 // typed result; throws if not done
-};
-```
+- `value_type` — the typed result the awaiter returns.
+- `done()` — result is available (drives `await_ready` short-circuit).
+- `get_event_loop()` — the bound loop, or `nullptr` if still unbound.
+- `register_waiter(event)` — append an awaiter's `Event` to `waiters_`.
+- `on_awaited(task)` — late-bind bookkeeping. For `FutureState` this
+  propagates the awaiter's loop. For an unstarted `TaskState` it also
+  schedules the body. For a `TaskManagerState` it also starts every
+  queued child.
+- `result()` — typed result; throws if not done.
 
-One awaiter — `detail::AwaitableAwaiter<S>` — is written against this concept
-and serves `co_await future`, `co_await task`, and `co_await task_manager`.
-It is itself an `Event` (it lives on the awaitable's waiter deque, and later
-gets relinked onto the loop's ready deque). Its dtor calls
-`event_unschedule()`, which is what makes cancellation-of-losers and frame
-destruction correctly de-register from whatever list the awaiter was on.
+`TaskState<>` and `TaskManagerState<>` also implement `get_task()` / the
+promise-side plumbing needed to be the *awaiting* coroutine — but the
+awaiter side only leans on the members above.
+
+One awaiter — `detail::AwaitableAwaiter<S>` — is templated on the state
+type and serves `co_await future`, `co_await task`, and `co_await
+task_manager` uniformly. It is itself an `Event` (it lives on the
+awaitable's waiter deque, and later gets relinked onto the loop's ready
+deque). Its dtor calls `event_unschedule()`, which is what makes
+cancellation-of-losers and frame destruction correctly de-register from
+whatever list the awaiter was on. There is no `concept` constraint on
+`S` today — the requirements above are enforced by ordinary compile
+errors at the template instantiation.
 
 ## Threading and loop affinity
 
@@ -182,14 +188,22 @@ For Task/TaskManager, that means every entry point that touches or connects
 the object must reconcile loops:
 
 - `Task::start_soon()` binds `event_loop_` from `current_event_loop()`
-  (the caller's loop). That defines the body's loop.
+  (the caller's loop) if not already bound. That defines the body's loop.
 - `co_await task` / `co_await manager`: `on_awaited(awaiting_task)` binds
   the awaitable's loop from the awaiter's. Match → fine. Mismatch → throws.
-  First-awaiter-wins if not yet bound.
-- `TaskManager::add(task)`: reconciles three sides — the manager's loop,
-  the task's loop (if already `start_soon`'d), and the caller's loop
-  (used by `start_soon` if the task is unstarted). Any mismatch among
-  these throws. First one bound wins; the others must agree.
+  First-awaiter-wins if not yet bound. For a TaskManager, `on_awaited`
+  also drives every queued (unstarted) child through `start_soon(loop, gtm)`.
+- `TaskManager::add(task)`: rejects a task already bound to another
+  manager. Does *not* start the task. If the manager is already
+  running (`started()`), the added task is started immediately on the
+  manager's bound loop and global manager. Otherwise the child is left
+  queued in `tasks_` and started later when the manager itself starts.
+  If the incoming task is already running, `add` opportunistically
+  propagates its `event_loop_` / `global_task_manager_` onto the (still
+  unbound) manager, which throws on mismatch.
+- `TaskManager::start_soon()` binds `event_loop_` and `global_task_manager_`
+  from the caller's context if not already bound, then starts every
+  queued child.
 
 The `add`-time reconciliation matters: without it, a manager could accept
 tasks from two different loops, and later work — `cancel()` iterating
@@ -222,9 +236,11 @@ schedule. Concretely:
 - A `Future`'s `event_loop_` is nullptr until the first Task awaits it. A
   Future that is set but never awaited never needs to know about a loop.
 - A `TaskState`'s `event_loop_` and `global_task_manager_` are nullptr until
-  the Task is `start_soon()`'d **or** first awaited by another running Task.
-- A `TaskManagerState`'s `event_loop_` binds when it is first awaited or
-  when a task added to it needs an event loop propagated.
+  the Task is `start_soon()`'d **or** first awaited by another running Task
+  **or** the enclosing `TaskManager` is itself started.
+- A `TaskManagerState`'s `event_loop_` and `global_task_manager_` bind when
+  the manager is first awaited, when its own `start_soon()` is called, or
+  when an already-running task is `add`'d (which propagates its bindings).
 - `current_task` (a `thread_local TaskState<>*`) is set on Task resume and
   read only when we genuinely have no cheaper handle — namely on the
   `start_soon(coro)` free function called from user code, and on the
@@ -283,7 +299,7 @@ find the awaiter to un-park it — see the cancellation section.
 1. **Late-bind the event loop.** If the awaitable's `event_loop_` is nullptr,
    set it from the awaiting Task's loop. If it's already bound to a
    different loop, throw — that's cross-loop misuse.
-2. **Kick, if applicable.** For `TaskState`, if `unstarted()`, schedule the
+2. **Kick, if applicable.** For `TaskState`, if not `started()`, schedule the
    `Scheduled` event on the loop. This is why awaiting an unstarted Task
    works even if the user never explicitly `start_soon()`'d it.
 
@@ -375,17 +391,25 @@ if any), and `global_task_manager_` (the ambient root manager — see below).
 All three are nullptr at construction. They fill in when we cross the first
 threshold that requires them:
 
-- `start_soon()` binds `global_task_manager_` from `current_global_task_manager()`
-  and `event_loop_` from `current_event_loop()` if either is nullptr, then
-  schedules the `Scheduled` event.
+- `start_soon()` (no-arg) binds `event_loop_` from `current_event_loop()`
+  and `global_task_manager_` from `current_global_task_manager()` if
+  nullptr, then schedules the `Scheduled` event.
+- `start_soon(loop, gtm)` (the manager-driven overload) binds
+  `event_loop_` from the passed loop (throwing on mismatch) and
+  `global_task_manager_` from the passed manager if nullptr, then
+  schedules the `Scheduled` event. Used by `TaskManager::add` and
+  `TaskManager::start_soon` / `TaskManager::on_awaited` to start children
+  under the manager's already-decided context.
 - Being awaited before ever being started: `on_awaited(task)` binds
   `event_loop_` and `global_task_manager_` from the awaiting Task (both of
   which must already be bound because the awaiter is running), then
-  schedules `Scheduled`.
-- `TaskManager::add(task)` binds `task_manager_`, reconciles `event_loop_`
-  between manager and task (see "Threading and loop affinity"), and if
-  the task is `unstarted()`, calls `start_soon()` on it (which binds the
-  loop from the caller if neither side had one).
+  schedules `Scheduled`. If the Task is already started, `on_awaited` is
+  a no-op — the existing bindings stand.
+- `TaskManager::add(task)` sets `task_manager_` (rejecting a task already
+  bound to a different manager). It does not itself bind or start the
+  task. If the manager is already running it forwards to
+  `task->start_soon(loop, gtm)`; otherwise the child sits in `tasks_`
+  until the manager starts.
 
 Rebinding to a different loop or a different `TaskManager` throws. Rebinding
 `global_task_manager` is silently a no-op (first binding wins) because tasks
@@ -402,14 +426,20 @@ Two operations, sharply different:
   Additionally, the free-function form does
   `current_global_task_manager().add(task.get_state())` so the task is
   tracked. It's the "just run this thing under my current context" API.
-- **`TaskManager::add(task)`** takes an existing (possibly already-running)
-  Task and binds it to *this* manager for lifecycle tracking. It refuses if
-  the manager is `done()` or `closed()`. If the task is unstarted, `add`
-  starts it (so the caller doesn't need a separate `start_soon` call). It
-  does not rebind the event loop or the global task manager.
+- **`TaskManager::add(task)`** takes a Task and binds it to *this* manager
+  for lifecycle tracking. It refuses if the manager is `done()` or
+  `closed()`, or if the task is already bound to a different manager.
+  It does **not** start unstarted tasks by itself — if the manager is
+  unstarted, the child sits queued in `tasks_` until the manager itself
+  starts (via its own `start_soon()` or via being awaited). If the
+  manager is already running when `add` is called, the child is started
+  immediately on the manager's bound loop and global manager.
 
 The two compose: `start_soon` schedules under whatever manager is ambient;
 `add` associates with a specific manager whose lifecycle you want to bound.
+Queued-then-started semantics let a manager be assembled fully before any
+of its children run — useful for setting up siblings that reference each
+other.
 
 ### Cancellation
 
@@ -475,13 +505,17 @@ Closure and cancellation:
   children can still be added (which is a legitimate use case for
   best-effort shutdown), but they'll be cancelled on `close()` if the
   subclass wires it up.
-- Auto-close: `internal_child_done` calls `close()` when `tasks_` drains
-  and the manager wasn't explicitly closed. This is what makes the common
-  case ("start N children, wait for them all") work with no boilerplate.
+- No auto-close on drain. `internal_child_done` fires
+  `on_drain_complete` only when the manager has already been explicitly
+  `close()`'d and `tasks_` empties. Subclasses that want the
+  "start N children, wait for them all" pattern call `close()` themselves
+  (e.g. from an `on_add` hook once the initial batch is queued, or after
+  awaiting the manager once).
 
-`TaskManager` is itself awaitable — it satisfies `AwaitableState`. Waiters
-fire when `on_drain_complete` sets the result (via subclass calls to
-`set_result` / `set_void` / `set_exception`).
+`TaskManager` is itself awaitable — it exposes the same shared-state
+surface as `Future` and `Task`. Waiters fire when `on_drain_complete`
+sets the result (via subclass calls to `set_result` / `set_void` /
+`set_exception`).
 
 ### Global task manager and `start_soon`
 
@@ -746,7 +780,7 @@ Python-side, the wrappers implement the awaitable protocol by hand —
   crosses into Python is either already a Future or is wrapped in one
   under the hood.
 - **`Task<T>` → Python.** Direct nanobind wrapper. Because `Task` is
-  already `AwaitableState`-shaped and refcounted, the wrapper's
+  already awaitable-state-shaped and refcounted, the wrapper's
   `__await__` yields it as the awaitable and the `PyCoro` loop drives
   it just like a Future.
 - **`Coro<T>` → Python.** No direct path. A Python-side awaiter has no

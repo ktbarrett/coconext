@@ -48,7 +48,18 @@ class RunTaskManagerState final : public TaskManagerState<T> {
 };
 
 template <typename T>
-using RunTaskManager = TaskManager<RunTaskManagerState<T>>;
+class RunTaskManager : public TaskManager<RunTaskManagerState<T>> {
+  public:
+    RunTaskManager(detail::EventLoop* loop, Task<T> root) noexcept
+        : TaskManager<RunTaskManagerState<T>>(new RunTaskManagerState<T>(root.get_state())),
+          loop_(loop) {
+        this->get_state()->add(root.get_state());
+        this->get_state()->start_soon(loop_, this->get_state());
+    }
+
+  private:
+    detail::EventLoop* loop_;
+};
 
 }  // namespace detail
 
@@ -61,10 +72,7 @@ T run(Coro<T> coro) {
 template <typename T>
 T run(Task<T> task) {
     detail::EventLoop loop;
-    detail::RunTaskManager<T> manager(task.get_state());
-    task.get_state()->bind_event_loop(&loop);
-    task.get_state()->bind_global_task_manager(manager.get_state());
-    manager.add(task.get_state());
+    detail::RunTaskManager<T> manager(&loop, std::move(task));
     {
         auto handle = loop.acquire();
         handle.run();

@@ -98,7 +98,7 @@ TEST(TestRun, CoroReturnsString) {
 TEST(TestRun, TaskFromCoro) {
     Task<int> t = coro_return_int();
     EXPECT_FALSE(t.done());
-    EXPECT_TRUE(t.unstarted());
+    EXPECT_FALSE(t.started());
     EXPECT_EQ(run(std::move(t)), 42);
 }
 
