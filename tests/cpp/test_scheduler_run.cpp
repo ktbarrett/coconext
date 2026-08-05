@@ -11,8 +11,10 @@
 #include <utility>
 
 using coconext::Coro;
+using coconext::get_context;
 using coconext::run;
 using coconext::Task;
+using coconext::TaskContext;
 
 namespace {
 
@@ -144,6 +146,47 @@ TEST(TestRun, CoroAwaitsVoidTask) { EXPECT_NO_THROW(run(coro_awaits_task_void())
 
 TEST(TestRun, TaskAwaitedTwiceReturnsSameResult) {
     EXPECT_EQ(run(coro_awaits_task_twice()), 84);
+}
+
+// -- get_context() ---------------------------------------------------------
+
+namespace {
+
+Coro<TaskContext> coro_captures_context_deep(int depth) {
+    if (depth == 0) {
+        co_return co_await get_context();
+    }
+    co_return co_await coro_captures_context_deep(depth - 1);
+}
+
+}  // namespace
+
+TEST(TestRun, GetContextReturnsEnclosingTaskBindings) {
+    // A Coro several levels deep asks for its enclosing context. The
+    // returned TaskContext must report the same Task/loop/global manager
+    // the outer Task itself sees -- proving get_context walks the promise
+    // chain rather than reading TLS after the fact.
+    auto body = []() -> Coro<void> {
+        TaskContext outer = co_await get_context();
+        TaskContext inner = co_await coro_captures_context_deep(3);
+        EXPECT_EQ(outer.get_task().get(), inner.get_task().get());
+        EXPECT_EQ(outer.get_event_loop().get(), inner.get_event_loop().get());
+        EXPECT_EQ(
+            outer.get_global_task_manager().get(), inner.get_global_task_manager().get()
+        );
+        co_return;
+    };
+    EXPECT_NO_THROW(run(body()));
+}
+
+TEST(TestRun, UnawaitedTaskContextThrows) {
+    // A default-constructed TaskContext (as returned by get_context() before
+    // it is co_awaited) has no bound task; every accessor must throw.
+    TaskContext ctxt = get_context();
+    EXPECT_THROW((void)ctxt.get_task(), std::runtime_error);
+    EXPECT_THROW((void)ctxt.get_event_loop(), std::runtime_error);
+    EXPECT_THROW((void)ctxt.get_global_task_manager(), std::runtime_error);
+    EXPECT_THROW((void)ctxt.get_task_manager(), std::runtime_error);
 }
 
 // LCOV_EXCL_BR_STOP

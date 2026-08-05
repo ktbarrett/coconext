@@ -269,6 +269,77 @@ promise it returns `*this`. For a `CoroState<T>` promise it returns a stored
 before symmetric-transferring to the child). So even deep in a chain of
 Coros, the awaiting promise always knows the enclosing Task.
 
+### `TaskContext`: the packaged ambient scope
+
+Only one primitive reads TLS: `current_task()`, which returns
+`not_null<TaskState<>*>` after a single load. `current_context()` wraps that
+call in a `TaskContext` — an opaque value holding the `TaskState<>*` — and
+`get_context()` returns an empty `TaskContext` that fills itself in when
+`co_await`'d (see below). Everything else — the event loop, the global task
+manager, the task manager, the task itself — is a plain pointer read off the
+captured `TaskState<>*`. `current_event_loop()` and
+`current_global_task_manager()` don't exist; if you need a loop or a global
+manager, you go through a `TaskContext`.
+
+**The invariant.** A user-initiated scheduler operation does at most one TLS
+load. `Task::start_soon()` (argless), `TaskManager::start_soon()` (argless),
+and the free `start_soon(task)` each call `current_context()` once and
+harvest every field they need from the captured task. Contrast the old shape,
+where free `start_soon` could do three separate TLS lookups (bind loop, bind
+gtm, then `current_global_task_manager()->add(...)`); now it's one.
+
+**The two forms.**
+
+`current_context()` is for internal/library code that knows it is running
+under a task and just wants to package the ambient scope for onward use
+(binding a fresh Task/TaskManager to the current loop and global manager,
+handing to code that needs the loop, etc.). It throws if no task is running.
+
+`get_context()` is the user-facing form. It returns a `TaskContext` that is
+"empty until awaited": the accessors throw until `co_await get_context()` has
+run. The awaiter's `await_suspend` writes `parent.promise().get_task()` into
+the context and `return false;` — no actual suspension, no scheduler
+round-trip; the compiler resumes the caller directly. From the caller's
+perspective it's an "await-shaped" accessor: syntactically a suspend point,
+mechanically a promise-field read. The reason this exists alongside
+`current_context()`: user code inside a Coro doesn't know statically whether
+its current invocation is running under a Task, so we prefer the promise
+chain (always right) over TLS (right only for the currently-resumed fiber).
+The scheduler's internals do know, so they use `current_context()`
+unconditionally.
+
+**Visibility.** `TaskState<>` keeps its `get_event_loop()` /
+`get_global_task_manager()` / `get_task_manager()` / `get_task()` accessors
+`private`; `TaskContext` is a friend, and so is the awaiter machinery that
+needs `get_task()` for the promise-chain lookup. Users reach those fields
+only through a `TaskContext`. `TaskManagerState` and `FutureState` keep
+their own `get_event_loop()` / `get_global_task_manager()` at `protected`,
+because subclass hooks (`on_add`, `on_child_done`, `on_drain_complete`, and
+`FutureState` unprime paths) legitimately need direct access to their
+enclosing object's bindings.
+
+**`Task::start_soon(TaskContext)`.** The user-facing counterpart of the
+internal `TaskState<>::start_soon(loop, gtm)` used by `TaskManager::add` /
+`TaskManager::start_soon`. Bind loop and global manager from the context
+(throwing on mismatch), then schedule. Does *not* also add to the context's
+global manager — that additional step is what makes the free `start_soon`
+free-standing, and users who want it call the free function.
+
+```cpp
+Coro<void> body() {
+    TaskContext ctxt = co_await get_context();
+    ctxt.get_event_loop();          // enclosing Task's loop
+    ctxt.get_global_task_manager(); // enclosing Task's ambient scope
+    ctxt.get_task_manager();        // may be nullptr — not every Task is in a group
+}
+```
+
+Correctness follows the same reasoning as `AwaitableAwaiter::await_suspend`:
+the enclosing Task is reached through the promise chain (`CoroState` /
+`TaskState` both implement `get_task()`), so even a Coro five levels deep gets
+the right Task in O(1) without touching TLS. A `TaskContext` used before it
+is awaited throws from every accessor.
+
 ## `co_await` — the choreography
 
 When a running `Task` (directly or through nested `Coro`s) executes

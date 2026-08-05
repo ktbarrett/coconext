@@ -47,6 +47,10 @@ class Coro;
 template <typename StateT>
 class TaskManager;
 
+class TaskContext;
+
+[[nodiscard]] TaskContext current_context();
+
 namespace detail {
 
 // inline thread_local means this variable is included in the user's library, and lookups
@@ -261,6 +265,9 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
     friend class Coro;
     template <typename>
     friend class detail::TaskStateBase;
+    template <typename>
+    friend class FutureState;
+    friend class TaskContext;
 
     struct Scheduled : detail::Event {
         [[nodiscard]] explicit Scheduled(not_null<TaskState<>*> task) : task_(task) {}
@@ -344,36 +351,7 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
     }
 
     void start_soon();
-
-    void start_soon(
-        not_null<detail::EventLoop*> loop, not_null<TaskManagerState<>*> task_manager
-    ) {
-        if (started()) {
-            throw std::runtime_error("Task is already started");
-        }
-
-        if (event_loop_ == nullptr) {
-            event_loop_ = loop;
-        } else if (event_loop_ != loop) {
-            throw std::runtime_error("Task is already bound to another EventLoop");
-        }
-
-        if (global_task_manager_ == nullptr) {
-            global_task_manager_ = task_manager;
-        }
-
-        state_ = Scheduled{this};
-        event_loop_->acquire().schedule_back(&std::get<TaskState<>::Scheduled>(state_));
-    }
-
-    [[nodiscard]] detail::EventLoop* get_event_loop() const noexcept { return event_loop_; }
-
-    [[nodiscard]] TaskManagerState<>* get_task_manager() const noexcept {
-        return task_manager_;
-    }
-    [[nodiscard]] TaskManagerState<>* get_global_task_manager() const noexcept {
-        return global_task_manager_;
-    }
+    void start_soon(TaskContext const& ctxt);
 
   protected:
     void set_exception(std::exception_ptr exc) noexcept {
@@ -397,6 +375,33 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
 
     [[nodiscard]] not_null<TaskState<>*> get_task() noexcept { return this; }
 
+    [[nodiscard]] detail::EventLoop* get_event_loop() const noexcept { return event_loop_; }
+    [[nodiscard]] TaskManagerState<>* get_task_manager() const noexcept {
+        return task_manager_;
+    }
+    [[nodiscard]] TaskManagerState<>* get_global_task_manager() const noexcept {
+        return global_task_manager_;
+    }
+
+    void start_soon(
+        not_null<detail::EventLoop*> loop, not_null<TaskManagerState<>*> task_manager
+    ) {
+        assert(!started() && "Task is already started");
+
+        if (event_loop_ == nullptr) {
+            event_loop_ = loop;
+        } else if (event_loop_ != loop) {
+            throw std::runtime_error("Task is already bound to another EventLoop");
+        }
+
+        if (global_task_manager_ == nullptr) {
+            global_task_manager_ = task_manager;
+        }
+
+        state_ = Scheduled{this};
+        event_loop_->acquire().schedule_back(&std::get<TaskState<>::Scheduled>(state_));
+    }
+
     void register_waiter(not_null<detail::Event*> awaiter) noexcept {
         waiters_.push_back(awaiter);
     }
@@ -407,19 +412,7 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
         if (started()) {
             return;
         }
-
-        if (event_loop_ == nullptr) {
-            event_loop_ = awaiter->get_event_loop();
-        } else if (event_loop_ != awaiter->get_event_loop()) {
-            throw std::runtime_error("Task is already bound to another EventLoop");
-        }
-
-        if (global_task_manager_ == nullptr) {
-            global_task_manager_ = awaiter->get_global_task_manager();
-        }
-
-        state_ = Scheduled{this};
-        event_loop_->acquire().schedule_back(&std::get<Scheduled>(state_));
+        start_soon(awaiter->get_event_loop(), awaiter->get_global_task_manager());
     }
 
     void on_done() noexcept;
@@ -543,7 +536,8 @@ class Task {
     [[nodiscard]] std::exception_ptr exception() const { return handle_->exception(); }
     [[nodiscard]] T result() const { return handle_->result(); }
 
-    void start_soon();
+    void start_soon() { handle_->start_soon(); }
+    void start_soon(TaskContext const& ctxt) { handle_->start_soon(ctxt); }
 
     void cancel() noexcept { handle_->cancel(); }
     void uncancel() { handle_->uncancel(); }
@@ -653,23 +647,7 @@ class TaskManagerState<detail::Erased> {
     }
 
     void start_soon();
-    void start_soon(
-        not_null<detail::EventLoop*> loop, not_null<TaskManagerState<>*> global_task_manager
-    ) {
-        if (event_loop_ == nullptr) {
-            event_loop_ = loop;
-        } else if (event_loop_ != loop) {
-            throw std::runtime_error("TaskManager is already bound to another EventLoop");
-        }
-        if (global_task_manager_ == nullptr) {
-            global_task_manager_ = global_task_manager;
-        }
-        started_ = true;
-        for (auto it = tasks_.begin(); it != tasks_.end();) {
-            auto& task = *it++;
-            task.start_soon(event_loop_, global_task_manager_);
-        }
-    }
+    void start_soon(TaskContext const& ctxt);
 
     [[nodiscard]] TaskManagerState<>* get_global_task_manager() const noexcept {
         return global_task_manager_;
@@ -727,6 +705,25 @@ class TaskManagerState<detail::Erased> {
         }
     }
 
+    void start_soon(
+        not_null<detail::EventLoop*> loop, not_null<TaskManagerState<>*> global_task_manager
+    ) {
+        assert(!started() && "TaskManager is already started");
+        if (event_loop_ == nullptr) {
+            event_loop_ = loop;
+        } else if (event_loop_ != loop) {
+            throw std::runtime_error("TaskManager is already bound to another EventLoop");
+        }
+        if (global_task_manager_ == nullptr) {
+            global_task_manager_ = global_task_manager;
+        }
+        started_ = true;
+        for (auto it = tasks_.begin(); it != tasks_.end();) {
+            auto& task = *it++;
+            task.start_soon(event_loop_, global_task_manager_);
+        }
+    }
+
     void register_waiter(not_null<detail::Event*> awaiter) noexcept {
         waiters_.push_back(awaiter);
     }
@@ -761,29 +758,10 @@ class TaskManagerState<detail::Erased> {
     // Callback called when a Task/Coro awaits on this object, we bind to the caller's
     // EventLoop and global TaskManager if not already bound.
     void on_awaited(not_null<TaskState<>*> task) {
-        auto event_loop = task->get_event_loop();
-        assert(event_loop != nullptr && "Running Task must have an EventLoop bound");
-        if (event_loop_ == nullptr) {
-            event_loop_ = event_loop;
-        } else if (event_loop_ != event_loop) {
-            throw std::runtime_error("TaskManager is already bound to another EventLoop");
-        }
-        auto global_task_manager = task->get_global_task_manager();
-        assert(
-            global_task_manager != nullptr
-            && "Running Task must have a global TaskManager bound"
-        );
-        if (global_task_manager_ == nullptr) {
-            global_task_manager_ = global_task_manager;
-        }
         if (started()) {
             return;
         }
-        started_ = true;
-        for (auto it = tasks_.begin(); it != tasks_.end();) {
-            auto& task = *it++;
-            task.start_soon(event_loop_, global_task_manager_);
-        }
+        start_soon(task->get_event_loop(), task->get_global_task_manager());
     }
 
   protected:
@@ -906,22 +884,61 @@ class TaskManager {
     return detail::current_task;
 }
 
-[[nodiscard]] inline not_null<TaskManagerState<>*> current_global_task_manager() {
-    auto task = current_task();
-    auto global_task_manager = task->get_global_task_manager();
-    assert(
-        global_task_manager != nullptr
-        && "Running Task must have a global TaskManager bound"
-    );
-    return global_task_manager;
-}
+class TaskContext final {
+    friend TaskContext get_context() noexcept;
+    friend TaskContext current_context();
 
-[[nodiscard]] inline not_null<detail::EventLoop*> current_event_loop() {
-    auto task = current_task();
-    auto event_loop = task->get_event_loop();
-    assert(event_loop != nullptr && "Running Task must have an EventLoop bound");
-    return event_loop;
-}
+  public:
+    [[nodiscard]] not_null<TaskState<>*> get_task() const {
+        if (task_ == nullptr) {
+            throw std::runtime_error("Did not await TaskContext before using it");
+        }
+        return task_;
+    }
+    [[nodiscard]] not_null<TaskManagerState<>*> get_global_task_manager() const {
+        auto gtm = get_task()->get_global_task_manager();
+        assert(gtm != nullptr && "Running Task must have a global TaskManager bound");
+        return gtm;
+    }
+    [[nodiscard]] not_null<detail::EventLoop*> get_event_loop() const {
+        auto loop = get_task()->get_event_loop();
+        assert(loop != nullptr && "Running Task must have an EventLoop bound");
+        return loop;
+    }
+    [[nodiscard]] TaskManagerState<>* get_task_manager() const {
+        return get_task()->get_task_manager();
+    }
+
+    class Awaiter {
+        friend class TaskContext;
+
+      public:
+        [[nodiscard]] bool await_ready() const noexcept { return false; }
+        template <typename PromiseType>
+        bool await_suspend(std::coroutine_handle<PromiseType> parent) const noexcept {
+            ctxt_.task_ = parent.promise().get_task();
+            return false;  // don't suspend the caller, just capture the context
+        }
+        [[nodiscard]] TaskContext await_resume() const noexcept { return ctxt_; }
+
+      private:
+        explicit Awaiter(TaskContext& ctxt) noexcept : ctxt_(ctxt) {}
+
+        TaskContext& ctxt_;
+    };
+
+    [[nodiscard]] Awaiter operator co_await() noexcept { return Awaiter{*this}; }
+
+  private:
+    explicit TaskContext(TaskState<>* task) noexcept : task_(task) {}
+    TaskContext() noexcept = default;
+
+    TaskState<>* task_ = nullptr;
+};
+
+[[nodiscard]] inline TaskContext get_context() noexcept { return TaskContext{}; }
+
+[[nodiscard]] inline TaskContext current_context() { return TaskContext{current_task()}; }
 
 template <typename S>
 template <typename PromiseType>
@@ -977,39 +994,35 @@ inline void TaskState<>::on_done() noexcept {
     }
 }
 
-inline void TaskState<>::start_soon() {
+inline void TaskState<>::start_soon(TaskContext const& ctxt) {
     if (started()) {
-        throw std::runtime_error("Task is already started");
+        throw std::runtime_error("TaskManager is already started");
     }
-    if (event_loop_ == nullptr) {
-        event_loop_ = current_event_loop();
-    }
-    if (global_task_manager_ == nullptr) {
-        global_task_manager_ = current_global_task_manager();
-    }
-    state_ = Scheduled{this};
-    event_loop_->acquire().schedule_back(&std::get<TaskState<>::Scheduled>(state_));
+    start_soon(ctxt.get_event_loop(), ctxt.get_global_task_manager());
 }
 
-template <typename T>
-void Task<T>::start_soon() {
-    handle_->start_soon();
+inline void TaskState<>::start_soon() {
+    if (started()) {
+        throw std::runtime_error("TaskManager is already started");
+    }
+    if (event_loop_ == nullptr || global_task_manager_ == nullptr) {
+        start_soon(current_context());
+    }
+}
+
+inline void TaskManagerState<>::start_soon(TaskContext const& ctxt) {
+    if (started()) {
+        throw std::runtime_error("TaskManager is already started");
+    }
+    start_soon(ctxt.get_event_loop(), ctxt.get_global_task_manager());
 }
 
 inline void TaskManagerState<>::start_soon() {
     if (started()) {
         throw std::runtime_error("TaskManager is already started");
     }
-    if (event_loop_ == nullptr) {
-        event_loop_ = current_event_loop();
-    }
-    if (global_task_manager_ == nullptr) {
-        global_task_manager_ = current_global_task_manager();
-    }
-    started_ = true;
-    for (auto it = tasks_.begin(); it != tasks_.end();) {
-        auto& task = *it++;
-        task.start_soon(event_loop_, global_task_manager_);
+    if (event_loop_ == nullptr || global_task_manager_ == nullptr) {
+        start_soon(current_context());
     }
 }
 
@@ -1018,8 +1031,9 @@ T run(Task<T> task);
 
 template <typename T>
 Task<T> start_soon(Task<T> task) {
-    task.start_soon();
-    current_global_task_manager()->add(task.get_state());
+    auto ctxt = current_context();
+    task.start_soon(ctxt);
+    ctxt.get_global_task_manager()->add(task.get_state());
     return task;
 }
 
