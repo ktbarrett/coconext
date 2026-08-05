@@ -22,10 +22,13 @@ class CoroState;
 template <typename T>
 class CoroStateBase {
     friend class CoroState<T>;
+    friend class Coro<T>;
 
   public:
     [[nodiscard]] Coro<T> get_return_object() noexcept {
-        return Coro<T>{std::coroutine_handle<CoroState<T>>::from_promise(*this)};
+        return Coro<T>{std::coroutine_handle<CoroState<T>>::from_promise(
+            *static_cast<CoroState<T>*>(this)
+        )};
     }
     [[nodiscard]] std::suspend_always initial_suspend() noexcept { return {}; }
     [[nodiscard]] auto final_suspend() noexcept {
@@ -109,7 +112,7 @@ class Coro {
         [[nodiscard]] std::coroutine_handle<> await_suspend(
             std::coroutine_handle<PromiseType> h
         ) noexcept {
-            auto p = coro_.handle_.promise();
+            auto& p = coro_.handle_.promise();
             p.task_ = h.promise().get_task();
             p.parent_ = h;
             return coro_.handle_;
@@ -120,7 +123,8 @@ class Coro {
         Coro& coro_;
     };
 
-  public:
+    using promise_type = CoroState<T>;
+
     [[nodiscard]] explicit Coro(std::coroutine_handle<CoroState<T>> h) noexcept
         : handle_(h) {}
     ~Coro() noexcept {
@@ -146,7 +150,6 @@ class Coro {
     [[nodiscard]] CoroState<T>& get_state() const noexcept { return handle_.promise(); }
     // No from_state() because Coro cannot be copied.
 
-  public:
     [[nodiscard]] auto operator co_await() noexcept { return Awaiter{*this}; }
 
   private:

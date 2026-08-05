@@ -10,6 +10,7 @@
 #include <coconext/task_manager.hpp>
 
 #include <condition_variable>
+#include <utility>
 
 namespace coconext {
 
@@ -18,13 +19,13 @@ namespace detail {
 template <typename T>
 class RunTaskManagerState final : public TaskManagerState<T> {
   public:
-    RunTaskManagerState(not_null<TaskState<>*> root) noexcept : root_(root) {}
+    RunTaskManagerState(not_null<TaskState<T>*> root) noexcept : root_(root) {}
 
   private:
     void on_add(not_null<TaskState<>*>) noexcept final {}
     void on_child_done(not_null<TaskState<>*>) noexcept final {
         if (root_->done()) {
-            TaskManagerState<T>::close();
+            this->close();
             for (auto& t : this->tasks_) {
                 t.cancel();
             }
@@ -34,12 +35,16 @@ class RunTaskManagerState final : public TaskManagerState<T> {
         if (root_->exception()) {
             this->set_exception(root_->exception());
         } else {
-            this->set_void();
+            if constexpr (std::is_void_v<T>) {
+                this->set_void();
+            } else {
+                this->set_result(root_->result());
+            }
         }
     }
 
   private:
-    not_null<TaskState<>*> root_;
+    not_null<TaskState<T>*> root_;
 };
 
 template <typename T>
@@ -49,7 +54,7 @@ using RunTaskManager = TaskManager<RunTaskManagerState<T>>;
 
 template <typename T>
 T run(Coro<T> coro) {
-    Task<T> task = coro;
+    Task<T> task = std::move(coro);
     return run(std::move(task));
 }
 
