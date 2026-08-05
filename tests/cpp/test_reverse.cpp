@@ -6,6 +6,7 @@
 #include <vector>
 
 using namespace coconext::types;
+using namespace coconext::literals;
 
 // -- reverse(Range) ---------------------------------------------------------
 

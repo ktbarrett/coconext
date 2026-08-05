@@ -19,8 +19,6 @@
 #include <tuple>
 #include <type_traits>
 
-using namespace coconext::literals;
-
 namespace coconext::types {
 
 namespace detail {
@@ -121,7 +119,7 @@ class Bits {
             : parent_(parent), index_(index) {}
 
         constexpr operator Bit() const {
-            return parent_.get_bit(index_) ? Bit('1') : Bit('0');
+            return parent_.get_bit(index_) ? Bit::_1 : Bit::_0;
         }
 
         constexpr explicit operator char() const {
@@ -165,7 +163,7 @@ class Bits {
             size_t bit_pos = W > 0 ? W - 1 - index_ : 0;
 
             if constexpr (IsConst) {
-                return parent_->get_bit(bit_pos) ? '1'_b : '0'_b;
+                return parent_->get_bit(bit_pos) ? Bit::_1 : Bit::_0;
             } else {
                 return BitReference(*parent_, bit_pos);
             }
@@ -261,7 +259,7 @@ class Bits {
         if (index >= W) {
             throw std::out_of_range("Bit index out of bounds");
         }
-        return get_bit(index) ? '1'_b : '0'_b;
+        return get_bit(index) ? Bit::_1 : Bit::_0;
     }
 
     constexpr Bits operator+(Bits<W> const& other) const {

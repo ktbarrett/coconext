@@ -9,6 +9,7 @@
 #include <unordered_set>
 
 using namespace coconext::types;
+using namespace coconext::literals;
 
 TEST(TestUnsigned, Constructors) {
     static_assert(!std::is_convertible_v<int, Unsigned<6>>);

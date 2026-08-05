@@ -8,6 +8,7 @@
 #include <vector>
 
 using namespace coconext::types;
+using namespace coconext::literals;
 
 // Test Logic conversions from various types
 TEST(TestLogic, LogicConversions) {
