@@ -6,12 +6,12 @@
 #include <coconext/not_null.hpp>
 #include <coconext/outcome.hpp>
 
-#include <concepts>
 #include <coroutine>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <functional>
+#include <optional>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -477,21 +477,6 @@ class TaskStateBase : public TaskState<> {
     void unhandled_exception() noexcept {
         TaskState<>::set_exception(std::current_exception());
     }
-
-    [[nodiscard]] T result() const {
-        if (!TaskState<>::done()) {
-            throw std::runtime_error("Not done");
-        }
-        if (auto exc = TaskState<>::exception()) {
-            std::rethrow_exception(exc);
-        }
-        if constexpr (!std::is_void_v<T>) {
-            return value_.value;
-        }
-    }
-
-  protected:
-    [[no_unique_address]] detail::Value<T> value_;
 };
 
 }  // namespace detail
@@ -505,12 +490,34 @@ class TaskState : public detail::TaskStateBase<T> {
         this->value_ = detail::Value<T>{std::forward<U>(value)};
         TaskState<>::mark_value();
     }
+
+    [[nodiscard]] T result() const {
+        if (!TaskState<>::done()) {
+            throw std::runtime_error("Not done");
+        }
+        if (auto exc = TaskState<>::exception()) {
+            std::rethrow_exception(exc);
+        }
+        return *value_;
+    }
+
+  private:
+    std::optional<T> value_;
 };
 
 template <>
 class TaskState<void> : public detail::TaskStateBase<void> {
   public:
     void return_void() noexcept { TaskState<>::mark_value(); }
+
+    void result() const {
+        if (!TaskState<>::done()) {
+            throw std::runtime_error("Not done");
+        }
+        if (auto exc = TaskState<>::exception()) {
+            std::rethrow_exception(exc);
+        }
+    }
 };
 
 template <typename T>
@@ -740,6 +747,7 @@ class TaskManagerState<detail::Erased> {
     detail::IntrusiveDeque<detail::Event> waiters_;
     std::vector<std::function<void()>> callbacks_;
     detail::EventLoop* event_loop_ = nullptr;
+    TaskManagerState<>* global_task_manager_ = nullptr;
     size_t ref_count_{0};
     bool cancelled_ = false;
     bool closed_ = false;
@@ -764,20 +772,31 @@ class TaskManagerState : public TaskManagerState<> {
 
   protected:
     template <typename U>
-        requires(!std::is_void_v<T> && std::is_convertible_v<U, T>)
+        requires(std::is_convertible_v<U, T>)
     void set_result(U&& value) noexcept {
         value_ = detail::Value<T>{std::forward<U>(value)};
         TaskManagerState<>::mark_value();
     }
 
-    void set_void() noexcept
-        requires std::is_void_v<T>
-    {
-        TaskManagerState<>::mark_value();
+  private:
+    std::optional<T> value_;
+};
+
+template <>
+class TaskManagerState<void> : public TaskManagerState<> {
+  public:
+    using value_type = void;
+
+    void result() const {
+        if (!TaskManagerState<>::done()) {
+            throw std::runtime_error("Not done");
+        }
+        if (auto exc = TaskManagerState<>::exception()) {
+            std::rethrow_exception(exc);
+        }
     }
 
-  private:
-    [[no_unique_address]] detail::Value<T> value_;
+    void set_void() noexcept { TaskManagerState<>::mark_value(); }
 };
 
 template <typename StateT>
@@ -790,12 +809,6 @@ class TaskManager {
   public:
     using value_type = typename StateT::value_type;
 
-    template <typename... Args>
-        requires std::constructible_from<StateT, Args...>
-    [[nodiscard]] explicit TaskManager(Args&&... args)
-        : state_(new StateT{std::forward<Args>(args)...}) {
-        state_->inc_ref();
-    }
     [[nodiscard]] TaskManager(TaskManager const& other) noexcept : state_(other.state_) {
         state_->inc_ref();
     }
@@ -870,11 +883,8 @@ template <typename S>
 template <typename PromiseType>
 void detail::AwaitableAwaiter<S>::await_suspend(std::coroutine_handle<PromiseType> h) {
     parent_ = h;
+    // This is non-null, so we want to use this instead of directly assigning to task_.
     auto task = h.promise().get_task();
-    // This could occur if we self-cancel.
-    if (task->cancelled()) {
-        throw coconext::Cancelled{};
-    }
     task->on_awaiting(this);
     task_ = task;
     awaitable_->on_awaited(task);
