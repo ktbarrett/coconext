@@ -165,14 +165,6 @@ class FutureState {
         waiters_.push_back(awaiter);
     }
 
-    void bind_event_loop(not_null<detail::EventLoop*> loop) {
-        if (event_loop_ == nullptr) {
-            event_loop_ = loop;
-        } else if (event_loop_ != loop) {
-            throw std::runtime_error("Awaitable is already bound to another EventLoop");
-        }
-    }
-
     void on_done() noexcept {
         for (auto& callback : callbacks_) {
             callback();
@@ -357,6 +349,27 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
 
     void start_soon();
 
+    void start_soon(
+        not_null<detail::EventLoop*> loop, not_null<TaskManagerState<>*> task_manager
+    ) {
+        if (!unstarted()) {
+            throw std::runtime_error("Task is already started");
+        }
+
+        if (event_loop_ == nullptr) {
+            event_loop_ = loop;
+        } else if (event_loop_ != loop) {
+            throw std::runtime_error("Task is already bound to another EventLoop");
+        }
+
+        if (global_task_manager_ == nullptr) {
+            global_task_manager_ = task_manager;
+        }
+
+        state_ = Scheduled{this};
+        event_loop_->acquire().schedule_back(&std::get<TaskState<>::Scheduled>(state_));
+    }
+
     [[nodiscard]] detail::EventLoop* get_event_loop() const noexcept { return event_loop_; }
 
     [[nodiscard]] TaskManagerState<>* get_task_manager() const noexcept {
@@ -392,46 +405,25 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
         waiters_.push_back(awaiter);
     }
 
-    void bind_event_loop(not_null<detail::EventLoop*> loop) {
-        if (event_loop_ == nullptr) {
-            event_loop_ = loop;
-        } else if (event_loop_ != loop) {
-            throw std::runtime_error("Awaitable is already bound to another EventLoop");
-        }
-    }
-
-    // Called when another Task or Coro is awaiting this Task.
+    // Callback called when a Task/Coro awaits on this object, we bind to the caller's
+    // EventLoop and global TaskManager if not already bound.
     void on_awaited(not_null<TaskState<>*> awaiter) {
-        if (done() || !unstarted()) {
+        if (!unstarted()) {
             return;
         }
-        auto event_loop = awaiter->get_event_loop();
-        assert(event_loop != nullptr && "Running Task must have an EventLoop bound");
-        bind_event_loop(event_loop);
 
-        auto global_task_manager = awaiter->get_global_task_manager();
-        assert(
-            global_task_manager != nullptr
-            && "Running Task must have a global TaskManager bound"
-        );
-        bind_global_task_manager(global_task_manager);
+        if (event_loop_ == nullptr) {
+            event_loop_ = awaiter->get_event_loop();
+        } else if (event_loop_ != awaiter->get_event_loop()) {
+            throw std::runtime_error("Task is already bound to another EventLoop");
+        }
+
+        if (global_task_manager_ == nullptr) {
+            global_task_manager_ = awaiter->get_global_task_manager();
+        }
 
         state_ = Scheduled{this};
         event_loop_->acquire().schedule_back(&std::get<Scheduled>(state_));
-    }
-
-    void bind_task_manager(not_null<TaskManagerState<>*> task_manager) {
-        if (task_manager_ != nullptr && task_manager_ != task_manager) {
-            throw std::runtime_error("Task is already bound to a TaskManager");
-        }
-        task_manager_ = task_manager;
-    }
-
-    void bind_global_task_manager(not_null<TaskManagerState<>*> task_manager) noexcept {
-        if (global_task_manager_ != nullptr) {
-            return;
-        }
-        global_task_manager_ = task_manager;
     }
 
     void on_done() noexcept;
@@ -445,6 +437,7 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
         state_ = Pending{awaiter};
     }
 
+  private:
     std::variant<std::monostate, Scheduled, Pending, Running> state_;
     std::variant<std::monostate, std::exception_ptr, detail::Value<detail::Erased>> result_;
     detail::IntrusiveDeque<detail::Event> waiters_;
@@ -621,26 +614,59 @@ class TaskManagerState<detail::Erased> {
         if (closed()) {
             throw std::runtime_error("Cannot add task to closed TaskManager");
         }
+        if (task->task_manager_) {
+            throw std::runtime_error("Task is already bound to a TaskManager");
+        }
         // Loop affinity: manager, task body, and all sibling tasks must share one
         // EventLoop. Bind whichever side is already bound to the other; throws on
-        // mismatch. If neither is bound, start_soon() below binds from the caller's
-        // current_event_loop() and we propagate to the manager after.
-        if (task->event_loop_ != nullptr) {
-            bind_event_loop(task->event_loop_);
-        } else if (event_loop_ != nullptr) {
-            task->bind_event_loop(event_loop_);
+        // mismatch. If neither is bound, start_soon() below binds all the children later
+        if (event_loop_ == nullptr && !task->unstarted()) {
+            // We know the child task is unstarted and can use that.
+            auto event_loop = task->get_event_loop();
+            assert(event_loop != nullptr && "Running Task must have an EventLoop bound");
+            if (event_loop_ == nullptr) {
+                event_loop_ = event_loop;
+            } else if (event_loop_ != event_loop) {
+                throw std::runtime_error(
+                    "TaskManager is already bound to another EventLoop"
+                );
+            }
         }
-        if (task->unstarted()) {
-            task->start_soon();
+        if (global_task_manager_ == nullptr && !task->unstarted()) {
+            // We know the child task is unstarted and can use that.
+            auto global_task_manager = task->get_global_task_manager();
+            assert(
+                global_task_manager != nullptr
+                && "Running Task must have a global TaskManager bound"
+            );
+            if (global_task_manager_ == nullptr) {
+                global_task_manager_ = global_task_manager;
+            }
         }
-        if (event_loop_ == nullptr) {
-            bind_event_loop(task->event_loop_);
+        if (!this->unstarted()) {
+            assert(
+                event_loop_ != nullptr
+                && "Running TaskManager must be bound to an EventLoop"
+            );
+            assert(
+                global_task_manager_ != nullptr
+                && "Running TaskManager must be bound to a global TaskManager"
+            );
+            task->start_soon(event_loop_, global_task_manager_);
         }
-        task->bind_task_manager(this);
         task->inc_ref();
         tasks_.push_back(task);
         on_add(task);
     }
+
+    void start_soon();
+    void start_soon(detail::EventLoop* loop, TaskManagerState<>* global_task_manager);
+
+    [[nodiscard]] TaskManagerState<>* get_global_task_manager() const noexcept {
+        return global_task_manager_;
+    }
+
+    [[nodiscard]] bool unstarted() const noexcept { return started_; }
 
     void close() noexcept {
         if (done() || closed()) {
@@ -649,12 +675,6 @@ class TaskManagerState<detail::Erased> {
         closed_ = true;
     }
     [[nodiscard]] bool closed() const noexcept { return closed_; }
-    void reopen() noexcept {
-        if (done()) {
-            return;
-        }
-        closed_ = false;
-    }
 
     void cancel() noexcept {
         if (done() || cancelled()) {
@@ -702,14 +722,6 @@ class TaskManagerState<detail::Erased> {
         waiters_.push_back(awaiter);
     }
 
-    void bind_event_loop(not_null<detail::EventLoop*> loop) {
-        if (event_loop_ == nullptr) {
-            event_loop_ = loop;
-        } else if (event_loop_ != loop) {
-            throw std::runtime_error("Awaitable is already bound to another EventLoop");
-        }
-    }
-
     void on_done() noexcept {
         for (auto& callback : callbacks_) {
             callback();
@@ -721,34 +733,56 @@ class TaskManagerState<detail::Erased> {
         // If there is are no awaiters, we don't care if there is no event loop.
     }
 
+    // Called when a child Task completes. It removes the child from tasks_, decrements its
+    // refcount, and calls the customizable on_child_done(). Then after all children are
+    // done if we are closed, calls on_drain_complete().
     void internal_child_done(not_null<TaskState<>*> task) noexcept {
         task->deque_remove();
         task->dec_ref();
         on_child_done(task);
-        if (!closed() && tasks_.empty()) {
-            close();
-        }
-        if (closed() && tasks_.empty() && !done()) {
+        if (closed() && tasks_.empty()) {
+            assert(!done());
             on_drain_complete();
+            assert(
+                done() && "on_drain_complete() must call set_result() or set_exception()"
+            );
         }
     }
 
+    // Callback called when a Task/Coro awaits on this object, we bind to the caller's
+    // EventLoop and global TaskManager if not already bound.
     void on_awaited(not_null<TaskState<>*> task) {
         auto event_loop = task->get_event_loop();
         assert(event_loop != nullptr && "Running Task must have an EventLoop bound");
-        bind_event_loop(event_loop);
+        if (event_loop_ == nullptr) {
+            event_loop_ = event_loop;
+        } else if (event_loop_ != event_loop) {
+            throw std::runtime_error("TaskManager is already bound to another EventLoop");
+        }
+        auto global_task_manager = task->get_global_task_manager();
+        assert(
+            global_task_manager != nullptr
+            && "Running Task must have a global TaskManager bound"
+        );
+        if (global_task_manager_ == nullptr) {
+            global_task_manager_ = global_task_manager;
+        }
+        for (auto& task : tasks_) {
+            task.start_soon(event_loop_, global_task_manager_);
+        }
     }
 
   protected:
     detail::IntrusiveDeque<TaskState<>> tasks_;
 
   private:
-    std::variant<std::monostate, std::exception_ptr, detail::Value<detail::Erased>> result_;
     detail::IntrusiveDeque<detail::Event> waiters_;
     std::vector<std::function<void()>> callbacks_;
     detail::EventLoop* event_loop_ = nullptr;
     TaskManagerState<>* global_task_manager_ = nullptr;
+    std::variant<std::monostate, std::exception_ptr, detail::Value<detail::Erased>> result_;
     size_t ref_count_{0};
+    bool started_ = false;
     bool cancelled_ = false;
     bool closed_ = false;
 };
@@ -914,9 +948,11 @@ void detail::AwaitableAwaiter<S>::event_run() noexcept {
 
 template <typename T>
 void FutureState<T>::on_awaited(not_null<TaskState<>*> task) {
-    auto event_loop = task->get_event_loop();
-    assert(event_loop != nullptr && "Running Task must have an EventLoop bound");
-    this->bind_event_loop(event_loop);
+    if (event_loop_ == nullptr) {
+        event_loop_ = task->get_event_loop();
+    } else if (event_loop_ != task->get_event_loop()) {
+        throw std::runtime_error("Future is already bound to another EventLoop");
+    }
 }
 
 inline void TaskState<>::on_done() noexcept {
@@ -935,11 +971,11 @@ inline void TaskState<>::start_soon() {
     if (!unstarted()) {
         throw std::runtime_error("Task is already started");
     }
-    if (global_task_manager_ == nullptr) {
-        bind_global_task_manager(current_global_task_manager());
-    }
     if (event_loop_ == nullptr) {
-        bind_event_loop(current_event_loop());
+        event_loop_ = current_event_loop();
+    }
+    if (global_task_manager_ == nullptr) {
+        global_task_manager_ = current_global_task_manager();
     }
     state_ = Scheduled{this};
     event_loop_->acquire().schedule_back(&std::get<TaskState<>::Scheduled>(state_));
@@ -948,6 +984,21 @@ inline void TaskState<>::start_soon() {
 template <typename T>
 void Task<T>::start_soon() {
     handle_->start_soon();
+}
+
+inline void TaskManagerState<>::start_soon() {
+    if (!unstarted()) {
+        throw std::runtime_error("TaskManager is already started");
+    }
+    if (event_loop_ == nullptr) {
+        event_loop_ = current_event_loop();
+    }
+    if (global_task_manager_ == nullptr) {
+        global_task_manager_ = current_global_task_manager();
+    }
+    for (auto& task : tasks_) {
+        task.start_soon(event_loop_, global_task_manager_);
+    }
 }
 
 template <typename T>
