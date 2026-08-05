@@ -17,18 +17,18 @@ class Array;
 // all reductions are better off without a loop
 // All bits set iff every one of the R.length() bits is counted.
 template <Range R>
-auto and_reduce(detail::Array<Bit, R> const& s) {
+Bit and_reduce(detail::Array<Bit, R> const& s) {
     return (detail::bits(s).popcount() == R.length()) ? Bit::_1 : Bit::_0;
 }
 
 template <Range R>
-auto or_reduce(detail::Array<Bit, R> const& s) {
+Bit or_reduce(detail::Array<Bit, R> const& s) {
     detail::Bits<R.length()> zero(0);
     return (detail::bits(s) != zero) ? Bit::_1 : Bit::_0;
 }
 
 template <Range R>
-auto xor_reduce(detail::Array<Bit, R> const& s) {
+Bit xor_reduce(detail::Array<Bit, R> const& s) {
     return (detail::bits(s).popcount() % 2 == 1) ? Bit::_1 : Bit::_0;
 }
 
