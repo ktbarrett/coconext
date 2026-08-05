@@ -413,10 +413,79 @@ TEST(TestIntrusiveDeque, ReverseIteratorBidirectional) {
 
 // -- Copy / move semantics -------------------------------------------------
 
-TEST(TestIntrusiveDeque, NotCopyableOrMovable) {
+TEST(TestIntrusiveDeque, NotCopyableButMovable) {
     static_assert(!std::is_copy_constructible_v<IntrusiveDeque<Node>>);
     static_assert(!std::is_copy_assignable_v<IntrusiveDeque<Node>>);
-    static_assert(!std::is_move_constructible_v<IntrusiveDeque<Node>>);
-    static_assert(!std::is_move_assignable_v<IntrusiveDeque<Node>>);
+    static_assert(std::is_nothrow_move_constructible_v<IntrusiveDeque<Node>>);
+    static_assert(std::is_nothrow_move_assignable_v<IntrusiveDeque<Node>>);
     SUCCEED();
+}
+
+TEST(TestIntrusiveDeque, MoveConstructFromEmpty) {
+    IntrusiveDeque<Node> src;
+    IntrusiveDeque<Node> dst(std::move(src));
+    EXPECT_TRUE(src.empty());
+    EXPECT_TRUE(dst.empty());
+}
+
+TEST(TestIntrusiveDeque, MoveConstructTransfersEntriesAndClearsSource) {
+    IntrusiveDeque<Node> src;
+    Node a(1), b(2), c(3);
+    src.push_back(&a);
+    src.push_back(&b);
+    src.push_back(&c);
+
+    IntrusiveDeque<Node> dst(std::move(src));
+
+    EXPECT_TRUE(src.empty());
+    EXPECT_EQ(src.pop_front(), nullptr);
+
+    EXPECT_EQ(to_vec(dst), (std::vector<int>{1, 2, 3}));
+    EXPECT_EQ(dst.front(), &a);
+    EXPECT_EQ(dst.back(), &c);
+
+    // Boundary entries should now anchor on dst, not src -- pushing after move
+    // and iterating both directions must produce a well-formed list.
+    Node d(4);
+    dst.push_back(&d);
+    EXPECT_EQ(to_vec(dst), (std::vector<int>{1, 2, 3, 4}));
+    EXPECT_EQ(to_vec_reverse(dst), (std::vector<int>{4, 3, 2, 1}));
+}
+
+TEST(TestIntrusiveDeque, MoveAssignReplacesTarget) {
+    IntrusiveDeque<Node> src;
+    Node a(1), b(2);
+    src.push_back(&a);
+    src.push_back(&b);
+
+    IntrusiveDeque<Node> dst;
+    Node existing(99);
+    dst.push_back(&existing);
+
+    dst = std::move(src);
+
+    EXPECT_TRUE(src.empty());
+    EXPECT_EQ(to_vec(dst), (std::vector<int>{1, 2}));
+}
+
+TEST(TestIntrusiveDeque, MoveAssignFromEmptyClearsTarget) {
+    IntrusiveDeque<Node> src;
+
+    IntrusiveDeque<Node> dst;
+    Node a(1);
+    dst.push_back(&a);
+
+    dst = std::move(src);
+
+    EXPECT_TRUE(dst.empty());
+}
+
+TEST(TestIntrusiveDeque, MoveSelfAssignIsNoop) {
+    IntrusiveDeque<Node> d;
+    Node a(1), b(2);
+    d.push_back(&a);
+    d.push_back(&b);
+    auto& ref = d;
+    d = std::move(ref);
+    EXPECT_EQ(to_vec(d), (std::vector<int>{1, 2}));
 }

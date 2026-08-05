@@ -3,12 +3,13 @@
 
 // This is a special deque implementation seen in the EventLoop, Futures, TaskManagers, and
 // more. This deque does not own the nodes it contains (beyond the default-constructed
-// anchors), so it is unconcerned with object lifetimes. Nodes are inserted into the deque
+// anchor), so it is unconcerned with object lifetimes. Nodes are inserted into the deque
 // and by nature of their structure, can be removed anonymously in O(1). Node is a base
 // class for all types that wish to be added to an IntrusiveDeque.
 
 #include <iterator>
 #include <type_traits>
+#include <utility>
 
 namespace coconext::detail {
 
@@ -21,17 +22,20 @@ class IntrusiveDequeNode {
 
   protected:
     void deque_remove() noexcept {
-        if (prev == nullptr) {
+        if (prev == this) {
             return;
         }
         prev->next = next;
         next->prev = prev;
-        prev = nullptr;
+        prev = this;
+        next = this;
     }
 
   private:
-    IntrusiveDequeNode* prev = nullptr;
-    IntrusiveDequeNode* next;
+    // Self-linked when not in a deque; the anchor of an empty deque uses the same
+    // convention (see IntrusiveDeque::clear).
+    IntrusiveDequeNode* prev = this;
+    IntrusiveDequeNode* next = this;
 };
 
 template <typename EntryT>
@@ -39,17 +43,19 @@ class IntrusiveDeque {
     static_assert(std::is_base_of_v<IntrusiveDequeNode, EntryT>);
 
   public:
-    IntrusiveDeque() noexcept {
-        head.next = &tail;
-        tail.prev = &head;
-    }
-    // Sentinels have stable addresses that outside nodes point at; moving would leave those
-    // nodes referencing the wrong sentinels. Non-owning entries must be unique, so copying
-    // is banned too.
+    IntrusiveDeque() noexcept = default;
+    // Non-owning entries must be unique, so copying is banned.
     IntrusiveDeque(IntrusiveDeque const&) = delete;
     IntrusiveDeque& operator=(IntrusiveDeque const&) = delete;
-    IntrusiveDeque(IntrusiveDeque&&) = delete;
-    IntrusiveDeque& operator=(IntrusiveDeque&&) = delete;
+
+    IntrusiveDeque(IntrusiveDeque&& other) noexcept { extend_back(std::move(other)); }
+    IntrusiveDeque& operator=(IntrusiveDeque&& other) noexcept {
+        if (this != &other) {
+            clear();
+            extend_back(std::move(other));
+        }
+        return *this;
+    }
 
   public:
     template <typename NodeType, bool Forward>
@@ -108,44 +114,44 @@ class IntrusiveDeque {
     using reverse_iterator = Iterator<EntryT, false>;
     using const_reverse_iterator = Iterator<EntryT const, false>;
 
-    iterator begin() noexcept { return iterator(head.next); }
-    iterator end() noexcept { return iterator(&tail); }
-    const_iterator begin() const noexcept { return const_iterator(head.next); }
-    const_iterator end() const noexcept { return const_iterator(&tail); }
-    reverse_iterator rbegin() noexcept { return reverse_iterator(tail.prev); }
-    reverse_iterator rend() noexcept { return reverse_iterator(&head); }
+    iterator begin() noexcept { return iterator(anchor.next); }
+    iterator end() noexcept { return iterator(&anchor); }
+    const_iterator begin() const noexcept { return const_iterator(anchor.next); }
+    const_iterator end() const noexcept { return const_iterator(&anchor); }
+    reverse_iterator rbegin() noexcept { return reverse_iterator(anchor.prev); }
+    reverse_iterator rend() noexcept { return reverse_iterator(&anchor); }
     const_reverse_iterator rbegin() const noexcept {
-        return const_reverse_iterator(tail.prev);
+        return const_reverse_iterator(anchor.prev);
     }
-    const_reverse_iterator rend() const noexcept { return const_reverse_iterator(&head); }
+    const_reverse_iterator rend() const noexcept { return const_reverse_iterator(&anchor); }
 
   public:
     EntryT* front() const noexcept {
-        return empty() ? nullptr : static_cast<EntryT*>(head.next);
+        return empty() ? nullptr : static_cast<EntryT*>(anchor.next);
     }
     EntryT* back() const noexcept {
-        return empty() ? nullptr : static_cast<EntryT*>(tail.prev);
+        return empty() ? nullptr : static_cast<EntryT*>(anchor.prev);
     }
-    bool empty() const noexcept { return head.next == &tail; }
+    bool empty() const noexcept { return anchor.next == &anchor; }
     EntryT* push_back(EntryT* node) noexcept {
-        node->prev = tail.prev;
-        node->next = &tail;
-        tail.prev->next = node;
-        tail.prev = node;
+        node->prev = anchor.prev;
+        node->next = &anchor;
+        anchor.prev->next = node;
+        anchor.prev = node;
         return node;
     }
     EntryT* push_front(EntryT* node) noexcept {
-        node->prev = &head;
-        node->next = head.next;
-        head.next->prev = node;
-        head.next = node;
+        node->prev = &anchor;
+        node->next = anchor.next;
+        anchor.next->prev = node;
+        anchor.next = node;
         return node;
     }
     EntryT* pop_back() noexcept {
         if (empty()) {
             return nullptr;
         }
-        IntrusiveDequeNode* node = tail.prev;
+        IntrusiveDequeNode* node = anchor.prev;
         node->deque_remove();
         return static_cast<EntryT*>(node);
     }
@@ -153,7 +159,7 @@ class IntrusiveDeque {
         if (empty()) {
             return nullptr;
         }
-        IntrusiveDequeNode* node = head.next;
+        IntrusiveDequeNode* node = anchor.next;
         node->deque_remove();
         return static_cast<EntryT*>(node);
     }
@@ -161,34 +167,33 @@ class IntrusiveDeque {
         if (other.empty()) {
             return;
         }
-        IntrusiveDequeNode* first = other.head.next;
-        IntrusiveDequeNode* last = other.tail.prev;
-        first->prev = tail.prev;
-        last->next = &tail;
-        tail.prev->next = first;
-        tail.prev = last;
+        IntrusiveDequeNode* first = other.anchor.next;
+        IntrusiveDequeNode* last = other.anchor.prev;
+        first->prev = anchor.prev;
+        last->next = &anchor;
+        anchor.prev->next = first;
+        anchor.prev = last;
         other.clear();
     }
     void extend_front(IntrusiveDeque<EntryT>&& other) noexcept {
         if (other.empty()) {
             return;
         }
-        IntrusiveDequeNode* first = other.head.next;
-        IntrusiveDequeNode* last = other.tail.prev;
-        first->prev = &head;
-        last->next = head.next;
-        head.next->prev = last;
-        head.next = first;
+        IntrusiveDequeNode* first = other.anchor.next;
+        IntrusiveDequeNode* last = other.anchor.prev;
+        first->prev = &anchor;
+        last->next = anchor.next;
+        anchor.next->prev = last;
+        anchor.next = first;
         other.clear();
     }
     void clear() noexcept {
-        head.next = &tail;
-        tail.prev = &head;
+        anchor.next = &anchor;
+        anchor.prev = &anchor;
     }
 
   private:
-    IntrusiveDequeNode head;
-    IntrusiveDequeNode tail;
+    IntrusiveDequeNode anchor;
 };
 
 }  // namespace coconext::detail
