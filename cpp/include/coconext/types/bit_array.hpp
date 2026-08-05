@@ -171,33 +171,43 @@ constexpr std::optional<Range::value_type> rindex_of(
     return detail::offset_to_hdl_coord(R, offset_from_begin);
 }
 
-template <StringLiteral S>
+}  // namespace coconext::types
+
+namespace coconext::literals {
+
+template <coconext::types::StringLiteral S>
 constexpr auto operator""_b() {
-    constexpr auto N = detail::count_non_underscore<S>();
+    constexpr auto N = coconext::types::detail::count_non_underscore<S>();
     static_assert(
-        N <= static_cast<size_t>(std::numeric_limits<Range::value_type>::max()),
+        N <= static_cast<size_t>(
+            std::numeric_limits<coconext::types::Range::value_type>::max()
+        ),
         "bit literal too long for Range::value_type"
     );
-    constexpr Range R{static_cast<Range::value_type>(N) - 1, Direction::DOWNTO, 0};
+    constexpr coconext::types::Range R{
+        static_cast<coconext::types::Range::value_type>(N) - 1,
+        coconext::types::Direction::DOWNTO,
+        0
+    };
 
-    detail::Bits<N> packed_val(0);
-    detail::Bits<N> one(1);
+    coconext::types::detail::Bits<N> packed_val(0);
+    coconext::types::detail::Bits<N> one(1);
 
     size_t bit_pos = (N > 0) ? (N - 1) : 0;
 
     for (auto in = S.data; in != S.data + S.size; ++in) {
         if (*in != '_') {
-            if (static_cast<bool>(Bit(*in))) {
+            if (static_cast<bool>(coconext::types::Bit(*in))) {
                 packed_val = packed_val | (one << bit_pos);
             }
             bit_pos--;
         }
     }
 
-    Array<Bit, R> result(packed_val);
+    coconext::types::Array<coconext::types::Bit, R> result(packed_val);
     return result;
 }
 
-}  // namespace coconext::types
+}  // namespace coconext::literals
 
 #endif  // COCONEXT_BIT_ARRAY_HPP

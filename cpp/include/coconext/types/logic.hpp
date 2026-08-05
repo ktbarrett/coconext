@@ -228,10 +228,6 @@ constexpr bool operator==(Bit const& lhs, Bit const& rhs) noexcept {
 bool operator==(Logic const&, Bit const&) = delete;
 bool operator==(Bit const&, Logic const&) = delete;
 
-consteval Logic operator""_l(char c) { return Logic(c); }
-
-consteval Bit operator""_b(char c) { return Bit(c); }
-
 constexpr std::string_view to_string(Logic const& value) noexcept {
     constexpr char const* const str_map[] = {"0", "1", "X", "Z", "U", "W", "L", "H", "-"};
     return str_map[static_cast<size_t>(value.value())];
@@ -365,6 +361,11 @@ static_assert(LogicType<Bit>);
 static_assert(!LogicType<int>);
 
 }  // namespace coconext::types
+
+namespace coconext::literals {
+consteval coconext::types::Logic operator""_l(char c) { return coconext::types::Logic(c); }
+consteval coconext::types::Bit operator""_b(char c) { return coconext::types::Bit(c); }
+}  // namespace coconext::literals
 
 template <>
 struct std::hash<coconext::types::Logic> {

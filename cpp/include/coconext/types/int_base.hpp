@@ -19,6 +19,8 @@
 #include <tuple>
 #include <type_traits>
 
+using namespace coconext::literals;
+
 namespace coconext::types {
 
 namespace detail {
