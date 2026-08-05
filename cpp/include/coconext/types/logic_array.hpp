@@ -672,25 +672,35 @@ std::string to_string(T const& arr) {
     return result;
 }
 
-template <StringLiteral S>
+}  // namespace coconext::types
+
+namespace coconext::literals {
+
+template <coconext::types::StringLiteral S>
 consteval auto operator""_l() {
-    constexpr auto N = detail::count_non_underscore<S>();
+    constexpr auto N = coconext::types::detail::count_non_underscore<S>();
     static_assert(
-        N <= static_cast<size_t>(std::numeric_limits<Range::value_type>::max()),
+        N <= static_cast<size_t>(
+            std::numeric_limits<coconext::types::Range::value_type>::max()
+        ),
         "logic literal too long for Range::value_type"
     );
-    constexpr Range R{static_cast<Range::value_type>(N) - 1, Direction::DOWNTO, 0};
-    LogicArray<R> result{};
+    constexpr coconext::types::Range R{
+        static_cast<coconext::types::Range::value_type>(N) - 1,
+        coconext::types::Direction::DOWNTO,
+        0
+    };
+    coconext::types::LogicArray<R> result{};
     auto out = result.begin();
     for (auto in = S.data; in != S.data + S.size; ++in) {
         if (*in != '_') {
-            *out++ = Logic(*in);
+            *out++ = coconext::types::Logic(*in);
         }
     }
     return result;
 }
 
-}  // namespace coconext::types
+}  // namespace coconext::literals
 
 // -- std::formatter specializations -------------------------------------------
 
