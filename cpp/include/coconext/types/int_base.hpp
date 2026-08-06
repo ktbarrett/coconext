@@ -604,6 +604,86 @@ class Bits {
         }
     }
 
+    // Width-changing operations. These are the only cross-width construction
+    // path; there is deliberately no cross-width converting constructor.
+
+    template <size_t Wm>
+        requires(Wm >= W)
+    constexpr Bits<Wm> zero_extend() const {
+        return widened<Wm>();
+    }
+
+    template <size_t Wm>
+        requires(Wm >= W)
+    constexpr Bits<Wm> sign_extend() const {
+        Bits<Wm> result = widened<Wm>();
+        if constexpr (W > 0 && Wm > W) {
+            if (get_bit(W - 1)) {
+                for (size_t i = W; i < Wm; ++i) {
+                    result.set_bit(i, true);
+                }
+            }
+        }
+        return result;
+    }
+
+    template <size_t Wm>
+        requires(Wm <= W)
+    constexpr Bits<Wm> truncate() const {
+        Bits<Wm> result{};
+        for (size_t i = 0; i < Wm; ++i) {
+            if (get_bit(i)) {
+                result.set_bit(i, true);
+            }
+        }
+        return result;
+    }
+
+    // Interpret the source as unsigned and clamp to the destination width.
+    template <size_t Wm>
+    constexpr Bits<Wm> saturate_unsigned() const {
+        if constexpr (Wm >= W) {
+            return zero_extend<Wm>();
+        } else if constexpr (Wm == 0) {
+            return Bits<0>{};
+        } else {
+            // Anything above bit Wm-1 means the value exceeds the target's max.
+            for (size_t i = Wm; i < W; ++i) {
+                if (get_bit(i)) {
+                    return ~Bits<Wm>{};
+                }
+            }
+            return truncate<Wm>();
+        }
+    }
+
+    // Interpret the source as two's-complement and clamp to the destination.
+    template <size_t Wm>
+    constexpr Bits<Wm> saturate_signed() const {
+        if constexpr (Wm >= W) {
+            return sign_extend<Wm>();
+        } else if constexpr (Wm == 0) {
+            return Bits<0>{};
+        } else {
+            bool negative = W > 0 && get_bit(W - 1);
+            // In range iff bits [Wm-1, W) all match the sign bit.
+            bool in_range = true;
+            for (size_t i = Wm - 1; i < W; ++i) {
+                if (get_bit(i) != negative) {
+                    in_range = false;
+                    break;
+                }
+            }
+            if (in_range) {
+                return truncate<Wm>();
+            }
+            // Clamp to signed min (100..0) or signed max (011..1).
+            Bits<Wm> limit{};
+            limit.set_bit(Wm - 1, true);
+            return negative ? limit : ~limit;
+        }
+    }
+
     std::string to_binary_string() const {
         if constexpr (W == 0) {
             return "";
@@ -680,7 +760,30 @@ class Bits {
     }
 
   private:
+    template <size_t>
+    friend class Bits;
+
     IntType storage_{};
+
+    // Zero-fill widen to Wm. Handles all four tier-crossing combinations; the
+    // native-to-native case stays a single cast so the common path is cheap.
+    template <size_t Wm>
+        requires(Wm >= W)
+    constexpr Bits<Wm> widened() const {
+        if constexpr (W == 0 || Wm == 0) {
+            return Bits<Wm>{};
+        } else if constexpr (!is_wide && !Bits<Wm>::is_wide) {
+            return Bits<Wm>(static_cast<typename Bits<Wm>::IntType>(raw()));
+        } else {
+            Bits<Wm> result{};
+            for (size_t i = 0; i < W; ++i) {
+                if (get_bit(i)) {
+                    result.set_bit(i, true);
+                }
+            }
+            return result;
+        }
+    }
 
     // Mask of the W valid low bits within the native storage word. Only used on
     // the native path; the wide (BigInt) path and the zero-width path have
@@ -730,6 +833,115 @@ class Bits {
         return static_cast<SType>(raw() << shift) >> shift;
     }
 };
+
+// Growing arithmetic. The result width is wide enough to hold every value the
+// operation can produce, so these never wrap and the width arithmetic lives in
+// the return type rather than at each call site. Operands are extended to the
+// result width first -- zero-extended for the unsigned forms, sign-extended
+// for the signed ones -- which is the only place the interpretation matters.
+
+template <size_t Wa, size_t Wb>
+constexpr Bits<std::max(Wa, Wb) + 1> add_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
+    constexpr size_t Wr = std::max(Wa, Wb) + 1;
+    return a.template zero_extend<Wr>() + b.template zero_extend<Wr>();
+}
+
+template <size_t Wa, size_t Wb>
+constexpr Bits<std::max(Wa, Wb) + 1> add_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
+    constexpr size_t Wr = std::max(Wa, Wb) + 1;
+    return a.template sign_extend<Wr>() + b.template sign_extend<Wr>();
+}
+
+template <size_t Wa, size_t Wb>
+constexpr Bits<std::max(Wa, Wb) + 1> sub_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
+    constexpr size_t Wr = std::max(Wa, Wb) + 1;
+    return a.template zero_extend<Wr>() - b.template zero_extend<Wr>();
+}
+
+template <size_t Wa, size_t Wb>
+constexpr Bits<std::max(Wa, Wb) + 1> sub_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
+    constexpr size_t Wr = std::max(Wa, Wb) + 1;
+    return a.template sign_extend<Wr>() - b.template sign_extend<Wr>();
+}
+
+template <size_t Wa, size_t Wb>
+constexpr Bits<Wa + Wb> mul_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
+    constexpr size_t Wr = Wa + Wb;
+    return a.template zero_extend<Wr>() * b.template zero_extend<Wr>();
+}
+
+template <size_t Wa, size_t Wb>
+constexpr Bits<Wa + Wb> mul_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
+    constexpr size_t Wr = Wa + Wb;
+    return a.template sign_extend<Wr>() * b.template sign_extend<Wr>();
+}
+
+// Quotient grows by one bit so signed_min / -1 is representable.
+
+template <size_t Wa, size_t Wb>
+constexpr Bits<Wa + 1> div_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
+    constexpr size_t Wr = std::max(Wa, Wb) + 1;
+    return a.template zero_extend<Wr>()
+        .udiv(b.template zero_extend<Wr>())
+        .template truncate<Wa + 1>();
+}
+
+template <size_t Wa, size_t Wb>
+constexpr Bits<Wa + 1> div_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
+    constexpr size_t Wr = std::max(Wa, Wb) + 1;
+    return a.template sign_extend<Wr>()
+        .sdiv(b.template sign_extend<Wr>())
+        .template truncate<Wa + 1>();
+}
+
+// Remainder is bounded by the divisor, so it needs no more than Wb bits.
+
+template <size_t Wa, size_t Wb>
+constexpr Bits<Wb> rem_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
+    constexpr size_t Wr = std::max(Wa, Wb);
+    return a.template zero_extend<Wr>()
+        .umod(b.template zero_extend<Wr>())
+        .template truncate<Wb>();
+}
+
+// C-style remainder: the sign follows the dividend.
+template <size_t Wa, size_t Wb>
+constexpr Bits<Wb> rem_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
+    constexpr size_t Wr = std::max(Wa, Wb) + 1;
+    return a.template sign_extend<Wr>()
+        .smod(b.template sign_extend<Wr>())
+        .template truncate<Wb>();
+}
+
+// VHDL/Python modulo: the sign follows the divisor.
+template <size_t Wa, size_t Wb>
+constexpr Bits<Wb> mod_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
+    constexpr size_t Wr = std::max(Wa, Wb) + 1;
+    auto ae = a.template sign_extend<Wr>();
+    auto be = b.template sign_extend<Wr>();
+    auto r = ae.smod(be);
+    // smod follows the dividend; when the signs disagree and there is a
+    // remainder, shift it onto the divisor's side.
+    if (r != Bits<Wr>{} && (r.slt(Bits<Wr>{}) != be.slt(Bits<Wr>{}))) {
+        r = r + be;
+    }
+    return r.template truncate<Wb>();
+}
+
+template <size_t W>
+constexpr Bits<W + 1> negate_signed(Bits<W> const& a) {
+    return Bits<W + 1>{} - a.template sign_extend<W + 1>();
+}
+
+template <size_t W>
+constexpr Bits<W + 1> abs_signed(Bits<W> const& a) {
+    auto ext = a.template sign_extend<W + 1>();
+    if constexpr (W == 0) {
+        return ext;
+    } else {
+        return a.get_bit(W - 1) ? Bits<W + 1>{} - ext : ext;
+    }
+}
 
 template <size_t bits>
 constexpr auto max_unsigned() {

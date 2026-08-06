@@ -775,4 +775,212 @@ TEST(TestBits, zero_width) {
     EXPECT_THROW(a[0], std::out_of_range);
 }
 
+// ---------------------------------------------------------------------------
+// Width-changing operations
+// ---------------------------------------------------------------------------
+
+TEST(TestBitsResize, zero_extend_fills_with_zero) {
+    detail::Bits<8> a(uint8_t{0xFF});
+    auto w = a.zero_extend<16>();
+    static_assert(std::is_same_v<decltype(w), detail::Bits<16>>);
+    EXPECT_EQ(w.to_decimal_string(), "255");
+
+    // Identity when the width does not change.
+    EXPECT_TRUE(a.zero_extend<8>() == a);
+
+    // Across the native/wide tier boundary.
+    detail::Bits<64> b(~uint64_t{0});
+    EXPECT_EQ(b.zero_extend<200>().to_decimal_string(), "18446744073709551615");
+}
+
+TEST(TestBitsResize, sign_extend_replicates_the_sign_bit) {
+    detail::Bits<8> neg(uint8_t{0xFF});  // -1
+    EXPECT_EQ(neg.sign_extend<16>().to_decimal_string(true), "-1");
+    EXPECT_EQ(neg.sign_extend<200>().to_decimal_string(true), "-1");
+
+    detail::Bits<8> pos(uint8_t{0x7F});  // 127
+    EXPECT_EQ(pos.sign_extend<16>().to_decimal_string(true), "127");
+    EXPECT_EQ(pos.sign_extend<200>().to_decimal_string(true), "127");
+
+    EXPECT_TRUE(neg.sign_extend<8>() == neg);
+}
+
+TEST(TestBitsResize, truncate_drops_the_high_bits) {
+    detail::Bits<16> a(uint16_t{0xABCD});
+    EXPECT_EQ(a.truncate<8>().to_hexadecimal_string(), "cd");
+    EXPECT_TRUE(a.truncate<16>() == a);
+
+    // Wide down to native.
+    detail::Bits<200> w("0x1234567890ABCDEF");
+    EXPECT_EQ(w.truncate<32>().to_hexadecimal_string(), "90abcdef");
+}
+
+TEST(TestBitsResize, saturate_unsigned_clamps_at_the_max) {
+    detail::Bits<16> big(uint16_t{5000});
+    EXPECT_EQ(big.saturate_unsigned<8>().to_decimal_string(), "255");
+
+    detail::Bits<16> fits(uint16_t{200});
+    EXPECT_EQ(fits.saturate_unsigned<8>().to_decimal_string(), "200");
+
+    // Widening degenerates to zero_extend.
+    EXPECT_EQ(fits.saturate_unsigned<32>().to_decimal_string(), "200");
+}
+
+TEST(TestBitsResize, saturate_signed_clamps_at_both_ends) {
+    detail::Bits<16> big(uint16_t{5000});
+    EXPECT_EQ(big.saturate_signed<8>().to_decimal_string(true), "127");
+
+    detail::Bits<16> very_neg(uint16_t{0x8000});  // -32768
+    EXPECT_EQ(very_neg.saturate_signed<8>().to_decimal_string(true), "-128");
+
+    detail::Bits<16> fits(uint16_t{0xFFFF});  // -1
+    EXPECT_EQ(fits.saturate_signed<8>().to_decimal_string(true), "-1");
+
+    // Widening degenerates to sign_extend.
+    EXPECT_EQ(fits.saturate_signed<32>().to_decimal_string(true), "-1");
+}
+
+// ---------------------------------------------------------------------------
+// Growing arithmetic. Reference values computed with Python.
+// ---------------------------------------------------------------------------
+
+TEST(TestBitsGrowing, additive_grows_by_one_bit) {
+    detail::Bits<8> a(uint8_t{200});
+    detail::Bits<8> b(uint8_t{100});
+
+    auto sum = detail::add_unsigned(a, b);
+    static_assert(std::is_same_v<decltype(sum), detail::Bits<9>>);
+    EXPECT_EQ(sum.to_decimal_string(), "300");  // does not wrap at 8 bits
+
+    // Unequal widths grow off the wider operand.
+    detail::Bits<16> c(uint16_t{1000});
+    auto mixed = detail::add_unsigned(a, c);
+    static_assert(std::is_same_v<decltype(mixed), detail::Bits<17>>);
+    EXPECT_EQ(mixed.to_decimal_string(), "1200");
+
+    // Unsigned subtraction borrows into the extra bit rather than wrapping.
+    EXPECT_EQ(detail::sub_unsigned(b, a).to_decimal_string(), "412");
+    EXPECT_EQ(detail::sub_unsigned(a, b).to_decimal_string(), "100");
+}
+
+TEST(TestBitsGrowing, additive_signed_uses_sign_extension) {
+    detail::Bits<8> neg(uint8_t{200});  // -56
+    detail::Bits<8> pos(uint8_t{100});  // 100
+
+    EXPECT_EQ(detail::add_signed(neg, pos).to_decimal_string(true), "44");
+    EXPECT_EQ(detail::sub_signed(neg, pos).to_decimal_string(true), "-156");
+}
+
+TEST(TestBitsGrowing, multiply_sums_the_widths) {
+    detail::Bits<8> a(uint8_t{200});
+    detail::Bits<8> b(uint8_t{100});
+
+    auto p = detail::mul_unsigned(a, b);
+    static_assert(std::is_same_v<decltype(p), detail::Bits<16>>);
+    EXPECT_EQ(p.to_decimal_string(), "20000");
+
+    // -56 * 100 == -5600
+    EXPECT_EQ(detail::mul_signed(a, b).to_decimal_string(true), "-5600");
+}
+
+TEST(TestBitsGrowing, division_quotient_grows_by_one) {
+    detail::Bits<8> a(uint8_t{200});
+    detail::Bits<8> b(uint8_t{7});
+
+    auto q = detail::div_unsigned(a, b);
+    static_assert(std::is_same_v<decltype(q), detail::Bits<9>>);
+    EXPECT_EQ(q.to_decimal_string(), "28");
+
+    auto r = detail::rem_unsigned(a, b);
+    static_assert(std::is_same_v<decltype(r), detail::Bits<8>>);
+    EXPECT_EQ(r.to_decimal_string(), "4");
+}
+
+// The extra quotient bit exists so signed_min / -1 stays representable.
+TEST(TestBitsGrowing, signed_min_over_minus_one_does_not_overflow) {
+    detail::Bits<8> min_val(uint8_t{0x80});  // -128
+    detail::Bits<8> minus_one(uint8_t{0xFF});
+
+    EXPECT_EQ(detail::div_signed(min_val, minus_one).to_decimal_string(true), "128");
+}
+
+// rem follows the dividend's sign (C), mod follows the divisor's (VHDL/Python).
+TEST(TestBitsGrowing, rem_and_mod_differ_on_mixed_signs) {
+    detail::Bits<8> neg56(uint8_t{200});   // -56
+    detail::Bits<8> pos100(uint8_t{100});  // 100
+    detail::Bits<8> neg3(uint8_t{0xFD});   // -3
+    detail::Bits<8> pos56(uint8_t{56});
+
+    EXPECT_EQ(detail::rem_signed(neg56, pos100).to_decimal_string(true), "-56");
+    EXPECT_EQ(detail::mod_signed(neg56, pos100).to_decimal_string(true), "44");
+
+    EXPECT_EQ(detail::rem_signed(pos56, neg3).to_decimal_string(true), "2");
+    EXPECT_EQ(detail::mod_signed(pos56, neg3).to_decimal_string(true), "-1");
+
+    // Same signs: rem and mod agree.
+    EXPECT_EQ(detail::rem_signed(neg56, neg3).to_decimal_string(true), "-2");
+    EXPECT_EQ(detail::mod_signed(neg56, neg3).to_decimal_string(true), "-2");
+}
+
+TEST(TestBitsGrowing, unary_negate_and_abs_grow_by_one) {
+    detail::Bits<8> neg56(uint8_t{200});
+
+    auto n = detail::negate_signed(neg56);
+    static_assert(std::is_same_v<decltype(n), detail::Bits<9>>);
+    EXPECT_EQ(n.to_decimal_string(true), "56");
+    EXPECT_EQ(detail::abs_signed(neg56).to_decimal_string(true), "56");
+
+    // The growth is what makes abs(signed_min) representable.
+    detail::Bits<8> min_val(uint8_t{0x80});
+    EXPECT_EQ(detail::abs_signed(min_val).to_decimal_string(true), "128");
+}
+
+TEST(TestBitsGrowing, wide_operands) {
+    detail::Bits<200> a("0x1234567890ABCDEF1122334455667788AABBCCDD");
+    detail::Bits<104> b("0xFEDCBA98765432100123456789");
+
+    EXPECT_EQ(
+        detail::add_unsigned(a, b).to_decimal_string(),
+        "103929005307927776916288754849918835164314678374"
+    );
+    EXPECT_EQ(
+        detail::mul_unsigned(a, b).to_decimal_string(),
+        "20985620746650105667944919267254862992694182466051081766005088452816326800540"
+        "85"
+    );
+    EXPECT_EQ(detail::div_unsigned(a, b).to_decimal_string(), "5146971002046463");
+    EXPECT_EQ(
+        detail::rem_unsigned(a, b).to_decimal_string(), "20112278405973339191843622874214"
+    );
+}
+
+// Growing ops on the null vector produce a real (if zero) value rather than
+// being a compile error: the result width is genuinely non-zero.
+TEST(TestBitsGrowing, zero_width_operands) {
+    detail::Bits<0> n{};
+    detail::Bits<8> a(uint8_t{42});
+
+    EXPECT_EQ(detail::add_unsigned(n, n).to_decimal_string(), "0");
+    static_assert(std::is_same_v<decltype(detail::add_unsigned(n, n)), detail::Bits<1>>);
+
+    auto p = detail::mul_unsigned(n, a);
+    static_assert(std::is_same_v<decltype(p), detail::Bits<8>>);
+    EXPECT_EQ(p.to_decimal_string(), "0");
+
+    // A null divisor is a zero divisor.
+    EXPECT_THROW(detail::div_unsigned(a, n), std::domain_error);
+}
+
+TEST(TestBitsGrowing, usable_in_constant_expressions) {
+    constexpr detail::Bits<8> a(uint8_t{200});
+    constexpr detail::Bits<8> b(uint8_t{7});
+    constexpr auto q = detail::div_unsigned(a, b);
+    constexpr auto r = detail::rem_unsigned(a, b);
+    static_assert(detail::add_unsigned(a, b) == detail::Bits<9>(uint16_t{207}));
+    static_assert(detail::mul_unsigned(a, b) == detail::Bits<16>(uint16_t{1400}));
+    static_assert(q == detail::Bits<9>(uint16_t{28}));
+    static_assert(r == detail::Bits<8>(uint8_t{4}));
+    SUCCEED();
+}
+
 // LCOV_EXCL_BR_STOP
