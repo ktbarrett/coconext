@@ -2,8 +2,6 @@
 #define COCONEXT_OUTCOME_HPP
 
 #include <exception>
-#include <string>
-#include <string_view>
 
 namespace coconext {
 
@@ -25,13 +23,7 @@ struct Exception {
 
 class Cancelled : public std::exception {
   public:
-    Cancelled() noexcept : msg_() {}
-    Cancelled(std::string_view message) : msg_(message) {}
-
-    char const* what() const noexcept override { return msg_.c_str(); }
-
-  private:
-    std::string msg_;
+    char const* what() const noexcept override { return "Cancelled"; }
 };
 
 }  // namespace coconext

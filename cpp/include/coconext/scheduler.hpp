@@ -338,8 +338,7 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
         } else if (std::holds_alternative<Pending>(state_)) {
             auto& pending = std::get<Pending>(state_);
             pending.event->event_unschedule();
-            state_ = Scheduled{this};
-            event_loop_->acquire().schedule_back(&std::get<Scheduled>(state_));
+            event_loop_->acquire().schedule_back(pending.event);
         }
     }
 
@@ -910,9 +909,6 @@ class TaskContext final {
         assert(loop != nullptr && "Running Task must have an EventLoop bound");
         return loop;
     }
-    [[nodiscard]] TaskManagerState<>* get_task_manager() const {
-        return get_task()->get_task_manager();
-    }
 
     class Awaiter {
         friend class TaskContext;
@@ -1036,9 +1032,9 @@ T run(Task<T> task);
 
 template <typename T>
 Task<T> start_soon(Task<T> task) {
-    auto ctxt = current_context();
-    ctxt.get_global_task_manager()->add(task.get_state());
-    task.start_soon(ctxt);
+    // add() on the (always-started) global TaskManager starts the task, so no
+    // explicit start_soon call is needed here.
+    current_context().get_global_task_manager()->add(task.get_state());
     return task;
 }
 

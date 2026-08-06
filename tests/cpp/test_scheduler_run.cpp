@@ -186,7 +186,6 @@ TEST(TestRun, UnawaitedTaskContextThrows) {
     EXPECT_THROW((void)ctxt.get_task(), std::runtime_error);
     EXPECT_THROW((void)ctxt.get_event_loop(), std::runtime_error);
     EXPECT_THROW((void)ctxt.get_global_task_manager(), std::runtime_error);
-    EXPECT_THROW((void)ctxt.get_task_manager(), std::runtime_error);
 }
 
 // LCOV_EXCL_BR_STOP

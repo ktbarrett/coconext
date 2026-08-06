@@ -309,14 +309,13 @@ The scheduler's internals do know, so they use `current_context()`
 unconditionally.
 
 **Visibility.** `TaskState<>` keeps its `get_event_loop()` /
-`get_global_task_manager()` / `get_task_manager()` / `get_task()` accessors
-`private`; `TaskContext` is a friend, and so is the awaiter machinery that
-needs `get_task()` for the promise-chain lookup. Users reach those fields
-only through a `TaskContext`. `TaskManagerState` and `FutureState` keep
-their own `get_event_loop()` / `get_global_task_manager()` at `protected`,
-because subclass hooks (`on_add`, `on_child_done`, `on_drain_complete`, and
-`FutureState` unprime paths) legitimately need direct access to their
-enclosing object's bindings.
+`get_global_task_manager()` / `get_task()` accessors `private`; `TaskContext`
+is a friend, and so is the awaiter machinery that needs `get_task()` for the
+promise-chain lookup. Users reach those fields only through a `TaskContext`.
+`TaskManagerState` and `FutureState` keep their own `get_event_loop()` /
+`get_global_task_manager()` at `protected`, because subclass hooks (`on_add`,
+`on_child_done`, `on_drain_complete`, and `FutureState` unprime paths)
+legitimately need direct access to their enclosing object's bindings.
 
 **`Task::start_soon(TaskContext)`.** The user-facing counterpart of the
 internal `TaskState<>::start_soon(loop, gtm)` used by `TaskManager::add` /
@@ -330,7 +329,6 @@ Coro<void> body() {
     TaskContext ctxt = co_await get_context();
     ctxt.get_event_loop();          // enclosing Task's loop
     ctxt.get_global_task_manager(); // enclosing Task's ambient scope
-    ctxt.get_task_manager();        // may be nullptr — not every Task is in a group
 }
 ```
 

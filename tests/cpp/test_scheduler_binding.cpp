@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 
 #include <coconext/coro.hpp>
+#include <coconext/future.hpp>
 #include <coconext/not_null.hpp>
 #include <coconext/outcome.hpp>
 #include <coconext/run.hpp>
@@ -12,11 +13,15 @@
 #include <thread>
 #include <utility>
 
+using coconext::Cancelled;
 using coconext::Coro;
 using coconext::current_context;
 using coconext::current_task;
+using coconext::Future;
+using coconext::FutureState;
 using coconext::not_null;
 using coconext::run;
+using coconext::start_soon;
 using coconext::Task;
 using coconext::TaskContext;
 using coconext::TaskManager;
@@ -166,6 +171,177 @@ TEST(TestSchedulerBinding, AddToDoneTaskManagerThrows) {
         co_return;
     };
     EXPECT_NO_THROW(run(body(make_tm(), priming)));
+}
+
+// -- Task cancel / uncancel edge cases -------------------------------------
+
+namespace {
+
+Coro<void> self_cancel_coro() {
+    current_task()->cancel();  // running() -> throws Cancelled in place
+    co_return;
+}
+
+}  // namespace
+
+TEST(TestSchedulerBinding, SelfCancelFromRunningThrowsCancelled) {
+    // A task that cancels itself while Running has cancel() throw Cancelled
+    // synchronously; it propagates out of the coroutine body and shows up
+    // via run() as the task's exception.
+    EXPECT_THROW(run(self_cancel_coro()), Cancelled);
+}
+
+TEST(TestSchedulerBinding, UncancelOnNonCancelledTaskThrows) {
+    Task<int> t = coro_return_int();
+    EXPECT_THROW(t.uncancel(), std::runtime_error);
+}
+
+TEST(TestSchedulerBinding, UncancelAfterDoneIsNoOp) {
+    Task<int> t = coro_return_int();
+    (void)run(t);
+    EXPECT_TRUE(t.done());
+    EXPECT_NO_THROW(t.uncancel());
+    EXPECT_NO_THROW(t.uncancel());  // idempotent
+}
+
+// -- Task::cancel() while Pending ------------------------------------------
+
+namespace {
+
+// A never-resolved Future so the awaiter stays Pending until cancelled.
+class UnresolvableVoidState : public FutureState<void> {};
+using UnresolvableVoid = Future<UnresolvableVoidState>;
+
+// Coro-returning form: the Task-from-Coro wrapper stacks an extra frame
+// between the Task's outer handle and the coroutine actually suspended on
+// the Future. cancel() reschedules the pending awaiter event, which knows
+// to resume the inner Coro's handle -- if cancel() built a fresh event
+// against the Task's outer handle instead, the inner Coro would never
+// resume and Cancelled would surface as "Coro does not have a result".
+Coro<void> await_forever(UnresolvableVoid fut) { co_await fut; }
+
+Coro<void> cancel_other(Task<void> other) {
+    other.cancel();
+    co_return;
+}
+
+}  // namespace
+
+TEST(TestSchedulerBinding, CancelPendingTaskWakesItWithCancelled) {
+    // Awaiter suspends on a never-resolved Future. Canceller runs second,
+    // calls cancel() while the awaiter is Pending -- the awaiter is rescheduled
+    // and await_resume sees cancelled_ > 0 and throws Cancelled.
+    UnresolvableVoid fut;
+    Task<void> awaiter = await_forever(fut);
+    Task<void> canceller = cancel_other(awaiter);
+
+    auto body = [](SimpleTaskManager tm, Task<void> a, Task<void> c) -> Coro<void> {
+        tm.add(a.get_state());
+        tm.add(c.get_state());
+        try {
+            co_await tm;  // manager surfaces awaiter's Cancelled
+        } catch (Cancelled const&) {}
+        EXPECT_TRUE(a.done());
+        EXPECT_THROW(a.result(), Cancelled);
+        co_return;
+    };
+
+    EXPECT_NO_THROW(run(body(make_tm(), awaiter, canceller)));
+}
+
+// -- Free-function start_soon() spawning API -------------------------------
+
+TEST(TestSchedulerBinding, FreeStartSoonSpawnsAndReturnsAwaitableTask) {
+    auto body = []() -> Coro<int> {
+        Task<int> t = start_soon(coro_return_int());
+        EXPECT_TRUE(t.started());
+        int v = co_await t;
+        co_return v;
+    };
+    EXPECT_EQ(run(body()), 42);
+}
+
+TEST(TestSchedulerBinding, FreeStartSoonAcceptsTaskLValue) {
+    auto body = []() -> Coro<int> {
+        Task<int> t = coro_return_int();
+        Task<int> same = start_soon(t);
+        EXPECT_EQ(t.get_state().get(), same.get_state().get());
+        int v = co_await t;
+        co_return v;
+    };
+    EXPECT_EQ(run(body()), 42);
+}
+
+// -- add_done_callback: Task and TaskManager -------------------------------
+
+TEST(TestSchedulerBinding, TaskAddDoneCallbackFiresExactlyOnce) {
+    int calls = 0;
+    Task<int> t = coro_return_int();
+    t.add_done_callback([&calls]() { ++calls; });
+    (void)run(t);
+    EXPECT_EQ(calls, 1);
+}
+
+TEST(TestSchedulerBinding, TaskManagerAddDoneCallbackFiresExactlyOnce) {
+    int calls = 0;
+    SimpleTaskManager m = make_tm();
+    m.add_done_callback([&calls]() { ++calls; });
+    Task<int> priming = coro_return_int_helper();
+    auto body = [](SimpleTaskManager tm, Task<int> child) -> Coro<void> {
+        tm.add(child.get_state());
+        co_await tm;
+        co_return;
+    };
+    run(body(m, priming));
+    EXPECT_EQ(calls, 1);
+}
+
+// -- AwaitableAwaiter::await_ready short-circuit ---------------------------
+
+TEST(TestSchedulerBinding, AwaitAlreadyDoneTaskReturnsValueViaShortCircuit) {
+    // Task run to completion in one run(); awaited in a second run(). The
+    // awaiter's await_ready observes task->done() and returns true, so
+    // await_suspend never runs. await_resume must return the value without
+    // going through the cancellation-check path (task_ stays nullptr).
+    Task<int> pre = coro_return_int();
+    ASSERT_EQ(run(pre), 42);
+    ASSERT_TRUE(pre.done());
+
+    auto body = [&pre]() -> Coro<int> {
+        int v = co_await pre;
+        co_return v;
+    };
+    EXPECT_EQ(run(body()), 42);
+}
+
+// -- Coro handle lifecycle -------------------------------------------------
+
+TEST(TestSchedulerBinding, CoroGetStateReturnsStableReference) {
+    Coro<int> c = coro_return_int();
+    auto& s1 = c.get_state();
+    auto& s2 = c.get_state();
+    EXPECT_EQ(&s1, &s2);
+}
+
+TEST(TestSchedulerBinding, CoroMoveAssignmentOverLiveHandleWorks) {
+    // Move-assign over a Coro that already owns a coroutine handle. The
+    // destination's old handle must be destroyed (no leak), the source
+    // must end up empty (no double-destroy at scope exit), and the new
+    // handle must remain runnable through the destination.
+    Coro<int> a = coro_return_int_helper();  // returns 0
+    Coro<int> b = coro_return_int();         // returns 42
+    auto* new_state = &b.get_state();
+    a = std::move(b);
+    EXPECT_EQ(&a.get_state(), new_state);
+    EXPECT_EQ(run(std::move(a)), 42);
+}
+
+TEST(TestSchedulerBinding, CoroMovedFromDestroysWithoutCrash) {
+    // A moved-from Coro must be destructible without touching its (now
+    // transferred) handle. Any double-destroy would trip UB/asan.
+    Coro<int> a = coro_return_int();
+    { Coro<int> b = std::move(a); }
+    SUCCEED();
 }
 
 // -- Cross-EventLoop binding rejection -------------------------------------
