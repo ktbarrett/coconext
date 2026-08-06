@@ -536,10 +536,9 @@ The plainest of the three shared types. `FutureState<T>` has a result slot,
 a waiter deque, done callbacks, an event-loop slot, and a refcount. Users
 subclass `FutureState<T>` to add domain state (e.g. a Timer holds an
 `NTime`, a ValueChange holds a signal handle) and override the virtual
-`unprime()` hook — called from the state's dtor if the refcount reaches
-zero while still pending, so the subclass can un-register from whatever
-external event source it hooked into. `Future<StateT>` is the refcounted
-handle.
+`unprime()` hook — called when the refcount reaches zero while still
+pending, so the subclass can un-register from whatever external event
+source it hooked into. `Future<StateT>` is the refcounted handle.
 
 Late binding on `FutureState`: `event_loop_` is nullptr until first awaited.
 `on_awaited` propagates from the awaiting Task. If never awaited, never

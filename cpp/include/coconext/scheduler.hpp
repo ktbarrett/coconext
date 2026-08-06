@@ -102,11 +102,7 @@ class FutureState {
   public:
     using value_type = T;
 
-    virtual ~FutureState() {
-        if (!done()) {
-            unprime();
-        }
-    }
+    virtual ~FutureState() = default;
 
     [[nodiscard]] bool done() const noexcept {
         return !std::holds_alternative<std::monostate>(result_);
