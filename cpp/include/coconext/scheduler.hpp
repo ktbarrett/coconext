@@ -993,14 +993,14 @@ inline void TaskState<>::on_done() noexcept {
 
 inline void TaskState<>::start_soon(TaskContext const& ctxt) {
     if (started()) {
-        throw std::runtime_error("TaskManager is already started");
+        throw std::runtime_error("Task is already started");
     }
     start_soon(ctxt.get_event_loop(), ctxt.get_global_task_manager());
 }
 
 inline void TaskState<>::start_soon() {
     if (started()) {
-        throw std::runtime_error("TaskManager is already started");
+        throw std::runtime_error("Task is already started");
     }
     if (event_loop_ == nullptr || global_task_manager_ == nullptr) {
         start_soon(current_context());
