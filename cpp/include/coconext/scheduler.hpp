@@ -604,30 +604,20 @@ class TaskManagerState<detail::Erased> {
             throw std::runtime_error("Task is already bound to a TaskManager");
         }
         // Loop affinity: manager, task body, and all sibling tasks must share one
-        // EventLoop. Bind whichever side is already bound to the other; throws on
-        // mismatch. If neither is bound, start_soon() below binds all the children later
+        // EventLoop. An unbound manager adopts the bindings of an already-started child.
+        // If neither is bound, start_soon() below binds all the children later.
         if (event_loop_ == nullptr && task->started()) {
-            // We know the child task is started and can use its bindings.
             auto event_loop = task->get_event_loop();
             assert(event_loop != nullptr && "Running Task must have an EventLoop bound");
-            if (event_loop_ == nullptr) {
-                event_loop_ = event_loop;
-            } else if (event_loop_ != event_loop) {
-                throw std::runtime_error(
-                    "TaskManager is already bound to another EventLoop"
-                );
-            }
+            event_loop_ = event_loop;
         }
         if (global_task_manager_ == nullptr && task->started()) {
-            // We know the child task is started and can use its bindings.
             auto global_task_manager = task->get_global_task_manager();
             assert(
                 global_task_manager != nullptr
                 && "Running Task must have a global TaskManager bound"
             );
-            if (global_task_manager_ == nullptr) {
-                global_task_manager_ = global_task_manager;
-            }
+            global_task_manager_ = global_task_manager;
         }
         if (started() && !task->started()) {
             assert(
