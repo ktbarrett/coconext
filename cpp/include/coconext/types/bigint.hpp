@@ -3,9 +3,10 @@
 
 // The multi-word arithmetic kernels below (the `tc*` word-array primitives, the
 // Knuth division algorithm, and the division driver) are derived from LLVM's
-// APInt implementation (llvm/lib/Support/APInt.cpp). They have been adapted to
-// operate on fixed-size, compile-time-sized std::array storage so the whole
-// type remains constexpr and never allocates.
+// APInt implementation (llvm/lib/Support/APInt.cpp). Storage is factored out
+// via non-owning views (BigIntConstRef / BigIntMutRef) so the same kernels
+// serve both the fixed-width, compile-time-sized BigInt<W> (std::array) and
+// the runtime-sized DynBigInt (std::unique_ptr<Word[]>).
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -17,26 +18,26 @@
 #include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <span>
 #include <stdexcept>
 #include <string_view>
 #include <type_traits>
 
 namespace coconext::types::detail {
 
-// ---------------------------------------------------------------------------
-// Word-array kernels (derived from LLVM APInt tc* primitives)
-//
-// These operate on raw uint64_t words, `parts` of them, little-endian (word 0
-// is least significant). They carry no notion of bit width; the owning BigInt
-// masks the top word after each mutating op.
-// ---------------------------------------------------------------------------
-
 using Word = uint64_t;
 inline constexpr unsigned word_bits = 64;
 
-// DST += RHS + carry (carry is 0 or 1). Returns the carry out.
-constexpr Word tc_add(Word* dst, Word const* rhs, Word carry, unsigned parts) {
-    for (unsigned i = 0; i < parts; ++i) {
+// ---------------------------------------------------------------------------
+// Word-array kernels (derived from LLVM APInt tc* primitives)
+//
+// Little-endian (word 0 is least significant). They carry no notion of bit
+// width; the caller masks the top word after each mutating op.
+// ---------------------------------------------------------------------------
+
+constexpr Word tc_add(std::span<Word> dst, std::span<Word const> rhs, Word carry) {
+    for (size_t i = 0; i < dst.size(); ++i) {
         Word l = dst[i];
         if (carry) {
             dst[i] += rhs[i] + 1;
@@ -49,9 +50,8 @@ constexpr Word tc_add(Word* dst, Word const* rhs, Word carry, unsigned parts) {
     return carry;
 }
 
-// DST -= RHS + carry (carry is 0 or 1). Returns the borrow out.
-constexpr Word tc_subtract(Word* dst, Word const* rhs, Word carry, unsigned parts) {
-    for (unsigned i = 0; i < parts; ++i) {
+constexpr Word tc_subtract(std::span<Word> dst, std::span<Word const> rhs, Word carry) {
+    for (size_t i = 0; i < dst.size(); ++i) {
         Word l = dst[i];
         if (carry) {
             dst[i] -= rhs[i] + 1;
@@ -67,21 +67,14 @@ constexpr Word tc_subtract(Word* dst, Word const* rhs, Word carry, unsigned part
 constexpr Word low_half(Word part) { return part & (~Word(0) >> (word_bits / 2)); }
 constexpr Word high_half(Word part) { return part >> (word_bits / 2); }
 
-// DST = SRC * MULTIPLIER + CARRY (add == false) or DST += ... (add == true).
-// Mirrors APInt::tcMultiplyPart; emulates the 128-bit intermediate via 32-bit
-// half-words so it needs no wider integer type.
 constexpr int tc_multiply_part(
-    Word* dst,
-    Word const* src,
-    Word multiplier,
-    Word carry,
-    unsigned src_parts,
-    unsigned dst_parts,
-    bool add
+    std::span<Word> dst, std::span<Word const> src, Word multiplier, Word carry, bool add
 ) {
-    unsigned n = src_parts < dst_parts ? src_parts : dst_parts;
+    size_t src_parts = src.size();
+    size_t dst_parts = dst.size();
+    size_t n = src_parts < dst_parts ? src_parts : dst_parts;
 
-    for (unsigned i = 0; i < n; ++i) {
+    for (size_t i = 0; i < n; ++i) {
         Word src_part = src[i];
         Word low, mid, high;
         if (multiplier == 0 || src_part == 0) {
@@ -135,7 +128,7 @@ constexpr int tc_multiply_part(
     }
 
     if (multiplier) {
-        for (unsigned i = dst_parts; i < src_parts; ++i) {
+        for (size_t i = dst_parts; i < src_parts; ++i) {
             if (src[i]) {
                 return 1;
             }
@@ -145,34 +138,35 @@ constexpr int tc_multiply_part(
     return 0;
 }
 
-// DST = LHS * RHS, truncated to `parts` words. DST must be disjoint from both
-// operands. Returns nonzero on overflow.
-constexpr int tc_multiply(Word* dst, Word const* lhs, Word const* rhs, unsigned parts) {
+constexpr int tc_multiply(
+    std::span<Word> dst, std::span<Word const> lhs, std::span<Word const> rhs
+) {
     int overflow = 0;
-    for (unsigned i = 0; i < parts; ++i) {
-        overflow |= tc_multiply_part(&dst[i], lhs, rhs[i], 0, parts, parts - i, i != 0);
+    size_t parts = dst.size();
+    for (size_t i = 0; i < parts; ++i) {
+        overflow |= tc_multiply_part(dst.subspan(i), lhs, rhs[i], 0, /*add=*/i != 0);
     }
     return overflow;
 }
 
-// Shift a bignum left `count` bits in-place; shifted-in bits are zero.
-constexpr void tc_shift_left(Word* dst, unsigned words, unsigned count) {
+constexpr void tc_shift_left(std::span<Word> dst, unsigned count) {
     if (!count) {
         return;
     }
+    size_t words = dst.size();
 
-    unsigned word_shift = count / word_bits;
+    size_t word_shift = count / word_bits;
     if (word_shift > words) {
         word_shift = words;
     }
     unsigned bit_shift = count % word_bits;
 
     if (bit_shift == 0) {
-        for (unsigned i = words; i-- > word_shift;) {
+        for (size_t i = words; i-- > word_shift;) {
             dst[i] = dst[i - word_shift];
         }
     } else {
-        for (unsigned i = words; i-- > word_shift;) {
+        for (size_t i = words; i-- > word_shift;) {
             dst[i] = dst[i - word_shift] << bit_shift;
             if (i > word_shift) {
                 dst[i] |= dst[i - word_shift - 1] >> (word_bits - bit_shift);
@@ -180,30 +174,30 @@ constexpr void tc_shift_left(Word* dst, unsigned words, unsigned count) {
         }
     }
 
-    for (unsigned i = 0; i < word_shift; ++i) {
+    for (size_t i = 0; i < word_shift; ++i) {
         dst[i] = 0;
     }
 }
 
-// Shift a bignum right `count` bits in-place (logical); shifted-in bits zero.
-constexpr void tc_shift_right(Word* dst, unsigned words, unsigned count) {
+constexpr void tc_shift_right(std::span<Word> dst, unsigned count) {
     if (!count) {
         return;
     }
+    size_t words = dst.size();
 
-    unsigned word_shift = count / word_bits;
+    size_t word_shift = count / word_bits;
     if (word_shift > words) {
         word_shift = words;
     }
     unsigned bit_shift = count % word_bits;
-    unsigned words_to_move = words - word_shift;
+    size_t words_to_move = words - word_shift;
 
     if (bit_shift == 0) {
-        for (unsigned i = 0; i < words_to_move; ++i) {
+        for (size_t i = 0; i < words_to_move; ++i) {
             dst[i] = dst[i + word_shift];
         }
     } else {
-        for (unsigned i = 0; i != words_to_move; ++i) {
+        for (size_t i = 0; i != words_to_move; ++i) {
             dst[i] = dst[i + word_shift] >> bit_shift;
             if (i + 1 != words_to_move) {
                 dst[i] |= dst[i + word_shift + 1] << (word_bits - bit_shift);
@@ -211,13 +205,13 @@ constexpr void tc_shift_right(Word* dst, unsigned words, unsigned count) {
         }
     }
 
-    for (unsigned i = words_to_move; i < words; ++i) {
+    for (size_t i = words_to_move; i < words; ++i) {
         dst[i] = 0;
     }
 }
 
-// Unsigned comparison of two bignums: -1, 0, or 1.
-constexpr int tc_compare(Word const* lhs, Word const* rhs, unsigned parts) {
+constexpr int tc_compare(std::span<Word const> lhs, std::span<Word const> rhs) {
+    size_t parts = lhs.size();
     while (parts) {
         --parts;
         if (lhs[parts] != rhs[parts]) {
@@ -229,18 +223,11 @@ constexpr int tc_compare(Word const* lhs, Word const* rhs, unsigned parts) {
 
 // ---------------------------------------------------------------------------
 // Division (derived from LLVM APInt::divide + the file-static KnuthDiv)
-//
-// The algorithm is generic over the limb type; only the double-width limb used
-// for the trial-quotient divide and the multiply-subtract is width-specific.
-// That is the single #ifdef below: 64-bit limbs (needing __uint128_t) when
-// available, else the portable 32-bit-limb form (needing only uint64_t).
 // ---------------------------------------------------------------------------
 
 template <typename Limb>
 struct wider;
 
-// Signed counterpart of the double-width limb type. std::make_signed does not
-// accept __int128 under strict -std=c++20 in libstdc++, so select explicitly.
 template <typename D>
 struct as_signed {
     using type = std::make_signed_t<D>;
@@ -268,9 +255,6 @@ using DivLimb = uint32_t;
 inline constexpr unsigned limb_bits = sizeof(DivLimb) * CHAR_BIT;
 inline constexpr unsigned limbs_per_word = word_bits / limb_bits;
 
-// Knuth's Algorithm D over base 2^limb_bits. `u` has m+n+1 limbs (the extra one
-// for spill), `v` has n limbs, `q` receives m+1 quotient limbs, and `r` (if not
-// null) receives n remainder limbs. Requires n > 1.
 template <typename Limb>
 constexpr void knuth_div(Limb* u, Limb* v, Limb* q, Limb* r, unsigned m, unsigned n) {
     using D = typename wider<Limb>::type;
@@ -282,7 +266,6 @@ constexpr void knuth_div(Limb* u, Limb* v, Limb* q, Limb* r, unsigned m, unsigne
     auto hi = [](D x) -> Limb { return static_cast<Limb>(x >> lb); };
     auto make = [](Limb h, Limb l) -> D { return (D(h) << lb) | l; };
 
-    // D1. Normalize so the divisor's high limb has its top bit set.
     unsigned shift = static_cast<unsigned>(std::countl_zero(v[n - 1]));
     Limb v_carry = 0;
     Limb u_carry = 0;
@@ -300,10 +283,8 @@ constexpr void knuth_div(Limb* u, Limb* v, Limb* q, Limb* r, unsigned m, unsigne
     }
     u[m + n] = u_carry;
 
-    // D2-D7. Main loop over quotient limbs.
     int j = static_cast<int>(m);
     do {
-        // D3. Estimate the quotient limb qp.
         D dividend = make(u[j + n], u[j + n - 1]);
         D qp = dividend / v[n - 1];
         D rp = dividend % v[n - 1];
@@ -315,9 +296,6 @@ constexpr void knuth_div(Limb* u, Limb* v, Limb* q, Limb* r, unsigned m, unsigne
             }
         }
 
-        // D4. Multiply and subtract. `borrow` is a non-negative propagated
-        // borrow in [0, 2^lb): the high-limb difference is taken in unsigned
-        // limb arithmetic (wrapping) exactly as in LLVM's 32-bit-limb form.
         SD borrow = 0;
         for (unsigned i = 0; i < n; ++i) {
             D p = qp * D(v[i]);
@@ -328,7 +306,6 @@ constexpr void knuth_div(Limb* u, Limb* v, Limb* q, Limb* r, unsigned m, unsigne
         bool is_neg = SD(u[j + n]) < borrow;
         u[j + n] -= lo(static_cast<D>(borrow));
 
-        // D5. Set quotient limb; D6. add back on the rare negative case.
         q[j] = lo(qp);
         if (is_neg) {
             q[j]--;
@@ -342,7 +319,6 @@ constexpr void knuth_div(Limb* u, Limb* v, Limb* q, Limb* r, unsigned m, unsigne
         }
     } while (--j >= 0);
 
-    // D8. Unnormalize to recover the remainder.
     if (r) {
         if (shift) {
             Limb carry = 0;
@@ -358,7 +334,6 @@ constexpr void knuth_div(Limb* u, Limb* v, Limb* q, Limb* r, unsigned m, unsigne
     }
 }
 
-// Split a uint64_t word into limbs (little-endian), storing into out[0..].
 constexpr void word_to_limbs(Word w, DivLimb* out) {
     if constexpr (limbs_per_word == 1) {
         out[0] = static_cast<DivLimb>(w);
@@ -369,7 +344,6 @@ constexpr void word_to_limbs(Word w, DivLimb* out) {
     }
 }
 
-// Reassemble a uint64_t word from limbs (little-endian).
 constexpr Word limbs_to_word(DivLimb const* in) {
     if constexpr (limbs_per_word == 1) {
         return static_cast<Word>(in[0]);
@@ -382,91 +356,540 @@ constexpr Word limbs_to_word(DivLimb const* in) {
     }
 }
 
-// Division driver: computes quotient and/or remainder of LHS / RHS, each of
-// `num_words` uint64_t words. `lhs_words`/`rhs_words` are the significant
-// (non-zero-high) word counts. quotient/remainder may be null. Caller has
-// already handled the degenerate cases (zero, single-word, lhs < rhs, equal).
-template <size_t NumWords>
-constexpr void divide(
-    Word const* lhs,
+struct DivideScratch {
+    std::span<DivLimb> U;
+    std::span<DivLimb> V;
+    std::span<DivLimb> Q;
+    std::span<DivLimb> R;
+};
+
+constexpr void divide_impl(
+    std::span<Word const> lhs,
     unsigned lhs_words,
-    Word const* rhs,
+    std::span<Word const> rhs,
     unsigned rhs_words,
-    Word* quotient,
-    Word* remainder
+    std::span<Word> quotient,
+    std::span<Word> remainder,
+    DivideScratch scratch
 ) {
-    // Widen into limbs. n = divisor limbs, m = dividend excess.
     unsigned n = rhs_words * limbs_per_word;
     unsigned m = (lhs_words * limbs_per_word) - n;
 
-    // Scratch sized for the worst case at compile time.
-    constexpr unsigned max_limbs = NumWords * limbs_per_word;
-    std::array<DivLimb, max_limbs + max_limbs + 1> U{};
-    std::array<DivLimb, max_limbs> V{};
-    std::array<DivLimb, max_limbs + max_limbs> Q{};
-    std::array<DivLimb, max_limbs> R{};
-
     for (unsigned i = 0; i < lhs_words; ++i) {
-        word_to_limbs(lhs[i], &U[i * limbs_per_word]);
+        word_to_limbs(lhs[i], &scratch.U[i * limbs_per_word]);
     }
-    U[m + n] = 0;
+    scratch.U[m + n] = 0;
     for (unsigned i = 0; i < rhs_words; ++i) {
-        word_to_limbs(rhs[i], &V[i * limbs_per_word]);
+        word_to_limbs(rhs[i], &scratch.V[i * limbs_per_word]);
     }
 
-    // Trim leading zero limbs the widening may have introduced.
-    for (unsigned i = n; i > 0 && V[i - 1] == 0; --i) {
+    for (unsigned i = n; i > 0 && scratch.V[i - 1] == 0; --i) {
         n--;
         m++;
     }
-    for (unsigned i = m + n; i > 0 && U[i - 1] == 0; --i) {
+    for (unsigned i = m + n; i > 0 && scratch.U[i - 1] == 0; --i) {
         m--;
     }
 
     if (n == 1) {
-        // Short division in base 2^limb_bits.
         using D = typename wider<DivLimb>::type;
-        DivLimb divisor = V[0];
+        DivLimb divisor = scratch.V[0];
         DivLimb rem = 0;
         for (int i = static_cast<int>(m); i >= 0; --i) {
-            D partial = (D(rem) << limb_bits) | U[i];
+            D partial = (D(rem) << limb_bits) | scratch.U[i];
             if (partial == 0) {
-                Q[i] = 0;
+                scratch.Q[i] = 0;
                 rem = 0;
             } else if (partial < divisor) {
-                Q[i] = 0;
+                scratch.Q[i] = 0;
                 rem = static_cast<DivLimb>(partial);
             } else if (partial == divisor) {
-                Q[i] = 1;
+                scratch.Q[i] = 1;
                 rem = 0;
             } else {
-                Q[i] = static_cast<DivLimb>(partial / divisor);
-                rem = static_cast<DivLimb>(partial - (D(Q[i]) * divisor));
+                scratch.Q[i] = static_cast<DivLimb>(partial / divisor);
+                rem = static_cast<DivLimb>(partial - (D(scratch.Q[i]) * divisor));
             }
         }
-        R[0] = rem;
+        scratch.R[0] = rem;
     } else {
         knuth_div<DivLimb>(
-            U.data(), V.data(), Q.data(), remainder ? R.data() : nullptr, m, n
+            scratch.U.data(),
+            scratch.V.data(),
+            scratch.Q.data(),
+            remainder.empty() ? nullptr : scratch.R.data(),
+            m,
+            n
         );
     }
 
-    if (quotient) {
+    if (!quotient.empty()) {
         for (unsigned i = 0; i < lhs_words; ++i) {
-            quotient[i] = limbs_to_word(&Q[i * limbs_per_word]);
+            quotient[i] = limbs_to_word(&scratch.Q[i * limbs_per_word]);
         }
-        for (unsigned i = lhs_words; i < NumWords; ++i) {
+        for (size_t i = lhs_words; i < quotient.size(); ++i) {
             quotient[i] = 0;
         }
     }
-    if (remainder) {
+    if (!remainder.empty()) {
         for (unsigned i = 0; i < rhs_words; ++i) {
-            remainder[i] = limbs_to_word(&R[i * limbs_per_word]);
+            remainder[i] = limbs_to_word(&scratch.R[i * limbs_per_word]);
         }
-        for (unsigned i = rhs_words; i < NumWords; ++i) {
+        for (size_t i = rhs_words; i < remainder.size(); ++i) {
             remainder[i] = 0;
         }
     }
+}
+
+// Single-allocation heap scratch for divide_impl. Zero-initialized because
+// divide_impl's output loop reads the full lhs_words*lpw / rhs_words*lpw tail,
+// but knuth_div only writes q[0..m] / r[0..n-1].
+struct OwnedDivScratch {
+    std::unique_ptr<DivLimb[]> buf;
+    DivideScratch view;
+};
+
+inline OwnedDivScratch make_owned_div_scratch(size_t max_limbs) {
+    size_t u_len = 2 * max_limbs + 1;
+    size_t v_len = max_limbs;
+    size_t q_len = 2 * max_limbs;
+    size_t r_len = max_limbs;
+    size_t total = u_len + v_len + q_len + r_len;
+    auto buf = std::make_unique<DivLimb[]>(total);
+    DivLimb* p = buf.get();
+    DivideScratch view{
+        std::span<DivLimb>{p,                         u_len},
+        std::span<DivLimb>{p + u_len,                 v_len},
+        std::span<DivLimb>{p + u_len + v_len,         q_len},
+        std::span<DivLimb>{p + u_len + v_len + q_len, r_len}
+    };
+    return OwnedDivScratch{std::move(buf), view};
+}
+
+// ---------------------------------------------------------------------------
+// BigIntConstRef / BigIntMutRef: non-owning views over big-int word storage.
+// Storage-agnostic algorithms are free functions taking these views. Both
+// owner types (BigInt<W>, DynBigInt) implicitly convert to the appropriate
+// view, so every kernel has exactly one implementation.
+// ---------------------------------------------------------------------------
+
+class BigIntConstRef {
+    std::span<Word const> data_;
+    size_t bit_width_;
+
+  public:
+    constexpr BigIntConstRef(std::span<Word const> d, size_t bw)
+        : data_(d), bit_width_(bw) {}
+
+    constexpr std::span<Word const> data() const { return data_; }
+    constexpr size_t bit_width() const { return bit_width_; }
+    constexpr size_t num_words() const { return data_.size(); }
+    constexpr Word word(size_t i) const { return data_[i]; }
+};
+
+class BigIntMutRef {
+    std::span<Word> data_;
+    size_t bit_width_;
+
+  public:
+    constexpr BigIntMutRef(std::span<Word> d, size_t bw) : data_(d), bit_width_(bw) {}
+
+    constexpr operator BigIntConstRef() const {
+        return BigIntConstRef{
+            std::span<Word const>{data_.data(), data_.size()},
+             bit_width_
+        };
+    }
+
+    constexpr std::span<Word> data() const { return data_; }
+    constexpr size_t bit_width() const { return bit_width_; }
+    constexpr size_t num_words() const { return data_.size(); }
+
+    constexpr Word last_word_mask() const {
+        unsigned valid_bits = bit_width_ % word_bits;
+        if (valid_bits == 0) {
+            return ~Word(0);
+        }
+        return (Word(1) << valid_bits) - 1;
+    }
+};
+
+// ---- Read-only operations on a view ----
+
+constexpr bool is_negative(BigIntConstRef v) {
+    if (v.bit_width() == 0) {
+        return false;
+    }
+    unsigned sign_bit = (v.bit_width() - 1) % word_bits;
+    return (v.data().back() >> sign_bit) & 1;
+}
+
+constexpr unsigned active_words(BigIntConstRef v) {
+    auto d = v.data();
+    for (size_t i = d.size(); i > 0; --i) {
+        if (d[i - 1] != 0) {
+            return static_cast<unsigned>(i);
+        }
+    }
+    return 0;
+}
+
+constexpr void check_same_width(BigIntConstRef a, BigIntConstRef b) {
+    if (a.bit_width() != b.bit_width()) {
+        throw std::invalid_argument("BigInt bit width mismatch");
+    }
+}
+
+constexpr int ucompare(BigIntConstRef a, BigIntConstRef b) {
+    check_same_width(a, b);
+    return tc_compare(a.data(), b.data());
+}
+
+constexpr int scompare(BigIntConstRef a, BigIntConstRef b) {
+    check_same_width(a, b);
+    bool an = is_negative(a);
+    bool bn = is_negative(b);
+    if (an != bn) {
+        return an ? -1 : 1;
+    }
+    return tc_compare(a.data(), b.data());
+}
+
+constexpr size_t count_trailing_zeros(BigIntConstRef v) {
+    auto d = v.data();
+    for (size_t i = 0; i < d.size(); ++i) {
+        if (d[i] != 0) {
+            return (i * word_bits) + std::countr_zero(d[i]);
+        }
+    }
+    return v.bit_width();
+}
+
+constexpr size_t count_leading_zeros(BigIntConstRef v) {
+    auto d = v.data();
+    size_t nw = d.size();
+    for (size_t i = nw; i > 0; --i) {
+        if (d[i - 1] != 0) {
+            size_t leading_in_word = std::countl_zero(d[i - 1]);
+            size_t total_leading = ((nw - i) * word_bits) + leading_in_word;
+            size_t unused_top_bits = (nw * word_bits) - v.bit_width();
+            return total_leading - unused_top_bits;
+        }
+    }
+    return v.bit_width();
+}
+
+constexpr size_t popcount(BigIntConstRef v) {
+    size_t n = 0;
+    for (Word w : v.data()) {
+        n += std::popcount(w);
+    }
+    return n;
+}
+
+constexpr bool get_bit(BigIntConstRef v, size_t index) {
+    return (v.data()[index / word_bits] >> (index % word_bits)) & 1;
+}
+
+// ---- Mutating operations on a view ----
+
+constexpr void clear_unused_bits(BigIntMutRef v) {
+    auto d = v.data();
+    if (!d.empty()) {
+        d.back() &= v.last_word_mask();
+    }
+}
+
+constexpr void add_assign(BigIntMutRef dst, BigIntConstRef rhs) {
+    check_same_width(dst, rhs);
+    tc_add(dst.data(), rhs.data(), 0);
+    clear_unused_bits(dst);
+}
+
+constexpr void sub_assign(BigIntMutRef dst, BigIntConstRef rhs) {
+    check_same_width(dst, rhs);
+    tc_subtract(dst.data(), rhs.data(), 0);
+    clear_unused_bits(dst);
+}
+
+constexpr void and_assign(BigIntMutRef dst, BigIntConstRef rhs) {
+    check_same_width(dst, rhs);
+    auto d = dst.data();
+    auto s = rhs.data();
+    for (size_t i = 0; i < d.size(); ++i) {
+        d[i] &= s[i];
+    }
+}
+
+constexpr void or_assign(BigIntMutRef dst, BigIntConstRef rhs) {
+    check_same_width(dst, rhs);
+    auto d = dst.data();
+    auto s = rhs.data();
+    for (size_t i = 0; i < d.size(); ++i) {
+        d[i] |= s[i];
+    }
+}
+
+constexpr void xor_assign(BigIntMutRef dst, BigIntConstRef rhs) {
+    check_same_width(dst, rhs);
+    auto d = dst.data();
+    auto s = rhs.data();
+    for (size_t i = 0; i < d.size(); ++i) {
+        d[i] ^= s[i];
+    }
+}
+
+constexpr void bitnot(BigIntMutRef v) {
+    for (auto& w : v.data()) {
+        w = ~w;
+    }
+    clear_unused_bits(v);
+}
+
+// Two's-complement negation: ~x + 1.
+constexpr void negate(BigIntMutRef v) {
+    Word carry = 1;
+    for (auto& w : v.data()) {
+        w = ~w;
+        Word sum = w + carry;
+        carry = (sum < w) ? 1 : 0;
+        w = sum;
+    }
+    clear_unused_bits(v);
+}
+
+constexpr void shift_left(BigIntMutRef v, size_t amount) {
+    if (amount >= v.bit_width()) {
+        for (auto& w : v.data()) {
+            w = 0;
+        }
+        return;
+    }
+    tc_shift_left(v.data(), static_cast<unsigned>(amount));
+    clear_unused_bits(v);
+}
+
+constexpr void shift_right_logical(BigIntMutRef v, size_t amount) {
+    if (amount >= v.bit_width()) {
+        for (auto& w : v.data()) {
+            w = 0;
+        }
+        return;
+    }
+    tc_shift_right(v.data(), static_cast<unsigned>(amount));
+}
+
+constexpr void shift_right_arith(BigIntMutRef v, size_t amount) {
+    if (amount == 0) {
+        return;
+    }
+    bool negative = is_negative(v);
+    shift_right_logical(v, amount);
+    if (!negative) {
+        return;
+    }
+    size_t bw = v.bit_width();
+    size_t bits_to_set = (amount < bw) ? amount : bw;
+    size_t start_bit = bw - bits_to_set;
+    auto d = v.data();
+    for (size_t bit = start_bit; bit < bw; ++bit) {
+        d[bit / word_bits] |= (Word(1) << (bit % word_bits));
+    }
+    clear_unused_bits(v);
+}
+
+// dst = lhs * rhs (truncated). dst must be disjoint from operands.
+constexpr void multiply(BigIntMutRef dst, BigIntConstRef lhs, BigIntConstRef rhs) {
+    check_same_width(dst, lhs);
+    check_same_width(dst, rhs);
+    tc_multiply(dst.data(), lhs.data(), rhs.data());
+    clear_unused_bits(dst);
+}
+
+// Parse a decimal or (unsigned) 0x-prefixed hex literal into `dst`. Requires
+// dst to be zero-valued on entry. Accepts ' and _ as digit separators.
+// Throws std::invalid_argument on malformed input and std::out_of_range if
+// the value doesn't fit in dst.bit_width() bits.
+constexpr void parse_into(BigIntMutRef dst, std::string_view str) {
+    if (str.empty()) {
+        return;
+    }
+    bool is_neg = false;
+    size_t i = 0;
+    if (str[i] == '-') {
+        is_neg = true;
+        i++;
+    } else if (str[i] == '+') {
+        i++;
+    }
+    bool is_hex = false;
+    if (i + 1 < str.length() && str[i] == '0' && (str[i + 1] == 'x' || str[i + 1] == 'X')) {
+        is_hex = true;
+        i += 2;
+    }
+
+    auto d = dst.data();
+    size_t bw = dst.bit_width();
+
+    if (is_hex) {
+        if (is_neg) {
+            throw std::invalid_argument("Hexadecimal value cannot be negative");
+        }
+        unsigned word_idx = 0;
+        unsigned bit_shift = 0;
+        for (int j = static_cast<int>(str.length()) - 1; j >= static_cast<int>(i); --j) {
+            char c = str[j];
+            uint64_t val = 0;
+            if (c >= '0' && c <= '9') {
+                val = c - '0';
+            } else if (c >= 'a' && c <= 'f') {
+                val = c - 'a' + 10;
+            } else if (c >= 'A' && c <= 'F') {
+                val = c - 'A' + 10;
+            } else if (c == '\'' || c == '_') {
+                continue;
+            } else {
+                throw std::invalid_argument("Invalid hexadecimal character");
+            }
+
+            unsigned abs_bit = word_idx * word_bits + bit_shift;
+            if (val != 0 && (abs_bit >= bw || (abs_bit + std::bit_width(val)) > bw)) {
+                throw std::out_of_range("Hexadecimal literal exceeds BigInt width");
+            }
+
+            if (val != 0) {
+                d[word_idx] |= (val << bit_shift);
+            }
+            bit_shift += 4;
+            if (bit_shift == 64) {
+                bit_shift = 0;
+                word_idx++;
+            }
+        }
+    } else {
+        Word top_mask = dst.last_word_mask();
+        for (; i < str.length(); ++i) {
+            char c = str[i];
+            if (c == '\'' || c == '_') {
+                continue;
+            }
+            if (c < '0' || c > '9') {
+                throw std::invalid_argument("Invalid base-10 character");
+            }
+            uint64_t digit = c - '0';
+            uint64_t carry = digit;
+            for (size_t w = 0; w < d.size(); ++w) {
+                uint64_t lower = (d[w] & 0xFFFFFFFF) * 10 + carry;
+                uint64_t upper = (d[w] >> 32) * 10 + (lower >> 32);
+                d[w] = (lower & 0xFFFFFFFF) | (upper << 32);
+                carry = upper >> 32;
+            }
+            if (carry != 0 || (!d.empty() && (d.back() & ~top_mask) != 0)) {
+                throw std::out_of_range("Decimal literal exceeds BigInt width");
+            }
+        }
+    }
+
+    if (is_neg) {
+        negate(dst);
+    }
+    clear_unused_bits(dst);
+}
+
+// Load a signed/unsigned 128-bit native value into `dst`, sign- or
+// zero-extended as appropriate. Requires dst to be zero on entry (default).
+#if defined(__SIZEOF_INT128__)
+constexpr void load_int128(BigIntMutRef dst, __int128_t val) {
+    auto d = dst.data();
+    if (d.empty()) {
+        return;
+    }
+    d[0] = static_cast<Word>(val);
+    if (d.size() > 1) {
+        d[1] = static_cast<Word>(val >> 64);
+    }
+    if (val < 0) {
+        for (size_t i = 2; i < d.size(); ++i) {
+            d[i] = ~Word(0);
+        }
+    }
+    clear_unused_bits(dst);
+}
+
+constexpr void load_uint128(BigIntMutRef dst, __uint128_t val) {
+    auto d = dst.data();
+    if (d.empty()) {
+        return;
+    }
+    d[0] = static_cast<Word>(val);
+    if (d.size() > 1) {
+        d[1] = static_cast<Word>(val >> 64);
+    }
+    clear_unused_bits(dst);
+}
+#endif
+
+// ---------------------------------------------------------------------------
+// BigIntOwner: anything that owns big-int storage and implicitly exposes both
+// view forms. BigInt<W> and DynBigInt satisfy it. Free operator templates
+// below serve every model of this concept.
+// ---------------------------------------------------------------------------
+
+template <typename T>
+concept BigIntOwner = std::copy_constructible<T> && requires(T& t, T const& ct) {
+    { BigIntConstRef(ct) } -> std::same_as<BigIntConstRef>;
+    { BigIntMutRef(t) } -> std::same_as<BigIntMutRef>;
+};
+
+template <BigIntOwner T>
+constexpr T operator+(T lhs, T const& rhs) {
+    add_assign(lhs, rhs);
+    return lhs;
+}
+
+template <BigIntOwner T>
+constexpr T operator-(T lhs, T const& rhs) {
+    sub_assign(lhs, rhs);
+    return lhs;
+}
+
+template <BigIntOwner T>
+constexpr T operator&(T lhs, T const& rhs) {
+    and_assign(lhs, rhs);
+    return lhs;
+}
+
+template <BigIntOwner T>
+constexpr T operator|(T lhs, T const& rhs) {
+    or_assign(lhs, rhs);
+    return lhs;
+}
+
+template <BigIntOwner T>
+constexpr T operator^(T lhs, T const& rhs) {
+    xor_assign(lhs, rhs);
+    return lhs;
+}
+
+template <BigIntOwner T>
+constexpr T operator~(T x) {
+    bitnot(x);
+    return x;
+}
+
+template <BigIntOwner T>
+constexpr T operator-(T x) {
+    negate(x);
+    return x;
+}
+
+// operator*: multiply(dst, lhs, rhs) requires dst disjoint from both operands.
+// A copy of lhs is a distinct object; its contents will be overwritten.
+template <BigIntOwner T>
+constexpr T operator*(T const& lhs, T const& rhs) {
+    T result(lhs);
+    multiply(result, lhs, rhs);
+    return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -493,26 +916,26 @@ class BigInt {
     static constexpr WordType last_word_mask = get_last_word_mask();
     std::array<WordType, num_of_words> data{};
 
-    constexpr void clear_unused_bits() { data.back() &= last_word_mask; }
+    constexpr void mask_top_word() { data.back() &= last_word_mask; }
 
-    // Count of significant (non-zero-high) words; 0 for a zero value.
-    constexpr unsigned active_words() const {
-        for (unsigned i = num_of_words; i > 0; --i) {
-            if (data[i - 1] != 0) {
-                return i;
-            }
+    // Scratch large enough for the worst-case operand of this width.
+    struct DivScratchStorage {
+        static constexpr size_t max_limbs = num_of_words * limbs_per_word;
+        std::array<DivLimb, max_limbs + max_limbs + 1> U{};
+        std::array<DivLimb, max_limbs> V{};
+        std::array<DivLimb, max_limbs + max_limbs> Q{};
+        std::array<DivLimb, max_limbs> R{};
+        constexpr DivideScratch view() {
+            return DivideScratch{
+                std::span<DivLimb>{U},
+                std::span<DivLimb>{V},
+                std::span<DivLimb>{Q},
+                std::span<DivLimb>{R}
+            };
         }
-        return 0;
-    }
+    };
 
   public:
-    constexpr bool is_negative() const {
-        unsigned sign_bit = (BitWidth - 1) % word_width;
-        return (data.back() >> sign_bit) & 1;
-    }
-    constexpr WordType get_word(size_t index) const { return data[index]; }
-    constexpr std::array<WordType, num_of_words> const& get_data() const { return data; }
-
     constexpr BigInt() = default;
 
     template <NativeInteger T>
@@ -526,355 +949,320 @@ class BigInt {
                 }
             }
         }
-        clear_unused_bits();
+        mask_top_word();
     }
 
 #if defined(__SIZEOF_INT128__)
-    constexpr BigInt(__int128_t val) {
-        data[0] = static_cast<WordType>(val);
-        data[1] = static_cast<WordType>(val >> 64);
-        if (val < 0) {
-            for (unsigned i = 2; i < num_of_words; ++i) {
-                data[i] = ~WordType(0);
-            }
-        }
-        clear_unused_bits();
-    }
-    constexpr BigInt(__uint128_t val) {
-        data[0] = static_cast<WordType>(val);
-        data[1] = static_cast<WordType>(val >> 64);
-        for (unsigned i = 2; i < num_of_words; ++i) {
-            data[i] = 0;
-        }
-        clear_unused_bits();
-    }
+    constexpr BigInt(__int128_t val) { load_int128(*this, val); }
+    constexpr BigInt(__uint128_t val) { load_uint128(*this, val); }
 #endif
 
-    explicit constexpr BigInt(std::string_view str) {
-        if (str.empty()) {
-            return;
-        }
-
-        bool is_neg = false;
-        size_t i = 0;
-
-        if (str[i] == '-') {
-            is_neg = true;
-            i++;
-        } else if (str[i] == '+') {
-            i++;
-        }
-
-        bool is_hex = false;
-        if (i + 1 < str.length() && str[i] == '0'
-            && (str[i + 1] == 'x' || str[i + 1] == 'X'))
-        {
-            is_hex = true;
-            i += 2;
-        }
-
-        if (is_hex) {
-            if (is_neg) {
-                throw std::invalid_argument("Hexadecimal value cannot be negative");
-            }
-            unsigned word_idx = 0;
-            unsigned bit_shift = 0;
-
-            for (int j = static_cast<int>(str.length()) - 1; j >= static_cast<int>(i); --j)
-            {
-                char c = str[j];
-                uint64_t val = 0;
-
-                if (c >= '0' && c <= '9') {
-                    val = c - '0';
-                } else if (c >= 'a' && c <= 'f') {
-                    val = c - 'a' + 10;
-                } else if (c >= 'A' && c <= 'F') {
-                    val = c - 'A' + 10;
-                } else if (c == '\'' || c == '_') {
-                    continue;
-                } else {
-                    throw std::invalid_argument("Invalid hexadecimal character");
-                }
-
-                // Throw if any set bit of this nibble lands at bit index >= W.
-                unsigned abs_bit = word_idx * word_width + bit_shift;
-                if (val != 0
-                    && (abs_bit >= BitWidth || (abs_bit + std::bit_width(val)) > BitWidth))
-                {
-                    throw std::out_of_range("Hexadecimal literal exceeds BigInt width");
-                }
-
-                data[word_idx] |= (val << bit_shift);
-                bit_shift += 4;
-
-                if (bit_shift == 64) {
-                    bit_shift = 0;
-                    word_idx++;
-                }
-            }
-        } else {
-            for (; i < str.length(); ++i) {
-                char c = str[i];
-                if (c == '\'' || c == '_') {
-                    continue;
-                }
-                if (c < '0' || c > '9') {
-                    throw std::invalid_argument("Invalid base-10 character");
-                }
-                uint64_t digit = c - '0';
-
-                uint64_t carry = digit;
-                for (unsigned w = 0; w < num_of_words; ++w) {
-                    uint64_t lower = (data[w] & 0xFFFFFFFF) * 10 + carry;
-                    uint64_t upper = (data[w] >> 32) * 10 + (lower >> 32);
-                    data[w] = (lower & 0xFFFFFFFF) | (upper << 32);
-                    carry = upper >> 32;
-                }
-                if (carry != 0 || (data.back() & ~last_word_mask) != 0) {
-                    throw std::out_of_range("Decimal literal exceeds BigInt width");
-                }
-            }
-        }
-
-        if (is_neg) {
-            uint64_t carry = 1;
-            for (unsigned w = 0; w < num_of_words; ++w) {
-                data[w] = ~data[w];
-                uint64_t sum = data[w] + carry;
-                carry = (sum < data[w]) ? 1 : 0;
-                data[w] = sum;
-            }
-        }
-        clear_unused_bits();
-    }
+    explicit constexpr BigInt(std::string_view str) { parse_into(*this, str); }
 
     constexpr BigInt& operator=(BigInt const&) = default;
     constexpr BigInt& operator=(BigInt&&) noexcept = default;
     constexpr BigInt(BigInt const&) = default;
     constexpr BigInt(BigInt&&) noexcept = default;
 
-    constexpr explicit operator bool() const { return active_words() != 0; }
+    constexpr operator BigIntConstRef() const {
+        return BigIntConstRef{std::span<WordType const>{data}, BitWidth};
+    }
+    constexpr operator BigIntMutRef() {
+        return BigIntMutRef{std::span<WordType>{data}, BitWidth};
+    }
+
+    constexpr WordType get_word(size_t index) const { return data[index]; }
+    constexpr std::array<WordType, num_of_words> const& get_data() const { return data; }
+
+    // Thin forwarders so callers (e.g. int_base.hpp) can keep the member style.
+    constexpr bool is_negative() const { return detail::is_negative(*this); }
+    constexpr size_t count_trailing_zeros() const {
+        return detail::count_trailing_zeros(*this);
+    }
+    constexpr size_t count_leading_zeros() const {
+        return detail::count_leading_zeros(*this);
+    }
+    constexpr size_t popcount() const { return detail::popcount(*this); }
+    constexpr int ucompare(BigInt const& rhs) const { return detail::ucompare(*this, rhs); }
+    constexpr int scompare(BigInt const& rhs) const { return detail::scompare(*this, rhs); }
+
+    constexpr explicit operator bool() const { return active_words(*this) != 0; }
 
     constexpr bool operator==(BigInt const& rhs) const { return data == rhs.data; }
     constexpr bool operator!=(BigInt const& rhs) const { return !(*this == rhs); }
 
-    // Unsigned magnitude comparison over the raw bit pattern.
-    constexpr int ucompare(BigInt const& rhs) const {
-        return tc_compare(data.data(), rhs.data.data(), num_of_words);
-    }
-
-    // Signed (two's-complement) comparison under the W-bit interpretation.
-    constexpr int scompare(BigInt const& rhs) const {
-        bool lhs_neg = is_negative();
-        bool rhs_neg = rhs.is_negative();
-        if (lhs_neg != rhs_neg) {
-            return lhs_neg ? -1 : 1;
-        }
-        return ucompare(rhs);
-    }
-
-    constexpr BigInt operator&(BigInt const& rhs) const {
-        BigInt result;
-        for (unsigned i = 0; i < num_of_words; ++i) {
-            result.data[i] = data[i] & rhs.data[i];
-        }
-        return result;
-    }
-
-    constexpr BigInt operator|(BigInt const& rhs) const {
-        BigInt result;
-        for (unsigned i = 0; i < num_of_words; ++i) {
-            result.data[i] = data[i] | rhs.data[i];
-        }
-        return result;
-    }
-
-    constexpr BigInt operator^(BigInt const& rhs) const {
-        BigInt result;
-        for (unsigned i = 0; i < num_of_words; ++i) {
-            result.data[i] = data[i] ^ rhs.data[i];
-        }
-        return result;
-    }
-
-    constexpr BigInt operator~() const {
-        BigInt result(*this);
-        for (auto& word : result.data) {
-            word = ~word;
-        }
-        result.clear_unused_bits();
-        return result;
-    }
-
-    constexpr BigInt operator+(BigInt const& rhs) const {
-        BigInt result(*this);
-        tc_add(result.data.data(), rhs.data.data(), 0, num_of_words);
-        result.clear_unused_bits();
-        return result;
-    }
-
-    constexpr BigInt operator-(BigInt const& rhs) const {
-        BigInt result(*this);
-        tc_subtract(result.data.data(), rhs.data.data(), 0, num_of_words);
-        result.clear_unused_bits();
-        return result;
-    }
-
-    constexpr BigInt operator*(BigInt const& rhs) const {
-        BigInt result;
-        tc_multiply(result.data.data(), data.data(), rhs.data.data(), num_of_words);
-        result.clear_unused_bits();
-        return result;
-    }
-
-    // Unsigned division; caller guarantees rhs != 0.
+    // Division stays owner-side: scratch shape (std::array vs unique_ptr[])
+    // depends on the storage tier.
     constexpr BigInt udiv(BigInt const& rhs) const {
-        unsigned lhs_words = active_words();
-        unsigned rhs_words = rhs.active_words();
-
-        if (lhs_words == 0 || ucompare(rhs) < 0) {
-            return BigInt{};  // lhs < rhs (covers lhs == 0)
+        unsigned lw = active_words(*this);
+        unsigned rw = active_words(rhs);
+        if (lw == 0 || ucompare(rhs) < 0) {
+            return BigInt{};
         }
         if (*this == rhs) {
             return BigInt(WordType{1});
         }
         BigInt result;
-        divide<num_of_words>(
-            data.data(), lhs_words, rhs.data.data(), rhs_words, result.data.data(), nullptr
+        DivScratchStorage scratch;
+        divide_impl(
+            std::span<WordType const>{data},
+            lw,
+            std::span<WordType const>{rhs.data},
+            rw,
+            std::span<WordType>{result.data},
+            std::span<WordType>{},
+            scratch.view()
         );
-        result.clear_unused_bits();
+        result.mask_top_word();
         return result;
     }
 
-    // Unsigned remainder; caller guarantees rhs != 0.
     constexpr BigInt umod(BigInt const& rhs) const {
-        unsigned lhs_words = active_words();
-        unsigned rhs_words = rhs.active_words();
-
-        if (lhs_words == 0 || ucompare(rhs) < 0) {
-            return *this;  // lhs < rhs (covers lhs == 0)
+        unsigned lw = active_words(*this);
+        unsigned rw = active_words(rhs);
+        if (lw == 0 || ucompare(rhs) < 0) {
+            return *this;
         }
         if (*this == rhs) {
             return BigInt{};
         }
         BigInt result;
-        divide<num_of_words>(
-            data.data(), lhs_words, rhs.data.data(), rhs_words, nullptr, result.data.data()
+        DivScratchStorage scratch;
+        divide_impl(
+            std::span<WordType const>{data},
+            lw,
+            std::span<WordType const>{rhs.data},
+            rw,
+            std::span<WordType>{},
+            std::span<WordType>{result.data},
+            scratch.view()
         );
-        result.clear_unused_bits();
+        result.mask_top_word();
         return result;
     }
 
-    // Signed division (truncating toward zero); caller guarantees rhs != 0.
     constexpr BigInt sdiv(BigInt const& rhs) const {
-        bool lhs_neg = is_negative();
-        bool rhs_neg = rhs.is_negative();
-        BigInt a = lhs_neg ? -(*this) : *this;
-        BigInt b = rhs_neg ? -rhs : rhs;
+        bool ln = is_negative();
+        bool rn = rhs.is_negative();
+        BigInt a = ln ? -(*this) : *this;
+        BigInt b = rn ? -rhs : rhs;
         BigInt q = a.udiv(b);
-        return (lhs_neg ^ rhs_neg) ? -q : q;
+        return (ln ^ rn) ? -q : q;
     }
 
-    // Signed remainder (sign follows dividend); caller guarantees rhs != 0.
     constexpr BigInt smod(BigInt const& rhs) const {
-        bool lhs_neg = is_negative();
-        BigInt a = lhs_neg ? -(*this) : *this;
+        bool ln = is_negative();
+        BigInt a = ln ? -(*this) : *this;
         BigInt b = rhs.is_negative() ? -rhs : rhs;
         BigInt r = a.umod(b);
-        return lhs_neg ? -r : r;
+        return ln ? -r : r;
     }
-
-    constexpr BigInt operator-() const { return (~(*this)) + BigInt(WordType{1}); }
-
-    constexpr size_t count_trailing_zeros() const {
-        for (unsigned i = 0; i < num_of_words; ++i) {
-            if (data[i] != 0) {
-                return (i * word_width) + std::countr_zero(data[i]);
-            }
-        }
-        return BitWidth;
-    }
-
-    constexpr size_t count_leading_zeros() const {
-        for (unsigned i = num_of_words; i > 0; --i) {
-            if (data[i - 1] != 0) {
-                size_t leading_in_word = std::countl_zero(data[i - 1]);
-                size_t total_leading = ((num_of_words - i) * word_width) + leading_in_word;
-                size_t unused_top_bits = (num_of_words * word_width) - BitWidth;
-                return total_leading - unused_top_bits;
-            }
-        }
-        return BitWidth;
-    }
-
-    constexpr size_t popcount() const {
-        size_t n = 0;
-        for (unsigned i = 0; i < num_of_words; ++i) {
-            n += std::popcount(data[i]);
-        }
-        return n;
-    }
-
-    template <size_t BW>
-    friend constexpr void shift_right_logical(BigInt<BW>& val, size_t amount);
-
-    template <size_t BW>
-    friend constexpr void shift_right_arith(BigInt<BW>& val, size_t amount);
-
-    template <size_t BW>
-    friend constexpr void shift_left(BigInt<BW>& val, size_t amount);
 };
 
-template <size_t BitWidth>
-constexpr void shift_right_logical(BigInt<BitWidth>& val, size_t amount) {
-    if (amount >= BitWidth) {
-        for (auto& word : val.data) {
-            word = 0;
+// Free-function shift wrappers kept for source-level compat with int_base.hpp.
+template <size_t BW>
+constexpr void shift_right_logical(BigInt<BW>& val, size_t amount) {
+    detail::shift_right_logical(static_cast<BigIntMutRef>(val), amount);
+}
+
+template <size_t BW>
+constexpr void shift_right_arith(BigInt<BW>& val, size_t amount) {
+    detail::shift_right_arith(static_cast<BigIntMutRef>(val), amount);
+}
+
+template <size_t BW>
+constexpr void shift_left(BigInt<BW>& val, size_t amount) {
+    detail::shift_left(static_cast<BigIntMutRef>(val), amount);
+}
+
+// ---------------------------------------------------------------------------
+// DynBigInt: runtime-width, unique_ptr-backed sibling of BigInt<W>. Width is
+// fixed at construction; arithmetic masks/wraps to that width just like
+// BigInt<W>. Not constexpr (heap-allocates).
+// ---------------------------------------------------------------------------
+
+class DynBigInt {
+  public:
+    using WordType = uint64_t;
+    static constexpr unsigned word_width = 64;
+
+  private:
+    size_t bit_width_;
+    size_t num_words_;
+    std::unique_ptr<WordType[]> data_;
+
+    static size_t words_for(size_t bw) { return (bw + word_width - 1) / word_width; }
+
+    WordType last_word_mask_impl() const {
+        unsigned valid_bits = bit_width_ % word_width;
+        if (valid_bits == 0) {
+            return ~WordType(0);
         }
-        return;
-    }
-    tc_shift_right(
-        val.data.data(), BigInt<BitWidth>::num_of_words, static_cast<unsigned>(amount)
-    );
-}
-
-template <size_t BitWidth>
-constexpr void shift_right_arith(BigInt<BitWidth>& val, size_t amount) {
-    if (amount == 0) {
-        return;
+        return (WordType(1) << valid_bits) - 1;
     }
 
-    bool negative = val.is_negative();
-    shift_right_logical(val, amount);
-
-    if (!negative) {
-        return;
-    }
-
-    // Set the top `amount` bits to sign-extend.
-    size_t bits_to_set = (amount < BitWidth) ? amount : BitWidth;
-    size_t start_bit = BitWidth - bits_to_set;
-    constexpr unsigned word_width = BigInt<BitWidth>::word_width;
-    for (size_t bit = start_bit; bit < BitWidth; ++bit) {
-        val.data[bit / word_width] |= (uint64_t{1} << (bit % word_width));
-    }
-    val.clear_unused_bits();
-}
-
-template <size_t BitWidth>
-constexpr void shift_left(BigInt<BitWidth>& val, size_t amount) {
-    if (amount >= BitWidth) {
-        for (auto& word : val.data) {
-            word = 0;
+    void mask_top_word() {
+        if (num_words_ > 0) {
+            data_[num_words_ - 1] &= last_word_mask_impl();
         }
-        return;
     }
-    tc_shift_left(
-        val.data.data(), BigInt<BitWidth>::num_of_words, static_cast<unsigned>(amount)
-    );
-    val.clear_unused_bits();
-}
+
+    DynBigInt zero_like() const { return DynBigInt(bit_width_); }
+
+    DynBigInt divmod(DynBigInt const& rhs, bool want_quotient) const {
+        detail::check_same_width(*this, rhs);
+        unsigned lw = active_words(*this);
+        unsigned rw = active_words(rhs);
+        if (lw == 0 || ucompare(rhs) < 0) {
+            return want_quotient ? zero_like() : *this;
+        }
+        if (*this == rhs) {
+            return want_quotient ? DynBigInt(bit_width_, WordType{1}) : zero_like();
+        }
+        DynBigInt result(bit_width_);
+        OwnedDivScratch scratch = make_owned_div_scratch(num_words_ * limbs_per_word);
+        std::span<WordType> out{result.data_.get(), result.num_words_};
+        std::span<WordType> empty{};
+        divide_impl(
+            std::span<WordType const>{data_.get(), num_words_},
+            lw,
+            std::span<WordType const>{rhs.data_.get(), rhs.num_words_},
+            rw,
+            want_quotient ? out : empty,
+            want_quotient ? empty : out,
+            scratch.view
+        );
+        result.mask_top_word();
+        return result;
+    }
+
+  public:
+    // Zero-valued integer of the given width.
+    explicit DynBigInt(size_t bit_width)
+        : bit_width_(bit_width), num_words_(words_for(bit_width)),
+          data_(std::make_unique<WordType[]>(num_words_)) {}
+
+    template <NativeInteger T>
+        requires(sizeof(T) <= sizeof(WordType))
+    DynBigInt(size_t bit_width, T val) : DynBigInt(bit_width) {
+        if (num_words_ == 0) {
+            return;
+        }
+        data_[0] = static_cast<WordType>(val);
+        if constexpr (std::is_signed_v<T>) {
+            if (val < 0) {
+                for (size_t i = 1; i < num_words_; ++i) {
+                    data_[i] = ~WordType(0);
+                }
+            }
+        }
+        mask_top_word();
+    }
+
+#if defined(__SIZEOF_INT128__)
+    DynBigInt(size_t bit_width, __int128_t val) : DynBigInt(bit_width) {
+        load_int128(*this, val);
+    }
+    DynBigInt(size_t bit_width, __uint128_t val) : DynBigInt(bit_width) {
+        load_uint128(*this, val);
+    }
+#endif
+
+    DynBigInt(size_t bit_width, std::string_view str) : DynBigInt(bit_width) {
+        parse_into(*this, str);
+    }
+
+    DynBigInt(DynBigInt const& other)
+        : bit_width_(other.bit_width_), num_words_(other.num_words_),
+          data_(std::make_unique<WordType[]>(other.num_words_)) {
+        for (size_t i = 0; i < num_words_; ++i) {
+            data_[i] = other.data_[i];
+        }
+    }
+
+    DynBigInt(DynBigInt&& other) noexcept = default;
+
+    DynBigInt& operator=(DynBigInt const& other) {
+        if (this == &other) {
+            return *this;
+        }
+        if (num_words_ != other.num_words_) {
+            data_ = std::make_unique<WordType[]>(other.num_words_);
+        }
+        bit_width_ = other.bit_width_;
+        num_words_ = other.num_words_;
+        for (size_t i = 0; i < num_words_; ++i) {
+            data_[i] = other.data_[i];
+        }
+        return *this;
+    }
+
+    DynBigInt& operator=(DynBigInt&& other) noexcept = default;
+
+    operator BigIntConstRef() const {
+        return BigIntConstRef{
+            std::span<WordType const>{data_.get(), num_words_},
+             bit_width_
+        };
+    }
+    operator BigIntMutRef() {
+        return BigIntMutRef{
+            std::span<WordType>{data_.get(), num_words_},
+            bit_width_
+        };
+    }
+
+    size_t bit_width() const { return bit_width_; }
+    size_t num_words() const { return num_words_; }
+    WordType get_word(size_t index) const { return data_[index]; }
+
+    bool is_negative() const { return detail::is_negative(*this); }
+    size_t count_trailing_zeros() const { return detail::count_trailing_zeros(*this); }
+    size_t count_leading_zeros() const { return detail::count_leading_zeros(*this); }
+    size_t popcount() const { return detail::popcount(*this); }
+    int ucompare(DynBigInt const& rhs) const { return detail::ucompare(*this, rhs); }
+    int scompare(DynBigInt const& rhs) const { return detail::scompare(*this, rhs); }
+
+    explicit operator bool() const { return active_words(*this) != 0; }
+
+    bool operator==(DynBigInt const& rhs) const {
+        if (bit_width_ != rhs.bit_width_) {
+            return false;
+        }
+        for (size_t i = 0; i < num_words_; ++i) {
+            if (data_[i] != rhs.data_[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool operator!=(DynBigInt const& rhs) const { return !(*this == rhs); }
+
+    DynBigInt udiv(DynBigInt const& rhs) const {
+        return divmod(rhs, /*want_quotient=*/true);
+    }
+    DynBigInt umod(DynBigInt const& rhs) const {
+        return divmod(rhs, /*want_quotient=*/false);
+    }
+
+    DynBigInt sdiv(DynBigInt const& rhs) const {
+        bool ln = is_negative();
+        bool rn = rhs.is_negative();
+        DynBigInt a = ln ? -(*this) : *this;
+        DynBigInt b = rn ? -rhs : rhs;
+        DynBigInt q = a.udiv(b);
+        return (ln ^ rn) ? -q : q;
+    }
+
+    DynBigInt smod(DynBigInt const& rhs) const {
+        bool ln = is_negative();
+        DynBigInt a = ln ? -(*this) : *this;
+        DynBigInt b = rhs.is_negative() ? -rhs : rhs;
+        DynBigInt r = a.umod(b);
+        return ln ? -r : r;
+    }
+};
 
 }  // namespace coconext::types::detail
 
