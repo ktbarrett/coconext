@@ -34,7 +34,7 @@ class Unsigned {
     template <typename T>
     constexpr T to_native_int() const {
         static_assert(
-            !detail::Bits<R.length()>::is_not_native_int,
+            !detail::Bits<R.length()>::is_bigint_backed,
             "Conversion from BigInt to native int"
         );
 
@@ -95,7 +95,7 @@ class Unsigned {
         if constexpr (R.length() >= R2.length()) {
             value_ = other.value_;
         } else {
-            if constexpr (!detail::Bits<R.length()>::is_not_native_int) {
+            if constexpr (!detail::Bits<R.length()>::is_bigint_backed) {
                 if (other.value_.ule(max_unsigned<R.length()>())) {
                     if constexpr (R.length() != R2.length()) {
                         value_ = coconext::types::resize<R.length()>(other).value_;
@@ -125,7 +125,7 @@ class Unsigned {
     explicit constexpr Unsigned(Signed<R2> const& other) {
         auto const& src_bits = bits(other);
         bool is_negative = false;
-        if constexpr (!detail::Bits<R2.length()>::is_not_native_int) {
+        if constexpr (!detail::Bits<R2.length()>::is_bigint_backed) {
             is_negative = (src_bits.srl(R2.length() - 1).raw() & 1) != 0;
         } else {
             is_negative = (src_bits.srl(R2.length() - 1).raw().get_word(0) & 1) != 0;
@@ -184,8 +184,7 @@ class Unsigned {
 
         if constexpr (TargetW >= SourceW) {
             if constexpr (
-                !Bits<TargetW>::is_not_native_int
-                && !detail::Bits<SourceW>::is_not_native_int
+                !Bits<TargetW>::is_bigint_backed && !detail::Bits<SourceW>::is_bigint_backed
             )
             {
                 value_ = detail::Bits<TargetW>(
@@ -198,8 +197,8 @@ class Unsigned {
             // Narrowing
             if (ovf == overflow_mode::wrap) {
                 if constexpr (
-                    !Bits<TargetW>::is_not_native_int
-                    && !detail::Bits<SourceW>::is_not_native_int
+                    !Bits<TargetW>::is_bigint_backed
+                    && !detail::Bits<SourceW>::is_bigint_backed
                 )
                 {
                     value_ = detail::Bits<TargetW>(
@@ -213,8 +212,8 @@ class Unsigned {
             } else {
                 // Saturate Clamp to the maximum representable value of the Target width
                 if constexpr (
-                    !Bits<TargetW>::is_not_native_int
-                    && !detail::Bits<SourceW>::is_not_native_int
+                    !Bits<TargetW>::is_bigint_backed
+                    && !detail::Bits<SourceW>::is_bigint_backed
                 )
                 {
                     auto src_raw = src.value_.raw();
@@ -748,7 +747,7 @@ struct std::hash<coconext::types::detail::Unsigned<R>> {
         size_t value_hash = 0;
 
         if constexpr (W > 0) {
-            if constexpr (!coconext::types::detail::Bits<W>::is_not_native_int) {
+            if constexpr (!coconext::types::detail::Bits<W>::is_bigint_backed) {
                 auto raw_val = v.value_.raw();
                 if constexpr (sizeof(raw_val) > sizeof(size_t)) {
                     uint64_t low = static_cast<uint64_t>(raw_val);

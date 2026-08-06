@@ -36,7 +36,7 @@ class Signed {
     template <typename T>
     constexpr T to_native_int() const {
         static_assert(
-            !detail::Bits<R.length()>::is_not_native_int,
+            !detail::Bits<R.length()>::is_bigint_backed,
             "Conversion from BigInt to native int"
         );
 
@@ -126,7 +126,7 @@ class Signed {
         auto const& src_bits = bits(other);
         if constexpr (R.length() <= R2.length()) {
             bool fits = true;
-            if constexpr (!detail::Bits<R2.length()>::is_not_native_int) {
+            if constexpr (!detail::Bits<R2.length()>::is_bigint_backed) {
                 auto src_val = src_bits.raw();
                 auto max_val = max_unsigned<R.length() - 1>();
                 if (src_val > max_val) {
@@ -148,8 +148,8 @@ class Signed {
         }
 
         if constexpr (
-            !Bits<R.length()>::is_not_native_int
-            && !detail::Bits<R2.length()>::is_not_native_int
+            !Bits<R.length()>::is_bigint_backed
+            && !detail::Bits<R2.length()>::is_bigint_backed
         )
         {
             value_ = detail::Bits<R.length()>(
@@ -207,8 +207,7 @@ class Signed {
 
         if constexpr (TargetW == SourceW) {
             if constexpr (
-                !Bits<TargetW>::is_not_native_int
-                && !detail::Bits<SourceW>::is_not_native_int
+                !Bits<TargetW>::is_bigint_backed && !detail::Bits<SourceW>::is_bigint_backed
             )
             {
                 value_ = detail::Bits<TargetW>(
@@ -219,8 +218,7 @@ class Signed {
             }
         } else if constexpr (TargetW > SourceW) {
             if constexpr (
-                !Bits<TargetW>::is_not_native_int
-                && !detail::Bits<SourceW>::is_not_native_int
+                !Bits<TargetW>::is_bigint_backed && !detail::Bits<SourceW>::is_bigint_backed
             )
             {
                 // Sign Extension for Native Widths
@@ -243,8 +241,8 @@ class Signed {
             // Narrowing
             if (ovf == overflow_mode::wrap) {
                 if constexpr (
-                    !Bits<TargetW>::is_not_native_int
-                    && !detail::Bits<SourceW>::is_not_native_int
+                    !Bits<TargetW>::is_bigint_backed
+                    && !detail::Bits<SourceW>::is_bigint_backed
                 )
                 {
                     value_ = detail::Bits<TargetW>(
@@ -258,7 +256,7 @@ class Signed {
             } else {
                 // Signed Saturation logic
                 bool is_neg = false;
-                if constexpr (!detail::Bits<SourceW>::is_not_native_int) {
+                if constexpr (!detail::Bits<SourceW>::is_bigint_backed) {
                     is_neg = (src.value_.srl(SourceW - 1).raw() & 1) != 0;
                 } else {
                     is_neg = (src.value_.srl(SourceW - 1).raw().get_word(0) & 1) != 0;
@@ -266,8 +264,8 @@ class Signed {
 
                 Signed<R> wrapped_temp;
                 if constexpr (
-                    !Bits<TargetW>::is_not_native_int
-                    && !detail::Bits<SourceW>::is_not_native_int
+                    !Bits<TargetW>::is_bigint_backed
+                    && !detail::Bits<SourceW>::is_bigint_backed
                 )
                 {
                     wrapped_temp.value_ = detail::Bits<TargetW>(
@@ -819,7 +817,7 @@ struct std::hash<coconext::types::detail::Signed<R>> {
         size_t value_hash = 0;
 
         if constexpr (W > 0) {
-            if constexpr (!coconext::types::detail::Bits<W>::is_not_native_int) {
+            if constexpr (!coconext::types::detail::Bits<W>::is_bigint_backed) {
                 auto raw_val = v.value_.raw();
                 if constexpr (sizeof(raw_val) > sizeof(size_t)) {
                     uint64_t low = static_cast<uint64_t>(raw_val);

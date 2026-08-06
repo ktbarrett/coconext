@@ -597,6 +597,92 @@ TEST(TestBits, to_string_wide) {
     EXPECT_EQ(detail::Bits<200>(0).to_decimal_string(), "0");
 }
 
+TEST(TestBits, bit_reference_write_native) {
+    detail::Bits<12> a(0);
+    a[0] = '1'_b;
+    a[3] = '1'_b;
+    a[11] = '1'_b;
+    EXPECT_EQ(a, detail::Bits<12>(0b100000001001));
+
+    a[0] = '0'_b;
+    EXPECT_EQ(a, detail::Bits<12>(0b100000001000));
+
+    // proxy-to-proxy assignment: copy bit 11 into bit 5
+    detail::Bits<12> b(0);
+    b[5] = a[11];
+    EXPECT_EQ(b, detail::Bits<12>(1u << 5));
+}
+
+TEST(TestBits, bit_reference_write_wide) {
+    detail::Bits<200> a(0);
+    a[0] = '1'_b;
+    a[199] = '1'_b;
+    a[100] = '1'_b;
+    detail::Bits<200> expected = (detail::Bits<200>(1) << 199)
+                               | (detail::Bits<200>(1) << 100) | detail::Bits<200>(1);
+    EXPECT_EQ(a, expected);
+
+    a[100] = '0'_b;
+    EXPECT_EQ(a, (detail::Bits<200>(1) << 199) | detail::Bits<200>(1));
+
+    // proxy-to-proxy assignment across the wide path
+    detail::Bits<200> b(0);
+    b[50] = a[199];
+    EXPECT_EQ(b, detail::Bits<200>(1) << 50);
+}
+
+TEST(TestBits, popcount_and_count_zeros_odd_widths) {
+    // Odd non-word-aligned widths exercise the unused_bits math on native path.
+    detail::Bits<45> a(0);
+    EXPECT_EQ(a.popcount(), 0u);
+    EXPECT_EQ(a.count_leading_zeros(), 45u);
+    EXPECT_EQ(a.count_trailing_zeros(), 45u);
+
+    detail::Bits<45> b(0b1010);
+    EXPECT_EQ(b.popcount(), 2u);
+    EXPECT_EQ(b.count_leading_zeros(), 45u - 4u);
+    EXPECT_EQ(b.count_trailing_zeros(), 1u);
+
+    // MSB set - CLZ must be zero across the unused_bits correction.
+    detail::Bits<45> c = detail::Bits<45>(1) << 44;
+    EXPECT_EQ(c.count_leading_zeros(), 0u);
+    EXPECT_EQ(c.popcount(), 1u);
+
+#if defined(__SIZEOF_INT128__)
+    // Width 93 sits in the __uint128_t split branch.
+    detail::Bits<93> d(1);
+    EXPECT_EQ(d.count_leading_zeros(), 92u);
+    EXPECT_EQ(d.count_trailing_zeros(), 0u);
+    EXPECT_EQ(d.popcount(), 1u);
+
+    detail::Bits<93> e = detail::Bits<93>(1) << 92;
+    EXPECT_EQ(e.count_leading_zeros(), 0u);
+    EXPECT_EQ(e.count_trailing_zeros(), 92u);
+    EXPECT_EQ(e.popcount(), 1u);
+
+    detail::Bits<128> f(0);
+    EXPECT_EQ(f.popcount(), 0u);
+    EXPECT_EQ(f.count_leading_zeros(), 128u);
+    EXPECT_EQ(f.count_trailing_zeros(), 128u);
+
+    detail::Bits<128> g = ~detail::Bits<128>(0);
+    EXPECT_EQ(g.popcount(), 128u);
+    EXPECT_EQ(g.count_leading_zeros(), 0u);
+    EXPECT_EQ(g.count_trailing_zeros(), 0u);
+#endif
+
+    // Wide (BigInt) path parity check.
+    detail::Bits<200> h(0);
+    EXPECT_EQ(h.popcount(), 0u);
+    EXPECT_EQ(h.count_leading_zeros(), 200u);
+    EXPECT_EQ(h.count_trailing_zeros(), 200u);
+
+    detail::Bits<200> i = detail::Bits<200>(1) << 199;
+    EXPECT_EQ(i.count_leading_zeros(), 0u);
+    EXPECT_EQ(i.count_trailing_zeros(), 199u);
+    EXPECT_EQ(i.popcount(), 1u);
+}
+
 #if defined(__SIZEOF_INT128__)
 // Proof that the wide (BigInt) path remains fully usable in constant
 // expressions: division, multiplication and comparison all evaluate at compile

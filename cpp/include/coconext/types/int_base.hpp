@@ -52,15 +52,19 @@ struct IntTypePicker {
 
 #if defined(__SIZEOF_INT128__)
 static constexpr bool supports_128B = true;
+using wide_uint = __uint128_t;
+using wide_int = __int128_t;
 #else
 static constexpr bool supports_128B = false;
+using wide_uint = uint64_t;
+using wide_int = int64_t;
 #endif
 
 template <size_t W>
 class Bits {
   public:
     using IntType = IntTypePicker<W>::type;
-    static constexpr bool is_not_native_int = std::is_same_v<IntType, BigInt<W>>;
+    static constexpr bool is_bigint_backed = std::is_same_v<IntType, BigInt<W>>;
 
     constexpr Bits() = default;
 
@@ -72,12 +76,12 @@ class Bits {
     template <typename BigIntT>
         requires std::is_same_v<std::remove_cvref_t<BigIntT>, BigInt<W>>
     constexpr Bits(BigIntT&& val)
-        requires(is_not_native_int)
+        requires(is_bigint_backed)
         : storage_(std::forward<BigIntT>(val)) {}
 
     // BigInt from a string
     constexpr Bits(std::string_view val)
-        requires(is_not_native_int)
+        requires(is_bigint_backed)
         : storage_(val) {}
 
     // BigInt or native int from initializer list
@@ -263,34 +267,22 @@ class Bits {
     }
 
     constexpr Bits operator+(Bits<W> const& other) const {
-        if constexpr (is_not_native_int) {
-            return Bits<W>(storage_ + other.storage_);
-        } else {
-            return Bits<W>(storage_ + other.storage_);
-        }
+        return Bits<W>(raw() + other.raw());
     }
 
     constexpr Bits operator-(Bits<W> const& other) const {
-        if constexpr (is_not_native_int) {
-            return Bits<W>(storage_ - other.storage_);
-        } else {
-            return Bits<W>(storage_ - other.storage_);
-        }
+        return Bits<W>(raw() - other.raw());
     }
 
     constexpr Bits operator*(Bits<W> const& other) const {
-        if constexpr (is_not_native_int) {
-            return Bits<W>(storage_ * other.storage_);
-        } else {
-            return Bits<W>(storage_ * other.storage_);
-        }
+        return Bits<W>(raw() * other.raw());
     }
 
     constexpr Bits udiv(Bits<W> const& other) const {
         if (other == Bits<W>{}) {
             throw std::domain_error("Division by zero");
         }
-        if constexpr (is_not_native_int) {
+        if constexpr (is_bigint_backed) {
             return Bits<W>(storage_.udiv(other.storage_));
         } else {
             return Bits<W>(this->raw() / other.raw());
@@ -301,7 +293,7 @@ class Bits {
         if (other == Bits<W>{}) {
             throw std::domain_error("Division by zero");
         }
-        if constexpr (is_not_native_int) {
+        if constexpr (is_bigint_backed) {
             return Bits<W>(storage_.sdiv(other.storage_));
         } else {
             auto lhs_ext = this->sign_extended();
@@ -319,7 +311,7 @@ class Bits {
         if (other == Bits<W>{}) {
             throw std::domain_error("Division by zero");
         }
-        if constexpr (is_not_native_int) {
+        if constexpr (is_bigint_backed) {
             return Bits<W>(storage_.umod(other.storage_));
         } else {
             return Bits<W>(this->raw() % other.raw());
@@ -330,7 +322,7 @@ class Bits {
         if (other == Bits<W>{}) {
             throw std::domain_error("Division by zero");
         }
-        if constexpr (is_not_native_int) {
+        if constexpr (is_bigint_backed) {
             return Bits<W>(storage_.smod(other.storage_));
         } else {
             auto lhs_ext = this->sign_extended();
@@ -345,38 +337,47 @@ class Bits {
     }
 
     constexpr Bits operator<<(size_t amount) const {
-        if constexpr (is_not_native_int) {
+        if constexpr (is_bigint_backed) {
             BigInt<W> result = storage_;
             shift_left(result, amount);
             return Bits<W>(result);
         } else {
+            if (amount >= W) {
+                return Bits<W>{};
+            }
             return Bits<W>(raw() << amount);
         }
     }
 
     constexpr Bits sra(size_t amount) const {
-        if constexpr (is_not_native_int) {
+        if constexpr (is_bigint_backed) {
             BigInt<W> result = storage_;
             shift_right_arith(result, amount);
             return Bits<W>(result);
         } else {
             auto ext = this->sign_extended();
+            if (amount >= W) {
+                return Bits<W>(ext < 0 ? ~IntType{0} : IntType{0});
+            }
             return Bits<W>(ext >> amount);
         }
     }
 
     constexpr Bits srl(size_t amount) const {
-        if constexpr (is_not_native_int) {
+        if constexpr (is_bigint_backed) {
             BigInt<W> result = storage_;
             shift_right_logical(result, amount);
             return Bits<W>(result);
         } else {
+            if (amount >= W) {
+                return Bits<W>{};
+            }
             return Bits<W>(raw() >> amount);
         }
     }
 
     constexpr bool operator==(Bits<W> const& other) const {
-        if constexpr (is_not_native_int) {
+        if constexpr (is_bigint_backed) {
             return storage_ == other.storage_;
         }
         return (raw() == other.raw());
@@ -389,7 +390,7 @@ class Bits {
     // deliberately no operator< / operator<=>; the interpretation is the
     // caller's (matching LLVM APInt's ult/slt API).
     constexpr bool ult(Bits<W> const& other) const {
-        if constexpr (is_not_native_int) {
+        if constexpr (is_bigint_backed) {
             return storage_.ucompare(other.storage_) < 0;
         } else {
             return raw() < other.raw();
@@ -401,7 +402,7 @@ class Bits {
     constexpr bool uge(Bits<W> const& other) const { return !ult(other); }
 
     constexpr bool slt(Bits<W> const& other) const {
-        if constexpr (is_not_native_int) {
+        if constexpr (is_bigint_backed) {
             return storage_.scompare(other.storage_) < 0;
         } else {
             return sign_extended() < other.sign_extended();
@@ -413,21 +414,21 @@ class Bits {
     constexpr bool sge(Bits<W> const& other) const { return !slt(other); }
 
     constexpr Bits operator&(Bits<W> const& other) const {
-        if constexpr (is_not_native_int) {
+        if constexpr (is_bigint_backed) {
             return Bits<W>(storage_ & other.storage_);
         }
         return Bits<W>(raw() & other.raw());
     }
 
     constexpr Bits operator|(Bits<W> const& other) const {
-        if constexpr (is_not_native_int) {
+        if constexpr (is_bigint_backed) {
             return Bits<W>(storage_ | other.storage_);
         }
         return Bits<W>(raw() | other.raw());
     }
 
     constexpr Bits operator^(Bits<W> const& other) const {
-        if constexpr (is_not_native_int) {
+        if constexpr (is_bigint_backed) {
             return Bits<W>(storage_ ^ other.storage_);
         }
         return Bits<W>(raw() ^ other.raw());
@@ -436,7 +437,7 @@ class Bits {
     constexpr Bits operator~() const { return Bits<W>(~storage_); }
 
     constexpr size_t count_trailing_zeros() const {
-        if constexpr (is_not_native_int) {
+        if constexpr (is_bigint_backed) {
             return storage_.count_trailing_zeros();
         } else {
             IntType val = raw();
@@ -457,7 +458,7 @@ class Bits {
     }
 
     constexpr size_t count_leading_zeros() const {
-        if constexpr (is_not_native_int) {
+        if constexpr (is_bigint_backed) {
             return storage_.count_leading_zeros();
         } else {
             IntType val = raw();
@@ -480,7 +481,7 @@ class Bits {
     }
 
     constexpr size_t popcount() const {
-        if constexpr (!is_not_native_int) {
+        if constexpr (!is_bigint_backed) {
             return std::popcount(raw());
         } else {
             return storage_.popcount();
@@ -488,7 +489,7 @@ class Bits {
     }
 
     constexpr bool get_bit(size_t index) const {
-        if constexpr (!is_not_native_int) {
+        if constexpr (!is_bigint_backed) {
             return (raw() >> index) & 1;
         } else {
             return srl(index).storage_.get_word(0) & 1;
@@ -496,7 +497,7 @@ class Bits {
     }
 
     constexpr void set_bit(size_t index, bool val) {
-        if constexpr (!is_not_native_int) {
+        if constexpr (!is_bigint_backed) {
             IntType mask = static_cast<IntType>(1) << index;
             if (val) {
                 storage_ |= mask;
@@ -514,19 +515,18 @@ class Bits {
     }
 
     constexpr IntType raw() const {
-        if constexpr (is_not_native_int) {
+        if constexpr (is_bigint_backed) {
             return storage_;
         } else {
-            return storage_ & topMask;
+            return storage_ & top_mask;
         }
     }
 
     std::string to_binary_string() const {
         if constexpr (W == 0) {
             return "0";
-        } else if constexpr (!is_not_native_int) {
-            using cast_type = std::conditional_t<supports_128B, __uint128_t, uint64_t>;
-            return std::format("{:0{}b}", static_cast<cast_type>(raw()), W);
+        } else if constexpr (!is_bigint_backed) {
+            return std::format("{:0{}b}", static_cast<wide_uint>(raw()), W);
         } else {
             std::string res;
             res.reserve(W);
@@ -544,19 +544,15 @@ class Bits {
     std::string to_decimal_string(bool is_signed = false) const {
         if constexpr (W == 0) {
             return "0";
-        } else if constexpr (!is_not_native_int) {
-            using uint_cast_type = std::conditional_t<supports_128B, __uint128_t, uint64_t>;
-            using int_cast_type = std::conditional_t<supports_128B, __int128_t, int64_t>;
+        } else if constexpr (!is_bigint_backed) {
             if (is_signed) {
-                constexpr size_t total_bits = sizeof(int_cast_type) * 8;
-                int_cast_type signed_val =
-                    static_cast<int_cast_type>(
-                        static_cast<uint_cast_type>(raw()) << (total_bits - W)
-                    )
+                constexpr size_t total_bits = sizeof(wide_int) * 8;
+                wide_int signed_val =
+                    static_cast<wide_int>(static_cast<wide_uint>(raw()) << (total_bits - W))
                     >> (total_bits - W);
                 return std::format("{}", signed_val);
             }
-            return std::format("{}", static_cast<uint_cast_type>(raw()));
+            return std::format("{}", static_cast<wide_uint>(raw()));
         } else {
             bool negative = is_signed && storage_.is_negative();
             BigInt<W> mag = negative ? -storage_ : storage_;
@@ -582,27 +578,11 @@ class Bits {
         constexpr size_t hex_chars = (W + 3) / 4;
         if constexpr (W == 0) {
             return "0";
-        } else if constexpr (!is_not_native_int) {
-            using cast_type = std::conditional_t<supports_128B, __uint128_t, uint64_t>;
-            return std::format("{:0{}x}", static_cast<cast_type>(raw()), hex_chars);
+        } else if constexpr (!is_bigint_backed) {
+            return std::format("{:0{}x}", static_cast<wide_uint>(raw()), hex_chars);
         } else {
-            std::string res;
-            res.reserve(hex_chars);
-            auto val = raw();
             char const hex_digits[] = "0123456789abcdef";
-
-            for (size_t i = hex_chars; i > 0; --i) {
-                uint8_t nibble = 0;
-                for (int j = 3; j >= 0; --j) {
-                    size_t bit_idx = (i - 1) * 4 + j;
-                    if (bit_idx < W) {
-                        nibble = (nibble << 1)
-                               | ((val.get_word(bit_idx / 64) >> (bit_idx % 64)) & 1);
-                    }
-                }
-                res.push_back(hex_digits[nibble]);
-            }
-            return res;
+            return digits_from_bits<4, hex_chars>([&](uint8_t d) { return hex_digits[d]; });
         }
     }
 
@@ -610,26 +590,12 @@ class Bits {
         constexpr size_t octal_chars = (W + 2) / 3;
         if constexpr (W == 0) {
             return "0";
-        } else if constexpr (!is_not_native_int) {
-            using cast_type = std::conditional_t<supports_128B, __uint128_t, uint64_t>;
-            return std::format("{:0{}o}", static_cast<cast_type>(raw()), octal_chars);
+        } else if constexpr (!is_bigint_backed) {
+            return std::format("{:0{}o}", static_cast<wide_uint>(raw()), octal_chars);
         } else {
-            std::string res;
-            res.reserve(octal_chars);
-            auto val = raw();
-
-            for (size_t i = octal_chars; i > 0; --i) {
-                uint8_t oct = 0;
-                for (int j = 2; j >= 0; --j) {
-                    size_t bit_idx = (i - 1) * 3 + j;
-                    if (bit_idx < W) {
-                        oct = (oct << 1)
-                            | ((val.get_word(bit_idx / 64) >> (bit_idx % 64)) & 1);
-                    }
-                }
-                res.push_back(static_cast<char>('0' + oct));
-            }
-            return res;
+            return digits_from_bits<3, octal_chars>([](uint8_t d) {
+                return static_cast<char>('0' + d);
+            });
         }
     }
 
@@ -639,7 +605,7 @@ class Bits {
     // Mask of the W valid low bits within the native storage word. Only used on
     // the native path; the wide (BigInt) path masks its own top word.
     static constexpr IntType compute_top_mask() {
-        if constexpr (is_not_native_int) {
+        if constexpr (is_bigint_backed) {
             return IntType{};
         } else if constexpr (W % (sizeof(IntType) * 8) == 0) {
             return ~static_cast<IntType>(0);
@@ -648,7 +614,31 @@ class Bits {
         }
     }
 
-    static constexpr IntType topMask = compute_top_mask();
+    static constexpr IntType top_mask = compute_top_mask();
+
+    // Format the wide (BigInt) storage into `num_chars` characters of
+    // `bits_per_digit` bits each, most-significant digit first. `digit_to_char`
+    // maps a 0..(2^bits_per_digit - 1) digit to its printable form. Shared by
+    // to_hexadecimal_string (4) and to_octal_string (3).
+    template <size_t bits_per_digit, size_t num_chars, typename DigitToChar>
+    std::string digits_from_bits(DigitToChar digit_to_char) const
+        requires(is_bigint_backed)
+    {
+        std::string res;
+        res.reserve(num_chars);
+        auto val = raw();
+        for (size_t i = num_chars; i > 0; --i) {
+            uint8_t d = 0;
+            for (int j = bits_per_digit - 1; j >= 0; --j) {
+                size_t bit_idx = (i - 1) * bits_per_digit + j;
+                if (bit_idx < W) {
+                    d = (d << 1) | ((val.get_word(bit_idx / 64) >> (bit_idx % 64)) & 1);
+                }
+            }
+            res.push_back(digit_to_char(d));
+        }
+        return res;
+    }
 
     constexpr auto sign_extended() const {
         using SType = std::make_signed_t<IntType>;
@@ -660,7 +650,7 @@ class Bits {
 template <size_t bits>
 constexpr auto max_unsigned() {
     if constexpr ((bits > 64 && !supports_128B) || (bits > 128)) {
-        return BigInt<bits>(-1, true);
+        return ~BigInt<bits>{};
     } else if constexpr (bits > 64) {
         if constexpr (bits == 128) {
             return ~__uint128_t{0};
