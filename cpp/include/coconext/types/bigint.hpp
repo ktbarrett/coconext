@@ -536,7 +536,7 @@ constexpr unsigned active_words(BigIntConstRef v) {
 
 constexpr void check_same_width(BigIntConstRef a, BigIntConstRef b) {
     if (a.bit_width() != b.bit_width()) {
-        throw std::invalid_argument("BigInt bit width mismatch");
+        throw std::invalid_argument("BigIntStorage bit width mismatch");
     }
 }
 
@@ -754,7 +754,7 @@ constexpr void parse_into(BigIntMutRef dst, std::string_view str) {
 
             unsigned abs_bit = word_idx * word_bits + bit_shift;
             if (val != 0 && (abs_bit >= bw || (abs_bit + std::bit_width(val)) > bw)) {
-                throw std::out_of_range("Hexadecimal literal exceeds BigInt width");
+                throw std::out_of_range("Hexadecimal literal exceeds BigIntStorage width");
             }
 
             if (val != 0) {
@@ -785,7 +785,7 @@ constexpr void parse_into(BigIntMutRef dst, std::string_view str) {
                 carry = upper >> 32;
             }
             if (carry != 0 || (!d.empty() && (d.back() & ~top_mask) != 0)) {
-                throw std::out_of_range("Decimal literal exceeds BigInt width");
+                throw std::out_of_range("Decimal literal exceeds BigIntStorage width");
             }
         }
     }
@@ -830,12 +830,15 @@ constexpr void load_uint128(BigIntMutRef dst, __uint128_t val) {
 #endif
 
 // ---------------------------------------------------------------------------
-// BigInt<BitWidth>: fixed-width, std::array-backed, constexpr big integer.
-// Backs the wide (W > 128) storage tier of detail::Bits.
+// BigIntStorage<BitWidth>: fixed-width, std::array-backed, constexpr word storage.
+// The wide (W > 128) storage tier of detail::Bits. It owns the words and
+// exposes the two views; all arithmetic lives in the view free functions
+// above. Division is the one exception -- it needs scratch space, whose shape
+// (std::array here) depends on the storage strategy.
 // ---------------------------------------------------------------------------
 
 template <size_t BitWidth>
-class BigInt {
+class BigIntStorage {
   public:
     using WordType = uint64_t;
     static constexpr unsigned word_width = 64;
@@ -873,11 +876,11 @@ class BigInt {
     };
 
   public:
-    constexpr BigInt() = default;
+    constexpr BigIntStorage() = default;
 
     template <NativeInteger T>
         requires(sizeof(T) <= sizeof(WordType))
-    constexpr BigInt(T val) {
+    constexpr BigIntStorage(T val) {
         data[0] = static_cast<WordType>(val);
         if constexpr (std::is_signed_v<T>) {
             if (val < 0) {
@@ -890,16 +893,16 @@ class BigInt {
     }
 
 #if defined(__SIZEOF_INT128__)
-    constexpr BigInt(__int128_t val) { load_int128(*this, val); }
-    constexpr BigInt(__uint128_t val) { load_uint128(*this, val); }
+    constexpr BigIntStorage(__int128_t val) { load_int128(*this, val); }
+    constexpr BigIntStorage(__uint128_t val) { load_uint128(*this, val); }
 #endif
 
-    explicit constexpr BigInt(std::string_view str) { parse_into(*this, str); }
+    explicit constexpr BigIntStorage(std::string_view str) { parse_into(*this, str); }
 
-    constexpr BigInt& operator=(BigInt const&) = default;
-    constexpr BigInt& operator=(BigInt&&) noexcept = default;
-    constexpr BigInt(BigInt const&) = default;
-    constexpr BigInt(BigInt&&) noexcept = default;
+    constexpr BigIntStorage& operator=(BigIntStorage const&) = default;
+    constexpr BigIntStorage& operator=(BigIntStorage&&) noexcept = default;
+    constexpr BigIntStorage(BigIntStorage const&) = default;
+    constexpr BigIntStorage(BigIntStorage&&) noexcept = default;
 
     constexpr operator BigIntConstRef() const {
         return BigIntConstRef{std::span<WordType const>{data}, BitWidth};
@@ -919,76 +922,80 @@ class BigInt {
         return detail::count_leading_zeros(*this);
     }
     constexpr size_t popcount() const { return detail::popcount(*this); }
-    constexpr int ucompare(BigInt const& rhs) const { return detail::ucompare(*this, rhs); }
-    constexpr int scompare(BigInt const& rhs) const { return detail::scompare(*this, rhs); }
+    constexpr int ucompare(BigIntStorage const& rhs) const {
+        return detail::ucompare(*this, rhs);
+    }
+    constexpr int scompare(BigIntStorage const& rhs) const {
+        return detail::scompare(*this, rhs);
+    }
 
     constexpr explicit operator bool() const { return active_words(*this) != 0; }
 
-    constexpr bool operator==(BigInt const& rhs) const { return data == rhs.data; }
-    constexpr bool operator!=(BigInt const& rhs) const { return !(*this == rhs); }
+    constexpr bool operator==(BigIntStorage const& rhs) const { return data == rhs.data; }
+    constexpr bool operator!=(BigIntStorage const& rhs) const { return !(*this == rhs); }
 
-    constexpr BigInt operator+(BigInt const& rhs) const {
-        BigInt result(*this);
+    constexpr BigIntStorage operator+(BigIntStorage const& rhs) const {
+        BigIntStorage result(*this);
         add_assign(result, rhs);
         return result;
     }
 
-    constexpr BigInt operator-(BigInt const& rhs) const {
-        BigInt result(*this);
+    constexpr BigIntStorage operator-(BigIntStorage const& rhs) const {
+        BigIntStorage result(*this);
         sub_assign(result, rhs);
         return result;
     }
 
     // multiply(dst, lhs, rhs) requires dst disjoint from both operands; the
     // copy is a distinct object whose contents get overwritten.
-    constexpr BigInt operator*(BigInt const& rhs) const {
-        BigInt result(*this);
+    constexpr BigIntStorage operator*(BigIntStorage const& rhs) const {
+        BigIntStorage result(*this);
         multiply(result, *this, rhs);
         return result;
     }
 
-    constexpr BigInt operator&(BigInt const& rhs) const {
-        BigInt result(*this);
+    constexpr BigIntStorage operator&(BigIntStorage const& rhs) const {
+        BigIntStorage result(*this);
         and_assign(result, rhs);
         return result;
     }
 
-    constexpr BigInt operator|(BigInt const& rhs) const {
-        BigInt result(*this);
+    constexpr BigIntStorage operator|(BigIntStorage const& rhs) const {
+        BigIntStorage result(*this);
         or_assign(result, rhs);
         return result;
     }
 
-    constexpr BigInt operator^(BigInt const& rhs) const {
-        BigInt result(*this);
+    constexpr BigIntStorage operator^(BigIntStorage const& rhs) const {
+        BigIntStorage result(*this);
         xor_assign(result, rhs);
         return result;
     }
 
-    constexpr BigInt operator~() const {
-        BigInt result(*this);
+    constexpr BigIntStorage operator~() const {
+        BigIntStorage result(*this);
         bitnot(result);
         return result;
     }
 
-    constexpr BigInt operator-() const {
-        BigInt result(*this);
+    constexpr BigIntStorage operator-() const {
+        BigIntStorage result(*this);
         negate(result);
         return result;
     }
 
     // Division stays owner-side: scratch shape (std::array vs unique_ptr[])
     // depends on the storage tier.
-    constexpr BigInt udiv(BigInt const& rhs) const {
+    constexpr BigIntStorage udiv(BigIntStorage const& rhs) const {
         unsigned lw = active_words(*this);
         unsigned rw = active_words(rhs);
         if (lw == 0 || ucompare(rhs) < 0) {
-            return BigInt{};
+            return BigIntStorage{};
         }
         if (*this == rhs) {
-            return BigInt(WordType{1});
+            return BigIntStorage(WordType{1});
         }
-        BigInt result;
+        BigIntStorage result;
         DivScratchStorage scratch;
         divide_impl(
             std::span<WordType const>{data},
@@ -1003,16 +1010,16 @@ class BigInt {
         return result;
     }
 
-    constexpr BigInt umod(BigInt const& rhs) const {
+    constexpr BigIntStorage umod(BigIntStorage const& rhs) const {
         unsigned lw = active_words(*this);
         unsigned rw = active_words(rhs);
         if (lw == 0 || ucompare(rhs) < 0) {
             return *this;
         }
         if (*this == rhs) {
-            return BigInt{};
+            return BigIntStorage{};
         }
-        BigInt result;
+        BigIntStorage result;
         DivScratchStorage scratch;
         divide_impl(
             std::span<WordType const>{data},
@@ -1027,37 +1034,37 @@ class BigInt {
         return result;
     }
 
-    constexpr BigInt sdiv(BigInt const& rhs) const {
+    constexpr BigIntStorage sdiv(BigIntStorage const& rhs) const {
         bool ln = is_negative();
         bool rn = rhs.is_negative();
-        BigInt a = ln ? -(*this) : *this;
-        BigInt b = rn ? -rhs : rhs;
-        BigInt q = a.udiv(b);
+        BigIntStorage a = ln ? -(*this) : *this;
+        BigIntStorage b = rn ? -rhs : rhs;
+        BigIntStorage q = a.udiv(b);
         return (ln ^ rn) ? -q : q;
     }
 
-    constexpr BigInt smod(BigInt const& rhs) const {
+    constexpr BigIntStorage smod(BigIntStorage const& rhs) const {
         bool ln = is_negative();
-        BigInt a = ln ? -(*this) : *this;
-        BigInt b = rhs.is_negative() ? -rhs : rhs;
-        BigInt r = a.umod(b);
+        BigIntStorage a = ln ? -(*this) : *this;
+        BigIntStorage b = rhs.is_negative() ? -rhs : rhs;
+        BigIntStorage r = a.umod(b);
         return ln ? -r : r;
     }
 };
 
 // Free-function shift wrappers kept for source-level compat with int_base.hpp.
 template <size_t BW>
-constexpr void shift_right_logical(BigInt<BW>& val, size_t amount) {
+constexpr void shift_right_logical(BigIntStorage<BW>& val, size_t amount) {
     detail::shift_right_logical(static_cast<BigIntMutRef>(val), amount);
 }
 
 template <size_t BW>
-constexpr void shift_right_arith(BigInt<BW>& val, size_t amount) {
+constexpr void shift_right_arith(BigIntStorage<BW>& val, size_t amount) {
     detail::shift_right_arith(static_cast<BigIntMutRef>(val), amount);
 }
 
 template <size_t BW>
-constexpr void shift_left(BigInt<BW>& val, size_t amount) {
+constexpr void shift_left(BigIntStorage<BW>& val, size_t amount) {
     detail::shift_left(static_cast<BigIntMutRef>(val), amount);
 }
 }  // namespace coconext::types::detail

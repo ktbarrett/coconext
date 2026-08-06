@@ -37,8 +37,7 @@ class Unsigned {
             R.length() > 0, "Unsigned<0> has no integer value; cannot convert to native int"
         );
         static_assert(
-            !detail::Bits<R.length()>::is_bigint_backed,
-            "Conversion from BigInt to native int"
+            !detail::Bits<R.length()>::is_wide, "Conversion from BigInt to native int"
         );
 
         auto val = this->value_;
@@ -101,7 +100,7 @@ class Unsigned {
         if constexpr (R.length() >= R2.length()) {
             value_ = other.value_;
         } else {
-            if constexpr (!detail::Bits<R.length()>::is_bigint_backed) {
+            if constexpr (!detail::Bits<R.length()>::is_wide) {
                 if (other.value_.ule(max_unsigned<R.length()>())) {
                     if constexpr (R.length() != R2.length()) {
                         value_ = coconext::types::resize<R.length()>(other).value_;
@@ -131,10 +130,10 @@ class Unsigned {
     explicit constexpr Unsigned(Signed<R2> const& other) {
         auto const& src_bits = bits(other);
         bool is_negative = false;
-        if constexpr (!detail::Bits<R2.length()>::is_bigint_backed) {
+        if constexpr (!detail::Bits<R2.length()>::is_wide) {
             is_negative = (src_bits.srl(R2.length() - 1).raw() & 1) != 0;
         } else {
-            is_negative = (src_bits.srl(R2.length() - 1).raw().get_word(0) & 1) != 0;
+            is_negative = (src_bits.srl(R2.length() - 1).raw().word(0) & 1) != 0;
         }
 
         if (is_negative) {
@@ -195,10 +194,7 @@ class Unsigned {
             // Zero-extending the null vector to a real width is the value 0.
             value_ = detail::Bits<TargetW>{};
         } else if constexpr (TargetW >= SourceW) {
-            if constexpr (
-                !Bits<TargetW>::is_bigint_backed && !detail::Bits<SourceW>::is_bigint_backed
-            )
-            {
+            if constexpr (!Bits<TargetW>::is_wide && !detail::Bits<SourceW>::is_wide) {
                 value_ = detail::Bits<TargetW>(
                     static_cast<typename detail::Bits<TargetW>::IntType>(src.value_.raw())
                 );
@@ -208,11 +204,7 @@ class Unsigned {
         } else {
             // Narrowing
             if (ovf == overflow_mode::wrap) {
-                if constexpr (
-                    !Bits<TargetW>::is_bigint_backed
-                    && !detail::Bits<SourceW>::is_bigint_backed
-                )
-                {
+                if constexpr (!Bits<TargetW>::is_wide && !detail::Bits<SourceW>::is_wide) {
                     value_ = detail::Bits<TargetW>(
                         static_cast<typename detail::Bits<TargetW>::IntType>(
                             src.value_.raw()
@@ -223,11 +215,7 @@ class Unsigned {
                 }
             } else {
                 // Saturate Clamp to the maximum representable value of the Target width
-                if constexpr (
-                    !Bits<TargetW>::is_bigint_backed
-                    && !detail::Bits<SourceW>::is_bigint_backed
-                )
-                {
+                if constexpr (!Bits<TargetW>::is_wide && !detail::Bits<SourceW>::is_wide) {
                     auto src_raw = src.value_.raw();
                     auto target_max = max_unsigned<TargetW>();
 
@@ -771,7 +759,7 @@ struct std::hash<coconext::types::detail::Unsigned<R>> {
         size_t value_hash = 0;
 
         if constexpr (W > 0) {
-            if constexpr (!coconext::types::detail::Bits<W>::is_bigint_backed) {
+            if constexpr (!coconext::types::detail::Bits<W>::is_wide) {
                 auto raw_val = v.value_.raw();
                 if constexpr (sizeof(raw_val) > sizeof(size_t)) {
                     uint64_t low = static_cast<uint64_t>(raw_val);
@@ -785,7 +773,7 @@ struct std::hash<coconext::types::detail::Unsigned<R>> {
                 constexpr size_t num_words = (W + 63) / 64;
                 for (size_t i = 0; i < num_words; ++i) {
                     value_hash =
-                        coconext::types::detail::hash_combine(value_hash, val.get_word(i));
+                        coconext::types::detail::hash_combine(value_hash, val.word(i));
                 }
             }
         }

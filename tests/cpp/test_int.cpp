@@ -11,7 +11,7 @@ using namespace coconext::types;
 TEST(TestBits, JustAbove128) {
     static_assert(std::is_same_v<detail::Bits<127>::IntType, __uint128_t>);
     static_assert(std::is_same_v<detail::Bits<128>::IntType, __uint128_t>);
-    static_assert(std::is_same_v<detail::Bits<129>::IntType, detail::BigInt<129>>);
+    static_assert(std::is_same_v<detail::Bits<129>::IntType, detail::BigIntStorage<129>>);
 }
 
 TEST(TestBits, single_word_constructor_supports_128) {
@@ -165,7 +165,7 @@ TEST(TestBits, shift_left_supports_128) {
 TEST(TestBits, JustAbove64) {
     static_assert(std::is_same_v<detail::Bits<63>::IntType, uint64_t>);
     static_assert(std::is_same_v<detail::Bits<64>::IntType, uint64_t>);
-    static_assert(std::is_same_v<detail::Bits<65>::IntType, detail::BigInt<65>>);
+    static_assert(std::is_same_v<detail::Bits<65>::IntType, detail::BigIntStorage<65>>);
 }
 
 #endif  // defined(__SIZEOF_INT128__)
@@ -683,10 +683,41 @@ TEST(TestBits, popcount_and_count_zeros_odd_widths) {
     EXPECT_EQ(i.popcount(), 1u);
 }
 
+// The native tier must stay exactly as wide as it claims, so arrays of the
+// small integer types keep their size and vectorize.
+TEST(TestBits, native_storage_is_exact_width) {
+    static_assert(sizeof(detail::Bits<8>) == 1);
+    static_assert(sizeof(detail::Bits<16>) == 2);
+    static_assert(sizeof(detail::Bits<32>) == 4);
+    static_assert(sizeof(detail::Bits<64>) == 8);
+    SUCCEED();
+}
+
+// raw() hands back a non-owning view on the wide tier rather than copying the
+// whole word array; the native tier still returns the storage integer.
+TEST(TestBits, raw_type_by_tier) {
+    static_assert(std::is_same_v<detail::Bits<8>::RawType, uint8_t>);
+    static_assert(std::is_same_v<detail::Bits<64>::RawType, uint64_t>);
+    static_assert(std::is_same_v<detail::Bits<200>::RawType, detail::BigIntConstRef>);
+    SUCCEED();
+}
+
+// The string constructor is no longer restricted to the wide tier.
+TEST(TestBits, string_ctor_at_every_tier) {
+    EXPECT_EQ(detail::Bits<16>("1000").to_decimal_string(), "1000");
+    EXPECT_EQ(detail::Bits<64>("42").to_decimal_string(), "42");
+    EXPECT_EQ(detail::Bits<64>("0xDEADBEEF").to_decimal_string(), "3735928559");
+    EXPECT_EQ(detail::Bits<200>("42").to_decimal_string(), "42");
+
+    // Overflow throws at narrow widths too, rather than truncating.
+    EXPECT_THROW(detail::Bits<8>("999"), std::out_of_range);
+    EXPECT_NO_THROW(detail::Bits<8>("255"));
+}
+
 #if defined(__SIZEOF_INT128__)
-// Proof that the wide (BigInt) path remains fully usable in constant
-// expressions: division, multiplication and comparison all evaluate at compile
-// time, and the division identity holds.
+// Proof that the wide path remains fully usable in constant expressions:
+// division, multiplication and comparison all evaluate at compile time, and
+// the division identity holds.
 TEST(TestBits, constexpr_wide) {
     constexpr detail::Bits<200> a{"0xFEDCBA9876543210FEDCBA98"};
     constexpr detail::Bits<200> b(uint64_t{1000000007});
