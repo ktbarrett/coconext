@@ -52,13 +52,11 @@ class CoroStateBase {
         };
         return TransferAwaitable{parent_};
     }
-    void unhandled_exception() noexcept {
-        value_ = detail::Exception{std::current_exception()};
-    }
+    void unhandled_exception() noexcept { value_ = std::current_exception(); }
 
     [[nodiscard]] T result() {
-        if (std::holds_alternative<detail::Exception>(value_)) {
-            std::rethrow_exception(std::get<detail::Exception>(value_).exception);
+        if (std::holds_alternative<std::exception_ptr>(value_)) {
+            std::rethrow_exception(std::get<std::exception_ptr>(value_));
         }
         if (std::holds_alternative<detail::Value<T>>(value_)) {
             if constexpr (std::is_void_v<T>) {
@@ -77,7 +75,7 @@ class CoroStateBase {
   private:
     void set_result(detail::Value<T> value) noexcept { value_ = std::move(value); }
 
-    std::variant<std::monostate, detail::Value<T>, detail::Exception> value_;
+    std::variant<std::monostate, detail::Value<T>, std::exception_ptr> value_;
     std::coroutine_handle<> parent_;
     TaskState<>* task_ = nullptr;
 };

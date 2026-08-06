@@ -15,10 +15,6 @@ struct Value {
 template <>
 struct Value<void> {};
 
-struct Exception {
-    std::exception_ptr exception;
-};
-
 }  // namespace detail
 
 class Cancelled : public std::exception {
