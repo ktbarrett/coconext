@@ -24,6 +24,9 @@ namespace detail {
 
 class Erased {};
 
+template <typename T>
+class RunTaskManager;
+
 }  // namespace detail
 
 template <typename T>
@@ -566,6 +569,8 @@ class TaskManagerState<detail::Erased> {
     friend class TaskManager;
     template <typename>
     friend class detail::AwaitableAwaiter;
+    template <typename>
+    friend class detail::RunTaskManager;
 
   public:
     using value_type = detail::Erased;
@@ -629,7 +634,7 @@ class TaskManagerState<detail::Erased> {
                 global_task_manager_ = global_task_manager;
             }
         }
-        if (started()) {
+        if (started() && !task->started()) {
             assert(
                 event_loop_ != nullptr
                 && "Running TaskManager must be bound to an EventLoop"
@@ -1032,8 +1037,8 @@ T run(Task<T> task);
 template <typename T>
 Task<T> start_soon(Task<T> task) {
     auto ctxt = current_context();
-    task.start_soon(ctxt);
     ctxt.get_global_task_manager()->add(task.get_state());
+    task.start_soon(ctxt);
     return task;
 }
 
