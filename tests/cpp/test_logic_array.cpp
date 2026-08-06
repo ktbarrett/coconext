@@ -1426,3 +1426,23 @@ TEST(TestBitArray, FormatterBitStaticSlice) {
     auto s = a.slice<Range{2, Direction::DOWNTO, 1}>();
     EXPECT_EQ(std::format("{}", s), "BitStaticArraySlice[2 downto 1]{\"10\"}");
 }
+
+TEST(TestBitArray, ZeroWidth) {
+    BitArray<0> a{};
+    BitArray<0> b{};
+
+    // Two null vectors are equal.
+    EXPECT_EQ(a.range().length(), 0u);
+    EXPECT_EQ(a.begin(), a.end());
+
+    // Empty _b literal produces the null BitArray.
+    auto lit = ""_b;
+    static_assert(std::is_same_v<decltype(lit), BitArray<0>>);
+    EXPECT_EQ(lit.begin(), lit.end());
+
+    // Reductions on the null vector have the VHDL identities:
+    //   and_reduce(null) = '1', or_reduce(null) = '0', xor_reduce(null) = '0'
+    EXPECT_EQ(and_reduce(a), '1'_b);
+    EXPECT_EQ(or_reduce(a), '0'_b);
+    EXPECT_EQ(xor_reduce(a), '0'_b);
+}

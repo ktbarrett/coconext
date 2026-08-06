@@ -699,4 +699,49 @@ TEST(TestBits, constexpr_wide) {
 }
 #endif
 
+// A zero-width Bits is the sole VHDL "null" representation. It is not the
+// integer 0 - it has no value at all. Size-agnostic operations (arithmetic,
+// bitwise, popcount) return the null vector; size-dependent ones (shifts,
+// orderings, divides, raw, get/set_bit, native-int ctor) are compile errors.
+TEST(TestBits, zero_width) {
+    detail::Bits<0> a{};
+    detail::Bits<0> b{};
+
+    // equality: two null vectors are equal
+    EXPECT_TRUE(a == b);
+    EXPECT_FALSE(a != b);
+
+    // arithmetic and bitwise short-circuit to null
+    EXPECT_TRUE((a + b) == detail::Bits<0>{});
+    EXPECT_TRUE((a - b) == detail::Bits<0>{});
+    EXPECT_TRUE((a * b) == detail::Bits<0>{});
+    EXPECT_TRUE((a & b) == detail::Bits<0>{});
+    EXPECT_TRUE((a | b) == detail::Bits<0>{});
+    EXPECT_TRUE((a ^ b) == detail::Bits<0>{});
+    EXPECT_TRUE(~a == detail::Bits<0>{});
+
+    // bit-counts on the empty vector are all 0
+    EXPECT_EQ(a.popcount(), 0u);
+    EXPECT_EQ(a.count_leading_zeros(), 0u);
+    EXPECT_EQ(a.count_trailing_zeros(), 0u);
+
+    // iteration is empty
+    EXPECT_EQ(a.begin(), a.end());
+    EXPECT_EQ(a.rbegin(), a.rend());
+
+    // empty initializer list is the only valid init-list at W=0
+    detail::Bits<0> c{std::initializer_list<Bit>{}};
+    EXPECT_TRUE(c == a);
+    EXPECT_THROW((detail::Bits<0>{'1'_b}), std::invalid_argument);
+
+    // to_*_string returns "" universally at W=0
+    EXPECT_EQ(a.to_binary_string(), "");
+    EXPECT_EQ(a.to_decimal_string(), "");
+    EXPECT_EQ(a.to_hexadecimal_string(), "");
+    EXPECT_EQ(a.to_octal_string(), "");
+
+    // any index is out of range
+    EXPECT_THROW(a[0], std::out_of_range);
+}
+
 // LCOV_EXCL_BR_STOP

@@ -489,4 +489,40 @@ TEST(TestUnsigned, unary_ops) {
     EXPECT_EQ(static_cast<int>(pos_a), 150);
 }
 
+TEST(TestUnsigned, zero_width) {
+    Unsigned<0> a{};
+    Unsigned<0> b{};
+
+    EXPECT_TRUE(a == b);
+    EXPECT_FALSE(a != b);
+
+    // operator bool: null is falsy
+    EXPECT_FALSE(static_cast<bool>(a));
+
+    // ++/--/+= wrap through resize<0> and land back on null
+    Unsigned<0> c{};
+    ++c;
+    EXPECT_TRUE(c == Unsigned<0>{});
+    c++;
+    EXPECT_TRUE(c == Unsigned<0>{});
+    --c;
+    EXPECT_TRUE(c == Unsigned<0>{});
+    c += 5;
+    EXPECT_TRUE(c == Unsigned<0>{});
+
+    // Binary arithmetic widens: Unsigned<0> + Unsigned<0> -> Unsigned<1>(0)
+    auto sum = a + b;
+    static_assert(std::is_same_v<decltype(sum), Unsigned<1>>);
+    EXPECT_EQ(static_cast<uint8_t>(sum), 0u);
+
+    // Iteration is empty
+    EXPECT_EQ(a.begin(), a.end());
+    EXPECT_EQ(a.size(), 0u);
+
+    // Formatting: value renders as "" (Bits<0>::to_*_string) inside the
+    // wrapper's braces.
+    EXPECT_EQ(std::format("{:b}", a), "Unsigned[-1 downto 0]{}");
+    EXPECT_EQ(std::format("{:d}", a), "Unsigned[-1 downto 0]{}");
+}
+
 // LCOV_EXCL_BR_STOP

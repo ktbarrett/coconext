@@ -36,6 +36,9 @@ class Signed {
     template <typename T>
     constexpr T to_native_int() const {
         static_assert(
+            R.length() > 0, "Signed<0> has no integer value; cannot convert to native int"
+        );
+        static_assert(
             !detail::Bits<R.length()>::is_bigint_backed,
             "Conversion from BigInt to native int"
         );
@@ -67,7 +70,7 @@ class Signed {
     template <Range R2>
     friend class Signed;
 
-    constexpr Signed() noexcept : value_(0) {}
+    constexpr Signed() noexcept = default;
 
     template <size_t W>
     constexpr Signed(Bits<W> const& val) {
@@ -80,6 +83,9 @@ class Signed {
         (std::is_signed_v<T> && std::numeric_limits<T>::digits >= R.length())
         || (std::is_unsigned_v<T> && std::numeric_limits<T>::digits >= R.length() - 1)
     ) constexpr Signed(T v) {
+        static_assert(
+            R.length() > 0, "Signed<0> has no integer representation; use Signed<0>{}"
+        );
         if constexpr (std::is_unsigned_v<T>) {
             if (v > std::numeric_limits<T>::max()) {
                 throw std::out_of_range("Unsigned value does not fit in Signed width");
@@ -205,7 +211,11 @@ class Signed {
         constexpr size_t TargetW = R.length();
         constexpr size_t SourceW = ActualSource::size();
 
-        if constexpr (TargetW == SourceW) {
+        if constexpr (TargetW == 0) {
+            value_ = detail::Bits<TargetW>{};
+        } else if constexpr (SourceW == 0) {
+            value_ = detail::Bits<TargetW>{};
+        } else if constexpr (TargetW == SourceW) {
             if constexpr (
                 !Bits<TargetW>::is_bigint_backed && !detail::Bits<SourceW>::is_bigint_backed
             )
@@ -319,7 +329,9 @@ class Signed {
         return lhs.value_.sge(rhs.value_);
     }
 
-    explicit constexpr operator bool() const noexcept { return this->value_ != 0; }
+    explicit constexpr operator bool() const noexcept {
+        return this->value_ != detail::Bits<R.length()>{};
+    }
 
     explicit constexpr operator signed char() const noexcept(
         R.length() - 1 <= std::numeric_limits<signed char>::digits
@@ -554,41 +566,51 @@ class Signed {
 
     template <NativeInteger T>
     constexpr Signed& operator+=(T const& rhs) {
-        *this = coconext::types::resize<R.length()>(
-            *this + Signed<make_int_range<R.length()>()>(rhs)
-        );
+        if constexpr (R.length() > 0) {
+            *this = coconext::types::resize<R.length()>(
+                *this + Signed<make_int_range<R.length()>()>(rhs)
+            );
+        }
         return *this;
     }
 
     template <NativeInteger T>
     constexpr Signed& operator-=(T const& rhs) {
-        *this = coconext::types::resize<R.length()>(
-            *this - Signed<make_int_range<R.length()>()>(rhs)
-        );
+        if constexpr (R.length() > 0) {
+            *this = coconext::types::resize<R.length()>(
+                *this - Signed<make_int_range<R.length()>()>(rhs)
+            );
+        }
         return *this;
     }
 
     template <NativeInteger T>
     constexpr Signed& operator*=(T const& rhs) {
-        *this = coconext::types::resize<R.length()>(
-            *this * Signed<make_int_range<R.length()>()>(rhs)
-        );
+        if constexpr (R.length() > 0) {
+            *this = coconext::types::resize<R.length()>(
+                *this * Signed<make_int_range<R.length()>()>(rhs)
+            );
+        }
         return *this;
     }
 
     template <NativeInteger T>
     constexpr Signed& operator/=(T const& rhs) {
-        *this = coconext::types::resize<R.length()>(
-            *this / Signed<make_int_range<R.length()>()>(rhs)
-        );
+        if constexpr (R.length() > 0) {
+            *this = coconext::types::resize<R.length()>(
+                *this / Signed<make_int_range<R.length()>()>(rhs)
+            );
+        }
         return *this;
     }
 
     template <NativeInteger T>
     constexpr Signed& operator%=(T const& rhs) {
-        *this = coconext::types::resize<R.length()>(
-            *this % Signed<make_int_range<R.length()>()>(rhs)
-        );
+        if constexpr (R.length() > 0) {
+            *this = coconext::types::resize<R.length()>(
+                *this % Signed<make_int_range<R.length()>()>(rhs)
+            );
+        }
         return *this;
     }
 
@@ -634,24 +656,24 @@ class Signed {
     }
 
     constexpr Signed& operator++() {
-        this->value_ = this->value_ + detail::Bits<R.length()>(1);
+        *this += 1;
         return *this;
     }
 
     constexpr Signed operator++(int) {
         Signed tmp = *this;
-        this->value_ = this->value_ + detail::Bits<R.length()>(1);
+        *this += 1;
         return tmp;
     }
 
     constexpr Signed& operator--() {
-        this->value_ = this->value_ - detail::Bits<R.length()>(1);
+        *this -= 1;
         return *this;
     }
 
     constexpr Signed operator--(int) {
         Signed tmp = *this;
-        this->value_ = this->value_ - detail::Bits<R.length()>(1);
+        *this -= 1;
         return tmp;
     }
 
@@ -684,7 +706,7 @@ class Signed {
   private:
     friend struct bits_fn;
 
-    Bits<R.length()> value_;
+    Bits<R.length()> value_{};
 };
 
 template <Range R>

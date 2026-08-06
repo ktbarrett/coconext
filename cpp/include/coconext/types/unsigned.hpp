@@ -34,6 +34,9 @@ class Unsigned {
     template <typename T>
     constexpr T to_native_int() const {
         static_assert(
+            R.length() > 0, "Unsigned<0> has no integer value; cannot convert to native int"
+        );
+        static_assert(
             !detail::Bits<R.length()>::is_bigint_backed,
             "Conversion from BigInt to native int"
         );
@@ -58,7 +61,7 @@ class Unsigned {
     template <Range R2>
     friend class Unsigned;
 
-    constexpr Unsigned() noexcept : value_(0) {}
+    constexpr Unsigned() noexcept = default;
 
     template <size_t W>
     constexpr Unsigned(Bits<W> const& val) {
@@ -72,6 +75,9 @@ class Unsigned {
     explicit(
         std::is_signed_v<T> || std::numeric_limits<T>::digits > R.length()
     ) constexpr Unsigned(T v) {
+        static_assert(
+            R.length() > 0, "Unsigned<0> has no integer representation; use Unsigned<0>{}"
+        );
         if constexpr (std::is_signed_v<T>) {
             if (v < 0) {
                 throw std::out_of_range("negative value in Unsigned construction");
@@ -182,7 +188,13 @@ class Unsigned {
         constexpr size_t TargetW = R.length();
         constexpr size_t SourceW = ActualSource::size();
 
-        if constexpr (TargetW >= SourceW) {
+        if constexpr (TargetW == 0) {
+            // Any resize to null yields the sole null vector.
+            value_ = detail::Bits<TargetW>{};
+        } else if constexpr (SourceW == 0) {
+            // Zero-extending the null vector to a real width is the value 0.
+            value_ = detail::Bits<TargetW>{};
+        } else if constexpr (TargetW >= SourceW) {
             if constexpr (
                 !Bits<TargetW>::is_bigint_backed && !detail::Bits<SourceW>::is_bigint_backed
             )
@@ -268,7 +280,9 @@ class Unsigned {
         return lhs.value_.uge(rhs.value_);
     }
 
-    explicit constexpr operator bool() const noexcept { return this->value_ != 0; }
+    explicit constexpr operator bool() const noexcept {
+        return this->value_ != detail::Bits<R.length()>{};
+    }
 
     explicit constexpr operator signed char() const noexcept(
         R.length() <= std::numeric_limits<signed char>::digits
@@ -539,42 +553,52 @@ class Unsigned {
 
     template <NativeInteger T>
     constexpr Unsigned& operator+=(T const& rhs) {
-        *this = coconext::types::resize<R.length()>(
-            *this + Unsigned<make_int_range<R.length()>()>(rhs)
-        );
+        if constexpr (R.length() > 0) {
+            *this = coconext::types::resize<R.length()>(
+                *this + Unsigned<make_int_range<R.length()>()>(rhs)
+            );
+        }
         return *this;
     }
 
     template <NativeInteger T>
     constexpr Unsigned& operator-=(T const& rhs) {
-        auto res = coconext::types::resize<R.length()>(
-            *this - Unsigned<make_int_range<R.length()>()>(rhs)
-        );
-        *this = Unsigned<R>(static_cast<detail::Array<Bit, R>>(res));
+        if constexpr (R.length() > 0) {
+            auto res = coconext::types::resize<R.length()>(
+                *this - Unsigned<make_int_range<R.length()>()>(rhs)
+            );
+            *this = Unsigned<R>(static_cast<detail::Array<Bit, R>>(res));
+        }
         return *this;
     }
 
     template <NativeInteger T>
     constexpr Unsigned& operator*=(T const& rhs) {
-        *this = coconext::types::resize<R.length()>(
-            *this * Unsigned<make_int_range<R.length()>()>(rhs)
-        );
+        if constexpr (R.length() > 0) {
+            *this = coconext::types::resize<R.length()>(
+                *this * Unsigned<make_int_range<R.length()>()>(rhs)
+            );
+        }
         return *this;
     }
 
     template <NativeInteger T>
     constexpr Unsigned& operator/=(T const& rhs) {
-        *this = coconext::types::resize<R.length()>(
-            *this / Unsigned<make_int_range<R.length()>()>(rhs)
-        );
+        if constexpr (R.length() > 0) {
+            *this = coconext::types::resize<R.length()>(
+                *this / Unsigned<make_int_range<R.length()>()>(rhs)
+            );
+        }
         return *this;
     }
 
     template <NativeInteger T>
     constexpr Unsigned& operator%=(T const& rhs) {
-        *this = coconext::types::resize<R.length()>(
-            *this % Unsigned<make_int_range<R.length()>()>(rhs)
-        );
+        if constexpr (R.length() > 0) {
+            *this = coconext::types::resize<R.length()>(
+                *this % Unsigned<make_int_range<R.length()>()>(rhs)
+            );
+        }
         return *this;
     }
 
@@ -620,24 +644,24 @@ class Unsigned {
     }
 
     constexpr Unsigned& operator++() {
-        this->value_ = this->value_ + detail::Bits<R.length()>(1);
+        *this += 1;
         return *this;
     }
 
     constexpr Unsigned operator++(int) {
         Unsigned tmp = *this;
-        this->value_ = this->value_ + detail::Bits<R.length()>(1);
+        *this += 1;
         return tmp;
     }
 
     constexpr Unsigned& operator--() {
-        this->value_ = this->value_ - detail::Bits<R.length()>(1);
+        *this -= 1;
         return *this;
     }
 
     constexpr Unsigned operator--(int) {
         Unsigned tmp = *this;
-        this->value_ = this->value_ - detail::Bits<R.length()>(1);
+        *this -= 1;
         return tmp;
     }
 
@@ -670,7 +694,7 @@ class Unsigned {
   private:
     friend struct bits_fn;
 
-    Bits<R.length()> value_;
+    Bits<R.length()> value_{};
 };
 
 template <Range R>

@@ -452,3 +452,23 @@ TEST(TestSigned, unary_ops) {
     static_assert(std::is_same_v<decltype(abs_a), Signed<9>>);
     EXPECT_EQ(static_cast<int>(abs_a), 100);
 }
+
+TEST(TestSigned, zero_width) {
+    Signed<0> a{};
+    Signed<0> b{};
+
+    EXPECT_TRUE(a == b);
+    EXPECT_FALSE(a != b);
+    EXPECT_FALSE(static_cast<bool>(a));
+
+    Signed<0> c{};
+    ++c;
+    EXPECT_TRUE(c == Signed<0>{});
+    c--;
+    EXPECT_TRUE(c == Signed<0>{});
+    c += 5;
+    EXPECT_TRUE(c == Signed<0>{});
+
+    EXPECT_EQ(a.begin(), a.end());
+    EXPECT_EQ(a.size(), 0u);
+}
