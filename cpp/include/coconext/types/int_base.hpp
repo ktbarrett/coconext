@@ -459,10 +459,15 @@ class Bits {
     constexpr size_t popcount() const {
         if constexpr (W == 0) {
             return 0;
-        } else if constexpr (!is_wide) {
-            return std::popcount(raw());
-        } else {
+        } else if constexpr (is_wide) {
             return storage_.popcount();
+        } else if constexpr (supports_128B && W > 64) {
+            // std::popcount rejects __uint128_t; count each half.
+            auto val = raw();
+            return std::popcount(static_cast<uint64_t>(val))
+                 + std::popcount(static_cast<uint64_t>(val >> 64));
+        } else {
+            return std::popcount(raw());
         }
     }
 
