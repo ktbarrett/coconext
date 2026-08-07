@@ -374,7 +374,7 @@ class Unsigned {
     constexpr auto operator-() const {
         constexpr size_t Wr = R.length() + 1;
         return Signed<detail::int_downto_range(Wr)>(
-            detail::Bits<Wr>{} - value_.template zero_extend<Wr>()
+            detail::same_width::sub(detail::Bits<Wr>{}, value_.template zero_extend<Wr>())
         );
     }
 

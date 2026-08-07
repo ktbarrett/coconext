@@ -60,6 +60,8 @@ using wide_uint = uint64_t;
 using wide_int = int64_t;
 #endif
 
+struct same_width;
+
 template <size_t W>
 class Bits {
   public:
@@ -277,105 +279,6 @@ class Bits {
             throw std::out_of_range("Bit index out of bounds");
         }
         return get_bit(index) ? Bit::_1 : Bit::_0;
-    }
-
-    constexpr Bits operator+(Bits<W> const& other) const {
-        if constexpr (W == 0) {
-            return Bits<W>{};
-        } else if constexpr (is_wide) {
-            IntType result = storage_;
-            add_assign(result, other.storage_);
-            return Bits<W>(result);
-        } else {
-            return Bits<W>(static_cast<IntType>(raw() + other.raw()));
-        }
-    }
-
-    constexpr Bits operator-(Bits<W> const& other) const {
-        if constexpr (W == 0) {
-            return Bits<W>{};
-        } else if constexpr (is_wide) {
-            IntType result = storage_;
-            sub_assign(result, other.storage_);
-            return Bits<W>(result);
-        } else {
-            return Bits<W>(static_cast<IntType>(raw() - other.raw()));
-        }
-    }
-
-    constexpr Bits operator*(Bits<W> const& other) const {
-        if constexpr (W == 0) {
-            return Bits<W>{};
-        } else if constexpr (is_wide) {
-            // multiply() needs dst disjoint from both operands.
-            IntType result = storage_;
-            multiply(result, storage_, other.storage_);
-            return Bits<W>(result);
-        } else {
-            return Bits<W>(static_cast<IntType>(raw() * other.raw()));
-        }
-    }
-
-    constexpr Bits udiv(Bits<W> const& other) const {
-        static_assert(W > 0, "udiv on Bits<0> is undefined; the null vector has no value");
-        if (other == Bits<W>{}) {
-            throw std::domain_error("Division by zero");
-        }
-        if constexpr (is_wide) {
-            return Bits<W>(storage_.udiv(other.storage_));
-        } else {
-            return Bits<W>(this->raw() / other.raw());
-        }
-    }
-
-    constexpr Bits sdiv(Bits<W> const& other) const {
-        static_assert(W > 0, "sdiv on Bits<0> is undefined; the null vector has no value");
-        if (other == Bits<W>{}) {
-            throw std::domain_error("Division by zero");
-        }
-        if constexpr (is_wide) {
-            return Bits<W>(storage_.sdiv(other.storage_));
-        } else {
-            auto lhs_ext = this->sign_extended();
-            auto rhs_ext = other.sign_extended();
-            // Guard the sole two's-complement overflow: MIN / -1 == MIN.
-            using SType = decltype(lhs_ext);
-            if (rhs_ext == -1 && lhs_ext == std::numeric_limits<SType>::min()) {
-                return *this;
-            }
-            return Bits<W>(lhs_ext / rhs_ext);
-        }
-    }
-
-    constexpr Bits umod(Bits<W> const& other) const {
-        static_assert(W > 0, "umod on Bits<0> is undefined; the null vector has no value");
-        if (other == Bits<W>{}) {
-            throw std::domain_error("Division by zero");
-        }
-        if constexpr (is_wide) {
-            return Bits<W>(storage_.umod(other.storage_));
-        } else {
-            return Bits<W>(this->raw() % other.raw());
-        }
-    }
-
-    constexpr Bits smod(Bits<W> const& other) const {
-        static_assert(W > 0, "smod on Bits<0> is undefined; the null vector has no value");
-        if (other == Bits<W>{}) {
-            throw std::domain_error("Division by zero");
-        }
-        if constexpr (is_wide) {
-            return Bits<W>(storage_.smod(other.storage_));
-        } else {
-            auto lhs_ext = this->sign_extended();
-            auto rhs_ext = other.sign_extended();
-            // MIN % -1 == 0; avoid the divide's overflow on that input.
-            using SType = decltype(lhs_ext);
-            if (rhs_ext == -1 && lhs_ext == std::numeric_limits<SType>::min()) {
-                return Bits<W>{};
-            }
-            return Bits<W>(lhs_ext % rhs_ext);
-        }
     }
 
     constexpr Bits operator<<(size_t amount) const {
@@ -762,6 +665,109 @@ class Bits {
   private:
     template <size_t>
     friend class Bits;
+    friend struct same_width;
+
+    // Same-width, wrapping arithmetic. Reached only through `same_width`, by
+    // the growing free functions below and by the tests that cover the
+    // division kernels directly. Nothing else should wrap silently.
+    constexpr Bits operator+(Bits<W> const& other) const {
+        if constexpr (W == 0) {
+            return Bits<W>{};
+        } else if constexpr (is_wide) {
+            IntType result = storage_;
+            add_assign(result, other.storage_);
+            return Bits<W>(result);
+        } else {
+            return Bits<W>(static_cast<IntType>(raw() + other.raw()));
+        }
+    }
+
+    constexpr Bits operator-(Bits<W> const& other) const {
+        if constexpr (W == 0) {
+            return Bits<W>{};
+        } else if constexpr (is_wide) {
+            IntType result = storage_;
+            sub_assign(result, other.storage_);
+            return Bits<W>(result);
+        } else {
+            return Bits<W>(static_cast<IntType>(raw() - other.raw()));
+        }
+    }
+
+    constexpr Bits operator*(Bits<W> const& other) const {
+        if constexpr (W == 0) {
+            return Bits<W>{};
+        } else if constexpr (is_wide) {
+            // multiply() needs dst disjoint from both operands.
+            IntType result = storage_;
+            multiply(result, storage_, other.storage_);
+            return Bits<W>(result);
+        } else {
+            return Bits<W>(static_cast<IntType>(raw() * other.raw()));
+        }
+    }
+
+    constexpr Bits udiv(Bits<W> const& other) const {
+        static_assert(W > 0, "udiv on Bits<0> is undefined; the null vector has no value");
+        if (other == Bits<W>{}) {
+            throw std::domain_error("Division by zero");
+        }
+        if constexpr (is_wide) {
+            return Bits<W>(storage_.udiv(other.storage_));
+        } else {
+            return Bits<W>(this->raw() / other.raw());
+        }
+    }
+
+    constexpr Bits sdiv(Bits<W> const& other) const {
+        static_assert(W > 0, "sdiv on Bits<0> is undefined; the null vector has no value");
+        if (other == Bits<W>{}) {
+            throw std::domain_error("Division by zero");
+        }
+        if constexpr (is_wide) {
+            return Bits<W>(storage_.sdiv(other.storage_));
+        } else {
+            auto lhs_ext = this->sign_extended();
+            auto rhs_ext = other.sign_extended();
+            // Guard the sole two's-complement overflow: MIN / -1 == MIN.
+            using SType = decltype(lhs_ext);
+            if (rhs_ext == -1 && lhs_ext == std::numeric_limits<SType>::min()) {
+                return *this;
+            }
+            return Bits<W>(lhs_ext / rhs_ext);
+        }
+    }
+
+    constexpr Bits umod(Bits<W> const& other) const {
+        static_assert(W > 0, "umod on Bits<0> is undefined; the null vector has no value");
+        if (other == Bits<W>{}) {
+            throw std::domain_error("Division by zero");
+        }
+        if constexpr (is_wide) {
+            return Bits<W>(storage_.umod(other.storage_));
+        } else {
+            return Bits<W>(this->raw() % other.raw());
+        }
+    }
+
+    constexpr Bits smod(Bits<W> const& other) const {
+        static_assert(W > 0, "smod on Bits<0> is undefined; the null vector has no value");
+        if (other == Bits<W>{}) {
+            throw std::domain_error("Division by zero");
+        }
+        if constexpr (is_wide) {
+            return Bits<W>(storage_.smod(other.storage_));
+        } else {
+            auto lhs_ext = this->sign_extended();
+            auto rhs_ext = other.sign_extended();
+            // MIN % -1 == 0; avoid the divide's overflow on that input.
+            using SType = decltype(lhs_ext);
+            if (rhs_ext == -1 && lhs_ext == std::numeric_limits<SType>::min()) {
+                return Bits<W>{};
+            }
+            return Bits<W>(lhs_ext % rhs_ext);
+        }
+    }
 
     IntType storage_{};
 
@@ -834,6 +840,42 @@ class Bits {
     }
 };
 
+// The same-width primitive layer. Wrapping arithmetic is a footgun on a type
+// whose whole point is exact widths, so it is not part of Bits' interface;
+// the growing free functions below reach it through here, and so do the tests
+// that drive the division kernels' edge cases (MIN / -1, divisor > dividend,
+// division by zero) at a single width.
+struct same_width {
+    template <size_t W>
+    static constexpr Bits<W> add(Bits<W> const& a, Bits<W> const& b) {
+        return a + b;
+    }
+    template <size_t W>
+    static constexpr Bits<W> sub(Bits<W> const& a, Bits<W> const& b) {
+        return a - b;
+    }
+    template <size_t W>
+    static constexpr Bits<W> mul(Bits<W> const& a, Bits<W> const& b) {
+        return a * b;
+    }
+    template <size_t W>
+    static constexpr Bits<W> udiv(Bits<W> const& a, Bits<W> const& b) {
+        return a.udiv(b);
+    }
+    template <size_t W>
+    static constexpr Bits<W> umod(Bits<W> const& a, Bits<W> const& b) {
+        return a.umod(b);
+    }
+    template <size_t W>
+    static constexpr Bits<W> sdiv(Bits<W> const& a, Bits<W> const& b) {
+        return a.sdiv(b);
+    }
+    template <size_t W>
+    static constexpr Bits<W> smod(Bits<W> const& a, Bits<W> const& b) {
+        return a.smod(b);
+    }
+};
+
 // Growing arithmetic. The result width is wide enough to hold every value the
 // operation can produce, so these never wrap and the width arithmetic lives in
 // the return type rather than at each call site. Operands are extended to the
@@ -843,37 +885,37 @@ class Bits {
 template <size_t Wa, size_t Wb>
 constexpr Bits<std::max(Wa, Wb) + 1> add_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
     constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    return a.template zero_extend<Wr>() + b.template zero_extend<Wr>();
+    return same_width::add(a.template zero_extend<Wr>(), b.template zero_extend<Wr>());
 }
 
 template <size_t Wa, size_t Wb>
 constexpr Bits<std::max(Wa, Wb) + 1> add_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
     constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    return a.template sign_extend<Wr>() + b.template sign_extend<Wr>();
+    return same_width::add(a.template sign_extend<Wr>(), b.template sign_extend<Wr>());
 }
 
 template <size_t Wa, size_t Wb>
 constexpr Bits<std::max(Wa, Wb) + 1> sub_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
     constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    return a.template zero_extend<Wr>() - b.template zero_extend<Wr>();
+    return same_width::sub(a.template zero_extend<Wr>(), b.template zero_extend<Wr>());
 }
 
 template <size_t Wa, size_t Wb>
 constexpr Bits<std::max(Wa, Wb) + 1> sub_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
     constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    return a.template sign_extend<Wr>() - b.template sign_extend<Wr>();
+    return same_width::sub(a.template sign_extend<Wr>(), b.template sign_extend<Wr>());
 }
 
 template <size_t Wa, size_t Wb>
 constexpr Bits<Wa + Wb> mul_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
     constexpr size_t Wr = Wa + Wb;
-    return a.template zero_extend<Wr>() * b.template zero_extend<Wr>();
+    return same_width::mul(a.template zero_extend<Wr>(), b.template zero_extend<Wr>());
 }
 
 template <size_t Wa, size_t Wb>
 constexpr Bits<Wa + Wb> mul_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
     constexpr size_t Wr = Wa + Wb;
-    return a.template sign_extend<Wr>() * b.template sign_extend<Wr>();
+    return same_width::mul(a.template sign_extend<Wr>(), b.template sign_extend<Wr>());
 }
 
 // Quotient grows by one bit so signed_min / -1 is representable.
@@ -881,16 +923,14 @@ constexpr Bits<Wa + Wb> mul_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
 template <size_t Wa, size_t Wb>
 constexpr Bits<Wa + 1> div_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
     constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    return a.template zero_extend<Wr>()
-        .udiv(b.template zero_extend<Wr>())
+    return same_width::udiv(a.template zero_extend<Wr>(), b.template zero_extend<Wr>())
         .template truncate<Wa + 1>();
 }
 
 template <size_t Wa, size_t Wb>
 constexpr Bits<Wa + 1> div_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
     constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    return a.template sign_extend<Wr>()
-        .sdiv(b.template sign_extend<Wr>())
+    return same_width::sdiv(a.template sign_extend<Wr>(), b.template sign_extend<Wr>())
         .template truncate<Wa + 1>();
 }
 
@@ -899,8 +939,7 @@ constexpr Bits<Wa + 1> div_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
 template <size_t Wa, size_t Wb>
 constexpr Bits<Wb> rem_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
     constexpr size_t Wr = std::max(Wa, Wb);
-    return a.template zero_extend<Wr>()
-        .umod(b.template zero_extend<Wr>())
+    return same_width::umod(a.template zero_extend<Wr>(), b.template zero_extend<Wr>())
         .template truncate<Wb>();
 }
 
@@ -908,8 +947,7 @@ constexpr Bits<Wb> rem_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
 template <size_t Wa, size_t Wb>
 constexpr Bits<Wb> rem_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
     constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    return a.template sign_extend<Wr>()
-        .smod(b.template sign_extend<Wr>())
+    return same_width::smod(a.template sign_extend<Wr>(), b.template sign_extend<Wr>())
         .template truncate<Wb>();
 }
 
@@ -919,18 +957,18 @@ constexpr Bits<Wb> mod_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
     constexpr size_t Wr = std::max(Wa, Wb) + 1;
     auto ae = a.template sign_extend<Wr>();
     auto be = b.template sign_extend<Wr>();
-    auto r = ae.smod(be);
+    auto r = same_width::smod(ae, be);
     // smod follows the dividend; when the signs disagree and there is a
     // remainder, shift it onto the divisor's side.
     if (r != Bits<Wr>{} && (r.slt(Bits<Wr>{}) != be.slt(Bits<Wr>{}))) {
-        r = r + be;
+        r = same_width::add(r, be);
     }
     return r.template truncate<Wb>();
 }
 
 template <size_t W>
 constexpr Bits<W + 1> negate_signed(Bits<W> const& a) {
-    return Bits<W + 1>{} - a.template sign_extend<W + 1>();
+    return same_width::sub(Bits<W + 1>{}, a.template sign_extend<W + 1>());
 }
 
 template <size_t W>
@@ -939,7 +977,7 @@ constexpr Bits<W + 1> abs_signed(Bits<W> const& a) {
     if constexpr (W == 0) {
         return ext;
     } else {
-        return a.get_bit(W - 1) ? Bits<W + 1>{} - ext : ext;
+        return a.get_bit(W - 1) ? same_width::sub(Bits<W + 1>{}, ext) : ext;
     }
 }
 
