@@ -2,9 +2,9 @@
 #define COCONEXT_SIGNED_HPP
 
 #include <algorithm>
+#include <coconext/types/bits.hpp>
 #include <coconext/types/concepts.hpp>
 #include <coconext/types/hash.hpp>
-#include <coconext/types/int_base.hpp>
 #include <coconext/types/logic_array.hpp>
 #include <coconext/types/range.hpp>
 #include <cstddef>

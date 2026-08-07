@@ -1333,6 +1333,50 @@ constexpr Range make_int_range() {
     }
 }
 
+template <auto... Args>
+constexpr Range make_fixed_range() {
+    static_assert(
+        sizeof...(Args) >= 1 && sizeof...(Args) <= 3,
+        "Ufixed/Sfixed takes 1 to 3 range args"
+    );
+    constexpr auto t = std::tuple{Args...};
+    if constexpr (sizeof...(Args) == 1) {
+        using First = std::remove_cvref_t<decltype(std::get<0>(t))>;
+        static_assert(
+            std::is_same_v<First, Range>, "Ufixed/Sfixed only take Range as single argument"
+        );
+        return std::get<0>(t);
+    } else if constexpr (sizeof...(Args) == 2) {
+        constexpr Range r{
+            static_cast<Range::value_type>(std::get<0>(t)),
+            static_cast<Range::value_type>(std::get<1>(t))
+        };
+        static_assert(
+            r.left >= r.right, "Ufixed/Sfixed do not allow direction.right as MSB"
+        );
+        static_assert(r.length() >= 1, "Range cannot be negative or zero");
+        if constexpr (r.left == r.right) {
+            return Range{r.left, Direction::DOWNTO, r.right};
+        } else {
+            return r;
+        }
+    } else {  // 3
+        static_assert(
+            std::is_same_v<std::remove_cvref_t<decltype(std::get<1>(t))>, Direction>,
+            "three-arg form requires (left, Direction, right)"
+        );
+        Range r{
+            static_cast<Range::value_type>(std::get<0>(t)),
+            std::get<1>(t),
+            static_cast<Range::value_type>(std::get<2>(t))
+        };
+        static_assert(
+            r.left >= r.right, "Ufixed/Sfixed do not allow direction.right as MSB"
+        );
+        return r;
+    }
+}
+
 template <typename T>
 class [[nodiscard]] auto_reinterpreted {
     T value_;

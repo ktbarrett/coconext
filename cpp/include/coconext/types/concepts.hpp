@@ -75,6 +75,9 @@ inline constexpr bool is_coconext_unsigned_v = false;
 template <typename T>
 inline constexpr bool is_coconext_signed_v = false;
 
+template <typename T>
+inline constexpr bool is_fixed = false;
+
 // Niebloid that reads a HasBits type's packed storage. Implementers declare
 // `friend struct detail::bits_fn;` and keep `value_` private; ADL cannot find
 // this call because `bits` is an object, so users can only reach it via the
