@@ -130,34 +130,21 @@ class Signed {
     explicit(R.length() <= R2.length()) constexpr Signed(Unsigned<R2> const& other) {
         auto const& src_bits = bits(other);
         if constexpr (R.length() <= R2.length()) {
-            bool fits = true;
-            if constexpr (!detail::Bits<R2.length()>::is_wide) {
-                auto src_val = src_bits.raw();
-                auto max_val = max_unsigned<R.length() - 1>();
-                if (src_val > max_val) {
-                    fits = false;
+            // The sign bit costs one bit, so the source must fit in R-1 bits:
+            // every bit at or above R-1 has to be clear.
+            for (size_t i = R.length() - 1; i < R2.length(); ++i) {
+                if (src_bits.get_bit(i)) {
+                    throw std::out_of_range(
+                        "Unsigned value does not fit in narrowing Signed conversion"
+                    );
                 }
-            } else {
-                auto src_val = src_bits.raw();
-                auto max_val = max_unsigned<R.length() - 1>();
-                if (src_val > max_val) {
-                    fits = false;
-                }
-            }
-
-            if (!fits) {
-                throw std::out_of_range(
-                    "Unsigned value does not fit in narrowing Signed conversion"
-                );
             }
         }
 
-        if constexpr (!Bits<R.length()>::is_wide && !detail::Bits<R2.length()>::is_wide) {
-            value_ = detail::Bits<R.length()>(
-                static_cast<typename detail::Bits<R.length()>::IntType>(src_bits.raw())
-            );
+        if constexpr (R.length() >= R2.length()) {
+            value_ = src_bits.template zero_extend<R.length()>();
         } else {
-            value_ = detail::Bits<R.length()>(src_bits.raw());
+            value_ = src_bits.template truncate<R.length()>();
         }
     }
 
@@ -206,81 +193,13 @@ class Signed {
         constexpr size_t TargetW = R.length();
         constexpr size_t SourceW = ActualSource::size();
 
-        if constexpr (TargetW == 0) {
-            value_ = detail::Bits<TargetW>{};
-        } else if constexpr (SourceW == 0) {
-            value_ = detail::Bits<TargetW>{};
-        } else if constexpr (TargetW == SourceW) {
-            if constexpr (!Bits<TargetW>::is_wide && !detail::Bits<SourceW>::is_wide) {
-                value_ = detail::Bits<TargetW>(
-                    static_cast<typename detail::Bits<TargetW>::IntType>(src.value_.raw())
-                );
-            } else {
-                value_ = detail::Bits<TargetW>(src.value_.raw());
-            }
-        } else if constexpr (TargetW > SourceW) {
-            if constexpr (!Bits<TargetW>::is_wide && !detail::Bits<SourceW>::is_wide) {
-                // Sign Extension for Native Widths
-                auto ext = src.value_.raw();
-                using SType = std::make_signed_t<decltype(ext)>;
-                SType signed_val = static_cast<SType>(ext << (sizeof(ext) * 8 - SourceW))
-                                >> (sizeof(ext) * 8 - SourceW);
-                value_ = detail::Bits<TargetW>(
-                    static_cast<typename detail::Bits<TargetW>::IntType>(signed_val)
-                );
-            } else {
-                // Sign Extension for BigInts using arithmetic shifting
-                detail::Bits<TargetW> wide_zero_ext(src.value_.raw());
-                Signed<R> temp(wide_zero_ext);
-                temp = temp << (TargetW - SourceW);
-                temp = temp >> (TargetW - SourceW);
-                value_ = temp.value_;
-            }
+        if constexpr (TargetW >= SourceW) {
+            // Widening (and the null cases) never lose information.
+            value_ = src.value_.template sign_extend<TargetW>();
+        } else if (ovf == overflow_mode::wrap) {
+            value_ = src.value_.template truncate<TargetW>();
         } else {
-            // Narrowing
-            if (ovf == overflow_mode::wrap) {
-                if constexpr (!Bits<TargetW>::is_wide && !detail::Bits<SourceW>::is_wide) {
-                    value_ = detail::Bits<TargetW>(
-                        static_cast<typename detail::Bits<TargetW>::IntType>(
-                            src.value_.raw()
-                        )
-                    );
-                } else {
-                    value_ = detail::Bits<TargetW>(src.value_.raw());
-                }
-            } else {
-                // Signed Saturation logic
-                bool is_neg = false;
-                if constexpr (!detail::Bits<SourceW>::is_wide) {
-                    is_neg = (src.value_.srl(SourceW - 1).raw() & 1) != 0;
-                } else {
-                    is_neg = (src.value_.srl(SourceW - 1).raw().word(0) & 1) != 0;
-                }
-
-                Signed<R> wrapped_temp;
-                if constexpr (!Bits<TargetW>::is_wide && !detail::Bits<SourceW>::is_wide) {
-                    wrapped_temp.value_ = detail::Bits<TargetW>(
-                        static_cast<typename detail::Bits<TargetW>::IntType>(
-                            src.value_.raw()
-                        )
-                    );
-                } else {
-                    wrapped_temp.value_ = detail::Bits<TargetW>(src.value_.raw());
-                }
-
-                if (coconext::types::resize<SourceW>(wrapped_temp) == src) {
-                    value_ = wrapped_temp.value_;
-                } else {
-                    if (is_neg) {
-                        detail::Bits<TargetW> min_val(1);
-                        value_ = min_val << (TargetW - 1);
-                    } else {
-                        detail::Bits<TargetW> max_val(1);
-                        max_val = (max_val << (TargetW - 1)) - detail::Bits<TargetW>(1);
-                        value_ = max_val;
-                    }
-                }
-            }
+            value_ = src.value_.template saturate_signed<TargetW>();
         }
     }
 
@@ -456,36 +375,28 @@ class Signed {
     constexpr auto operator+() const { return *this; }
 
     constexpr auto operator-() const {
-        return Signed<detail::make_int_range<1>()>(0) - *this;
+        constexpr Range R_res = detail::int_downto_range(R.length() + 1);
+        return Signed<R_res>(detail::negate_signed(value_));
     }
 
     template <Range R2>
     constexpr auto operator+(Signed<R2> const& rhs) const {
         constexpr Range R_res =
             detail::int_downto_range(std::max(R.length(), R2.length()) + 1);
-        return Signed<R_res>(
-            coconext::types::resize<R_res.length()>(*this).value_
-            + coconext::types::resize<R_res.length()>(rhs).value_
-        );
+        return Signed<R_res>(detail::add_signed(value_, rhs.value_));
     }
 
     template <Range R2>
     constexpr auto operator-(Signed<R2> const& rhs) const {
         constexpr Range R_res =
             detail::int_downto_range(std::max(R.length(), R2.length()) + 1);
-        return Signed<R_res>(
-            coconext::types::resize<R_res.length()>(*this).value_
-            - coconext::types::resize<R_res.length()>(rhs).value_
-        );
+        return Signed<R_res>(detail::sub_signed(value_, rhs.value_));
     }
 
     template <Range R2>
     constexpr auto operator*(Signed<R2> const& rhs) const {
         constexpr Range R_res = detail::int_downto_range(R.length() + R2.length());
-        return Signed<R_res>(
-            coconext::types::resize<R_res.length()>(*this).value_
-            * coconext::types::resize<R_res.length()>(rhs).value_
-        );
+        return Signed<R_res>(detail::mul_signed(value_, rhs.value_));
     }
 
     template <Range R2>
@@ -494,23 +405,15 @@ class Signed {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        return Signed<R_res>(coconext::types::resize<R_res.length()>(*this).value_.sdiv(
-            coconext::types::resize<R_res.length()>(rhs).value_
-        ));
+        return Signed<R_res>(detail::div_signed(value_, rhs.value_));
     }
 
     template <Range R2>
     constexpr auto operator%(Signed<R2> const& rhs) const {
-        constexpr size_t W_calc = std::max(R.length(), R2.length());
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        Signed<detail::int_downto_range(W_calc)> calc_result(
-            coconext::types::resize<W_calc>(*this).value_.smod(
-                coconext::types::resize<W_calc>(rhs).value_
-            )
-        );
-        return coconext::types::resize<R2.length()>(calc_result, overflow_mode::wrap);
+        return Signed<R2>(detail::rem_signed(value_, rhs.value_));
     }
 
     template <Range R2>
