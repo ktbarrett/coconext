@@ -6,3 +6,11 @@
 // TODOs
 
 // cross kind operators
+
+// constexpr int sign_bit_position() const noexcept {
+//     if constexpr (R.direction == Direction::DOWNTO) {
+//         return R.left;
+//     } else {
+//         return R.right;
+//     }
+// }

@@ -1,6 +1,7 @@
 #ifndef COCONEXT_UFIXED_HPP
 #define COCONEXT_UFIXED_HPP
 
+#include <cmath>
 #include <coconext/types/bits.hpp>
 #include <coconext/types/concepts.hpp>
 #include <coconext/types/range.hpp>
@@ -33,12 +34,23 @@ class Ufixed {
             value_ = v;
         } else {
             using unsigned_T = std::make_unsigned_t<T>;
-            if (static_cast<unsigned_T>(v) > max_unsigned<R.left + 1>()) {
+            if (static_cast<unsigned_T>(v) > max_unsigned<int_bits()>()) {
                 throw std::out_of_range("value does not fit in Unsigned width");
             }
             value_ = v;
         }
         value_ = value_ << frac_bits();
+    }
+
+    template <Range R2>
+    constexpr Ufixed(Unsigned<R2> v) {
+        static_assert(
+            R.right == 0, "Construction from Unsigned requires zero fractional bits"
+        );
+        static_assert(
+            R.length() == R2.length(), "Construction from Unsigned requires equal length"
+        );
+        value_ = v.value_;
     }
 
     // Implicit conversion to supertype BitArray
@@ -50,23 +62,21 @@ class Ufixed {
         return detail::Array<Bit, R2>(value_);
     }
 
-    int_bits() {}
-
-    constexpr size_t frac_bits() {
+    static constexpr size_t frac_bits() {
         if constexpr (R.direction == Direction::DOWNTO) {
-            return R.length() - r.left - 1;
+            return R.length() - R.left - 1;
         } else {
             return -R.left;
         }
     }
 
-    resolution() {}
+    static constexpr size_t int_bits() { return R.length() - frac_bits(); }
 
-    constexpr int sign_bit_position() const noexcept {
+    static constexpr double resolution() {
         if constexpr (R.direction == Direction::DOWNTO) {
-            return R.left;
+            return std::pow(2, R.right);
         } else {
-            return R.right;
+            return std::pow(2, R.left);
         }
     }
 
@@ -74,14 +84,14 @@ class Ufixed {
     Bits<R.length()> value_;
 };
 
+}  // namespace detail
+
 template <Range R>
-inline constexpr bool is_fixed<Ufixed<R>> = true;
+inline constexpr bool is_fixed<detail::Ufixed<R>> = true;
 
 // see detail::make_fixed_range for the rules
 template <auto... Args>
 using Ufixed = detail::Ufixed<detail::make_fixed_range<Args...>()>;
-
-}  // namespace detail
 
 }  // namespace coconext::types
 

@@ -58,10 +58,10 @@ class Unsigned {
     static constexpr Range range() noexcept { return R; }
     static constexpr size_t size() noexcept { return R.length(); }
 
-    // Allow different-width Unsigned instantiations to read our private value_
-    // (required for resize and cross-width Unsigned constructor).
+    // Friends required for resize and cross-width/type conversions.
     template <Range R2>
     friend class Unsigned;
+    // template <Range R2> friend class Ufixed;
 
     constexpr Unsigned() noexcept = default;
 

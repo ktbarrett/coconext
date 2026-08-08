@@ -11,6 +11,7 @@
 #include "./types/resize_mode.hpp"
 #include "./types/reverse.hpp"
 #include "./types/signed.hpp"
+#include "./types/ufixed.hpp"
 #include "./types/unsigned.hpp"
 #include "./types/vector.hpp"
 // NOLINTEND(unused-includes)

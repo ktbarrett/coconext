@@ -62,6 +62,9 @@ template <>
 struct is_native_int<__uint128_t> : public std::true_type {};
 #endif
 
+template <typename T>
+inline constexpr bool is_fixed = false;
+
 namespace detail {
 
 template <typename T>
@@ -74,9 +77,6 @@ inline constexpr bool is_coconext_unsigned_v = false;
 
 template <typename T>
 inline constexpr bool is_coconext_signed_v = false;
-
-template <typename T>
-inline constexpr bool is_fixed = false;
 
 // Niebloid that reads a HasBits type's packed storage. Implementers declare
 // `friend struct detail::bits_fn;` and keep `value_` private; ADL cannot find

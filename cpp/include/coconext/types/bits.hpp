@@ -1370,9 +1370,6 @@ constexpr Range make_fixed_range() {
             std::get<1>(t),
             static_cast<Range::value_type>(std::get<2>(t))
         };
-        static_assert(
-            r.left >= r.right, "Ufixed/Sfixed do not allow direction.right as MSB"
-        );
         return r;
     }
 }
