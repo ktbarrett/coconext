@@ -19,6 +19,8 @@ class Coro;
 template <typename T>
 class CoroState;
 
+namespace detail {
+
 template <typename T>
 class CoroStateBase {
     friend class CoroState<T>;
@@ -80,8 +82,10 @@ class CoroStateBase {
     TaskState<>* task_ = nullptr;
 };
 
+}  // namespace detail
+
 template <typename T>
-class CoroState : public CoroStateBase<T> {
+class CoroState : public detail::CoroStateBase<T> {
   public:
     template <typename U>
         requires std::is_convertible_v<U, T>
@@ -91,7 +95,7 @@ class CoroState : public CoroStateBase<T> {
 };
 
 template <>
-class CoroState<void> : public CoroStateBase<void> {
+class CoroState<void> : public detail::CoroStateBase<void> {
   public:
     void return_void() noexcept { this->set_result(detail::Value<void>{}); }
 };

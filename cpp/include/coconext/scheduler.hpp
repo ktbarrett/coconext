@@ -39,7 +39,7 @@ template <typename T = detail::Erased>
 class TaskState;
 
 template <typename StateT>
-class Future;
+class AbstractFuture;
 
 template <typename T>
 class Task;
@@ -135,12 +135,6 @@ class FutureState {
         callbacks_.emplace_back(std::forward<F>(callback));
     }
 
-    [[nodiscard]] detail::EventLoop* get_event_loop() const noexcept { return event_loop_; }
-
-  protected:
-    // Override to unprime any underlying awaitable if refcount drops to zero.
-    virtual void unprime() noexcept {}
-
     template <typename U>
         requires(!std::is_void_v<T> && std::is_convertible_v<U, T>)
     void set_result(U&& value) noexcept {
@@ -155,8 +149,10 @@ class FutureState {
         on_done();
     }
 
-    void set_exception(std::exception_ptr exc) noexcept {
-        assert(exc);
+    void set_exception(std::exception_ptr exc) {
+        if (!exc) {
+            throw std::invalid_argument("exc must not be null");
+        }
         result_ = exc;
         on_done();
     }
@@ -179,7 +175,6 @@ class FutureState {
     void inc_ref() noexcept { ++ref_count_; }
     void dec_ref() noexcept {
         if (--ref_count_ == 0) {
-            unprime();
             delete this;
         }
     }
@@ -193,7 +188,7 @@ class FutureState {
 
 // Single-shot, multiple-consumer awaitable object.
 template <typename StateT>
-class Future {
+class AbstractFuture {
     static_assert(
         std::is_base_of_v<FutureState<typename StateT::value_type>, StateT>,
         "Future's StateT must derive from FutureState<T>"
@@ -202,12 +197,13 @@ class Future {
   public:
     using value_type = typename StateT::value_type;
 
-    [[nodiscard]] Future() noexcept : handle_(new StateT{}) { handle_->inc_ref(); }
-    [[nodiscard]] Future(Future const& other) noexcept : handle_(other.handle_) {
+    [[nodiscard]] AbstractFuture() noexcept : handle_(new StateT{}) { handle_->inc_ref(); }
+    [[nodiscard]] AbstractFuture(AbstractFuture const& other) noexcept
+        : handle_(other.handle_) {
         handle_->inc_ref();
     }
 
-    Future& operator=(Future const& other) noexcept {
+    AbstractFuture& operator=(AbstractFuture const& other) noexcept {
         if (this != &other) {
             handle_->dec_ref();
             handle_ = other.handle_;
@@ -216,7 +212,7 @@ class Future {
         return *this;
     }
 
-    ~Future() noexcept { handle_->dec_ref(); }
+    ~AbstractFuture() noexcept { handle_->dec_ref(); }
 
     [[nodiscard]] bool done() const noexcept { return handle_->done(); }
     [[nodiscard]] value_type result() const { return handle_->result(); }
@@ -228,11 +224,12 @@ class Future {
     }
 
     [[nodiscard]] auto operator co_await() noexcept {
-        return detail::AwaitableAwaiter<StateT>(handle_);
+        return detail::FutureAwaiter<StateT>(handle_);
     }
 
     [[nodiscard]] not_null<StateT*> get_state() const noexcept { return handle_; }
-    [[nodiscard]] explicit Future(not_null<StateT*> state) noexcept : handle_(state) {
+    [[nodiscard]] explicit AbstractFuture(not_null<StateT*> state) noexcept
+        : handle_(state) {
         handle_->inc_ref();
     }
 
@@ -241,7 +238,24 @@ class Future {
 };
 
 template <typename T>
-T run(Task<T> task);
+class Future : public AbstractFuture<FutureState<T>> {
+  public:
+    template <typename U>
+        requires(!std::is_void_v<T> && std::is_convertible_v<U, T>)
+    void set_result(U&& value) noexcept {
+        this->get_state()->set_result(std::forward<U>(value));
+    }
+
+    void set_void() noexcept
+        requires std::is_void_v<T>
+    {
+        this->get_state()->set_void();
+    }
+
+    void set_exception(std::exception_ptr exc) noexcept {
+        this->get_state()->set_exception(exc);
+    }
+};
 
 namespace detail {
 
