@@ -39,7 +39,7 @@ class Signed {
             R.length() > 0, "Signed<0> has no integer value; cannot convert to native int"
         );
         static_assert(
-            !detail::Bits<R.length()>::is_wide, "Conversion from BigInt to native int"
+            !detail::Bits<R.length()>::is_wide, "Conversion from wide Bits to native int"
         );
 
         auto ext = value_.sra(0).raw();

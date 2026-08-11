@@ -22,13 +22,16 @@ Storage selection is a function of `W`:
 | `17 <= W <= 32` | `uint32_t` |
 | `33 <= W <= 64` | `uint64_t` |
 | `65 <= W <= 128` | `__uint128_t` (GCC/Clang only; conditional on `__SIZEOF_INT128__`) |
-| `W >= 129` | `detail::BigIntStorage<W>` |
+| `W >= 129` | `std::array<uint64_t, ceil(W / 64)>` owned directly by `Bits<W>` |
 
 The native tier is the smallest unsigned native that holds `W` bits. This makes `Bits<8>` exactly one byte and lets arrays of `Unsigned<8>` auto-vectorize.
 
 The storage member is declared `[[no_unique_address]]` so `Bits<0>` collapses when composed into an enclosing type.
 
-`BigIntStorage<W>` owns a `std::array<uint64_t, ceil(W / 64)>` (LSB-first word order) and exposes it as `BigIntConstRef` / `BigIntMutRef` views. The arithmetic itself lives in free functions over those views -- kernels ported from LLVM's APInt -- so the storage type carries no algorithms of its own beyond the stack scratch that division needs.
+On the wide tier, `Bits<W>` directly owns a `std::array<uint64_t, ceil(W / 64)>`
+(LSB-first word order). Word-array kernels ported from LLVM's APInt operate on
+that storage, and `Bits<W>` supplies the fixed-size stack scratch needed by
+division. There is no separate owning big-integer type.
 
 ### Default value
 
@@ -68,8 +71,8 @@ Full noexcept table:
 
 - `Bits<W>::width` — the width `W` as a `size_t`.
 - `Bits<W>::IntType` — the chosen storage type (see table). Useful for `static_assert`s in `detail::` code and for the SBO/wide branch in generic code.
-- `Bits<W>::is_wide` — `false` iff the storage is a native integer (including `__uint128_t`); `true` iff it is `BigIntStorage<W>`.
-- `Bits<W>::RawType` — what `raw()` hands back: `IntType` on the native tier, a non-owning `BigIntConstRef` on the wide tier.
+- `Bits<W>::is_wide` — `false` iff the storage is a native integer (including `__uint128_t`); `true` iff it is a directly owned word array.
+- `Bits<W>::RawType` — what `raw()` hands back: `IntType` on the native tier, a non-owning `WordConstSpan` on the wide tier.
 
 ## Construction
 

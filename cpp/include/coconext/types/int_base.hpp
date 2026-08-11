@@ -2,8 +2,9 @@
 #define COCONEXT_INT_BASE_HPP
 
 #include <algorithm>
+#include <array>
 #include <bit>
-#include <coconext/types/bigint.hpp>
+#include <coconext/types/big_int.hpp>
 #include <coconext/types/direction.hpp>
 #include <coconext/types/logic.hpp>
 #include <coconext/types/range.hpp>
@@ -25,6 +26,9 @@ namespace detail {
 
 struct EmptyStorage {};
 
+template <size_t W>
+using WideWords = std::array<Word, (W + word_bits - 1) / word_bits>;
+
 template <size_t BW>
 struct IntTypePicker {
     using type = std::conditional_t<
@@ -43,9 +47,9 @@ struct IntTypePicker {
                         (BW <= 64),
                         uint64_t,
 #if defined(__SIZEOF_INT128__)
-                        std::conditional_t<(BW <= 128), __uint128_t, BigIntStorage<BW>>
+                        std::conditional_t<(BW <= 128), __uint128_t, WideWords<BW>>
 #else
-                        BigIntStorage<BW>
+                        WideWords<BW>
 #endif
                         >>>>>;
 };
@@ -66,32 +70,48 @@ template <size_t W>
 class Bits {
   public:
     using IntType = IntTypePicker<W>::type;
-    static constexpr bool is_wide = std::is_same_v<IntType, BigIntStorage<W>>;
+    static constexpr bool is_wide = W > (supports_128B ? 128 : 64);
 
     constexpr Bits() = default;
 
     // From native ints
     template <NativeInteger IntT>
-    constexpr Bits(IntT val) : storage_(val) {
+    constexpr Bits(IntT val) {
         static_assert(W > 0, "Bits<0> has no integer representation; use Bits<0>{}");
+        if constexpr (is_wide) {
+            storage_[0] = static_cast<Word>(val);
+            if constexpr (std::is_signed_v<IntT>) {
+                if (val < 0) {
+                    for (size_t i = 1; i < storage_.size(); ++i) {
+                        storage_[i] = ~Word{0};
+                    }
+                }
+            }
+            clear_unused_bits(mut());
+        } else {
+            storage_ = static_cast<IntType>(val);
+        }
     }
 
-    template <typename BigIntStorageT>
-        requires std::is_same_v<std::remove_cvref_t<BigIntStorageT>, BigIntStorage<W>>
-    constexpr Bits(BigIntStorageT&& val)
+    template <typename WideWordsT>
+        requires std::is_same_v<std::remove_cvref_t<WideWordsT>, WideWords<W>>
+    constexpr Bits(WideWordsT&& val)
         requires(is_wide)
-        : storage_(std::forward<BigIntStorageT>(val)) {}
+        : storage_(std::forward<WideWordsT>(val)) {
+        clear_unused_bits(mut());
+    }
 
     constexpr Bits(std::string_view val) {
         static_assert(W > 0, "Bits<0> has no integer representation; use Bits<0>{}");
         if constexpr (is_wide) {
-            storage_ = IntType(val);
+            parse_into(mut(), val);
         } else {
-            BigIntStorage<W> parsed(val);
-            storage_ = static_cast<IntType>(parsed.get_word(0));
+            WideWords<W> parsed{};
+            parse_into(WordSpan{parsed, W}, val);
+            storage_ = static_cast<IntType>(parsed[0]);
             if constexpr (sizeof(IntType) > sizeof(Word)) {
-                if (BigIntStorage<W>::num_of_words > 1) {
-                    storage_ |= static_cast<IntType>(parsed.get_word(1)) << word_bits;
+                if constexpr (parsed.size() > 1) {
+                    storage_ |= static_cast<IntType>(parsed[1]) << word_bits;
                 }
             }
         }
@@ -284,8 +304,8 @@ class Bits {
     constexpr Bits operator<<(size_t amount) const {
         static_assert(W > 0, "shift on Bits<0> is undefined; no bit positions exist");
         if constexpr (is_wide) {
-            BigIntStorage<W> result = storage_;
-            shift_left(result, amount);
+            IntType result = storage_;
+            shift_left(WordSpan{result, W}, amount);
             return Bits<W>(result);
         } else {
             if (amount >= W) {
@@ -298,8 +318,8 @@ class Bits {
     constexpr Bits sra(size_t amount) const {
         static_assert(W > 0, "shift on Bits<0> is undefined; no bit positions exist");
         if constexpr (is_wide) {
-            BigIntStorage<W> result = storage_;
-            shift_right_arith(result, amount);
+            IntType result = storage_;
+            shift_right_arith(WordSpan{result, W}, amount);
             return Bits<W>(result);
         } else {
             auto ext = this->sign_extended();
@@ -313,8 +333,8 @@ class Bits {
     constexpr Bits srl(size_t amount) const {
         static_assert(W > 0, "shift on Bits<0> is undefined; no bit positions exist");
         if constexpr (is_wide) {
-            BigIntStorage<W> result = storage_;
-            shift_right_logical(result, amount);
+            IntType result = storage_;
+            shift_right_logical(WordSpan{result, W}, amount);
             return Bits<W>(result);
         } else {
             if (amount >= W) {
@@ -345,7 +365,7 @@ class Bits {
             W > 0, "ordering on Bits<0> is undefined; the null vector has no value"
         );
         if constexpr (is_wide) {
-            return storage_.ucompare(other.storage_) < 0;
+            return detail::ucompare(cref(), other.cref()) < 0;
         } else {
             return raw() < other.raw();
         }
@@ -360,7 +380,7 @@ class Bits {
             W > 0, "ordering on Bits<0> is undefined; the null vector has no value"
         );
         if constexpr (is_wide) {
-            return storage_.scompare(other.storage_) < 0;
+            return detail::scompare(cref(), other.cref()) < 0;
         } else {
             return sign_extended() < other.sign_extended();
         }
@@ -374,7 +394,9 @@ class Bits {
         if constexpr (W == 0) {
             return Bits<W>{};
         } else if constexpr (is_wide) {
-            return Bits<W>(storage_ & other.storage_);
+            Bits<W> result(*this);
+            and_assign(result.mut(), other.cref());
+            return result;
         } else {
             return Bits<W>(raw() & other.raw());
         }
@@ -384,7 +406,9 @@ class Bits {
         if constexpr (W == 0) {
             return Bits<W>{};
         } else if constexpr (is_wide) {
-            return Bits<W>(storage_ | other.storage_);
+            Bits<W> result(*this);
+            or_assign(result.mut(), other.cref());
+            return result;
         } else {
             return Bits<W>(raw() | other.raw());
         }
@@ -394,7 +418,9 @@ class Bits {
         if constexpr (W == 0) {
             return Bits<W>{};
         } else if constexpr (is_wide) {
-            return Bits<W>(storage_ ^ other.storage_);
+            Bits<W> result(*this);
+            xor_assign(result.mut(), other.cref());
+            return result;
         } else {
             return Bits<W>(raw() ^ other.raw());
         }
@@ -403,6 +429,10 @@ class Bits {
     constexpr Bits operator~() const {
         if constexpr (W == 0) {
             return Bits<W>{};
+        } else if constexpr (is_wide) {
+            Bits<W> result(*this);
+            bitnot(result.mut());
+            return result;
         } else {
             return Bits<W>(~storage_);
         }
@@ -412,7 +442,7 @@ class Bits {
         if constexpr (W == 0) {
             return 0;
         } else if constexpr (is_wide) {
-            return storage_.count_trailing_zeros();
+            return detail::count_trailing_zeros(cref());
         } else {
             IntType val = raw();
             if (val == 0) {
@@ -435,7 +465,7 @@ class Bits {
         if constexpr (W == 0) {
             return 0;
         } else if constexpr (is_wide) {
-            return storage_.count_leading_zeros();
+            return detail::count_leading_zeros(cref());
         } else {
             IntType val = raw();
             if (val == 0) {
@@ -460,7 +490,7 @@ class Bits {
         if constexpr (W == 0) {
             return 0;
         } else if constexpr (is_wide) {
-            return storage_.popcount();
+            return detail::popcount(cref());
         } else if constexpr (supports_128B && W > 64) {
             // std::popcount rejects __uint128_t; count each half.
             auto val = raw();
@@ -476,7 +506,7 @@ class Bits {
         if constexpr (!is_wide) {
             return (raw() >> index) & 1;
         } else {
-            return srl(index).storage_.get_word(0) & 1;
+            return detail::get_bit(cref(), index);
         }
     }
 
@@ -490,23 +520,23 @@ class Bits {
                 storage_ &= ~mask;
             }
         } else {
-            Bits<W> mask = Bits<W>(1) << index;
+            Word mask = Word{1} << (index % word_bits);
             if (val) {
-                storage_ = (*this | mask).storage_;
+                storage_[index / word_bits] |= mask;
             } else {
-                storage_ = (*this & ~mask).storage_;
+                storage_[index / word_bits] &= ~mask;
             }
         }
     }
 
     // On the wide tier this is a non-owning view, not a copy: callers only ever
     // read words out of it, and copying would mean duplicating the whole array.
-    using RawType = std::conditional_t<is_wide, BigIntConstRef, IntType>;
+    using RawType = std::conditional_t<is_wide, WordConstSpan, IntType>;
 
     constexpr RawType raw() const {
         static_assert(W > 0, "raw() on Bits<0> is undefined; the null vector has no value");
         if constexpr (is_wide) {
-            return static_cast<BigIntConstRef>(storage_);
+            return cref();
         } else {
             return static_cast<IntType>(storage_ & top_mask);
         }
@@ -539,9 +569,18 @@ class Bits {
         requires(Wm <= W)
     constexpr Bits<Wm> truncate() const {
         Bits<Wm> result{};
-        for (size_t i = 0; i < Wm; ++i) {
-            if (get_bit(i)) {
-                result.set_bit(i, true);
+        if constexpr (Wm == 0) {
+            return result;
+        } else if constexpr (is_wide && Bits<Wm>::is_wide) {
+            for (size_t i = 0; i < result.storage_.size(); ++i) {
+                result.storage_[i] = storage_[i];
+            }
+            clear_unused_bits(result.mut());
+        } else {
+            for (size_t i = 0; i < Wm; ++i) {
+                if (get_bit(i)) {
+                    result.set_bit(i, true);
+                }
             }
         }
         return result;
@@ -603,7 +642,9 @@ class Bits {
             auto val = raw();
             for (size_t i = W; i > 0; --i) {
                 size_t bit_idx = i - 1;
-                res.push_back(((val.word(bit_idx / 64) >> (bit_idx % 64)) & 1) ? '1' : '0');
+                res.push_back(
+                    ((val.data()[bit_idx / 64] >> (bit_idx % 64)) & 1) ? '1' : '0'
+                );
             }
             return res;
         }
@@ -622,16 +663,19 @@ class Bits {
             }
             return std::format("{}", static_cast<wide_uint>(raw()));
         } else {
-            bool negative = is_signed && storage_.is_negative();
-            BigIntStorage<W> mag = negative ? -storage_ : storage_;
-            if (!static_cast<bool>(mag)) {
+            bool negative = is_signed && detail::is_negative(cref());
+            Bits<W> mag = *this;
+            if (negative) {
+                negate(mag.mut());
+            }
+            if (mag == Bits<W>{}) {
                 return "0";
             }
-            BigIntStorage<W> ten(uint64_t{10});
+            Bits<W> ten(uint64_t{10});
             std::string digits;
-            while (static_cast<bool>(mag)) {
-                BigIntStorage<W> rem = mag.umod(ten);
-                digits.push_back(static_cast<char>('0' + rem.get_word(0)));
+            while (mag != Bits<W>{}) {
+                Bits<W> rem = mag.umod(ten);
+                digits.push_back(static_cast<char>('0' + rem.storage_[0]));
                 mag = mag.udiv(ten);
             }
             if (negative) {
@@ -680,7 +724,7 @@ class Bits {
             return Bits<W>{};
         } else if constexpr (is_wide) {
             IntType result = storage_;
-            add_assign(result, other.storage_);
+            add_assign(WordSpan{result, W}, other.cref());
             return Bits<W>(result);
         } else {
             return Bits<W>(static_cast<IntType>(raw() + other.raw()));
@@ -692,7 +736,7 @@ class Bits {
             return Bits<W>{};
         } else if constexpr (is_wide) {
             IntType result = storage_;
-            sub_assign(result, other.storage_);
+            sub_assign(WordSpan{result, W}, other.cref());
             return Bits<W>(result);
         } else {
             return Bits<W>(static_cast<IntType>(raw() - other.raw()));
@@ -705,7 +749,7 @@ class Bits {
         } else if constexpr (is_wide) {
             // multiply() needs dst disjoint from both operands.
             IntType result = storage_;
-            multiply(result, storage_, other.storage_);
+            multiply(WordSpan{result, W}, cref(), other.cref());
             return Bits<W>(result);
         } else {
             return Bits<W>(static_cast<IntType>(raw() * other.raw()));
@@ -718,7 +762,7 @@ class Bits {
             throw std::domain_error("Division by zero");
         }
         if constexpr (is_wide) {
-            return Bits<W>(storage_.udiv(other.storage_));
+            return divide_wide(other, false);
         } else {
             return Bits<W>(this->raw() / other.raw());
         }
@@ -730,7 +774,21 @@ class Bits {
             throw std::domain_error("Division by zero");
         }
         if constexpr (is_wide) {
-            return Bits<W>(storage_.sdiv(other.storage_));
+            bool lhs_negative = detail::is_negative(cref());
+            bool rhs_negative = detail::is_negative(other.cref());
+            Bits<W> lhs = *this;
+            Bits<W> rhs = other;
+            if (lhs_negative) {
+                negate(lhs.mut());
+            }
+            if (rhs_negative) {
+                negate(rhs.mut());
+            }
+            Bits<W> result = lhs.divide_wide(rhs, false);
+            if (lhs_negative != rhs_negative) {
+                negate(result.mut());
+            }
+            return result;
         } else {
             auto lhs_ext = this->sign_extended();
             auto rhs_ext = other.sign_extended();
@@ -749,7 +807,7 @@ class Bits {
             throw std::domain_error("Division by zero");
         }
         if constexpr (is_wide) {
-            return Bits<W>(storage_.umod(other.storage_));
+            return divide_wide(other, true);
         } else {
             return Bits<W>(this->raw() % other.raw());
         }
@@ -761,7 +819,20 @@ class Bits {
             throw std::domain_error("Division by zero");
         }
         if constexpr (is_wide) {
-            return Bits<W>(storage_.smod(other.storage_));
+            bool lhs_negative = detail::is_negative(cref());
+            Bits<W> lhs = *this;
+            Bits<W> rhs = other;
+            if (lhs_negative) {
+                negate(lhs.mut());
+            }
+            if (detail::is_negative(rhs.cref())) {
+                negate(rhs.mut());
+            }
+            Bits<W> result = lhs.divide_wide(rhs, true);
+            if (lhs_negative) {
+                negate(result.mut());
+            }
+            return result;
         } else {
             auto lhs_ext = this->sign_extended();
             auto rhs_ext = other.sign_extended();
@@ -772,6 +843,50 @@ class Bits {
             }
             return Bits<W>(lhs_ext % rhs_ext);
         }
+    }
+
+    constexpr WordConstSpan cref() const
+        requires(is_wide)
+    {
+        return WordConstSpan{std::span<Word const>{storage_}, W};
+    }
+
+    constexpr WordSpan mut()
+        requires(is_wide)
+    {
+        return WordSpan{std::span<Word>{storage_}, W};
+    }
+
+    constexpr Bits divide_wide(Bits const& rhs, bool remainder) const
+        requires(is_wide)
+    {
+        unsigned lhs_words = active_words(cref());
+        unsigned rhs_words = active_words(rhs.cref());
+        if (lhs_words == 0 || detail::ucompare(cref(), rhs.cref()) < 0) {
+            return remainder ? *this : Bits{};
+        }
+        if (*this == rhs) {
+            return remainder ? Bits{} : Bits{Word{1}};
+        }
+
+        constexpr size_t max_limbs = std::tuple_size_v<IntType> * limbs_per_word;
+        std::array<DivLimb, max_limbs * 2 + 1> u{};
+        std::array<DivLimb, max_limbs> v{};
+        std::array<DivLimb, max_limbs * 2> q{};
+        std::array<DivLimb, max_limbs> r{};
+        DivideScratch scratch{u, v, q, r};
+        Bits result;
+        divide_impl(
+            cref().data(),
+            lhs_words,
+            rhs.cref().data(),
+            rhs_words,
+            remainder ? std::span<Word>{} : std::span<Word>{result.storage_},
+            remainder ? std::span<Word>{result.storage_} : std::span<Word>{},
+            scratch
+        );
+        clear_unused_bits(result.mut());
+        return result;
     }
 
     IntType storage_{};
@@ -785,6 +900,12 @@ class Bits {
             return Bits<Wm>{};
         } else if constexpr (!is_wide && !Bits<Wm>::is_wide) {
             return Bits<Wm>(static_cast<typename Bits<Wm>::IntType>(raw()));
+        } else if constexpr (is_wide && Bits<Wm>::is_wide) {
+            Bits<Wm> result{};
+            for (size_t i = 0; i < storage_.size(); ++i) {
+                result.storage_[i] = storage_[i];
+            }
+            return result;
         } else {
             Bits<Wm> result{};
             for (size_t i = 0; i < W; ++i) {
@@ -797,7 +918,7 @@ class Bits {
     }
 
     // Mask of the W valid low bits within the native storage word. Only used on
-    // the native path; the wide (BigInt) path and the zero-width path have
+    // the native path; the wide word-array path and the zero-width path have
     // no meaningful mask.
     static constexpr IntType compute_top_mask() {
         if constexpr (W == 0 || is_wide) {
@@ -811,7 +932,7 @@ class Bits {
 
     static constexpr IntType top_mask = compute_top_mask();
 
-    // Format the wide (BigInt) storage into `num_chars` characters of
+    // Format the wide word-array storage into `num_chars` characters of
     // `bits_per_digit` bits each, most-significant digit first. `digit_to_char`
     // maps a 0..(2^bits_per_digit - 1) digit to its printable form. Shared by
     // to_hexadecimal_string (4) and to_octal_string (3).
@@ -827,7 +948,7 @@ class Bits {
             for (int j = bits_per_digit - 1; j >= 0; --j) {
                 size_t bit_idx = (i - 1) * bits_per_digit + j;
                 if (bit_idx < W) {
-                    d = (d << 1) | ((val.word(bit_idx / 64) >> (bit_idx % 64)) & 1);
+                    d = (d << 1) | ((val.data()[bit_idx / 64] >> (bit_idx % 64)) & 1);
                 }
             }
             res.push_back(digit_to_char(d));
@@ -989,7 +1110,7 @@ constexpr Bits<W + 1> abs_signed(Bits<W> const& a) {
 template <size_t bits>
 constexpr auto max_unsigned() {
     if constexpr ((bits > 64 && !supports_128B) || (bits > 128)) {
-        return ~BigIntStorage<bits>{};
+        return ~Bits<bits>{};
     } else if constexpr (bits > 64) {
         if constexpr (bits == 128) {
             return ~__uint128_t{0};

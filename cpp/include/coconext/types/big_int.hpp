@@ -1,10 +1,10 @@
-#ifndef COCONEXT_BIGINT_HPP
-#define COCONEXT_BIGINT_HPP
+#ifndef COCONEXT_BIG_INT_HPP
+#define COCONEXT_BIG_INT_HPP
 
 // The multi-word arithmetic kernels below (the `tc*` word-array primitives, the
 // Knuth division algorithm, and the division driver) are derived from LLVM's
 // APInt implementation (llvm/lib/Support/APInt.cpp). Storage is factored out
-// via non-owning views (BigIntConstRef / BigIntMutRef): the kernels operate on
+// via non-owning views (WordConstSpan / WordSpan): the kernels operate on
 // spans of words and carry no notion of who owns them, so the same code serves
 // any width and any storage strategy.
 //
@@ -12,8 +12,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "coconext/types/concepts.hpp"
-#include <array>
 #include <bit>
 #include <climits>
 #include <cstddef>
@@ -467,18 +465,18 @@ inline OwnedDivScratch make_owned_div_scratch(size_t max_limbs) {
 }
 
 // ---------------------------------------------------------------------------
-// BigIntConstRef / BigIntMutRef: non-owning views over big-int word storage.
+// WordConstSpan / WordSpan: non-owning views over word storage.
 // Storage-agnostic algorithms are free functions taking these views; owners
 // implicitly convert to the appropriate view, so every kernel has exactly one
 // implementation regardless of how the words are stored.
 // ---------------------------------------------------------------------------
 
-class BigIntConstRef {
+class WordConstSpan {
     std::span<Word const> data_;
     size_t bit_width_;
 
   public:
-    constexpr BigIntConstRef(std::span<Word const> d, size_t bw)
+    constexpr WordConstSpan(std::span<Word const> d, size_t bw)
         : data_(d), bit_width_(bw) {}
 
     constexpr std::span<Word const> data() const { return data_; }
@@ -487,15 +485,15 @@ class BigIntConstRef {
     constexpr Word word(size_t i) const { return data_[i]; }
 };
 
-class BigIntMutRef {
+class WordSpan {
     std::span<Word> data_;
     size_t bit_width_;
 
   public:
-    constexpr BigIntMutRef(std::span<Word> d, size_t bw) : data_(d), bit_width_(bw) {}
+    constexpr WordSpan(std::span<Word> d, size_t bw) : data_(d), bit_width_(bw) {}
 
-    constexpr operator BigIntConstRef() const {
-        return BigIntConstRef{
+    constexpr operator WordConstSpan() const {
+        return WordConstSpan{
             std::span<Word const>{data_.data(), data_.size()},
              bit_width_
         };
@@ -516,7 +514,7 @@ class BigIntMutRef {
 
 // ---- Read-only operations on a view ----
 
-constexpr bool is_negative(BigIntConstRef v) {
+constexpr bool is_negative(WordConstSpan v) {
     if (v.bit_width() == 0) {
         return false;
     }
@@ -524,7 +522,7 @@ constexpr bool is_negative(BigIntConstRef v) {
     return (v.data().back() >> sign_bit) & 1;
 }
 
-constexpr unsigned active_words(BigIntConstRef v) {
+constexpr unsigned active_words(WordConstSpan v) {
     auto d = v.data();
     for (size_t i = d.size(); i > 0; --i) {
         if (d[i - 1] != 0) {
@@ -534,18 +532,18 @@ constexpr unsigned active_words(BigIntConstRef v) {
     return 0;
 }
 
-constexpr void check_same_width(BigIntConstRef a, BigIntConstRef b) {
+constexpr void check_same_width(WordConstSpan a, WordConstSpan b) {
     if (a.bit_width() != b.bit_width()) {
-        throw std::invalid_argument("BigIntStorage bit width mismatch");
+        throw std::invalid_argument("bit width mismatch");
     }
 }
 
-constexpr int ucompare(BigIntConstRef a, BigIntConstRef b) {
+constexpr int ucompare(WordConstSpan a, WordConstSpan b) {
     check_same_width(a, b);
     return tc_compare(a.data(), b.data());
 }
 
-constexpr int scompare(BigIntConstRef a, BigIntConstRef b) {
+constexpr int scompare(WordConstSpan a, WordConstSpan b) {
     check_same_width(a, b);
     bool an = is_negative(a);
     bool bn = is_negative(b);
@@ -555,7 +553,7 @@ constexpr int scompare(BigIntConstRef a, BigIntConstRef b) {
     return tc_compare(a.data(), b.data());
 }
 
-constexpr size_t count_trailing_zeros(BigIntConstRef v) {
+constexpr size_t count_trailing_zeros(WordConstSpan v) {
     auto d = v.data();
     for (size_t i = 0; i < d.size(); ++i) {
         if (d[i] != 0) {
@@ -565,7 +563,7 @@ constexpr size_t count_trailing_zeros(BigIntConstRef v) {
     return v.bit_width();
 }
 
-constexpr size_t count_leading_zeros(BigIntConstRef v) {
+constexpr size_t count_leading_zeros(WordConstSpan v) {
     auto d = v.data();
     size_t nw = d.size();
     for (size_t i = nw; i > 0; --i) {
@@ -579,7 +577,7 @@ constexpr size_t count_leading_zeros(BigIntConstRef v) {
     return v.bit_width();
 }
 
-constexpr size_t popcount(BigIntConstRef v) {
+constexpr size_t popcount(WordConstSpan v) {
     size_t n = 0;
     for (Word w : v.data()) {
         n += std::popcount(w);
@@ -587,32 +585,32 @@ constexpr size_t popcount(BigIntConstRef v) {
     return n;
 }
 
-constexpr bool get_bit(BigIntConstRef v, size_t index) {
+constexpr bool get_bit(WordConstSpan v, size_t index) {
     return (v.data()[index / word_bits] >> (index % word_bits)) & 1;
 }
 
 // ---- Mutating operations on a view ----
 
-constexpr void clear_unused_bits(BigIntMutRef v) {
+constexpr void clear_unused_bits(WordSpan v) {
     auto d = v.data();
     if (!d.empty()) {
         d.back() &= v.last_word_mask();
     }
 }
 
-constexpr void add_assign(BigIntMutRef dst, BigIntConstRef rhs) {
+constexpr void add_assign(WordSpan dst, WordConstSpan rhs) {
     check_same_width(dst, rhs);
     tc_add(dst.data(), rhs.data(), 0);
     clear_unused_bits(dst);
 }
 
-constexpr void sub_assign(BigIntMutRef dst, BigIntConstRef rhs) {
+constexpr void sub_assign(WordSpan dst, WordConstSpan rhs) {
     check_same_width(dst, rhs);
     tc_subtract(dst.data(), rhs.data(), 0);
     clear_unused_bits(dst);
 }
 
-constexpr void and_assign(BigIntMutRef dst, BigIntConstRef rhs) {
+constexpr void and_assign(WordSpan dst, WordConstSpan rhs) {
     check_same_width(dst, rhs);
     auto d = dst.data();
     auto s = rhs.data();
@@ -621,7 +619,7 @@ constexpr void and_assign(BigIntMutRef dst, BigIntConstRef rhs) {
     }
 }
 
-constexpr void or_assign(BigIntMutRef dst, BigIntConstRef rhs) {
+constexpr void or_assign(WordSpan dst, WordConstSpan rhs) {
     check_same_width(dst, rhs);
     auto d = dst.data();
     auto s = rhs.data();
@@ -630,7 +628,7 @@ constexpr void or_assign(BigIntMutRef dst, BigIntConstRef rhs) {
     }
 }
 
-constexpr void xor_assign(BigIntMutRef dst, BigIntConstRef rhs) {
+constexpr void xor_assign(WordSpan dst, WordConstSpan rhs) {
     check_same_width(dst, rhs);
     auto d = dst.data();
     auto s = rhs.data();
@@ -639,7 +637,7 @@ constexpr void xor_assign(BigIntMutRef dst, BigIntConstRef rhs) {
     }
 }
 
-constexpr void bitnot(BigIntMutRef v) {
+constexpr void bitnot(WordSpan v) {
     for (auto& w : v.data()) {
         w = ~w;
     }
@@ -647,7 +645,7 @@ constexpr void bitnot(BigIntMutRef v) {
 }
 
 // Two's-complement negation: ~x + 1.
-constexpr void negate(BigIntMutRef v) {
+constexpr void negate(WordSpan v) {
     Word carry = 1;
     for (auto& w : v.data()) {
         w = ~w;
@@ -658,7 +656,7 @@ constexpr void negate(BigIntMutRef v) {
     clear_unused_bits(v);
 }
 
-constexpr void shift_left(BigIntMutRef v, size_t amount) {
+constexpr void shift_left(WordSpan v, size_t amount) {
     if (amount >= v.bit_width()) {
         for (auto& w : v.data()) {
             w = 0;
@@ -669,7 +667,7 @@ constexpr void shift_left(BigIntMutRef v, size_t amount) {
     clear_unused_bits(v);
 }
 
-constexpr void shift_right_logical(BigIntMutRef v, size_t amount) {
+constexpr void shift_right_logical(WordSpan v, size_t amount) {
     if (amount >= v.bit_width()) {
         for (auto& w : v.data()) {
             w = 0;
@@ -679,7 +677,7 @@ constexpr void shift_right_logical(BigIntMutRef v, size_t amount) {
     tc_shift_right(v.data(), static_cast<unsigned>(amount));
 }
 
-constexpr void shift_right_arith(BigIntMutRef v, size_t amount) {
+constexpr void shift_right_arith(WordSpan v, size_t amount) {
     if (amount == 0) {
         return;
     }
@@ -699,7 +697,7 @@ constexpr void shift_right_arith(BigIntMutRef v, size_t amount) {
 }
 
 // dst = lhs * rhs (truncated). dst must be disjoint from operands.
-constexpr void multiply(BigIntMutRef dst, BigIntConstRef lhs, BigIntConstRef rhs) {
+constexpr void multiply(WordSpan dst, WordConstSpan lhs, WordConstSpan rhs) {
     check_same_width(dst, lhs);
     check_same_width(dst, rhs);
     tc_multiply(dst.data(), lhs.data(), rhs.data());
@@ -710,7 +708,7 @@ constexpr void multiply(BigIntMutRef dst, BigIntConstRef lhs, BigIntConstRef rhs
 // dst to be zero-valued on entry. Accepts ' and _ as digit separators.
 // Throws std::invalid_argument on malformed input and std::out_of_range if
 // the value doesn't fit in dst.bit_width() bits.
-constexpr void parse_into(BigIntMutRef dst, std::string_view str) {
+constexpr void parse_into(WordSpan dst, std::string_view str) {
     if (str.empty()) {
         return;
     }
@@ -754,7 +752,7 @@ constexpr void parse_into(BigIntMutRef dst, std::string_view str) {
 
             unsigned abs_bit = word_idx * word_bits + bit_shift;
             if (val != 0 && (abs_bit >= bw || (abs_bit + std::bit_width(val)) > bw)) {
-                throw std::out_of_range("Hexadecimal literal exceeds BigIntStorage width");
+                throw std::out_of_range("Hexadecimal literal exceeds bit width");
             }
 
             if (val != 0) {
@@ -785,7 +783,7 @@ constexpr void parse_into(BigIntMutRef dst, std::string_view str) {
                 carry = upper >> 32;
             }
             if (carry != 0 || (!d.empty() && (d.back() & ~top_mask) != 0)) {
-                throw std::out_of_range("Decimal literal exceeds BigIntStorage width");
+                throw std::out_of_range("Decimal literal exceeds bit width");
             }
         }
     }
@@ -799,7 +797,7 @@ constexpr void parse_into(BigIntMutRef dst, std::string_view str) {
 // Load a signed/unsigned 128-bit native value into `dst`, sign- or
 // zero-extended as appropriate. Requires dst to be zero on entry (default).
 #if defined(__SIZEOF_INT128__)
-constexpr void load_int128(BigIntMutRef dst, __int128_t val) {
+constexpr void load_int128(WordSpan dst, __int128_t val) {
     auto d = dst.data();
     if (d.empty()) {
         return;
@@ -816,7 +814,7 @@ constexpr void load_int128(BigIntMutRef dst, __int128_t val) {
     clear_unused_bits(dst);
 }
 
-constexpr void load_uint128(BigIntMutRef dst, __uint128_t val) {
+constexpr void load_uint128(WordSpan dst, __uint128_t val) {
     auto d = dst.data();
     if (d.empty()) {
         return;
@@ -829,244 +827,6 @@ constexpr void load_uint128(BigIntMutRef dst, __uint128_t val) {
 }
 #endif
 
-// ---------------------------------------------------------------------------
-// BigIntStorage<BitWidth>: fixed-width, std::array-backed, constexpr word storage.
-// The wide (W > 128) storage tier of detail::Bits. It owns the words and
-// exposes the two views; all arithmetic lives in the view free functions
-// above. Division is the one exception -- it needs scratch space, whose shape
-// (std::array here) depends on the storage strategy.
-// ---------------------------------------------------------------------------
-
-template <size_t BitWidth>
-class BigIntStorage {
-  public:
-    using WordType = uint64_t;
-    static constexpr unsigned word_width = 64;
-    static constexpr unsigned num_of_words = (BitWidth + word_width - 1) / word_width;
-
-  private:
-    static constexpr WordType get_last_word_mask() {
-        unsigned valid_bits = BitWidth % word_width;
-        if (valid_bits == 0) {
-            return ~WordType(0);
-        }
-        return (WordType(1) << valid_bits) - 1;
-    }
-
-    static constexpr WordType last_word_mask = get_last_word_mask();
-    std::array<WordType, num_of_words> data{};
-
-    constexpr void mask_top_word() { data.back() &= last_word_mask; }
-
-    // Scratch large enough for the worst-case operand of this width.
-    struct DivScratchStorage {
-        static constexpr size_t max_limbs = num_of_words * limbs_per_word;
-        std::array<DivLimb, max_limbs + max_limbs + 1> U{};
-        std::array<DivLimb, max_limbs> V{};
-        std::array<DivLimb, max_limbs + max_limbs> Q{};
-        std::array<DivLimb, max_limbs> R{};
-        constexpr DivideScratch view() {
-            return DivideScratch{
-                std::span<DivLimb>{U},
-                std::span<DivLimb>{V},
-                std::span<DivLimb>{Q},
-                std::span<DivLimb>{R}
-            };
-        }
-    };
-
-  public:
-    constexpr BigIntStorage() = default;
-
-    template <NativeInteger T>
-        requires(sizeof(T) <= sizeof(WordType))
-    constexpr BigIntStorage(T val) {
-        data[0] = static_cast<WordType>(val);
-        if constexpr (std::is_signed_v<T>) {
-            if (val < 0) {
-                for (unsigned i = 1; i < num_of_words; ++i) {
-                    data[i] = ~WordType(0);
-                }
-            }
-        }
-        mask_top_word();
-    }
-
-#if defined(__SIZEOF_INT128__)
-    constexpr BigIntStorage(__int128_t val) { load_int128(*this, val); }
-    constexpr BigIntStorage(__uint128_t val) { load_uint128(*this, val); }
-#endif
-
-    explicit constexpr BigIntStorage(std::string_view str) { parse_into(*this, str); }
-
-    constexpr BigIntStorage& operator=(BigIntStorage const&) = default;
-    constexpr BigIntStorage& operator=(BigIntStorage&&) noexcept = default;
-    constexpr BigIntStorage(BigIntStorage const&) = default;
-    constexpr BigIntStorage(BigIntStorage&&) noexcept = default;
-
-    constexpr operator BigIntConstRef() const {
-        return BigIntConstRef{std::span<WordType const>{data}, BitWidth};
-    }
-    constexpr operator BigIntMutRef() {
-        return BigIntMutRef{std::span<WordType>{data}, BitWidth};
-    }
-
-    constexpr WordType get_word(size_t index) const { return data[index]; }
-    constexpr std::array<WordType, num_of_words> const& get_data() const { return data; }
-
-    constexpr bool is_negative() const { return detail::is_negative(*this); }
-    constexpr size_t count_trailing_zeros() const {
-        return detail::count_trailing_zeros(*this);
-    }
-    constexpr size_t count_leading_zeros() const {
-        return detail::count_leading_zeros(*this);
-    }
-    constexpr size_t popcount() const { return detail::popcount(*this); }
-    constexpr int ucompare(BigIntStorage const& rhs) const {
-        return detail::ucompare(*this, rhs);
-    }
-    constexpr int scompare(BigIntStorage const& rhs) const {
-        return detail::scompare(*this, rhs);
-    }
-
-    constexpr explicit operator bool() const { return active_words(*this) != 0; }
-
-    constexpr bool operator==(BigIntStorage const& rhs) const { return data == rhs.data; }
-    constexpr bool operator!=(BigIntStorage const& rhs) const { return !(*this == rhs); }
-
-    constexpr BigIntStorage operator+(BigIntStorage const& rhs) const {
-        BigIntStorage result(*this);
-        add_assign(result, rhs);
-        return result;
-    }
-
-    constexpr BigIntStorage operator-(BigIntStorage const& rhs) const {
-        BigIntStorage result(*this);
-        sub_assign(result, rhs);
-        return result;
-    }
-
-    // multiply(dst, lhs, rhs) requires dst disjoint from both operands; the
-    // copy is a distinct object whose contents get overwritten.
-    constexpr BigIntStorage operator*(BigIntStorage const& rhs) const {
-        BigIntStorage result(*this);
-        multiply(result, *this, rhs);
-        return result;
-    }
-
-    constexpr BigIntStorage operator&(BigIntStorage const& rhs) const {
-        BigIntStorage result(*this);
-        and_assign(result, rhs);
-        return result;
-    }
-
-    constexpr BigIntStorage operator|(BigIntStorage const& rhs) const {
-        BigIntStorage result(*this);
-        or_assign(result, rhs);
-        return result;
-    }
-
-    constexpr BigIntStorage operator^(BigIntStorage const& rhs) const {
-        BigIntStorage result(*this);
-        xor_assign(result, rhs);
-        return result;
-    }
-
-    constexpr BigIntStorage operator~() const {
-        BigIntStorage result(*this);
-        bitnot(result);
-        return result;
-    }
-
-    constexpr BigIntStorage operator-() const {
-        BigIntStorage result(*this);
-        negate(result);
-        return result;
-    }
-
-    // Division stays owner-side: scratch shape (std::array vs unique_ptr[])
-    // depends on the storage tier.
-    constexpr BigIntStorage udiv(BigIntStorage const& rhs) const {
-        unsigned lw = active_words(*this);
-        unsigned rw = active_words(rhs);
-        if (lw == 0 || ucompare(rhs) < 0) {
-            return BigIntStorage{};
-        }
-        if (*this == rhs) {
-            return BigIntStorage(WordType{1});
-        }
-        BigIntStorage result;
-        DivScratchStorage scratch;
-        divide_impl(
-            std::span<WordType const>{data},
-            lw,
-            std::span<WordType const>{rhs.data},
-            rw,
-            std::span<WordType>{result.data},
-            std::span<WordType>{},
-            scratch.view()
-        );
-        result.mask_top_word();
-        return result;
-    }
-
-    constexpr BigIntStorage umod(BigIntStorage const& rhs) const {
-        unsigned lw = active_words(*this);
-        unsigned rw = active_words(rhs);
-        if (lw == 0 || ucompare(rhs) < 0) {
-            return *this;
-        }
-        if (*this == rhs) {
-            return BigIntStorage{};
-        }
-        BigIntStorage result;
-        DivScratchStorage scratch;
-        divide_impl(
-            std::span<WordType const>{data},
-            lw,
-            std::span<WordType const>{rhs.data},
-            rw,
-            std::span<WordType>{},
-            std::span<WordType>{result.data},
-            scratch.view()
-        );
-        result.mask_top_word();
-        return result;
-    }
-
-    constexpr BigIntStorage sdiv(BigIntStorage const& rhs) const {
-        bool ln = is_negative();
-        bool rn = rhs.is_negative();
-        BigIntStorage a = ln ? -(*this) : *this;
-        BigIntStorage b = rn ? -rhs : rhs;
-        BigIntStorage q = a.udiv(b);
-        return (ln ^ rn) ? -q : q;
-    }
-
-    constexpr BigIntStorage smod(BigIntStorage const& rhs) const {
-        bool ln = is_negative();
-        BigIntStorage a = ln ? -(*this) : *this;
-        BigIntStorage b = rhs.is_negative() ? -rhs : rhs;
-        BigIntStorage r = a.umod(b);
-        return ln ? -r : r;
-    }
-};
-
-// Free-function shift wrappers kept for source-level compat with int_base.hpp.
-template <size_t BW>
-constexpr void shift_right_logical(BigIntStorage<BW>& val, size_t amount) {
-    detail::shift_right_logical(static_cast<BigIntMutRef>(val), amount);
-}
-
-template <size_t BW>
-constexpr void shift_right_arith(BigIntStorage<BW>& val, size_t amount) {
-    detail::shift_right_arith(static_cast<BigIntMutRef>(val), amount);
-}
-
-template <size_t BW>
-constexpr void shift_left(BigIntStorage<BW>& val, size_t amount) {
-    detail::shift_left(static_cast<BigIntMutRef>(val), amount);
-}
 }  // namespace coconext::types::detail
 
-#endif  // COCONEXT_BIGINT_HPP
+#endif  // COCONEXT_BIG_INT_HPP

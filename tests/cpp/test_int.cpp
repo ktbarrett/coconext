@@ -16,7 +16,7 @@ using SW = detail::same_width;
 TEST(TestBits, JustAbove128) {
     static_assert(std::is_same_v<detail::Bits<127>::IntType, __uint128_t>);
     static_assert(std::is_same_v<detail::Bits<128>::IntType, __uint128_t>);
-    static_assert(std::is_same_v<detail::Bits<129>::IntType, detail::BigIntStorage<129>>);
+    static_assert(std::is_same_v<detail::Bits<129>::IntType, detail::WideWords<129>>);
 }
 
 TEST(TestBits, single_word_constructor_supports_128) {
@@ -170,7 +170,7 @@ TEST(TestBits, shift_left_supports_128) {
 TEST(TestBits, JustAbove64) {
     static_assert(std::is_same_v<detail::Bits<63>::IntType, uint64_t>);
     static_assert(std::is_same_v<detail::Bits<64>::IntType, uint64_t>);
-    static_assert(std::is_same_v<detail::Bits<65>::IntType, detail::BigIntStorage<65>>);
+    static_assert(std::is_same_v<detail::Bits<65>::IntType, detail::WideWords<65>>);
 }
 
 #endif  // defined(__SIZEOF_INT128__)
@@ -526,7 +526,7 @@ TEST(TestBits, shift_left) {
     EXPECT_EQ(a, b);
 }
 
-// Wide (BigInt-backed) arithmetic. Reference values computed with Python's
+// Wide word-array arithmetic. Reference values computed with Python's
 // arbitrary-precision integers.
 TEST(TestBits, arithmetic_operations_wide) {
     detail::Bits<200> a{"0x1234567890ABCDEF1122334455667788AABBCCDD"};
@@ -678,7 +678,7 @@ TEST(TestBits, popcount_and_count_zeros_odd_widths) {
     EXPECT_EQ(g.count_trailing_zeros(), 0u);
 #endif
 
-    // Wide (BigInt) path parity check.
+    // Wide word-array path parity check.
     detail::Bits<200> h(0);
     EXPECT_EQ(h.popcount(), 0u);
     EXPECT_EQ(h.count_leading_zeros(), 200u);
@@ -705,7 +705,7 @@ TEST(TestBits, native_storage_is_exact_width) {
 TEST(TestBits, raw_type_by_tier) {
     static_assert(std::is_same_v<detail::Bits<8>::RawType, uint8_t>);
     static_assert(std::is_same_v<detail::Bits<64>::RawType, uint64_t>);
-    static_assert(std::is_same_v<detail::Bits<200>::RawType, detail::BigIntConstRef>);
+    static_assert(std::is_same_v<detail::Bits<200>::RawType, detail::WordConstSpan>);
     SUCCEED();
 }
 

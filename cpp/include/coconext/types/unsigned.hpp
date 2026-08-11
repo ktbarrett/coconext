@@ -37,7 +37,7 @@ class Unsigned {
             R.length() > 0, "Unsigned<0> has no integer value; cannot convert to native int"
         );
         static_assert(
-            !detail::Bits<R.length()>::is_wide, "Conversion from BigInt to native int"
+            !detail::Bits<R.length()>::is_wide, "Conversion from wide Bits to native int"
         );
 
         auto val = this->value_;
@@ -99,7 +99,10 @@ class Unsigned {
     explicit(R.length() < R2.length()) constexpr Unsigned(Unsigned<R2> const& other) {
         if constexpr (R.length() >= R2.length()) {
             value_ = other.value_;
-        } else if (other.value_.ule(max_unsigned<R.length()>())) {
+        } else if (
+            other.value_.ule((~Bits<R.length()>{}).template zero_extend<R2.length()>())
+        )
+        {
             value_ = coconext::types::resize<R.length()>(other).value_;
         } else {
             throw std::out_of_range("value does not fit in Unsigned width");
@@ -274,7 +277,7 @@ class Unsigned {
     constexpr Unsigned<R> operator<<(ShiftType const& shift_amount) const {
         using CleanType = std::remove_cvref_t<ShiftType>;
 
-        // shift amount cannot be a BigInt i.e non native bit width, kind of an impossible
+        // Shift amounts must fit in a native integer.
         // thing
         static_assert(
             std::is_integral_v<CleanType> || detail::is_coconext_unsigned_v<CleanType>
@@ -314,7 +317,7 @@ class Unsigned {
     constexpr Unsigned<R> operator>>(ShiftType const& shift_amount) const {
         using CleanType = std::remove_cvref_t<ShiftType>;
 
-        // shift amount cannot be a BigInt i.e non native bit width, kind of an impossible
+        // Shift amounts must fit in a native integer.
         // thing
         static_assert(
             std::is_integral_v<CleanType> || detail::is_coconext_unsigned_v<CleanType>

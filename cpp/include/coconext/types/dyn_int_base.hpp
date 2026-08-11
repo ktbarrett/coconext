@@ -2,7 +2,7 @@
 #define COCONEXT_DYN_INT_BASE_HPP
 
 #include <algorithm>
-#include <coconext/types/bigint.hpp>
+#include <coconext/types/big_int.hpp>
 #include <coconext/types/int_base.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -143,7 +143,7 @@ class DynBits {
         }
     }
 
-    BigIntConstRef raw() const {
+    WordConstSpan raw() const {
         if (width_ == 0) {
             throw std::domain_error("raw() on a null DynBits; it has no value");
         }
@@ -376,8 +376,8 @@ class DynBits {
                            : std::span<Word const>{storage_.heap_.get(), num_words()};
     }
 
-    BigIntConstRef cref() const { return BigIntConstRef{words(), width_}; }
-    BigIntMutRef mut() { return BigIntMutRef{words(), width_}; }
+    WordConstSpan cref() const { return WordConstSpan{words(), width_}; }
+    WordSpan mut() { return WordSpan{words(), width_}; }
 
     DynBits widened(size_t target) const {
         DynBits result(target);
