@@ -319,16 +319,14 @@ TEST(DynBits, agrees_with_static_bits_at_tier_boundaries) {
         DynBits b(static_b);
         EXPECT_EQ(a.width(), w);
         EXPECT_EQ(
-            exact_add(a, b).to_decimal_string(),
-            exact_add(static_a, static_b).to_decimal_string()
+            exact_add(a, b).to_decimal_string(), (static_a + static_b).to_decimal_string()
         );
         EXPECT_EQ(
-            exact_mul(a, b).to_decimal_string(),
-            exact_mul(static_a, static_b).to_decimal_string()
+            exact_mul(a, b).to_decimal_string(), (static_a * static_b).to_decimal_string()
         );
         EXPECT_EQ(
             exact_udiv(a, b).to_decimal_string(),
-            exact_udiv(static_a, static_b).to_decimal_string()
+            static_a.udiv(static_b).to_decimal_string()
         );
         EXPECT_EQ(a.popcount(), static_a.popcount());
         EXPECT_EQ(a.count_leading_zeros(), static_a.count_leading_zeros());
