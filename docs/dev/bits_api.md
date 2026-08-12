@@ -22,13 +22,19 @@ Storage selection is a function of `W`:
 | `17 <= W <= 32` | `uint32_t` |
 | `33 <= W <= 64` | `uint64_t` |
 | `65 <= W <= 128` | `__uint128_t` (GCC/Clang only; conditional on `__SIZEOF_INT128__`) |
-| `W >= 129` | `detail::BigInt<W>` |
+| `W >= 129` | `std::array<uint64_t, ceil(W / 64)>` owned directly by `Bits<W>` |
 
 The native tier is the smallest unsigned native that holds `W` bits. This makes `Bits<8>` exactly one byte and lets arrays of `Unsigned<8>` auto-vectorize.
 
 The storage member is declared `[[no_unique_address]]` so `Bits<0>` collapses when composed into an enclosing type.
 
-`BigInt<W>` is a roll-your-own wide integer over `std::array<uint64_t, ceil(W / 64)>` (LSB-first word order). Optional APInt backing is selectable via `-DCOCONEXT_USE_APINT`; the public `Bits<W>` API is identical either way.
+On the wide tier, `Bits<W>` directly owns a `std::array<uint64_t, ceil(W / 64)>`
+(LSB-first word order). Word-array kernels ported from LLVM's APInt operate on
+that storage. The same kernels implement bit access, width changes, saturation,
+formatting, arithmetic, and division for `DynBits`; the owning types only
+select storage, account for result widths, and provide division scratch.
+`Bits<W>` supplies fixed-size stack scratch while `DynBits` allocates scratch
+at runtime. There is no separate owning big-integer type.
 
 ### Default value
 
@@ -38,13 +44,13 @@ Zero (all bits zero) for every `W`, including `W == 0`.
 
 All members and free-function operations are marked `constexpr`. The SBO path (`W <= 64`, or `W <= 128` where `__int128_t` is available) is fully constexpr-callable.
 
-The wide path (`BigInt<W>` storage) is constexpr-friendly under C++20 with the in-tree implementation (loops over `std::array<uint64_t, N>`). The APInt-backed wide path is not constexpr. The public `Bits<W>` contract does not promise constexpr for the wide path.
+The wide path is fully constexpr: the kernels are loops over `std::array<uint64_t, N>`, proven by a compile-time division-identity test.
 
 Operations that throw (division/modulus by zero) only become non-constant-expression on the specific call that fires the throw. This is the standard "constant-source overflow becomes a compile error" mechanism.
 
 ## `noexcept` policy
 
-Uniformly `noexcept` except for the ops explicitly listed as throwing (division/remainder/modulus on a zero divisor). Wide-path allocation failures (only reachable with APInt backing) violate `noexcept` and terminate the program via the standard mechanism. This matches the container-code convention and keeps the SBO and wide surfaces API-identical.
+Uniformly `noexcept` except for the ops explicitly listed as throwing (division/remainder/modulus on a zero divisor, and the string constructor on a literal too wide for the type). No path allocates, so the SBO and wide surfaces are API-identical.
 
 Full noexcept table:
 
@@ -62,13 +68,14 @@ Full noexcept table:
 
 - **Canonical storage**: bits `[W, storage_bit_width)` are always zero. `raw()` returns storage in this canonical form. Operations that could dirty high bits mask before storing. Any callsite that mutates through `raw()` is responsible for re-establishing this invariant before the object is observed externally.
 - **Bit ordering**: `get(0)` is the LSB. On wide storage, word 0 of the underlying `std::array<uint64_t, N>` holds bits `[0, 64)`, word 1 holds `[64, 128)`, etc. Platform byte-order does not affect this — the layout is defined against the abstract bit index, not against memory endianness.
-- **Moved-from state**: valid but unspecified. Wide-path `BigInt` most likely lands at zero after move; the spec does not promise it.
+- **Moved-from state**: valid but unspecified. No tier allocates, so a move is a copy in practice; the spec does not promise it.
 
 ## Type-level introspection
 
 - `Bits<W>::width` — the width `W` as a `size_t`.
 - `Bits<W>::IntType` — the chosen storage type (see table). Useful for `static_assert`s in `detail::` code and for the SBO/wide branch in generic code.
-- `Bits<W>::uses_sbo` — `true` iff the storage is a native integer (including `__uint128_t`); `false` iff it is `BigInt<W>`.
+- `Bits<W>::is_wide` — `false` iff the storage is a native integer (including `__uint128_t`); `true` iff it is a directly owned word array.
+- `Bits<W>::RawType` — what `raw()` hands back: `IntType` on the native tier, a non-owning `WordConstSpan` on the wide tier.
 
 ## Construction
 
@@ -294,6 +301,16 @@ constexpr Bits<Wa + Wb> mul_signed  (Bits<Wa> const&, Bits<Wb> const&) noexcept;
 
 // Division: quotient grows by 1 to hold signed_min / -1 losslessly
 template <size_t Wa, size_t Wb>
+constexpr std::pair<Bits<Wa + 1>, Bits<Wb>>
+divrem_unsigned(Bits<Wa> const&, Bits<Wb> const&);
+template <size_t Wa, size_t Wb>
+constexpr std::pair<Bits<Wa + 1>, Bits<Wb>>
+divrem_signed(Bits<Wa> const&, Bits<Wb> const&);
+template <size_t Wa, size_t Wb>
+constexpr std::pair<Bits<Wa + 1>, Bits<Wb>>
+divmod_signed(Bits<Wa> const&, Bits<Wb> const&);
+
+template <size_t Wa, size_t Wb>
 constexpr Bits<Wa + 1> div_unsigned(Bits<Wa> const&, Bits<Wb> const&);
 template <size_t Wa, size_t Wb>
 constexpr Bits<Wa + 1> div_signed  (Bits<Wa> const&, Bits<Wb> const&);
@@ -316,6 +333,9 @@ constexpr Bits<W + 1> abs_signed(Bits<W> const&) noexcept;
 Notes:
 
 - `add`/`sub` are sign-named because the grown top bit is filled differently: carry-out for unsigned, sign bit for signed.
+- `divrem_signed` uses truncating division and returns a dividend-signed remainder.
+  `divmod_signed` uses floor division and returns a divisor-signed modulo.
+  Each pair is produced by one division pass.
 - `rem_signed` is C-style (result sign follows dividend); `mod_signed` is VHDL/Python (result sign follows divisor). User-type `%` dispatches to `rem_signed`; user-type `mod` free function dispatches to `mod_signed`. Unsigned operands have no `mod` variant — `rem_unsigned` covers it.
 - `div_*`/`rem_*`/`mod_signed` throw `std::domain_error` on zero divisor. When either operand is a constant expression and the divisor is zero, the throw makes the call a non-constant-expression → compile error at that call site.
 - Result widths match the user-type spec's [Width growth table](unsigned_signed_api.md#width-growth) and the [Sfixed/Ufixed table](sfixed_ufixed_api.md#width-growth).
@@ -385,16 +405,20 @@ Op-by-op behavior (falls out of the invariants; listed so consumers don't re-der
 
 The following are user-type concerns and are deliberately absent from `Bits<W>`:
 
-- **No string construction / `to_string`**. String formatting lives on the user-type `std::formatter` specializations and on the `LogicVector`/`LogicArray`/`BitVector`/`BitArray` `to_string`.
 - **No conversion to / from native integer**. `Unsigned<R>` / `Signed<R>` / `Sfixed<R>` / `Ufixed<R>` provide their own `explicit operator T()` for native integers.
 - **No `is_negative` / sign accessor**. Sign is a property of the interpretation, not the storage; the user type that knows its interpretation derives this from `raw()` or `get(W - 1)`.
 - **No named factories** (`all_zeros`, `all_ones`, `signed_min`, etc.). Callers that need those spell them directly.
-- **No same-width `+ - *` operators**. Every path a user type walks uses either the growing free functions or `resize + as` composition; a same-width wrapping arithmetic op has no consumer.
-- **No same-width `udiv` / `sdiv` / `umod` / `smod`**. Same reason.
+- **No public same-width `+ - *` or `udiv` / `sdiv` / `umod` / `smod`**. Every path a user type walks uses either the growing free functions or `resize + as` composition, so a same-width wrapping op has no consumer on the public surface. The primitives still exist privately, since the growing forms are built from them; `detail::same_width` is the only way in, and only the growing functions and the division-kernel tests use it.
 - **No compound assignment on `Bits<W>`** (`&= |= ^= += -= *=`). The non-compound forms cover every internal call site.
 - **No `slice<Hi, Lo>()` returning an owned narrower `Bits`**. The slice views are the primitive; copy-out is a `Bits<Wm>` ctor from a slice.
-- **No rotate**, **no `count_leading/trailing_zeros/ones`**, **no word-level access**. No consumer.
+- **No rotate**. No consumer.
 - **No cross-width comparison / cross-width converting ctor**. User types widen through `zero_extend`/`sign_extend` first.
+
+### Where the implementation diverges from this document
+
+The following are specified above but **not implemented**, and no consumer needs them yet: slicing (`BitsSlice` / `StaticBitsSlice` and the `slice()` members), `concat`, `reverse()`, `std::hash<Bits<W>>`, `any` / `none` / `all`, and the `compare_unsigned` / `compare_signed` three-way forms (the named `ult` / `slt` families are what exists).
+
+Conversely, `Bits<W>` **does** provide several things this document lists as absent, because they turned out to have consumers: `Bits(std::string_view)` at every width, the `to_binary_string` / `to_decimal_string` / `to_hexadecimal_string` / `to_octal_string` family (used by the `Unsigned` / `Signed` formatters), `operator<<` / `srl` / `sra`, `count_leading_zeros` / `count_trailing_zeros` (used by `index_of` / `rindex_of` in `bit_array.hpp`), and `get_word`-style word access on the wide tier via the `raw()` view.
 
 ## Friend access
 

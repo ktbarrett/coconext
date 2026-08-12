@@ -118,6 +118,10 @@ docs = [
 [tool.uv.dependency-groups]
 docs = {requires-python = ">=3.11"}
 
+# setuptools 84 broke cocotb, this is a temporary fix until they fix it upstream.
+[tool.uv.extra-build-dependencies]
+cocotb = ["setuptools<84"]
+
 [tool.coverage.report]
 exclude_also = [
     "@(abc\\.)?abstractmethod",

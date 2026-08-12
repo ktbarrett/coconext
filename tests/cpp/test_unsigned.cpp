@@ -489,4 +489,85 @@ TEST(TestUnsigned, unary_ops) {
     EXPECT_EQ(static_cast<int>(pos_a), 150);
 }
 
+TEST(TestUnsigned, zero_width) {
+    Unsigned<0> a{};
+    Unsigned<0> b{};
+
+    EXPECT_TRUE(a == b);
+    EXPECT_FALSE(a != b);
+
+    // operator bool: null is falsy
+    EXPECT_FALSE(static_cast<bool>(a));
+
+    // ++/--/+= wrap through resize<0> and land back on null
+    Unsigned<0> c{};
+    ++c;
+    EXPECT_TRUE(c == Unsigned<0>{});
+    c++;
+    EXPECT_TRUE(c == Unsigned<0>{});
+    --c;
+    EXPECT_TRUE(c == Unsigned<0>{});
+    c += 5;
+    EXPECT_TRUE(c == Unsigned<0>{});
+
+    // Binary arithmetic widens: Unsigned<0> + Unsigned<0> -> Unsigned<1>(0)
+    auto sum = a + b;
+    static_assert(std::is_same_v<decltype(sum), Unsigned<1>>);
+    EXPECT_EQ(static_cast<uint8_t>(sum), 0u);
+
+    // Iteration is empty
+    EXPECT_EQ(a.begin(), a.end());
+    EXPECT_EQ(a.size(), 0u);
+
+    // Formatting: value renders as "" (Bits<0>::to_*_string) inside the
+    // wrapper's braces.
+    EXPECT_EQ(std::format("{:b}", a), "Unsigned[-1 downto 0]{}");
+    EXPECT_EQ(std::format("{:d}", a), "Unsigned[-1 downto 0]{}");
+}
+
+// Resize now routes through the Bits width-changing primitives. These pin the
+// behaviour across the native/wide tier boundary, which the pre-existing tests
+// only covered on the native side.
+
+TEST(TestUnsigned, resize_across_the_tier_boundary) {
+    Unsigned<200> wide(12345);
+
+    // Wide -> native, both narrowing modes.
+    EXPECT_EQ(static_cast<int>(resize<32>(wide)), 12345);
+    EXPECT_EQ(static_cast<int>(resize<16>(wide, overflow_mode::wrap)), 12345);
+
+    // Native -> wide widens by zero-extension.
+    Unsigned<8> narrow(200);
+    auto grown = resize<200>(narrow);
+    EXPECT_EQ(std::format("{:d}", grown), "Unsigned[199 downto 0]{200}");
+
+    // Round trip preserves the value.
+    EXPECT_EQ(static_cast<int>(resize<8>(resize<200>(narrow))), 200);
+}
+
+TEST(TestUnsigned, saturation_clamps_from_the_wide_tier) {
+    Unsigned<200> big{detail::Bits<200>("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFF")};
+    EXPECT_EQ(static_cast<int>(resize<8>(big, overflow_mode::saturate)), 255);
+    EXPECT_EQ(static_cast<int>(resize<16>(big, overflow_mode::saturate)), 65535);
+
+    // A value that fits is not clamped.
+    Unsigned<200> small(42);
+    EXPECT_EQ(static_cast<int>(resize<8>(small, overflow_mode::saturate)), 42);
+
+    // Wrapping truncates instead.
+    Unsigned<200> v{detail::Bits<200>("0x123456789ABCDEF0123456789")};
+    EXPECT_EQ(static_cast<int>(resize<16>(v, overflow_mode::wrap)), 26505);
+}
+
+TEST(TestUnsigned, wide_arithmetic_still_grows) {
+    Unsigned<104> a{detail::Bits<104>("0xFEDCBA98765432100123456789")};
+    Unsigned<104> b(1000);
+
+    auto sum = a + b;
+    static_assert(std::is_same_v<decltype(sum), Unsigned<105>>);
+    EXPECT_EQ(
+        std::format("{:d}", sum), "Unsigned[104 downto 0]{20192265560968774111035004382065}"
+    );
+}
+
 // LCOV_EXCL_BR_STOP

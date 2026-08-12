@@ -22,9 +22,8 @@ Bit and_reduce(detail::Array<Bit, R> const& s) {
 }
 
 template <Range R>
-Bit or_reduce(detail::Array<Bit, R> const& s) {
-    detail::Bits<R.length()> zero(0);
-    return (detail::bits(s) != zero) ? Bit::_1 : Bit::_0;
+auto or_reduce(detail::Array<Bit, R> const& s) {
+    return (detail::bits(s) != detail::Bits<R.length()>{}) ? Bit::_1 : Bit::_0;
 }
 
 template <Range R>
@@ -40,7 +39,7 @@ class Array<Bit, R> {
     static constexpr Range static_range = R;
     static constexpr Range range() noexcept { return static_range; }
 
-    constexpr Array() : value_(0) {}
+    constexpr Array() = default;
 
     explicit constexpr Array(std::string_view s) {
         if (s.size() != R.length()) {
@@ -190,22 +189,21 @@ constexpr auto operator""_b() {
         0
     };
 
-    coconext::types::detail::Bits<N> packed_val(0);
-    coconext::types::detail::Bits<N> one(1);
-
-    size_t bit_pos = (N > 0) ? (N - 1) : 0;
-
-    for (auto in = S.data; in != S.data + S.size; ++in) {
-        if (*in != '_') {
-            if (static_cast<bool>(coconext::types::Bit(*in))) {
-                packed_val = packed_val | (one << bit_pos);
+    ::coconext::types::detail::Bits<N> packed_val{};
+    if constexpr (N > 0) {
+        ::coconext::types::detail::Bits<N> one(1);
+        size_t bit_pos = N - 1;
+        for (auto in = S.data; in != S.data + S.size; ++in) {
+            if (*in != '_') {
+                if (static_cast<bool>(::coconext::types::Bit(*in))) {
+                    packed_val = packed_val | (one << bit_pos);
+                }
+                bit_pos--;
             }
-            bit_pos--;
         }
     }
 
-    coconext::types::Array<coconext::types::Bit, R> result(packed_val);
-    return result;
+    return ::coconext::types::detail::Array<::coconext::types::Bit, R>(packed_val);
 }
 
 }  // namespace coconext::literals
