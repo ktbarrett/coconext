@@ -30,8 +30,11 @@ The storage member is declared `[[no_unique_address]]` so `Bits<0>` collapses wh
 
 On the wide tier, `Bits<W>` directly owns a `std::array<uint64_t, ceil(W / 64)>`
 (LSB-first word order). Word-array kernels ported from LLVM's APInt operate on
-that storage, and `Bits<W>` supplies the fixed-size stack scratch needed by
-division. There is no separate owning big-integer type.
+that storage. The same kernels implement bit access, width changes, saturation,
+formatting, arithmetic, and division for `DynBits`; the owning types only
+select storage, account for result widths, and provide division scratch.
+`Bits<W>` supplies fixed-size stack scratch while `DynBits` allocates scratch
+at runtime. There is no separate owning big-integer type.
 
 ### Default value
 

@@ -520,12 +520,7 @@ class Bits {
                 storage_ &= ~mask;
             }
         } else {
-            Word mask = Word{1} << (index % word_bits);
-            if (val) {
-                storage_[index / word_bits] |= mask;
-            } else {
-                storage_[index / word_bits] &= ~mask;
-            }
+            detail::set_bit(mut(), index, val);
         }
     }
 
@@ -555,7 +550,9 @@ class Bits {
         requires(Wm >= W)
     constexpr Bits<Wm> sign_extend() const {
         Bits<Wm> result = widened<Wm>();
-        if constexpr (W > 0 && Wm > W) {
+        if constexpr (is_wide && Bits<Wm>::is_wide) {
+            detail::sign_extend(result.mut(), cref());
+        } else if constexpr (W > 0 && Wm > W) {
             if (get_bit(W - 1)) {
                 for (size_t i = W; i < Wm; ++i) {
                     result.set_bit(i, true);
@@ -572,10 +569,7 @@ class Bits {
         if constexpr (Wm == 0) {
             return result;
         } else if constexpr (is_wide && Bits<Wm>::is_wide) {
-            for (size_t i = 0; i < result.storage_.size(); ++i) {
-                result.storage_[i] = storage_[i];
-            }
-            clear_unused_bits(result.mut());
+            detail::truncate(result.mut(), cref());
         } else {
             for (size_t i = 0; i < Wm; ++i) {
                 if (get_bit(i)) {
@@ -593,6 +587,11 @@ class Bits {
             return zero_extend<Wm>();
         } else if constexpr (Wm == 0) {
             return Bits<0>{};
+        } else if constexpr (is_wide) {
+            if (!detail::fits_unsigned(cref(), Wm)) {
+                return ~Bits<Wm>{};
+            }
+            return truncate<Wm>();
         } else {
             // Anything above bit Wm-1 means the value exceeds the target's max.
             for (size_t i = Wm; i < W; ++i) {
@@ -611,6 +610,14 @@ class Bits {
             return sign_extend<Wm>();
         } else if constexpr (Wm == 0) {
             return Bits<0>{};
+        } else if constexpr (is_wide) {
+            bool negative = detail::is_negative(cref());
+            if (detail::fits_signed(cref(), Wm)) {
+                return truncate<Wm>();
+            }
+            Bits<Wm> limit{};
+            limit.set_bit(Wm - 1, true);
+            return negative ? limit : ~limit;
         } else {
             bool negative = W > 0 && get_bit(W - 1);
             // In range iff bits [Wm-1, W) all match the sign bit.
@@ -637,16 +644,9 @@ class Bits {
         } else if constexpr (!is_wide) {
             return std::format("{:0{}b}", static_cast<wide_uint>(raw()), W);
         } else {
-            std::string res;
-            res.reserve(W);
-            auto val = raw();
-            for (size_t i = W; i > 0; --i) {
-                size_t bit_idx = i - 1;
-                res.push_back(
-                    ((val.data()[bit_idx / 64] >> (bit_idx % 64)) & 1) ? '1' : '0'
-                );
-            }
-            return res;
+            return format_power_of_two(cref(), 1, W, [](uint8_t d) {
+                return static_cast<char>('0' + d);
+            });
         }
     }
 
@@ -663,26 +663,7 @@ class Bits {
             }
             return std::format("{}", static_cast<wide_uint>(raw()));
         } else {
-            bool negative = is_signed && detail::is_negative(cref());
-            Bits<W> mag = *this;
-            if (negative) {
-                negate(mag.mut());
-            }
-            if (mag == Bits<W>{}) {
-                return "0";
-            }
-            Bits<W> ten(uint64_t{10});
-            std::string digits;
-            while (mag != Bits<W>{}) {
-                Bits<W> rem = mag.umod(ten);
-                digits.push_back(static_cast<char>('0' + rem.storage_[0]));
-                mag = mag.udiv(ten);
-            }
-            if (negative) {
-                digits.push_back('-');
-            }
-            std::reverse(digits.begin(), digits.end());
-            return digits;
+            return format_decimal(cref(), is_signed);
         }
     }
 
@@ -694,7 +675,9 @@ class Bits {
             return std::format("{:0{}x}", static_cast<wide_uint>(raw()), hex_chars);
         } else {
             char const hex_digits[] = "0123456789abcdef";
-            return digits_from_bits<4, hex_chars>([&](uint8_t d) { return hex_digits[d]; });
+            return format_power_of_two(cref(), 4, hex_chars, [&](uint8_t d) {
+                return hex_digits[d];
+            });
         }
     }
 
@@ -705,15 +688,13 @@ class Bits {
         } else if constexpr (!is_wide) {
             return std::format("{:0{}o}", static_cast<wide_uint>(raw()), octal_chars);
         } else {
-            return digits_from_bits<3, octal_chars>([](uint8_t d) {
+            return format_power_of_two(cref(), 3, octal_chars, [](uint8_t d) {
                 return static_cast<char>('0' + d);
             });
         }
     }
 
   private:
-    template <size_t>
-    friend class Bits;
     friend struct same_width;
 
     // Same-width, wrapping arithmetic. Reached only through `same_width`, by
@@ -762,7 +743,7 @@ class Bits {
             throw std::domain_error("Division by zero");
         }
         if constexpr (is_wide) {
-            return divide_wide(other, false);
+            return divide_wide(other, false, false);
         } else {
             return Bits<W>(this->raw() / other.raw());
         }
@@ -774,21 +755,7 @@ class Bits {
             throw std::domain_error("Division by zero");
         }
         if constexpr (is_wide) {
-            bool lhs_negative = detail::is_negative(cref());
-            bool rhs_negative = detail::is_negative(other.cref());
-            Bits<W> lhs = *this;
-            Bits<W> rhs = other;
-            if (lhs_negative) {
-                negate(lhs.mut());
-            }
-            if (rhs_negative) {
-                negate(rhs.mut());
-            }
-            Bits<W> result = lhs.divide_wide(rhs, false);
-            if (lhs_negative != rhs_negative) {
-                negate(result.mut());
-            }
-            return result;
+            return divide_wide(other, false, true);
         } else {
             auto lhs_ext = this->sign_extended();
             auto rhs_ext = other.sign_extended();
@@ -807,7 +774,7 @@ class Bits {
             throw std::domain_error("Division by zero");
         }
         if constexpr (is_wide) {
-            return divide_wide(other, true);
+            return divide_wide(other, true, false);
         } else {
             return Bits<W>(this->raw() % other.raw());
         }
@@ -819,20 +786,7 @@ class Bits {
             throw std::domain_error("Division by zero");
         }
         if constexpr (is_wide) {
-            bool lhs_negative = detail::is_negative(cref());
-            Bits<W> lhs = *this;
-            Bits<W> rhs = other;
-            if (lhs_negative) {
-                negate(lhs.mut());
-            }
-            if (detail::is_negative(rhs.cref())) {
-                negate(rhs.mut());
-            }
-            Bits<W> result = lhs.divide_wide(rhs, true);
-            if (lhs_negative) {
-                negate(result.mut());
-            }
-            return result;
+            return divide_wide(other, true, true);
         } else {
             auto lhs_ext = this->sign_extended();
             auto rhs_ext = other.sign_extended();
@@ -857,18 +811,9 @@ class Bits {
         return WordSpan{std::span<Word>{storage_}, W};
     }
 
-    constexpr Bits divide_wide(Bits const& rhs, bool remainder) const
+    constexpr Bits divide_wide(Bits const& rhs, bool remainder, bool is_signed) const
         requires(is_wide)
     {
-        unsigned lhs_words = active_words(cref());
-        unsigned rhs_words = active_words(rhs.cref());
-        if (lhs_words == 0 || detail::ucompare(cref(), rhs.cref()) < 0) {
-            return remainder ? *this : Bits{};
-        }
-        if (*this == rhs) {
-            return remainder ? Bits{} : Bits{Word{1}};
-        }
-
         constexpr size_t max_limbs = std::tuple_size_v<IntType> * limbs_per_word;
         std::array<DivLimb, max_limbs * 2 + 1> u{};
         std::array<DivLimb, max_limbs> v{};
@@ -876,20 +821,23 @@ class Bits {
         std::array<DivLimb, max_limbs> r{};
         DivideScratch scratch{u, v, q, r};
         Bits result;
-        divide_impl(
-            cref().data(),
-            lhs_words,
-            rhs.cref().data(),
-            rhs_words,
-            remainder ? std::span<Word>{} : std::span<Word>{result.storage_},
-            remainder ? std::span<Word>{result.storage_} : std::span<Word>{},
-            scratch
-        );
-        clear_unused_bits(result.mut());
+        if (is_signed) {
+            Bits lhs_magnitude;
+            Bits rhs_magnitude;
+            detail::divide_signed(
+                result.mut(),
+                cref(),
+                rhs.cref(),
+                lhs_magnitude.mut(),
+                rhs_magnitude.mut(),
+                remainder,
+                scratch
+            );
+        } else {
+            detail::divide_unsigned(result.mut(), cref(), rhs.cref(), remainder, scratch);
+        }
         return result;
     }
-
-    IntType storage_{};
 
     // Zero-fill widen to Wm. Handles all four tier-crossing combinations; the
     // native-to-native case stays a single cast so the common path is cheap.
@@ -902,9 +850,7 @@ class Bits {
             return Bits<Wm>(static_cast<typename Bits<Wm>::IntType>(raw()));
         } else if constexpr (is_wide && Bits<Wm>::is_wide) {
             Bits<Wm> result{};
-            for (size_t i = 0; i < storage_.size(); ++i) {
-                result.storage_[i] = storage_[i];
-            }
+            detail::zero_extend(result.mut(), cref());
             return result;
         } else {
             Bits<Wm> result{};
@@ -915,6 +861,15 @@ class Bits {
             }
             return result;
         }
+    }
+
+    constexpr auto sign_extended() const {
+        static_assert(
+            W > 0, "sign_extended on Bits<0> is undefined; the null vector has no value"
+        );
+        using SType = std::make_signed_t<IntType>;
+        constexpr unsigned shift = sizeof(IntType) * 8 - W;
+        return static_cast<SType>(raw() << shift) >> shift;
     }
 
     // Mask of the W valid low bits within the native storage word. Only used on
@@ -932,38 +887,8 @@ class Bits {
 
     static constexpr IntType top_mask = compute_top_mask();
 
-    // Format the wide word-array storage into `num_chars` characters of
-    // `bits_per_digit` bits each, most-significant digit first. `digit_to_char`
-    // maps a 0..(2^bits_per_digit - 1) digit to its printable form. Shared by
-    // to_hexadecimal_string (4) and to_octal_string (3).
-    template <size_t bits_per_digit, size_t num_chars, typename DigitToChar>
-    std::string digits_from_bits(DigitToChar digit_to_char) const
-        requires(is_wide)
-    {
-        std::string res;
-        res.reserve(num_chars);
-        auto val = raw();
-        for (size_t i = num_chars; i > 0; --i) {
-            uint8_t d = 0;
-            for (int j = bits_per_digit - 1; j >= 0; --j) {
-                size_t bit_idx = (i - 1) * bits_per_digit + j;
-                if (bit_idx < W) {
-                    d = (d << 1) | ((val.data()[bit_idx / 64] >> (bit_idx % 64)) & 1);
-                }
-            }
-            res.push_back(digit_to_char(d));
-        }
-        return res;
-    }
-
-    constexpr auto sign_extended() const {
-        static_assert(
-            W > 0, "sign_extended on Bits<0> is undefined; the null vector has no value"
-        );
-        using SType = std::make_signed_t<IntType>;
-        constexpr unsigned shift = sizeof(IntType) * 8 - W;
-        return static_cast<SType>(raw() << shift) >> shift;
-    }
+  private:
+    IntType storage_{};
 };
 
 // The same-width primitive layer. Wrapping arithmetic is a footgun on a type

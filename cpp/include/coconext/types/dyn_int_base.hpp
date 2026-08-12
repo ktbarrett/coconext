@@ -74,9 +74,13 @@ class DynBits {
     // Widening copy of a static Bits<W>, so the two families interoperate.
     template <size_t W>
     explicit DynBits(Bits<W> const& src) : DynBits(W) {
-        for (size_t i = 0; i < W; ++i) {
-            if (src.get_bit(i)) {
-                set_bit(i, true);
+        if constexpr (Bits<W>::is_wide) {
+            detail::zero_extend(mut(), src.raw());
+        } else {
+            for (size_t i = 0; i < W; ++i) {
+                if (src.get_bit(i)) {
+                    set_bit(i, true);
+                }
             }
         }
     }
@@ -133,15 +137,7 @@ class DynBits {
 
     bool get_bit(size_t index) const { return detail::get_bit(cref(), index); }
 
-    void set_bit(size_t index, bool val) {
-        auto w = words();
-        Word mask = Word(1) << (index % word_bits);
-        if (val) {
-            w[index / word_bits] |= mask;
-        } else {
-            w[index / word_bits] &= ~mask;
-        }
-    }
+    void set_bit(size_t index, bool val) { detail::set_bit(mut(), index, val); }
 
     WordConstSpan raw() const {
         if (width_ == 0) {
@@ -239,12 +235,8 @@ class DynBits {
         if (target < width_) {
             throw std::invalid_argument("sign_extend cannot narrow");
         }
-        DynBits result = widened(target);
-        if (width_ > 0 && target > width_ && get_bit(width_ - 1)) {
-            for (size_t i = width_; i < target; ++i) {
-                result.set_bit(i, true);
-            }
-        }
+        DynBits result(target);
+        detail::sign_extend(result.mut(), cref());
         return result;
     }
 
@@ -253,11 +245,7 @@ class DynBits {
             throw std::invalid_argument("truncate cannot widen");
         }
         DynBits result(target);
-        for (size_t i = 0; i < target; ++i) {
-            if (get_bit(i)) {
-                result.set_bit(i, true);
-            }
-        }
+        detail::truncate(result.mut(), cref());
         return result;
     }
 
@@ -268,10 +256,8 @@ class DynBits {
         if (target == 0) {
             return DynBits(0);
         }
-        for (size_t i = target; i < width_; ++i) {
-            if (get_bit(i)) {
-                return ~DynBits(target);
-            }
+        if (!detail::fits_unsigned(cref(), target)) {
+            return ~DynBits(target);
         }
         return truncate(target);
     }
@@ -283,15 +269,8 @@ class DynBits {
         if (target == 0) {
             return DynBits(0);
         }
-        bool negative = width_ > 0 && get_bit(width_ - 1);
-        bool in_range = true;
-        for (size_t i = target - 1; i < width_; ++i) {
-            if (get_bit(i) != negative) {
-                in_range = false;
-                break;
-            }
-        }
-        if (in_range) {
+        bool negative = detail::is_negative(cref());
+        if (detail::fits_signed(cref(), target)) {
             return truncate(target);
         }
         DynBits limit(target);
@@ -300,49 +279,24 @@ class DynBits {
     }
 
     std::string to_binary_string() const {
-        std::string res;
-        res.reserve(width_);
-        for (size_t i = width_; i > 0; --i) {
-            res.push_back(get_bit(i - 1) ? '1' : '0');
-        }
-        return res;
+        return format_power_of_two(cref(), 1, width_, [](uint8_t d) {
+            return static_cast<char>('0' + d);
+        });
     }
 
     std::string to_decimal_string(bool is_signed = false) const {
-        if (width_ == 0) {
-            return "";
-        }
-        bool negative = is_signed && detail::is_negative(cref());
-        DynBits mag(*this);
-        if (negative) {
-            negate(mag.mut());
-        }
-        if (active_words(mag.cref()) == 0) {
-            return "0";
-        }
-        DynBits ten(width_, uint64_t{10});
-        std::string digits;
-        while (active_words(mag.cref()) != 0) {
-            DynBits rem = same_width_umod(mag, ten);
-            digits.push_back(static_cast<char>('0' + rem.words()[0]));
-            mag = same_width_udiv(mag, ten);
-        }
-        if (negative) {
-            digits.push_back('-');
-        }
-        std::reverse(digits.begin(), digits.end());
-        return digits;
+        return format_decimal(cref(), is_signed);
     }
 
     std::string to_hexadecimal_string() const {
         char const hex_digits[] = "0123456789abcdef";
-        return digits_from_bits(4, (width_ + 3) / 4, [&](uint8_t d) {
+        return format_power_of_two(cref(), 4, (width_ + 3) / 4, [&](uint8_t d) {
             return hex_digits[d];
         });
     }
 
     std::string to_octal_string() const {
-        return digits_from_bits(3, (width_ + 2) / 3, [](uint8_t d) {
+        return format_power_of_two(cref(), 3, (width_ + 2) / 3, [](uint8_t d) {
             return static_cast<char>('0' + d);
         });
     }
@@ -381,12 +335,7 @@ class DynBits {
 
     DynBits widened(size_t target) const {
         DynBits result(target);
-        auto dst = result.words();
-        auto src = words();
-        for (size_t i = 0; i < src.size() && i < dst.size(); ++i) {
-            dst[i] = src[i];
-        }
-        clear_unused_bits(result.mut());
+        detail::zero_extend(result.mut(), cref());
         return result;
     }
 
@@ -410,98 +359,46 @@ class DynBits {
         return result;
     }
 
-    static DynBits divmod(DynBits const& a, DynBits const& b, bool want_quotient) {
+    static DynBits divmod(
+        DynBits const& a, DynBits const& b, bool remainder, bool is_signed
+    ) {
         check_same_width(a.cref(), b.cref());
-        if (active_words(b.cref()) == 0) {
-            throw std::domain_error("Division by zero");
-        }
-        unsigned lw = active_words(a.cref());
-        unsigned rw = active_words(b.cref());
-        if (lw == 0 || ucompare(a.cref(), b.cref()) < 0) {
-            return want_quotient ? DynBits(a.width_) : a;
-        }
-        if (a == b) {
-            return want_quotient ? DynBits(a.width_, uint64_t{1}) : DynBits(a.width_);
-        }
         DynBits result(a.width_);
         OwnedDivScratch scratch = make_owned_div_scratch(a.num_words() * limbs_per_word);
-        std::span<Word> out = result.words();
-        std::span<Word> empty{};
-        divide_impl(
-            a.words(),
-            lw,
-            b.words(),
-            rw,
-            want_quotient ? out : empty,
-            want_quotient ? empty : out,
-            scratch.view
-        );
-        clear_unused_bits(result.mut());
+        if (is_signed) {
+            DynBits lhs_magnitude(a.width_);
+            DynBits rhs_magnitude(a.width_);
+            detail::divide_signed(
+                result.mut(),
+                a.cref(),
+                b.cref(),
+                lhs_magnitude.mut(),
+                rhs_magnitude.mut(),
+                remainder,
+                scratch.view
+            );
+        } else {
+            detail::divide_unsigned(
+                result.mut(), a.cref(), b.cref(), remainder, scratch.view
+            );
+        }
         return result;
     }
 
     static DynBits same_width_udiv(DynBits const& a, DynBits const& b) {
-        return divmod(a, b, /*want_quotient=*/true);
+        return divmod(a, b, /*remainder=*/false, /*is_signed=*/false);
     }
 
     static DynBits same_width_umod(DynBits const& a, DynBits const& b) {
-        return divmod(a, b, /*want_quotient=*/false);
+        return divmod(a, b, /*remainder=*/true, /*is_signed=*/false);
     }
 
     static DynBits same_width_sdiv(DynBits const& a, DynBits const& b) {
-        bool ln = detail::is_negative(a.cref());
-        bool rn = detail::is_negative(b.cref());
-        DynBits x(a);
-        if (ln) {
-            negate(x.mut());
-        }
-        DynBits y(b);
-        if (rn) {
-            negate(y.mut());
-        }
-        DynBits q = same_width_udiv(x, y);
-        if (ln ^ rn) {
-            negate(q.mut());
-        }
-        return q;
+        return divmod(a, b, /*remainder=*/false, /*is_signed=*/true);
     }
 
     static DynBits same_width_smod(DynBits const& a, DynBits const& b) {
-        bool ln = detail::is_negative(a.cref());
-        DynBits x(a);
-        if (ln) {
-            negate(x.mut());
-        }
-        DynBits y(b);
-        if (detail::is_negative(b.cref())) {
-            negate(y.mut());
-        }
-        DynBits r = same_width_umod(x, y);
-        if (ln) {
-            negate(r.mut());
-        }
-        return r;
-    }
-
-    template <typename DigitToChar>
-    std::string digits_from_bits(
-        size_t bits_per_digit, size_t num_chars, DigitToChar digit_to_char
-    ) const {
-        std::string res;
-        res.reserve(num_chars);
-        for (size_t i = num_chars; i > 0; --i) {
-            uint8_t d = 0;
-            for (size_t j = bits_per_digit; j > 0; --j) {
-                size_t bit_idx = (i - 1) * bits_per_digit + (j - 1);
-                if (bit_idx < width_) {
-                    d = static_cast<uint8_t>((d << 1) | (get_bit(bit_idx) ? 1 : 0));
-                } else {
-                    d = static_cast<uint8_t>(d << 1);
-                }
-            }
-            res.push_back(digit_to_char(d));
-        }
-        return res;
+        return divmod(a, b, /*remainder=*/true, /*is_signed=*/true);
     }
 };
 
