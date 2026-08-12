@@ -28,6 +28,9 @@ constexpr auto resize(
 namespace detail {
 
 template <Range R>
+class Signed;
+
+template <Range R>
 class Unsigned {
     static_assert(R.length() >= 0, "Unsigned width must not be negative");
 

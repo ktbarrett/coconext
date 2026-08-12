@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
-#include <coconext/types/big_int.hpp>
+#include <coconext/types/bigint.hpp>
 #include <coconext/types/direction.hpp>
 #include <coconext/types/logic.hpp>
 #include <coconext/types/range.hpp>

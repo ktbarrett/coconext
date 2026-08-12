@@ -1,5 +1,5 @@
-#ifndef COCONEXT_BIG_INT_HPP
-#define COCONEXT_BIG_INT_HPP
+#ifndef COCONEXT_BIGINT_HPP
+#define COCONEXT_BIGINT_HPP
 
 // The multi-word arithmetic kernels below (the `tc*` word-array primitives, the
 // Knuth division algorithm, and the division driver) are derived from LLVM's
@@ -1235,4 +1235,4 @@ constexpr void load_uint128(WordSpan dst, __uint128_t val) {
 
 }  // namespace coconext::types::detail
 
-#endif  // COCONEXT_BIG_INT_HPP
+#endif  // COCONEXT_BIGINT_HPP

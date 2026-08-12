@@ -2,7 +2,7 @@
 #define COCONEXT_DYN_INT_BASE_HPP
 
 #include <algorithm>
-#include <coconext/types/big_int.hpp>
+#include <coconext/types/bigint.hpp>
 #include <coconext/types/int_base.hpp>
 #include <cstddef>
 #include <cstdint>
