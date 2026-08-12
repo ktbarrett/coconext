@@ -626,6 +626,26 @@ constexpr void clear_unused_bits(WordSpan v) {
     }
 }
 
+template <typename IntT>
+    requires(std::is_integral_v<IntT> && sizeof(IntT) <= sizeof(Word))
+constexpr void load_native(WordSpan dst, IntT value) {
+    auto words = dst.data();
+    if (words.empty()) {
+        return;
+    }
+    words[0] = static_cast<Word>(value);
+    Word extension = 0;
+    if constexpr (std::is_signed_v<IntT>) {
+        if (value < 0) {
+            extension = ~Word{0};
+        }
+    }
+    for (size_t i = 1; i < words.size(); ++i) {
+        words[i] = extension;
+    }
+    clear_unused_bits(dst);
+}
+
 // Copy the low bits shared by both widths and zero-fill the rest of dst.
 // This is the common implementation behind zero extension and truncation.
 constexpr void copy_bits(WordSpan dst, WordConstSpan src) {

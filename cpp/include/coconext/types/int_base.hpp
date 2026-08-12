@@ -79,15 +79,7 @@ class Bits {
     constexpr Bits(IntT val) {
         static_assert(W > 0, "Bits<0> has no integer representation; use Bits<0>{}");
         if constexpr (is_wide) {
-            storage_[0] = static_cast<Word>(val);
-            if constexpr (std::is_signed_v<IntT>) {
-                if (val < 0) {
-                    for (size_t i = 1; i < storage_.size(); ++i) {
-                        storage_[i] = ~Word{0};
-                    }
-                }
-            }
-            clear_unused_bits(mut());
+            load_native(mut(), val);
         } else {
             storage_ = static_cast<IntType>(val);
         }
@@ -109,6 +101,7 @@ class Bits {
             WideWords<W> parsed{};
             parse_into(WordSpan{parsed, W}, val);
             storage_ = static_cast<IntType>(parsed[0]);
+            // This handles native ints larger than Word, e.g. __int128_t
             if constexpr (sizeof(IntType) > sizeof(Word)) {
                 if constexpr (parsed.size() > 1) {
                     storage_ |= static_cast<IntType>(parsed[1]) << word_bits;
@@ -549,17 +542,26 @@ class Bits {
     template <size_t Wm>
         requires(Wm >= W)
     constexpr Bits<Wm> sign_extend() const {
-        Bits<Wm> result = widened<Wm>();
-        if constexpr (is_wide && Bits<Wm>::is_wide) {
+        if constexpr (W == 0) {
+            return Bits<Wm>{};
+        } else if constexpr (is_wide) {
+            Bits<Wm> result{};
             detail::sign_extend(result.mut(), cref());
-        } else if constexpr (W > 0 && Wm > W) {
-            if (get_bit(W - 1)) {
-                for (size_t i = W; i < Wm; ++i) {
-                    result.set_bit(i, true);
-                }
+            return result;
+        } else if constexpr (Bits<Wm>::is_wide) {
+            Bits<Wm> result{};
+            if constexpr (sizeof(IntType) <= sizeof(Word)) {
+                load_native(result.mut(), sign_extended());
+            } else {
+#if defined(__SIZEOF_INT128__)
+                load_int128(result.mut(), sign_extended());
+#endif
             }
+            return result;
+        } else {
+            using Dest = typename Bits<Wm>::IntType;
+            return Bits<Wm>(static_cast<Dest>(sign_extended()));
         }
-        return result;
     }
 
     template <size_t Wm>
@@ -570,12 +572,21 @@ class Bits {
             return result;
         } else if constexpr (is_wide && Bits<Wm>::is_wide) {
             detail::truncate(result.mut(), cref());
-        } else {
-            for (size_t i = 0; i < Wm; ++i) {
-                if (get_bit(i)) {
-                    result.set_bit(i, true);
+        } else if constexpr (is_wide) {
+            using Dest = typename Bits<Wm>::IntType;
+            if constexpr (sizeof(Dest) <= sizeof(Word)) {
+                result = Bits<Wm>(static_cast<Dest>(storage_[0]));
+            } else {
+#if defined(__SIZEOF_INT128__)
+                __uint128_t value = storage_[0];
+                if (storage_.size() > 1) {
+                    value |= static_cast<__uint128_t>(storage_[1]) << word_bits;
                 }
+                result = Bits<Wm>(static_cast<Dest>(value));
+#endif
             }
+        } else {
+            result = Bits<Wm>(static_cast<typename Bits<Wm>::IntType>(raw()));
         }
         return result;
     }
@@ -593,11 +604,9 @@ class Bits {
             }
             return truncate<Wm>();
         } else {
-            // Anything above bit Wm-1 means the value exceeds the target's max.
-            for (size_t i = Wm; i < W; ++i) {
-                if (get_bit(i)) {
-                    return ~Bits<Wm>{};
-                }
+            IntType target_max = (static_cast<IntType>(1) << Wm) - 1;
+            if (raw() > target_max) {
+                return ~Bits<Wm>{};
             }
             return truncate<Wm>();
         }
@@ -619,22 +628,18 @@ class Bits {
             limit.set_bit(Wm - 1, true);
             return negative ? limit : ~limit;
         } else {
-            bool negative = W > 0 && get_bit(W - 1);
-            // In range iff bits [Wm-1, W) all match the sign bit.
-            bool in_range = true;
-            for (size_t i = Wm - 1; i < W; ++i) {
-                if (get_bit(i) != negative) {
-                    in_range = false;
-                    break;
-                }
-            }
-            if (in_range) {
+            auto value = sign_extended();
+            using SType = decltype(value);
+            SType target_magnitude = static_cast<SType>(1) << (Wm - 1);
+            SType target_min = -target_magnitude;
+            SType target_max = target_magnitude - 1;
+            if (value >= target_min && value <= target_max) {
                 return truncate<Wm>();
             }
             // Clamp to signed min (100..0) or signed max (011..1).
             Bits<Wm> limit{};
             limit.set_bit(Wm - 1, true);
-            return negative ? limit : ~limit;
+            return value < 0 ? limit : ~limit;
         }
     }
 
@@ -695,6 +700,8 @@ class Bits {
     }
 
   private:
+    template <size_t>
+    friend class Bits;
     friend struct same_width;
 
     // Same-width, wrapping arithmetic. Reached only through `same_width`, by
@@ -852,12 +859,14 @@ class Bits {
             Bits<Wm> result{};
             detail::zero_extend(result.mut(), cref());
             return result;
-        } else {
+        } else if constexpr (!is_wide && Bits<Wm>::is_wide) {
             Bits<Wm> result{};
-            for (size_t i = 0; i < W; ++i) {
-                if (get_bit(i)) {
-                    result.set_bit(i, true);
-                }
+            if constexpr (sizeof(IntType) <= sizeof(Word)) {
+                load_native(result.mut(), raw());
+            } else {
+#if defined(__SIZEOF_INT128__)
+                load_uint128(result.mut(), raw());
+#endif
             }
             return result;
         }

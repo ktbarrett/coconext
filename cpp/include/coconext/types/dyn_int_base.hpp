@@ -50,16 +50,7 @@ class DynBits {
         if (width == 0) {
             throw std::invalid_argument("DynBits(0) has no integer representation");
         }
-        auto w = words();
-        w[0] = static_cast<Word>(static_cast<uint64_t>(val));
-        if constexpr (std::is_signed_v<IntT>) {
-            if (val < 0) {
-                for (size_t i = 1; i < w.size(); ++i) {
-                    w[i] = ~Word(0);
-                }
-            }
-        }
-        clear_unused_bits(mut());
+        load_native(mut(), val);
     }
 
 #if defined(__SIZEOF_INT128__)
@@ -74,14 +65,16 @@ class DynBits {
     // Widening copy of a static Bits<W>, so the two families interoperate.
     template <size_t W>
     explicit DynBits(Bits<W> const& src) : DynBits(W) {
-        if constexpr (Bits<W>::is_wide) {
+        if constexpr (W == 0) {
+            return;
+        } else if constexpr (Bits<W>::is_wide) {
             detail::zero_extend(mut(), src.raw());
+        } else if constexpr (sizeof(typename Bits<W>::IntType) <= sizeof(Word)) {
+            load_native(mut(), src.raw());
         } else {
-            for (size_t i = 0; i < W; ++i) {
-                if (src.get_bit(i)) {
-                    set_bit(i, true);
-                }
-            }
+#if defined(__SIZEOF_INT128__)
+            load_uint128(mut(), src.raw());
+#endif
         }
     }
 
