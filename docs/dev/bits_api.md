@@ -301,6 +301,16 @@ constexpr Bits<Wa + Wb> mul_signed  (Bits<Wa> const&, Bits<Wb> const&) noexcept;
 
 // Division: quotient grows by 1 to hold signed_min / -1 losslessly
 template <size_t Wa, size_t Wb>
+constexpr std::pair<Bits<Wa + 1>, Bits<Wb>>
+divrem_unsigned(Bits<Wa> const&, Bits<Wb> const&);
+template <size_t Wa, size_t Wb>
+constexpr std::pair<Bits<Wa + 1>, Bits<Wb>>
+divrem_signed(Bits<Wa> const&, Bits<Wb> const&);
+template <size_t Wa, size_t Wb>
+constexpr std::pair<Bits<Wa + 1>, Bits<Wb>>
+divmod_signed(Bits<Wa> const&, Bits<Wb> const&);
+
+template <size_t Wa, size_t Wb>
 constexpr Bits<Wa + 1> div_unsigned(Bits<Wa> const&, Bits<Wb> const&);
 template <size_t Wa, size_t Wb>
 constexpr Bits<Wa + 1> div_signed  (Bits<Wa> const&, Bits<Wb> const&);
@@ -323,6 +333,9 @@ constexpr Bits<W + 1> abs_signed(Bits<W> const&) noexcept;
 Notes:
 
 - `add`/`sub` are sign-named because the grown top bit is filled differently: carry-out for unsigned, sign bit for signed.
+- `divrem_signed` uses truncating division and returns a dividend-signed remainder.
+  `divmod_signed` uses floor division and returns a divisor-signed modulo.
+  Each pair is produced by one division pass.
 - `rem_signed` is C-style (result sign follows dividend); `mod_signed` is VHDL/Python (result sign follows divisor). User-type `%` dispatches to `rem_signed`; user-type `mod` free function dispatches to `mod_signed`. Unsigned operands have no `mod` variant — `rem_unsigned` covers it.
 - `div_*`/`rem_*`/`mod_signed` throw `std::domain_error` on zero divisor. When either operand is a constant expression and the divisor is zero, the throw makes the call a non-constant-expression → compile error at that call site.
 - Result widths match the user-type spec's [Width growth table](unsigned_signed_api.md#width-growth) and the [Sfixed/Ufixed table](sfixed_ufixed_api.md#width-growth).

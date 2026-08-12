@@ -19,6 +19,7 @@
 #include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
 namespace coconext::types {
 
@@ -744,65 +745,58 @@ class Bits {
         }
     }
 
-    constexpr Bits udiv(Bits<W> const& other) const {
-        static_assert(W > 0, "udiv on Bits<0> is undefined; the null vector has no value");
+    constexpr Bits udiv(Bits<W> const& other) const { return udivrem(other).first; }
+
+    constexpr Bits sdiv(Bits<W> const& other) const { return sdivrem(other).first; }
+
+    constexpr Bits umod(Bits<W> const& other) const { return udivrem(other).second; }
+
+    constexpr Bits smod(Bits<W> const& other) const { return sdivrem(other).second; }
+
+    constexpr std::pair<Bits, Bits> udivrem(Bits<W> const& other) const {
+        static_assert(
+            W > 0, "udivrem on Bits<0> is undefined; the null vector has no value"
+        );
         if (other == Bits<W>{}) {
             throw std::domain_error("Division by zero");
         }
         if constexpr (is_wide) {
             return divide_wide(other, false, false);
         } else {
-            return Bits<W>(this->raw() / other.raw());
+            return {Bits<W>(raw() / other.raw()), Bits<W>(raw() % other.raw())};
         }
     }
 
-    constexpr Bits sdiv(Bits<W> const& other) const {
-        static_assert(W > 0, "sdiv on Bits<0> is undefined; the null vector has no value");
-        if (other == Bits<W>{}) {
-            throw std::domain_error("Division by zero");
-        }
-        if constexpr (is_wide) {
-            return divide_wide(other, false, true);
-        } else {
-            auto lhs_ext = this->sign_extended();
-            auto rhs_ext = other.sign_extended();
-            // Guard the sole two's-complement overflow: MIN / -1 == MIN.
-            using SType = decltype(lhs_ext);
-            if (rhs_ext == -1 && lhs_ext == std::numeric_limits<SType>::min()) {
-                return *this;
-            }
-            return Bits<W>(lhs_ext / rhs_ext);
-        }
-    }
-
-    constexpr Bits umod(Bits<W> const& other) const {
-        static_assert(W > 0, "umod on Bits<0> is undefined; the null vector has no value");
+    constexpr std::pair<Bits, Bits> sdivrem(Bits<W> const& other) const {
+        static_assert(
+            W > 0, "sdivrem on Bits<0> is undefined; the null vector has no value"
+        );
         if (other == Bits<W>{}) {
             throw std::domain_error("Division by zero");
         }
         if constexpr (is_wide) {
             return divide_wide(other, true, false);
         } else {
-            return Bits<W>(this->raw() % other.raw());
+            auto lhs_ext = this->sign_extended();
+            auto rhs_ext = other.sign_extended();
+            using SType = decltype(lhs_ext);
+            if (rhs_ext == -1 && lhs_ext == std::numeric_limits<SType>::min()) {
+                return {*this, Bits<W>{}};
+            }
+            return {Bits<W>(lhs_ext / rhs_ext), Bits<W>(lhs_ext % rhs_ext)};
         }
     }
 
-    constexpr Bits smod(Bits<W> const& other) const {
-        static_assert(W > 0, "smod on Bits<0> is undefined; the null vector has no value");
-        if (other == Bits<W>{}) {
-            throw std::domain_error("Division by zero");
-        }
+    constexpr std::pair<Bits, Bits> sdivmod(Bits<W> const& other) const {
         if constexpr (is_wide) {
             return divide_wide(other, true, true);
         } else {
-            auto lhs_ext = this->sign_extended();
-            auto rhs_ext = other.sign_extended();
-            // MIN % -1 == 0; avoid the divide's overflow on that input.
-            using SType = decltype(lhs_ext);
-            if (rhs_ext == -1 && lhs_ext == std::numeric_limits<SType>::min()) {
-                return Bits<W>{};
+            auto result = sdivrem(other);
+            if (result.second != Bits<W>{} && (slt(Bits<W>{}) != other.slt(Bits<W>{}))) {
+                result.first = result.first - Bits<W>{1};
+                result.second = result.second + other;
             }
-            return Bits<W>(lhs_ext % rhs_ext);
+            return result;
         }
     }
 
@@ -818,7 +812,9 @@ class Bits {
         return WordSpan{std::span<Word>{storage_}, W};
     }
 
-    constexpr Bits divide_wide(Bits const& rhs, bool remainder, bool is_signed) const
+    constexpr std::pair<Bits, Bits> divide_wide(
+        Bits const& rhs, bool is_signed, bool modulo
+    ) const
         requires(is_wide)
     {
         constexpr size_t max_limbs = std::tuple_size_v<IntType> * limbs_per_word;
@@ -827,23 +823,38 @@ class Bits {
         std::array<DivLimb, max_limbs * 2> q{};
         std::array<DivLimb, max_limbs> r{};
         DivideScratch scratch{u, v, q, r};
-        Bits result;
-        if (is_signed) {
+        Bits quotient;
+        Bits remainder;
+        if (modulo) {
             Bits lhs_magnitude;
             Bits rhs_magnitude;
-            detail::divide_signed(
-                result.mut(),
+            detail::divide_modulo(
+                quotient.mut(),
+                remainder.mut(),
                 cref(),
                 rhs.cref(),
                 lhs_magnitude.mut(),
                 rhs_magnitude.mut(),
-                remainder,
+                scratch
+            );
+        } else if (is_signed) {
+            Bits lhs_magnitude;
+            Bits rhs_magnitude;
+            detail::divide_signed(
+                quotient.mut(),
+                remainder.mut(),
+                cref(),
+                rhs.cref(),
+                lhs_magnitude.mut(),
+                rhs_magnitude.mut(),
                 scratch
             );
         } else {
-            detail::divide_unsigned(result.mut(), cref(), rhs.cref(), remainder, scratch);
+            detail::divide_unsigned(
+                quotient.mut(), remainder.mut(), cref(), rhs.cref(), scratch
+            );
         }
-        return result;
+        return {quotient, remainder};
     }
 
     // Zero-fill widen to Wm. Handles all four tier-crossing combinations; the
@@ -919,20 +930,38 @@ struct same_width {
         return a * b;
     }
     template <size_t W>
+    static constexpr std::pair<Bits<W>, Bits<W>> udivrem(
+        Bits<W> const& a, Bits<W> const& b
+    ) {
+        return a.udivrem(b);
+    }
+    template <size_t W>
+    static constexpr std::pair<Bits<W>, Bits<W>> sdivrem(
+        Bits<W> const& a, Bits<W> const& b
+    ) {
+        return a.sdivrem(b);
+    }
+    template <size_t W>
+    static constexpr std::pair<Bits<W>, Bits<W>> sdivmod(
+        Bits<W> const& a, Bits<W> const& b
+    ) {
+        return a.sdivmod(b);
+    }
+    template <size_t W>
     static constexpr Bits<W> udiv(Bits<W> const& a, Bits<W> const& b) {
-        return a.udiv(b);
+        return udivrem(a, b).first;
     }
     template <size_t W>
     static constexpr Bits<W> umod(Bits<W> const& a, Bits<W> const& b) {
-        return a.umod(b);
+        return udivrem(a, b).second;
     }
     template <size_t W>
     static constexpr Bits<W> sdiv(Bits<W> const& a, Bits<W> const& b) {
-        return a.sdiv(b);
+        return sdivrem(a, b).first;
     }
     template <size_t W>
     static constexpr Bits<W> smod(Bits<W> const& a, Bits<W> const& b) {
-        return a.smod(b);
+        return sdivrem(a, b).second;
     }
 };
 
@@ -981,49 +1010,66 @@ constexpr Bits<Wa + Wb> mul_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
 // Quotient grows by one bit so signed_min / -1 is representable.
 
 template <size_t Wa, size_t Wb>
-constexpr Bits<Wa + 1> div_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
+constexpr std::pair<Bits<Wa + 1>, Bits<Wb>> divrem_unsigned(
+    Bits<Wa> const& a, Bits<Wb> const& b
+) {
     constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    return same_width::udiv(a.template zero_extend<Wr>(), b.template zero_extend<Wr>())
-        .template truncate<Wa + 1>();
+    auto result =
+        same_width::udivrem(a.template zero_extend<Wr>(), b.template zero_extend<Wr>());
+    return {
+        result.first.template truncate<Wa + 1>(), result.second.template truncate<Wb>()
+    };
+}
+
+template <size_t Wa, size_t Wb>
+constexpr std::pair<Bits<Wa + 1>, Bits<Wb>> divrem_signed(
+    Bits<Wa> const& a, Bits<Wb> const& b
+) {
+    constexpr size_t Wr = std::max(Wa, Wb) + 1;
+    auto result =
+        same_width::sdivrem(a.template sign_extend<Wr>(), b.template sign_extend<Wr>());
+    return {
+        result.first.template truncate<Wa + 1>(), result.second.template truncate<Wb>()
+    };
+}
+
+template <size_t Wa, size_t Wb>
+constexpr std::pair<Bits<Wa + 1>, Bits<Wb>> divmod_signed(
+    Bits<Wa> const& a, Bits<Wb> const& b
+) {
+    constexpr size_t Wr = std::max(Wa, Wb) + 1;
+    auto result =
+        same_width::sdivmod(a.template sign_extend<Wr>(), b.template sign_extend<Wr>());
+    return {
+        result.first.template truncate<Wa + 1>(), result.second.template truncate<Wb>()
+    };
+}
+
+template <size_t Wa, size_t Wb>
+constexpr Bits<Wa + 1> div_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
+    return divrem_unsigned(a, b).first;
 }
 
 template <size_t Wa, size_t Wb>
 constexpr Bits<Wa + 1> div_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
-    constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    return same_width::sdiv(a.template sign_extend<Wr>(), b.template sign_extend<Wr>())
-        .template truncate<Wa + 1>();
+    return divrem_signed(a, b).first;
 }
-
-// Remainder is bounded by the divisor, so it needs no more than Wb bits.
 
 template <size_t Wa, size_t Wb>
 constexpr Bits<Wb> rem_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
-    constexpr size_t Wr = std::max(Wa, Wb);
-    return same_width::umod(a.template zero_extend<Wr>(), b.template zero_extend<Wr>())
-        .template truncate<Wb>();
+    return divrem_unsigned(a, b).second;
 }
 
 // C-style remainder: the sign follows the dividend.
 template <size_t Wa, size_t Wb>
 constexpr Bits<Wb> rem_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
-    constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    return same_width::smod(a.template sign_extend<Wr>(), b.template sign_extend<Wr>())
-        .template truncate<Wb>();
+    return divrem_signed(a, b).second;
 }
 
 // VHDL/Python modulo: the sign follows the divisor.
 template <size_t Wa, size_t Wb>
 constexpr Bits<Wb> mod_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
-    constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    auto ae = a.template sign_extend<Wr>();
-    auto be = b.template sign_extend<Wr>();
-    auto r = same_width::smod(ae, be);
-    // smod follows the dividend; when the signs disagree and there is a
-    // remainder, shift it onto the divisor's side.
-    if (r != Bits<Wr>{} && (r.slt(Bits<Wr>{}) != be.slt(Bits<Wr>{}))) {
-        r = same_width::add(r, be);
-    }
-    return r.template truncate<Wb>();
+    return divmod_signed(a, b).second;
 }
 
 template <size_t W>

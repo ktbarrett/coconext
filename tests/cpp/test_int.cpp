@@ -585,6 +585,28 @@ TEST(TestBits, signed_arithmetic_wide) {
     EXPECT_EQ(SW::smod(min, neg_one), detail::Bits<200>(0));
 }
 
+TEST(TestBits, division_pairs) {
+    detail::Bits<200> minus_five(-5);
+    detail::Bits<200> three(3);
+    detail::Bits<200> minus_three(-3);
+
+    auto [q1, r1] = SW::sdivrem(minus_five, three);
+    EXPECT_EQ(q1.to_decimal_string(true), "-1");
+    EXPECT_EQ(r1.to_decimal_string(true), "-2");
+
+    auto [q2, m2] = SW::sdivmod(minus_five, three);
+    EXPECT_EQ(q2.to_decimal_string(true), "-2");
+    EXPECT_EQ(m2.to_decimal_string(true), "1");
+
+    auto [q3, m3] = SW::sdivmod(detail::Bits<200>(5), minus_three);
+    EXPECT_EQ(q3.to_decimal_string(true), "-2");
+    EXPECT_EQ(m3.to_decimal_string(true), "-1");
+
+    auto [uq, ur] = SW::udivrem(detail::Bits<200>(17), detail::Bits<200>(5));
+    EXPECT_EQ(uq, detail::Bits<200>(3));
+    EXPECT_EQ(ur, detail::Bits<200>(2));
+}
+
 TEST(TestBits, string_overflow_throws_wide) {
     // Exactly-fitting literals are accepted.
     EXPECT_NO_THROW((detail::Bits<200>{"0x" + std::string(50, 'F')}));  // 200 ones
@@ -728,8 +750,9 @@ TEST(TestBits, string_ctor_at_every_tier) {
 TEST(TestBits, constexpr_wide) {
     constexpr detail::Bits<200> a{"0xFEDCBA9876543210FEDCBA98"};
     constexpr detail::Bits<200> b(uint64_t{1000000007});
-    constexpr auto q = SW::udiv(a, b);
-    constexpr auto r = SW::umod(a, b);
+    constexpr auto qr = SW::udivrem(a, b);
+    constexpr auto q = qr.first;
+    constexpr auto r = qr.second;
     static_assert(SW::add(SW::mul(q, b), r) == a, "division identity at compile time");
     static_assert(a.ugt(b));
     static_assert(SW::umod(a, a) == detail::Bits<200>(0));

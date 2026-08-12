@@ -195,6 +195,24 @@ TEST(DynBits, division_by_zero_throws) {
     EXPECT_THROW(detail::div_unsigned(a, zero), std::domain_error);
 }
 
+TEST(DynBits, division_pairs) {
+    DynBits minus_five(200, int64_t{-5});
+    DynBits three(200, int64_t{3});
+
+    auto [quotient, remainder] = DSW::sdivrem(minus_five, three);
+    EXPECT_EQ(quotient.to_decimal_string(true), "-1");
+    EXPECT_EQ(remainder.to_decimal_string(true), "-2");
+
+    auto [floor_quotient, modulo] = DSW::sdivmod(minus_five, three);
+    EXPECT_EQ(floor_quotient.to_decimal_string(true), "-2");
+    EXPECT_EQ(modulo.to_decimal_string(true), "1");
+
+    auto [unsigned_quotient, unsigned_remainder] =
+        DSW::udivrem(DynBits(200, uint64_t{17}), DynBits(200, uint64_t{5}));
+    EXPECT_EQ(unsigned_quotient.to_decimal_string(), "3");
+    EXPECT_EQ(unsigned_remainder.to_decimal_string(), "2");
+}
+
 // Bits<W> makes a width mismatch a compile error; DynBits cannot. Equality is
 // total so the type stays usable as a hash key, while the orderings and the
 // same-width primitives throw -- comparing across widths has no answer that is

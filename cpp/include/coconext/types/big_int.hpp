@@ -895,18 +895,18 @@ constexpr void multiply(WordSpan dst, WordConstSpan lhs, WordConstSpan rhs) {
     clear_unused_bits(dst);
 }
 
-// Same-width unsigned quotient or remainder. Storage ownership and scratch
-// allocation stay with the caller; all value-dependent division behavior is
-// shared here.
+// Same-width unsigned quotient and remainder. Storage ownership and scratch
+// allocation stay with the caller.
 constexpr void divide_unsigned(
-    WordSpan dst,
+    WordSpan quotient,
+    WordSpan remainder,
     WordConstSpan lhs,
     WordConstSpan rhs,
-    bool remainder,
     DivideScratch scratch
 ) {
     check_same_width(lhs, rhs);
-    if (dst.bit_width() != lhs.bit_width()) {
+    if (quotient.bit_width() != lhs.bit_width() || remainder.bit_width() != lhs.bit_width())
+    {
         throw std::invalid_argument("division result bit width mismatch");
     }
     unsigned rhs_words = active_words(rhs);
@@ -916,47 +916,44 @@ constexpr void divide_unsigned(
 
     unsigned lhs_words = active_words(lhs);
     if (lhs_words == 0 || ucompare(lhs, rhs) < 0) {
-        if (remainder) {
-            copy_bits(dst, lhs);
-        } else {
-            for (Word& word : dst.data()) {
-                word = 0;
-            }
+        for (Word& word : quotient.data()) {
+            word = 0;
         }
+        copy_bits(remainder, lhs);
         return;
     }
     if (ucompare(lhs, rhs) == 0) {
-        for (Word& word : dst.data()) {
+        for (Word& word : quotient.data()) {
             word = 0;
         }
-        if (!remainder) {
-            set_bit(dst, 0, true);
+        for (Word& word : remainder.data()) {
+            word = 0;
         }
+        set_bit(quotient, 0, true);
         return;
     }
 
-    std::span<Word> empty{};
     divide_impl(
         lhs.data(),
         lhs_words,
         rhs.data(),
         rhs_words,
-        remainder ? empty : dst.data(),
-        remainder ? dst.data() : empty,
+        quotient.data(),
+        remainder.data(),
         scratch
     );
-    clear_unused_bits(dst);
+    clear_unused_bits(quotient);
+    clear_unused_bits(remainder);
 }
 
-// Signed division uses caller-owned magnitude buffers so fixed-width Bits can
-// remain constexpr and allocation-free while DynBits can use its own storage.
+// Truncating signed division. The remainder follows the dividend's sign.
 constexpr void divide_signed(
-    WordSpan dst,
+    WordSpan quotient,
+    WordSpan remainder,
     WordConstSpan lhs,
     WordConstSpan rhs,
     WordSpan lhs_magnitude,
     WordSpan rhs_magnitude,
-    bool remainder,
     DivideScratch scratch
 ) {
     check_same_width(lhs, rhs);
@@ -970,9 +967,35 @@ constexpr void divide_signed(
     if (rhs_negative) {
         negate(rhs_magnitude);
     }
-    divide_unsigned(dst, lhs_magnitude, rhs_magnitude, remainder, scratch);
-    if ((remainder && lhs_negative) || (!remainder && lhs_negative != rhs_negative)) {
-        negate(dst);
+    divide_unsigned(quotient, remainder, lhs_magnitude, rhs_magnitude, scratch);
+    if (lhs_negative != rhs_negative) {
+        negate(quotient);
+    }
+    if (lhs_negative) {
+        negate(remainder);
+    }
+}
+
+// Floor signed division. Modulo follows the divisor's sign.
+constexpr void divide_modulo(
+    WordSpan quotient,
+    WordSpan modulo,
+    WordConstSpan lhs,
+    WordConstSpan rhs,
+    WordSpan lhs_magnitude,
+    WordSpan rhs_magnitude,
+    DivideScratch scratch
+) {
+    divide_signed(quotient, modulo, lhs, rhs, lhs_magnitude, rhs_magnitude, scratch);
+    if (active_words(modulo) != 0 && is_negative(lhs) != is_negative(rhs)) {
+        Word borrow = 1;
+        for (Word& word : quotient.data()) {
+            Word previous = word;
+            word -= borrow;
+            borrow = word > previous;
+        }
+        clear_unused_bits(quotient);
+        add_assign(modulo, rhs);
     }
 }
 
