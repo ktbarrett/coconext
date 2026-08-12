@@ -6,10 +6,46 @@
 
 using namespace coconext::types;
 
-// Bits' same-width arithmetic is private -- the growing free functions are the
-// public surface. These tests drive the primitives directly because the
-// division kernels need edge cases the growing ops cannot reach.
-using SW = detail::same_width;
+template <size_t W>
+constexpr auto exact_add(detail::Bits<W> const& a, detail::Bits<W> const& b) {
+    return a + b;
+}
+template <size_t W>
+constexpr auto exact_sub(detail::Bits<W> const& a, detail::Bits<W> const& b) {
+    return a - b;
+}
+template <size_t W>
+constexpr auto exact_mul(detail::Bits<W> const& a, detail::Bits<W> const& b) {
+    return a * b;
+}
+template <size_t W>
+constexpr auto exact_udivrem(detail::Bits<W> const& a, detail::Bits<W> const& b) {
+    return a.udivrem(b);
+}
+template <size_t W>
+constexpr auto exact_sdivrem(detail::Bits<W> const& a, detail::Bits<W> const& b) {
+    return a.sdivrem(b);
+}
+template <size_t W>
+constexpr auto exact_sdivmod(detail::Bits<W> const& a, detail::Bits<W> const& b) {
+    return a.sdivmod(b);
+}
+template <size_t W>
+constexpr auto exact_udiv(detail::Bits<W> const& a, detail::Bits<W> const& b) {
+    return a.udiv(b);
+}
+template <size_t W>
+constexpr auto exact_umod(detail::Bits<W> const& a, detail::Bits<W> const& b) {
+    return a.umod(b);
+}
+template <size_t W>
+constexpr auto exact_sdiv(detail::Bits<W> const& a, detail::Bits<W> const& b) {
+    return a.sdiv(b);
+}
+template <size_t W>
+constexpr auto exact_smod(detail::Bits<W> const& a, detail::Bits<W> const& b) {
+    return a.smod(b);
+}
 
 #if defined(__SIZEOF_INT128__)
 
@@ -106,24 +142,24 @@ TEST(TestBits, arithmetic_operations_native_ints_supports_128) {
     detail::Bits<128> a(1000);
     detail::Bits<128> b(300);
 
-    EXPECT_EQ(SW::add(a, b), detail::Bits<128>(1300));
-    EXPECT_EQ(SW::sub(a, b), detail::Bits<128>(700));
-    EXPECT_EQ(SW::mul(a, b), detail::Bits<128>(300000));
-    EXPECT_EQ(SW::udiv(a, b), detail::Bits<128>(3));
-    EXPECT_EQ(SW::umod(a, b), detail::Bits<128>(100));
-    EXPECT_EQ(SW::sdiv(a, b), detail::Bits<128>(3));
-    EXPECT_EQ(SW::smod(a, b), detail::Bits<128>(100));
+    EXPECT_EQ(exact_add(a, b), detail::Bits<128>(1300));
+    EXPECT_EQ(exact_sub(a, b), detail::Bits<128>(700));
+    EXPECT_EQ(exact_mul(a, b), detail::Bits<128>(300000));
+    EXPECT_EQ(exact_udiv(a, b), detail::Bits<128>(3));
+    EXPECT_EQ(exact_umod(a, b), detail::Bits<128>(100));
+    EXPECT_EQ(exact_sdiv(a, b), detail::Bits<128>(3));
+    EXPECT_EQ(exact_smod(a, b), detail::Bits<128>(100));
 
     detail::Bits<128> neg_val(-100);
     detail::Bits<128> div_val(3);
 
-    EXPECT_EQ(SW::sdiv(neg_val, div_val), detail::Bits<128>(-33));
-    EXPECT_EQ(SW::smod(neg_val, div_val), detail::Bits<128>(-1));
+    EXPECT_EQ(exact_sdiv(neg_val, div_val), detail::Bits<128>(-33));
+    EXPECT_EQ(exact_smod(neg_val, div_val), detail::Bits<128>(-1));
 
     detail::Bits<128> zero(0);
 
-    EXPECT_THROW(SW::udiv(neg_val, zero), std::domain_error);
-    EXPECT_THROW(SW::sdiv(div_val, zero), std::domain_error);
+    EXPECT_THROW(exact_udiv(neg_val, zero), std::domain_error);
+    EXPECT_THROW(exact_sdiv(div_val, zero), std::domain_error);
 }
 
 TEST(TestBits, shift_right_logical_supports_128) {
@@ -324,6 +360,17 @@ TEST(TestBits, comparison_operations) {
 
     EXPECT_TRUE(neg_10.ugt(neg_20));
     EXPECT_TRUE(neg_20.ult(neg_10));
+
+    constexpr detail::Bits<8> narrow_minus_one(-1);
+    constexpr detail::Bits<64> native_one(1);
+    constexpr detail::Bits<200> wide_one(1);
+    constexpr detail::Bits<200> wide_255(255);
+    static_assert(narrow_minus_one.slt(native_one));
+    static_assert(!narrow_minus_one.ult(native_one));
+    static_assert(!detail::Bits<8>(255).ult(wide_255));
+    static_assert(!wide_255.ult(detail::Bits<8>(255)));
+    static_assert(!native_one.ult(wide_one));
+    static_assert(!wide_one.ult(native_one));
 }
 
 TEST(TestBits, and_or_op) {
@@ -402,27 +449,27 @@ TEST(TestBits, arithmetic_operations_native_ints) {
     detail::Bits<64> a(1000);
     detail::Bits<64> b(300);
 
-    EXPECT_EQ(SW::add(a, b), detail::Bits<64>(1300));
-    EXPECT_EQ(SW::sub(a, b), detail::Bits<64>(700));
-    EXPECT_EQ(SW::mul(a, b), detail::Bits<64>(300000));
-    EXPECT_EQ(SW::udiv(a, b), detail::Bits<64>(3));
-    EXPECT_EQ(SW::umod(a, b), detail::Bits<64>(100));
-    EXPECT_EQ(SW::sdiv(a, b), detail::Bits<64>(3));
-    EXPECT_EQ(SW::smod(a, b), detail::Bits<64>(100));
+    EXPECT_EQ(exact_add(a, b), detail::Bits<64>(1300));
+    EXPECT_EQ(exact_sub(a, b), detail::Bits<64>(700));
+    EXPECT_EQ(exact_mul(a, b), detail::Bits<64>(300000));
+    EXPECT_EQ(exact_udiv(a, b), detail::Bits<64>(3));
+    EXPECT_EQ(exact_umod(a, b), detail::Bits<64>(100));
+    EXPECT_EQ(exact_sdiv(a, b), detail::Bits<64>(3));
+    EXPECT_EQ(exact_smod(a, b), detail::Bits<64>(100));
 
     detail::Bits<45> neg_val(-100);
     detail::Bits<45> div_val(3);
 
-    EXPECT_EQ(SW::sdiv(neg_val, div_val), detail::Bits<45>(-33));
-    EXPECT_EQ(SW::smod(neg_val, div_val), detail::Bits<45>(-1));
+    EXPECT_EQ(exact_sdiv(neg_val, div_val), detail::Bits<45>(-33));
+    EXPECT_EQ(exact_smod(neg_val, div_val), detail::Bits<45>(-1));
 
-    EXPECT_EQ(SW::udiv(neg_val, div_val), detail::Bits<45>(11728124029577ULL));
-    EXPECT_EQ(SW::umod(neg_val, div_val), detail::Bits<45>(1));
+    EXPECT_EQ(exact_udiv(neg_val, div_val), detail::Bits<45>(11728124029577ULL));
+    EXPECT_EQ(exact_umod(neg_val, div_val), detail::Bits<45>(1));
 
     detail::Bits<45> zero(0);
 
-    EXPECT_THROW(SW::udiv(neg_val, zero), std::domain_error);
-    EXPECT_THROW(SW::sdiv(div_val, zero), std::domain_error);
+    EXPECT_THROW(exact_udiv(neg_val, zero), std::domain_error);
+    EXPECT_THROW(exact_sdiv(div_val, zero), std::domain_error);
 }
 
 TEST(TestBits, shift_right_logical) {
@@ -533,56 +580,56 @@ TEST(TestBits, arithmetic_operations_wide) {
     detail::Bits<200> b{"0xFEDCBA98765432100123456789"};
 
     EXPECT_EQ(
-        SW::add(a, b).to_decimal_string(),
+        exact_add(a, b).to_decimal_string(),
         "103929005307927776916288754849918835164314678374"
     );
     EXPECT_EQ(
-        SW::sub(a, b).to_decimal_string(),
+        exact_sub(a, b).to_decimal_string(),
         "103929005307927736531757632912370613094305916244"
     );
     EXPECT_EQ(
-        SW::mul(a, b).to_decimal_string(),
+        exact_mul(a, b).to_decimal_string(),
         "329963546613616313339723066835445579609796160260803833793861"
     );
-    EXPECT_EQ(SW::udiv(a, b).to_decimal_string(), "5146971002046463");
-    EXPECT_EQ(SW::umod(a, b).to_decimal_string(), "20112278405973339191843622874214");
+    EXPECT_EQ(exact_udiv(a, b).to_decimal_string(), "5146971002046463");
+    EXPECT_EQ(exact_umod(a, b).to_decimal_string(), "20112278405973339191843622874214");
 
     // Division identity holds.
-    EXPECT_EQ(SW::add(SW::mul(SW::udiv(a, b), b), SW::umod(a, b)), a);
+    EXPECT_EQ(exact_add(exact_mul(exact_udiv(a, b), b), exact_umod(a, b)), a);
 
     // Degenerate cases.
     detail::Bits<200> zero(0);
     detail::Bits<200> one(1);
-    EXPECT_EQ(SW::udiv(a, a), one);
-    EXPECT_EQ(SW::umod(a, a), zero);
-    EXPECT_EQ(SW::udiv(b, a), zero);  // b < a
-    EXPECT_EQ(SW::umod(b, a), b);
-    EXPECT_EQ(SW::udiv(zero, a), zero);
-    EXPECT_EQ(SW::udiv(a, one), a);
+    EXPECT_EQ(exact_udiv(a, a), one);
+    EXPECT_EQ(exact_umod(a, a), zero);
+    EXPECT_EQ(exact_udiv(b, a), zero);  // b < a
+    EXPECT_EQ(exact_umod(b, a), b);
+    EXPECT_EQ(exact_udiv(zero, a), zero);
+    EXPECT_EQ(exact_udiv(a, one), a);
 
-    EXPECT_THROW(SW::udiv(a, zero), std::domain_error);
-    EXPECT_THROW(SW::umod(a, zero), std::domain_error);
-    EXPECT_THROW(SW::sdiv(a, zero), std::domain_error);
-    EXPECT_THROW(SW::smod(a, zero), std::domain_error);
+    EXPECT_THROW(exact_udiv(a, zero), std::domain_error);
+    EXPECT_THROW(exact_umod(a, zero), std::domain_error);
+    EXPECT_THROW(exact_sdiv(a, zero), std::domain_error);
+    EXPECT_THROW(exact_smod(a, zero), std::domain_error);
 }
 
 TEST(TestBits, signed_arithmetic_wide) {
     detail::Bits<200> neg{"-1000000000000000000000"};
     detail::Bits<200> pos{"7"};
 
-    EXPECT_EQ(SW::sdiv(neg, pos).to_decimal_string(true), "-142857142857142857142");
-    EXPECT_EQ(SW::smod(neg, pos).to_decimal_string(true), "-6");
+    EXPECT_EQ(exact_sdiv(neg, pos).to_decimal_string(true), "-142857142857142857142");
+    EXPECT_EQ(exact_smod(neg, pos).to_decimal_string(true), "-6");
 
     detail::Bits<200> neg2{"-3"};
-    EXPECT_EQ(SW::sdiv(neg, neg2).to_decimal_string(true), "333333333333333333333");
-    EXPECT_EQ(SW::smod(neg, neg2).to_decimal_string(true), "-1");
+    EXPECT_EQ(exact_sdiv(neg, neg2).to_decimal_string(true), "333333333333333333333");
+    EXPECT_EQ(exact_smod(neg, neg2).to_decimal_string(true), "-1");
 
     // MIN / -1 wraps to MIN rather than invoking UB. On the wide path MIN is
     // -2^(W-1); dividing by -1 yields the same pattern back.
     detail::Bits<200> min = detail::Bits<200>(1) << 199;  // sign bit only
     detail::Bits<200> neg_one = ~detail::Bits<200>(0);    // all ones == -1
-    EXPECT_EQ(SW::sdiv(min, neg_one), min);
-    EXPECT_EQ(SW::smod(min, neg_one), detail::Bits<200>(0));
+    EXPECT_EQ(exact_sdiv(min, neg_one), min);
+    EXPECT_EQ(exact_smod(min, neg_one), detail::Bits<200>(0));
 }
 
 TEST(TestBits, division_pairs) {
@@ -590,19 +637,19 @@ TEST(TestBits, division_pairs) {
     detail::Bits<200> three(3);
     detail::Bits<200> minus_three(-3);
 
-    auto [q1, r1] = SW::sdivrem(minus_five, three);
+    auto [q1, r1] = exact_sdivrem(minus_five, three);
     EXPECT_EQ(q1.to_decimal_string(true), "-1");
     EXPECT_EQ(r1.to_decimal_string(true), "-2");
 
-    auto [q2, m2] = SW::sdivmod(minus_five, three);
+    auto [q2, m2] = exact_sdivmod(minus_five, three);
     EXPECT_EQ(q2.to_decimal_string(true), "-2");
     EXPECT_EQ(m2.to_decimal_string(true), "1");
 
-    auto [q3, m3] = SW::sdivmod(detail::Bits<200>(5), minus_three);
+    auto [q3, m3] = exact_sdivmod(detail::Bits<200>(5), minus_three);
     EXPECT_EQ(q3.to_decimal_string(true), "-2");
     EXPECT_EQ(m3.to_decimal_string(true), "-1");
 
-    auto [uq, ur] = SW::udivrem(detail::Bits<200>(17), detail::Bits<200>(5));
+    auto [uq, ur] = exact_udivrem(detail::Bits<200>(17), detail::Bits<200>(5));
     EXPECT_EQ(uq, detail::Bits<200>(3));
     EXPECT_EQ(ur, detail::Bits<200>(2));
 }
@@ -750,12 +797,12 @@ TEST(TestBits, string_ctor_at_every_tier) {
 TEST(TestBits, constexpr_wide) {
     constexpr detail::Bits<200> a{"0xFEDCBA9876543210FEDCBA98"};
     constexpr detail::Bits<200> b(uint64_t{1000000007});
-    constexpr auto qr = SW::udivrem(a, b);
+    constexpr auto qr = exact_udivrem(a, b);
     constexpr auto q = qr.first;
     constexpr auto r = qr.second;
-    static_assert(SW::add(SW::mul(q, b), r) == a, "division identity at compile time");
+    static_assert(exact_add(exact_mul(q, b), r) == a, "division identity at compile time");
     static_assert(a.ugt(b));
-    static_assert(SW::umod(a, a) == detail::Bits<200>(0));
+    static_assert(exact_umod(a, a) == detail::Bits<200>(0));
     SUCCEED();
 }
 #endif
@@ -773,9 +820,9 @@ TEST(TestBits, zero_width) {
     EXPECT_FALSE(a != b);
 
     // arithmetic and bitwise short-circuit to null
-    EXPECT_TRUE(SW::add(a, b) == detail::Bits<0>{});
-    EXPECT_TRUE(SW::sub(a, b) == detail::Bits<0>{});
-    EXPECT_TRUE(SW::mul(a, b) == detail::Bits<0>{});
+    EXPECT_TRUE(exact_add(a, b) == detail::Bits<0>{});
+    EXPECT_TRUE(exact_sub(a, b) == detail::Bits<0>{});
+    EXPECT_TRUE(exact_mul(a, b) == detail::Bits<0>{});
     EXPECT_TRUE((a & b) == detail::Bits<0>{});
     EXPECT_TRUE((a | b) == detail::Bits<0>{});
     EXPECT_TRUE((a ^ b) == detail::Bits<0>{});
@@ -924,6 +971,23 @@ TEST(TestBitsGrowing, division_quotient_grows_by_one) {
     auto r = detail::rem_unsigned(a, b);
     static_assert(std::is_same_v<decltype(r), detail::Bits<8>>);
     EXPECT_EQ(r.to_decimal_string(), "4");
+}
+
+TEST(TestBitsGrowing, mixed_width_division) {
+    detail::Bits<8> dividend(uint8_t{200});
+    detail::Bits<200> divisor(uint8_t{3});
+    auto [quotient, remainder] = detail::divrem_unsigned(dividend, divisor);
+    EXPECT_EQ(quotient.to_decimal_string(), "66");
+    EXPECT_EQ(remainder.to_decimal_string(), "2");
+
+    detail::Bits<200> negative(int8_t{-17});
+    detail::Bits<8> five(uint8_t{5});
+    auto [truncated, rem] = detail::divrem_signed(negative, five);
+    auto [floored, mod] = detail::divmod_signed(negative, five);
+    EXPECT_EQ(truncated.to_decimal_string(true), "-3");
+    EXPECT_EQ(rem.to_decimal_string(true), "-2");
+    EXPECT_EQ(floored.to_decimal_string(true), "-4");
+    EXPECT_EQ(mod.to_decimal_string(true), "3");
 }
 
 // The extra quotient bit exists so signed_min / -1 stays representable.

@@ -65,7 +65,7 @@ using wide_uint = uint64_t;
 using wide_int = int64_t;
 #endif
 
-struct same_width;
+struct mixed_width;
 
 template <size_t W>
 class Bits {
@@ -354,35 +354,69 @@ class Bits {
     // u* treat the bits as unsigned, s* as two's-complement. There is
     // deliberately no operator< / operator<=>; the interpretation is the
     // caller's (matching LLVM APInt's ult/slt API).
-    constexpr bool ult(Bits<W> const& other) const {
+    template <size_t Wm>
+    constexpr bool ult(Bits<Wm> const& other) const {
         static_assert(
-            W > 0, "ordering on Bits<0> is undefined; the null vector has no value"
+            W > 0 && Wm > 0,
+            "ordering on Bits<0> is undefined; the null vector has no value"
         );
-        if constexpr (is_wide) {
+        if constexpr (is_wide && Bits<Wm>::is_wide) {
             return detail::ucompare(cref(), other.cref()) < 0;
-        } else {
+        } else if constexpr (!is_wide && !Bits<Wm>::is_wide) {
             return raw() < other.raw();
-        }
-    }
-
-    constexpr bool ule(Bits<W> const& other) const { return !other.ult(*this); }
-    constexpr bool ugt(Bits<W> const& other) const { return other.ult(*this); }
-    constexpr bool uge(Bits<W> const& other) const { return !ult(other); }
-
-    constexpr bool slt(Bits<W> const& other) const {
-        static_assert(
-            W > 0, "ordering on Bits<0> is undefined; the null vector has no value"
-        );
-        if constexpr (is_wide) {
-            return detail::scompare(cref(), other.cref()) < 0;
+        } else if constexpr (is_wide) {
+            auto other_words = other.native_word_array();
+            return detail::ucompare(cref(), WordConstSpan{other_words, Wm}) < 0;
         } else {
-            return sign_extended() < other.sign_extended();
+            auto this_words = native_word_array();
+            return detail::ucompare(WordConstSpan{this_words, W}, other.cref()) < 0;
         }
     }
 
-    constexpr bool sle(Bits<W> const& other) const { return !other.slt(*this); }
-    constexpr bool sgt(Bits<W> const& other) const { return other.slt(*this); }
-    constexpr bool sge(Bits<W> const& other) const { return !slt(other); }
+    template <size_t Wm>
+    constexpr bool ule(Bits<Wm> const& other) const {
+        return !other.ult(*this);
+    }
+    template <size_t Wm>
+    constexpr bool ugt(Bits<Wm> const& other) const {
+        return other.ult(*this);
+    }
+    template <size_t Wm>
+    constexpr bool uge(Bits<Wm> const& other) const {
+        return !ult(other);
+    }
+
+    template <size_t Wm>
+    constexpr bool slt(Bits<Wm> const& other) const {
+        static_assert(
+            W > 0 && Wm > 0,
+            "ordering on Bits<0> is undefined; the null vector has no value"
+        );
+        if constexpr (is_wide && Bits<Wm>::is_wide) {
+            return detail::scompare(cref(), other.cref()) < 0;
+        } else if constexpr (!is_wide && !Bits<Wm>::is_wide) {
+            return sign_extended() < other.sign_extended();
+        } else if constexpr (is_wide) {
+            auto other_words = other.native_word_array();
+            return detail::scompare(cref(), WordConstSpan{other_words, Wm}) < 0;
+        } else {
+            auto this_words = native_word_array();
+            return detail::scompare(WordConstSpan{this_words, W}, other.cref()) < 0;
+        }
+    }
+
+    template <size_t Wm>
+    constexpr bool sle(Bits<Wm> const& other) const {
+        return !other.slt(*this);
+    }
+    template <size_t Wm>
+    constexpr bool sgt(Bits<Wm> const& other) const {
+        return other.slt(*this);
+    }
+    template <size_t Wm>
+    constexpr bool sge(Bits<Wm> const& other) const {
+        return !slt(other);
+    }
 
     constexpr Bits operator&(Bits<W> const& other) const {
         if constexpr (W == 0) {
@@ -703,11 +737,11 @@ class Bits {
   private:
     template <size_t>
     friend class Bits;
-    friend struct same_width;
+    friend struct mixed_width;
 
-    // Same-width, wrapping arithmetic. Reached only through `same_width`, by
-    // the growing free functions below and by the tests that cover the
-    // division kernels directly. Nothing else should wrap silently.
+  public:
+    // Exact-width primitives used internally by the growing operations.
+    // These wrap to W and therefore are not exposed by the numeric frontends.
     constexpr Bits operator+(Bits<W> const& other) const {
         if constexpr (W == 0) {
             return Bits<W>{};
@@ -857,6 +891,7 @@ class Bits {
         return {quotient, remainder};
     }
 
+  private:
     // Zero-fill widen to Wm. Handles all four tier-crossing combinations; the
     // native-to-native case stays a single cast so the common path is cheap.
     template <size_t Wm>
@@ -892,6 +927,19 @@ class Bits {
         return static_cast<SType>(raw() << shift) >> shift;
     }
 
+    constexpr WideWords<W> native_word_array() const
+        requires(!is_wide && W > 0)
+    {
+        WideWords<W> result{};
+        result[0] = static_cast<Word>(raw());
+#if defined(__SIZEOF_INT128__)
+        if constexpr (sizeof(IntType) > sizeof(Word)) {
+            result[1] = static_cast<Word>(raw() >> word_bits);
+        }
+#endif
+        return result;
+    }
+
     // Mask of the W valid low bits within the native storage word. Only used on
     // the native path; the wide word-array path and the zero-width path have
     // no meaningful mask.
@@ -911,100 +959,214 @@ class Bits {
     IntType storage_{};
 };
 
-// The same-width primitive layer. Wrapping arithmetic is a footgun on a type
-// whose whole point is exact widths, so it is not part of Bits' interface;
-// the growing free functions below reach it through here, and so do the tests
-// that drive the division kernels' edge cases (MIN / -1, divisor > dividend,
-// division by zero) at a single width.
-struct same_width {
+struct mixed_width {
+  private:
     template <size_t W>
-    static constexpr Bits<W> add(Bits<W> const& a, Bits<W> const& b) {
-        return a + b;
+    using NativeBuffer =
+        std::array<Word, Bits<W>::is_wide ? 0 : (W + word_bits - 1) / word_bits>;
+
+    template <size_t W>
+    static constexpr WordConstSpan view(Bits<W> const& value, NativeBuffer<W>& buffer) {
+        if constexpr (Bits<W>::is_wide) {
+            return value.cref();
+        } else {
+            buffer = value.native_word_array();
+            return WordConstSpan{buffer, W};
+        }
     }
+
     template <size_t W>
-    static constexpr Bits<W> sub(Bits<W> const& a, Bits<W> const& b) {
-        return a - b;
+    static constexpr WordSpan output_view(Bits<W>& value, NativeBuffer<W>& buffer) {
+        if constexpr (Bits<W>::is_wide) {
+            return value.mut();
+        } else {
+            return WordSpan{buffer, W};
+        }
     }
+
     template <size_t W>
-    static constexpr Bits<W> mul(Bits<W> const& a, Bits<W> const& b) {
-        return a * b;
+    static constexpr void finish_output(Bits<W>& value, NativeBuffer<W> const& buffer) {
+        if constexpr (!Bits<W>::is_wide && W > 0) {
+            value.storage_ = static_cast<typename Bits<W>::IntType>(buffer[0]);
+#if defined(__SIZEOF_INT128__)
+            if constexpr (sizeof(typename Bits<W>::IntType) > sizeof(Word)) {
+                value.storage_ |= static_cast<typename Bits<W>::IntType>(buffer[1])
+                               << word_bits;
+            }
+#endif
+        }
     }
-    template <size_t W>
-    static constexpr std::pair<Bits<W>, Bits<W>> udivrem(
-        Bits<W> const& a, Bits<W> const& b
+
+  public:
+    template <size_t Wr, size_t Wa, size_t Wb>
+    static constexpr Bits<Wr> add(
+        Bits<Wa> const& a, Bits<Wb> const& b, bool signed_operands
     ) {
-        return a.udivrem(b);
+        static_assert(Bits<Wr>::is_wide);
+        NativeBuffer<Wa> a_buffer{};
+        NativeBuffer<Wb> b_buffer{};
+        Bits<Wr> result;
+        add_extended(
+            result.mut(),
+            view(a, a_buffer),
+            view(b, b_buffer),
+            signed_operands,
+            signed_operands
+        );
+        return result;
     }
-    template <size_t W>
-    static constexpr std::pair<Bits<W>, Bits<W>> sdivrem(
-        Bits<W> const& a, Bits<W> const& b
+
+    template <size_t Wr, size_t Wa, size_t Wb>
+    static constexpr Bits<Wr> sub(
+        Bits<Wa> const& a, Bits<Wb> const& b, bool signed_operands
     ) {
-        return a.sdivrem(b);
+        static_assert(Bits<Wr>::is_wide);
+        NativeBuffer<Wa> a_buffer{};
+        NativeBuffer<Wb> b_buffer{};
+        Bits<Wr> result;
+        sub_extended(
+            result.mut(),
+            view(a, a_buffer),
+            view(b, b_buffer),
+            signed_operands,
+            signed_operands
+        );
+        return result;
     }
-    template <size_t W>
-    static constexpr std::pair<Bits<W>, Bits<W>> sdivmod(
-        Bits<W> const& a, Bits<W> const& b
+
+    template <size_t Wr, size_t Wa, size_t Wb>
+    static constexpr Bits<Wr> mul(
+        Bits<Wa> const& a, Bits<Wb> const& b, bool signed_operands
     ) {
-        return a.sdivmod(b);
+        static_assert(Bits<Wr>::is_wide);
+        NativeBuffer<Wa> a_buffer{};
+        NativeBuffer<Wb> b_buffer{};
+        Bits<Wr> result;
+        if (signed_operands) {
+            detail::multiply_signed(result.mut(), view(a, a_buffer), view(b, b_buffer));
+        } else {
+            detail::multiply_unsigned(result.mut(), view(a, a_buffer), view(b, b_buffer));
+        }
+        return result;
     }
-    template <size_t W>
-    static constexpr Bits<W> udiv(Bits<W> const& a, Bits<W> const& b) {
-        return udivrem(a, b).first;
-    }
-    template <size_t W>
-    static constexpr Bits<W> umod(Bits<W> const& a, Bits<W> const& b) {
-        return udivrem(a, b).second;
-    }
-    template <size_t W>
-    static constexpr Bits<W> sdiv(Bits<W> const& a, Bits<W> const& b) {
-        return sdivrem(a, b).first;
-    }
-    template <size_t W>
-    static constexpr Bits<W> smod(Bits<W> const& a, Bits<W> const& b) {
-        return sdivrem(a, b).second;
+
+    template <size_t Wa, size_t Wb>
+    static constexpr std::pair<Bits<Wa + 1>, Bits<Wb>> divrem(
+        Bits<Wa> const& a, Bits<Wb> const& b, bool is_signed, bool modulo
+    ) {
+        constexpr size_t Wm = std::max(Wa, Wb) + 1;
+        constexpr size_t max_limbs = (Wm + word_bits - 1) / word_bits * limbs_per_word;
+        NativeBuffer<Wa> a_buffer{};
+        NativeBuffer<Wb> b_buffer{};
+        NativeBuffer<Wa + 1> quotient_buffer{};
+        NativeBuffer<Wb> remainder_buffer{};
+        Bits<Wa + 1> quotient;
+        Bits<Wb> remainder;
+        std::array<DivLimb, max_limbs * 2 + 1> u{};
+        std::array<DivLimb, max_limbs> v{};
+        std::array<DivLimb, max_limbs * 2> q{};
+        std::array<DivLimb, max_limbs> r{};
+        DivideScratch scratch{u, v, q, r};
+        auto quotient_view = output_view(quotient, quotient_buffer);
+        auto remainder_view = output_view(remainder, remainder_buffer);
+        auto a_view = view(a, a_buffer);
+        auto b_view = view(b, b_buffer);
+        if (is_signed) {
+            Bits<Wm> lhs_magnitude;
+            Bits<Wm> rhs_magnitude;
+            if (modulo) {
+                detail::divide_modulo(
+                    quotient_view,
+                    remainder_view,
+                    a_view,
+                    b_view,
+                    lhs_magnitude.mut(),
+                    rhs_magnitude.mut(),
+                    scratch
+                );
+            } else {
+                detail::divide_signed(
+                    quotient_view,
+                    remainder_view,
+                    a_view,
+                    b_view,
+                    lhs_magnitude.mut(),
+                    rhs_magnitude.mut(),
+                    scratch
+                );
+            }
+        } else {
+            detail::divide_unsigned(quotient_view, remainder_view, a_view, b_view, scratch);
+        }
+        finish_output(quotient, quotient_buffer);
+        finish_output(remainder, remainder_buffer);
+        return {quotient, remainder};
     }
 };
 
 // Growing arithmetic. The result width is wide enough to hold every value the
 // operation can produce, so these never wrap and the width arithmetic lives in
-// the return type rather than at each call site. Operands are extended to the
-// result width first -- zero-extended for the unsigned forms, sign-extended
-// for the signed ones -- which is the only place the interpretation matters.
+// the return type rather than at each call site. Wide operations consume each
+// operand at its original width and apply virtual zero/sign extension.
 
 template <size_t Wa, size_t Wb>
 constexpr Bits<std::max(Wa, Wb) + 1> add_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
     constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    return same_width::add(a.template zero_extend<Wr>(), b.template zero_extend<Wr>());
+    if constexpr (Bits<Wr>::is_wide) {
+        return mixed_width::add<Wr>(a, b, false);
+    } else {
+        return a.template zero_extend<Wr>() + b.template zero_extend<Wr>();
+    }
 }
 
 template <size_t Wa, size_t Wb>
 constexpr Bits<std::max(Wa, Wb) + 1> add_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
     constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    return same_width::add(a.template sign_extend<Wr>(), b.template sign_extend<Wr>());
+    if constexpr (Bits<Wr>::is_wide) {
+        return mixed_width::add<Wr>(a, b, true);
+    } else {
+        return a.template sign_extend<Wr>() + b.template sign_extend<Wr>();
+    }
 }
 
 template <size_t Wa, size_t Wb>
 constexpr Bits<std::max(Wa, Wb) + 1> sub_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
     constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    return same_width::sub(a.template zero_extend<Wr>(), b.template zero_extend<Wr>());
+    if constexpr (Bits<Wr>::is_wide) {
+        return mixed_width::sub<Wr>(a, b, false);
+    } else {
+        return a.template zero_extend<Wr>() - b.template zero_extend<Wr>();
+    }
 }
 
 template <size_t Wa, size_t Wb>
 constexpr Bits<std::max(Wa, Wb) + 1> sub_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
     constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    return same_width::sub(a.template sign_extend<Wr>(), b.template sign_extend<Wr>());
+    if constexpr (Bits<Wr>::is_wide) {
+        return mixed_width::sub<Wr>(a, b, true);
+    } else {
+        return a.template sign_extend<Wr>() - b.template sign_extend<Wr>();
+    }
 }
 
 template <size_t Wa, size_t Wb>
 constexpr Bits<Wa + Wb> mul_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
     constexpr size_t Wr = Wa + Wb;
-    return same_width::mul(a.template zero_extend<Wr>(), b.template zero_extend<Wr>());
+    if constexpr (Bits<Wr>::is_wide) {
+        return mixed_width::mul<Wr>(a, b, false);
+    } else {
+        return a.template zero_extend<Wr>() * b.template zero_extend<Wr>();
+    }
 }
 
 template <size_t Wa, size_t Wb>
 constexpr Bits<Wa + Wb> mul_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
     constexpr size_t Wr = Wa + Wb;
-    return same_width::mul(a.template sign_extend<Wr>(), b.template sign_extend<Wr>());
+    if constexpr (Bits<Wr>::is_wide) {
+        return mixed_width::mul<Wr>(a, b, true);
+    } else {
+        return a.template sign_extend<Wr>() * b.template sign_extend<Wr>();
+    }
 }
 
 // Quotient grows by one bit so signed_min / -1 is representable.
@@ -1014,11 +1176,14 @@ constexpr std::pair<Bits<Wa + 1>, Bits<Wb>> divrem_unsigned(
     Bits<Wa> const& a, Bits<Wb> const& b
 ) {
     constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    auto result =
-        same_width::udivrem(a.template zero_extend<Wr>(), b.template zero_extend<Wr>());
-    return {
-        result.first.template truncate<Wa + 1>(), result.second.template truncate<Wb>()
-    };
+    if constexpr (Bits<Wr>::is_wide) {
+        return mixed_width::divrem(a, b, false, false);
+    } else {
+        auto result = a.template zero_extend<Wr>().udivrem(b.template zero_extend<Wr>());
+        return {
+            result.first.template truncate<Wa + 1>(), result.second.template truncate<Wb>()
+        };
+    }
 }
 
 template <size_t Wa, size_t Wb>
@@ -1026,11 +1191,14 @@ constexpr std::pair<Bits<Wa + 1>, Bits<Wb>> divrem_signed(
     Bits<Wa> const& a, Bits<Wb> const& b
 ) {
     constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    auto result =
-        same_width::sdivrem(a.template sign_extend<Wr>(), b.template sign_extend<Wr>());
-    return {
-        result.first.template truncate<Wa + 1>(), result.second.template truncate<Wb>()
-    };
+    if constexpr (Bits<Wr>::is_wide) {
+        return mixed_width::divrem(a, b, true, false);
+    } else {
+        auto result = a.template sign_extend<Wr>().sdivrem(b.template sign_extend<Wr>());
+        return {
+            result.first.template truncate<Wa + 1>(), result.second.template truncate<Wb>()
+        };
+    }
 }
 
 template <size_t Wa, size_t Wb>
@@ -1038,11 +1206,14 @@ constexpr std::pair<Bits<Wa + 1>, Bits<Wb>> divmod_signed(
     Bits<Wa> const& a, Bits<Wb> const& b
 ) {
     constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    auto result =
-        same_width::sdivmod(a.template sign_extend<Wr>(), b.template sign_extend<Wr>());
-    return {
-        result.first.template truncate<Wa + 1>(), result.second.template truncate<Wb>()
-    };
+    if constexpr (Bits<Wr>::is_wide) {
+        return mixed_width::divrem(a, b, true, true);
+    } else {
+        auto result = a.template sign_extend<Wr>().sdivmod(b.template sign_extend<Wr>());
+        return {
+            result.first.template truncate<Wa + 1>(), result.second.template truncate<Wb>()
+        };
+    }
 }
 
 template <size_t Wa, size_t Wb>
@@ -1074,7 +1245,7 @@ constexpr Bits<Wb> mod_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
 
 template <size_t W>
 constexpr Bits<W + 1> negate_signed(Bits<W> const& a) {
-    return same_width::sub(Bits<W + 1>{}, a.template sign_extend<W + 1>());
+    return Bits<W + 1>{} - a.template sign_extend<W + 1>();
 }
 
 template <size_t W>
@@ -1083,7 +1254,7 @@ constexpr Bits<W + 1> abs_signed(Bits<W> const& a) {
     if constexpr (W == 0) {
         return ext;
     } else {
-        return a.get_bit(W - 1) ? same_width::sub(Bits<W + 1>{}, ext) : ext;
+        return a.get_bit(W - 1) ? Bits<W + 1>{} - ext : ext;
     }
 }
 

@@ -8,7 +8,36 @@
 using coconext::types::detail::DynBits;
 namespace detail = coconext::types::detail;
 
-using DSW = detail::dyn_same_width;
+static DynBits exact_add(DynBits const& a, DynBits const& b) {
+    return DynBits::exact_add(a, b);
+}
+static DynBits exact_sub(DynBits const& a, DynBits const& b) {
+    return DynBits::exact_sub(a, b);
+}
+static DynBits exact_mul(DynBits const& a, DynBits const& b) {
+    return DynBits::exact_mul(a, b);
+}
+static auto exact_udivrem(DynBits const& a, DynBits const& b) {
+    return DynBits::exact_divmod(a, b, false, false);
+}
+static auto exact_sdivrem(DynBits const& a, DynBits const& b) {
+    return DynBits::exact_divmod(a, b, true, false);
+}
+static auto exact_sdivmod(DynBits const& a, DynBits const& b) {
+    return DynBits::exact_divmod(a, b, true, true);
+}
+static DynBits exact_udiv(DynBits const& a, DynBits const& b) {
+    return exact_udivrem(a, b).first;
+}
+static DynBits exact_umod(DynBits const& a, DynBits const& b) {
+    return exact_udivrem(a, b).second;
+}
+static DynBits exact_sdiv(DynBits const& a, DynBits const& b) {
+    return exact_sdivrem(a, b).first;
+}
+static DynBits exact_smod(DynBits const& a, DynBits const& b) {
+    return exact_sdivrem(a, b).second;
+}
 
 // The inline buffer is the one tunable. Everything below is written against
 // sbo_words / sbo_bits rather than literals, so raising the knob only means
@@ -59,11 +88,11 @@ TEST(DynBits, both_storage_arms_agree) {
         DynBits a(w, uint64_t{12345});
         DynBits b(w, uint64_t{678});
 
-        EXPECT_EQ(DSW::add(a, b).to_decimal_string(), "13023") << "width " << w;
-        EXPECT_EQ(DSW::sub(a, b).to_decimal_string(), "11667") << "width " << w;
-        EXPECT_EQ(DSW::mul(a, b).to_decimal_string(), "8369910") << "width " << w;
-        EXPECT_EQ(DSW::udiv(a, b).to_decimal_string(), "18") << "width " << w;
-        EXPECT_EQ(DSW::umod(a, b).to_decimal_string(), "141") << "width " << w;
+        EXPECT_EQ(exact_add(a, b).to_decimal_string(), "13023") << "width " << w;
+        EXPECT_EQ(exact_sub(a, b).to_decimal_string(), "11667") << "width " << w;
+        EXPECT_EQ(exact_mul(a, b).to_decimal_string(), "8369910") << "width " << w;
+        EXPECT_EQ(exact_udiv(a, b).to_decimal_string(), "18") << "width " << w;
+        EXPECT_EQ(exact_umod(a, b).to_decimal_string(), "141") << "width " << w;
         EXPECT_EQ(a.popcount(), 6u) << "width " << w;
         EXPECT_TRUE(b.ult(a)) << "width " << w;
         EXPECT_EQ((a & b).to_decimal_string(), "32") << "width " << w;
@@ -78,7 +107,7 @@ TEST(DynBits, copy_and_move_on_both_arms) {
 
         // Copy is independent.
         DynBits b = a;
-        b = DSW::add(b, DynBits(w, uint64_t{1}));
+        b = exact_add(b, DynBits(w, uint64_t{1}));
         EXPECT_EQ(a.to_decimal_string(), "5") << "width " << w;
         EXPECT_EQ(b.to_decimal_string(), "6") << "width " << w;
 
@@ -141,6 +170,12 @@ TEST(DynBits, growing_arithmetic_accepts_mixed_widths) {
 
     // Unsigned subtraction borrows into the extra bit instead of wrapping.
     EXPECT_EQ(detail::sub_unsigned(a, b).to_decimal_string(true), "-800");
+
+    auto [quotient, remainder] = detail::divrem_unsigned(a, DynBits(200, uint64_t{3}));
+    EXPECT_EQ(quotient.width(), 9u);
+    EXPECT_EQ(remainder.width(), 200u);
+    EXPECT_EQ(quotient.to_decimal_string(), "66");
+    EXPECT_EQ(remainder.to_decimal_string(), "2");
 }
 
 TEST(DynBits, signed_growing_arithmetic) {
@@ -160,6 +195,14 @@ TEST(DynBits, signed_growing_arithmetic) {
     EXPECT_EQ(detail::rem_signed(pos56, neg3).to_decimal_string(true), "2");
     EXPECT_EQ(detail::mod_signed(pos56, neg3).to_decimal_string(true), "-1");
 
+    DynBits wide_neg(200, int64_t{-17});
+    auto [truncated, rem] = detail::divrem_signed(wide_neg, DynBits(8, int64_t{5}));
+    auto [floored, mod] = detail::divmod_signed(wide_neg, DynBits(8, int64_t{5}));
+    EXPECT_EQ(truncated.to_decimal_string(true), "-3");
+    EXPECT_EQ(rem.to_decimal_string(true), "-2");
+    EXPECT_EQ(floored.to_decimal_string(true), "-4");
+    EXPECT_EQ(mod.to_decimal_string(true), "3");
+
     // The extra quotient bit keeps signed_min / -1 representable.
     DynBits min_val(8, uint64_t{0x80});
     DynBits minus_one(8, uint64_t{0xFF});
@@ -171,27 +214,27 @@ TEST(DynBits, wide_arithmetic_matches_reference) {
     DynBits b(200, "0xFEDCBA98765432100123456789");
 
     EXPECT_EQ(
-        DSW::add(a, b).to_decimal_string(),
+        exact_add(a, b).to_decimal_string(),
         "103929005307927776916288754849918835164314678374"
     );
-    EXPECT_EQ(DSW::udiv(a, b).to_decimal_string(), "5146971002046463");
-    EXPECT_EQ(DSW::umod(a, b).to_decimal_string(), "20112278405973339191843622874214");
+    EXPECT_EQ(exact_udiv(a, b).to_decimal_string(), "5146971002046463");
+    EXPECT_EQ(exact_umod(a, b).to_decimal_string(), "20112278405973339191843622874214");
 
     // Division identity.
-    EXPECT_EQ(DSW::add(DSW::mul(DSW::udiv(a, b), b), DSW::umod(a, b)), a);
+    EXPECT_EQ(exact_add(exact_mul(exact_udiv(a, b), b), exact_umod(a, b)), a);
 
     DynBits neg(200, "-1000000000000000000000");
     DynBits seven(200, uint64_t{7});
-    EXPECT_EQ(DSW::sdiv(neg, seven).to_decimal_string(true), "-142857142857142857142");
-    EXPECT_EQ(DSW::smod(neg, seven).to_decimal_string(true), "-6");
+    EXPECT_EQ(exact_sdiv(neg, seven).to_decimal_string(true), "-142857142857142857142");
+    EXPECT_EQ(exact_smod(neg, seven).to_decimal_string(true), "-6");
 }
 
 TEST(DynBits, division_by_zero_throws) {
     DynBits a(200, uint64_t{5});
     DynBits zero(200);
-    EXPECT_THROW(DSW::udiv(a, zero), std::domain_error);
-    EXPECT_THROW(DSW::umod(a, zero), std::domain_error);
-    EXPECT_THROW(DSW::sdiv(a, zero), std::domain_error);
+    EXPECT_THROW(exact_udiv(a, zero), std::domain_error);
+    EXPECT_THROW(exact_umod(a, zero), std::domain_error);
+    EXPECT_THROW(exact_sdiv(a, zero), std::domain_error);
     EXPECT_THROW(detail::div_unsigned(a, zero), std::domain_error);
 }
 
@@ -199,24 +242,22 @@ TEST(DynBits, division_pairs) {
     DynBits minus_five(200, int64_t{-5});
     DynBits three(200, int64_t{3});
 
-    auto [quotient, remainder] = DSW::sdivrem(minus_five, three);
+    auto [quotient, remainder] = exact_sdivrem(minus_five, three);
     EXPECT_EQ(quotient.to_decimal_string(true), "-1");
     EXPECT_EQ(remainder.to_decimal_string(true), "-2");
 
-    auto [floor_quotient, modulo] = DSW::sdivmod(minus_five, three);
+    auto [floor_quotient, modulo] = exact_sdivmod(minus_five, three);
     EXPECT_EQ(floor_quotient.to_decimal_string(true), "-2");
     EXPECT_EQ(modulo.to_decimal_string(true), "1");
 
     auto [unsigned_quotient, unsigned_remainder] =
-        DSW::udivrem(DynBits(200, uint64_t{17}), DynBits(200, uint64_t{5}));
+        exact_udivrem(DynBits(200, uint64_t{17}), DynBits(200, uint64_t{5}));
     EXPECT_EQ(unsigned_quotient.to_decimal_string(), "3");
     EXPECT_EQ(unsigned_remainder.to_decimal_string(), "2");
 }
 
-// Bits<W> makes a width mismatch a compile error; DynBits cannot. Equality is
-// total so the type stays usable as a hash key, while the orderings and the
-// same-width primitives throw -- comparing across widths has no answer that is
-// right for both zero- and sign-extension.
+// Equality remains width-strict. Named ordering supplies the interpretation,
+// so unsigned comparison zero-extends and signed comparison sign-extends.
 TEST(DynBits, width_mismatch_policy) {
     DynBits a(200, uint64_t{1});
     DynBits b(128, uint64_t{1});
@@ -224,10 +265,14 @@ TEST(DynBits, width_mismatch_policy) {
     EXPECT_FALSE(a == b);
     EXPECT_TRUE(a != b);
 
-    EXPECT_THROW(a.ult(b), std::invalid_argument);
-    EXPECT_THROW(a.slt(b), std::invalid_argument);
-    EXPECT_THROW(DSW::add(a, b), std::invalid_argument);
-    EXPECT_THROW(DSW::udiv(a, b), std::invalid_argument);
+    EXPECT_FALSE(a.ult(b));
+    EXPECT_FALSE(a.slt(b));
+
+    DynBits negative(8, int8_t{-1});
+    EXPECT_FALSE(negative.ult(a));
+    EXPECT_TRUE(negative.slt(a));
+    EXPECT_THROW(exact_add(a, b), std::invalid_argument);
+    EXPECT_THROW(exact_udiv(a, b), std::invalid_argument);
     EXPECT_THROW((void)(a & b), std::invalid_argument);
 
     // Growing arithmetic is exempt: it extends both operands first.
@@ -274,16 +319,16 @@ TEST(DynBits, agrees_with_static_bits_at_tier_boundaries) {
         DynBits b(static_b);
         EXPECT_EQ(a.width(), w);
         EXPECT_EQ(
-            DSW::add(a, b).to_decimal_string(),
-            detail::same_width::add(static_a, static_b).to_decimal_string()
+            exact_add(a, b).to_decimal_string(),
+            exact_add(static_a, static_b).to_decimal_string()
         );
         EXPECT_EQ(
-            DSW::mul(a, b).to_decimal_string(),
-            detail::same_width::mul(static_a, static_b).to_decimal_string()
+            exact_mul(a, b).to_decimal_string(),
+            exact_mul(static_a, static_b).to_decimal_string()
         );
         EXPECT_EQ(
-            DSW::udiv(a, b).to_decimal_string(),
-            detail::same_width::udiv(static_a, static_b).to_decimal_string()
+            exact_udiv(a, b).to_decimal_string(),
+            exact_udiv(static_a, static_b).to_decimal_string()
         );
         EXPECT_EQ(a.popcount(), static_a.popcount());
         EXPECT_EQ(a.count_leading_zeros(), static_a.count_leading_zeros());

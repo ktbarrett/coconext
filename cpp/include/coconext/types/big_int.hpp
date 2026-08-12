@@ -143,7 +143,7 @@ constexpr int tc_multiply(
     std::span<Word> dst, std::span<Word const> lhs, std::span<Word const> rhs
 ) {
     int overflow = 0;
-    size_t parts = dst.size();
+    size_t parts = std::min(dst.size(), rhs.size());
     for (size_t i = 0; i < parts; ++i) {
         overflow |= tc_multiply_part(dst.subspan(i), lhs, rhs[i], 0, /*add=*/i != 0);
     }
@@ -541,19 +541,50 @@ constexpr void check_same_width(WordConstSpan a, WordConstSpan b) {
     }
 }
 
+constexpr Word extended_word(WordConstSpan value, size_t index, bool sign_extend) {
+    bool negative = sign_extend && is_negative(value);
+    if (index >= value.num_words()) {
+        return negative ? ~Word{0} : Word{0};
+    }
+    Word word = value.word(index);
+    if (negative && index + 1 == value.num_words()) {
+        unsigned valid_bits = value.bit_width() % word_bits;
+        if (valid_bits != 0) {
+            word |= ~Word{0} << valid_bits;
+        }
+    }
+    return word;
+}
+
 constexpr int ucompare(WordConstSpan a, WordConstSpan b) {
-    check_same_width(a, b);
-    return tc_compare(a.data(), b.data());
+    size_t words = std::max(a.num_words(), b.num_words());
+    while (words > 0) {
+        --words;
+        Word aw = extended_word(a, words, false);
+        Word bw = extended_word(b, words, false);
+        if (aw != bw) {
+            return aw > bw ? 1 : -1;
+        }
+    }
+    return 0;
 }
 
 constexpr int scompare(WordConstSpan a, WordConstSpan b) {
-    check_same_width(a, b);
     bool an = is_negative(a);
     bool bn = is_negative(b);
     if (an != bn) {
         return an ? -1 : 1;
     }
-    return tc_compare(a.data(), b.data());
+    size_t words = std::max(a.num_words(), b.num_words());
+    while (words > 0) {
+        --words;
+        Word aw = extended_word(a, words, true);
+        Word bw = extended_word(b, words, true);
+        if (aw != bw) {
+            return aw > bw ? 1 : -1;
+        }
+    }
+    return 0;
 }
 
 constexpr size_t count_trailing_zeros(WordConstSpan v) {
@@ -801,6 +832,40 @@ constexpr void sub_assign(WordSpan dst, WordConstSpan rhs) {
     clear_unused_bits(dst);
 }
 
+constexpr void add_extended(
+    WordSpan dst, WordConstSpan lhs, WordConstSpan rhs, bool lhs_signed, bool rhs_signed
+) {
+    Word carry = 0;
+    for (size_t i = 0; i < dst.num_words(); ++i) {
+        Word a = extended_word(lhs, i, lhs_signed);
+        Word b = extended_word(rhs, i, rhs_signed);
+        Word sum = a + b;
+        Word next_carry = sum < a;
+        Word with_carry = sum + carry;
+        next_carry |= with_carry < sum;
+        dst.data()[i] = with_carry;
+        carry = next_carry;
+    }
+    clear_unused_bits(dst);
+}
+
+constexpr void sub_extended(
+    WordSpan dst, WordConstSpan lhs, WordConstSpan rhs, bool lhs_signed, bool rhs_signed
+) {
+    Word borrow = 0;
+    for (size_t i = 0; i < dst.num_words(); ++i) {
+        Word a = extended_word(lhs, i, lhs_signed);
+        Word b = extended_word(rhs, i, rhs_signed);
+        Word difference = a - b;
+        Word next_borrow = a < b;
+        Word with_borrow = difference - borrow;
+        next_borrow |= difference < borrow;
+        dst.data()[i] = with_borrow;
+        borrow = next_borrow;
+    }
+    clear_unused_bits(dst);
+}
+
 constexpr void and_assign(WordSpan dst, WordConstSpan rhs) {
     check_same_width(dst, rhs);
     auto d = dst.data();
@@ -895,8 +960,53 @@ constexpr void multiply(WordSpan dst, WordConstSpan lhs, WordConstSpan rhs) {
     clear_unused_bits(dst);
 }
 
-// Same-width unsigned quotient and remainder. Storage ownership and scratch
-// allocation stay with the caller.
+constexpr void multiply_unsigned(WordSpan dst, WordConstSpan lhs, WordConstSpan rhs) {
+    for (Word& word : dst.data()) {
+        word = 0;
+    }
+    tc_multiply(dst.data(), lhs.data(), rhs.data());
+    clear_unused_bits(dst);
+}
+
+constexpr void subtract_shifted(WordSpan dst, WordConstSpan rhs, size_t shift) {
+    size_t word_shift = shift / word_bits;
+    unsigned bit_shift = shift % word_bits;
+    Word borrow = 0;
+    for (size_t i = 0; i < dst.num_words(); ++i) {
+        Word shifted = 0;
+        if (i >= word_shift) {
+            size_t source_index = i - word_shift;
+            if (source_index < rhs.num_words()) {
+                shifted = rhs.word(source_index) << bit_shift;
+            }
+            if (bit_shift != 0 && source_index > 0 && source_index - 1 < rhs.num_words()) {
+                shifted |= rhs.word(source_index - 1) >> (word_bits - bit_shift);
+            }
+        }
+        Word original = dst.data()[i];
+        Word difference = original - shifted;
+        Word next_borrow = original < shifted;
+        Word with_borrow = difference - borrow;
+        next_borrow |= difference < borrow;
+        dst.data()[i] = with_borrow;
+        borrow = next_borrow;
+    }
+    clear_unused_bits(dst);
+}
+
+constexpr void multiply_signed(WordSpan dst, WordConstSpan lhs, WordConstSpan rhs) {
+    multiply_unsigned(dst, lhs, rhs);
+    if (is_negative(lhs)) {
+        subtract_shifted(dst, rhs, lhs.bit_width());
+    }
+    if (is_negative(rhs)) {
+        subtract_shifted(dst, lhs, rhs.bit_width());
+    }
+}
+
+// Unsigned quotient and remainder. Storage ownership and scratch allocation
+// stay with the caller. The quotient must be wide enough for lhs and the
+// remainder must be wide enough for rhs.
 constexpr void divide_unsigned(
     WordSpan quotient,
     WordSpan remainder,
@@ -904,11 +1014,6 @@ constexpr void divide_unsigned(
     WordConstSpan rhs,
     DivideScratch scratch
 ) {
-    check_same_width(lhs, rhs);
-    if (quotient.bit_width() != lhs.bit_width() || remainder.bit_width() != lhs.bit_width())
-    {
-        throw std::invalid_argument("division result bit width mismatch");
-    }
     unsigned rhs_words = active_words(rhs);
     if (rhs_words == 0) {
         throw std::domain_error("Division by zero");
@@ -956,11 +1061,16 @@ constexpr void divide_signed(
     WordSpan rhs_magnitude,
     DivideScratch scratch
 ) {
-    check_same_width(lhs, rhs);
+    size_t magnitude_width = std::max(lhs.bit_width(), rhs.bit_width());
+    if (lhs_magnitude.bit_width() != rhs_magnitude.bit_width()
+        || lhs_magnitude.bit_width() < magnitude_width)
+    {
+        throw std::invalid_argument("division magnitude bit width mismatch");
+    }
     bool lhs_negative = is_negative(lhs);
     bool rhs_negative = is_negative(rhs);
-    copy_bits(lhs_magnitude, lhs);
-    copy_bits(rhs_magnitude, rhs);
+    sign_extend(lhs_magnitude, lhs);
+    sign_extend(rhs_magnitude, rhs);
     if (lhs_negative) {
         negate(lhs_magnitude);
     }
@@ -995,7 +1105,8 @@ constexpr void divide_modulo(
             borrow = word > previous;
         }
         clear_unused_bits(quotient);
-        add_assign(modulo, rhs);
+        add_extended(modulo, modulo, rhs, true, true);
+        clear_unused_bits(modulo);
     }
 }
 

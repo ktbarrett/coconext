@@ -295,8 +295,6 @@ class DynBits {
     }
 
   private:
-    friend struct dyn_same_width;
-
     size_t width_;
     union Storage {
         Word inline_[sbo_words];
@@ -323,6 +321,7 @@ class DynBits {
                            : std::span<Word const>{storage_.heap_.get(), num_words()};
     }
 
+  public:
     WordConstSpan cref() const { return WordConstSpan{words(), width_}; }
     WordSpan mut() { return WordSpan{words(), width_}; }
 
@@ -334,25 +333,25 @@ class DynBits {
 
     // Same-width primitives. Private for the same reason Bits' are: wrapping
     // arithmetic has no business on the public surface of an exact-width type.
-    static DynBits same_width_add(DynBits const& a, DynBits const& b) {
+    static DynBits exact_add(DynBits const& a, DynBits const& b) {
         DynBits result(a);
         add_assign(result.mut(), b.cref());
         return result;
     }
 
-    static DynBits same_width_sub(DynBits const& a, DynBits const& b) {
+    static DynBits exact_sub(DynBits const& a, DynBits const& b) {
         DynBits result(a);
         sub_assign(result.mut(), b.cref());
         return result;
     }
 
-    static DynBits same_width_mul(DynBits const& a, DynBits const& b) {
+    static DynBits exact_mul(DynBits const& a, DynBits const& b) {
         DynBits result(a);
         multiply(result.mut(), a.cref(), b.cref());
         return result;
     }
 
-    static std::pair<DynBits, DynBits> divmod(
+    static std::pair<DynBits, DynBits> exact_divmod(
         DynBits const& a, DynBits const& b, bool is_signed, bool modulo
     ) {
         check_same_width(a.cref(), b.cref());
@@ -390,103 +389,100 @@ class DynBits {
         }
         return {std::move(quotient), std::move(remainder)};
     }
-
-    static std::pair<DynBits, DynBits> same_width_udivrem(
-        DynBits const& a, DynBits const& b
-    ) {
-        return divmod(a, b, /*is_signed=*/false, /*modulo=*/false);
-    }
-
-    static std::pair<DynBits, DynBits> same_width_sdivrem(
-        DynBits const& a, DynBits const& b
-    ) {
-        return divmod(a, b, /*is_signed=*/true, /*modulo=*/false);
-    }
-
-    static std::pair<DynBits, DynBits> same_width_sdivmod(
-        DynBits const& a, DynBits const& b
-    ) {
-        return divmod(a, b, /*is_signed=*/true, /*modulo=*/true);
-    }
-};
-
-// The same-width primitive layer, mirroring detail::same_width for Bits<W>.
-struct dyn_same_width {
-    static DynBits add(DynBits const& a, DynBits const& b) {
-        return DynBits::same_width_add(a, b);
-    }
-    static DynBits sub(DynBits const& a, DynBits const& b) {
-        return DynBits::same_width_sub(a, b);
-    }
-    static DynBits mul(DynBits const& a, DynBits const& b) {
-        return DynBits::same_width_mul(a, b);
-    }
-    static std::pair<DynBits, DynBits> udivrem(DynBits const& a, DynBits const& b) {
-        return DynBits::same_width_udivrem(a, b);
-    }
-    static std::pair<DynBits, DynBits> sdivrem(DynBits const& a, DynBits const& b) {
-        return DynBits::same_width_sdivrem(a, b);
-    }
-    static std::pair<DynBits, DynBits> sdivmod(DynBits const& a, DynBits const& b) {
-        return DynBits::same_width_sdivmod(a, b);
-    }
-    static DynBits udiv(DynBits const& a, DynBits const& b) { return udivrem(a, b).first; }
-    static DynBits umod(DynBits const& a, DynBits const& b) { return udivrem(a, b).second; }
-    static DynBits sdiv(DynBits const& a, DynBits const& b) { return sdivrem(a, b).first; }
-    static DynBits smod(DynBits const& a, DynBits const& b) { return sdivrem(a, b).second; }
 };
 
 // Growing arithmetic. Same contract as the Bits<W> forms: the result is wide
-// enough to hold every value the operation can produce, and operands are
-// extended to it first, so differing operand widths are ordinary rather than
-// an error.
+// enough to hold every value the operation can produce. Kernels consume each
+// operand at its original width, so differing operand widths are ordinary
+// rather than an error.
 
 inline DynBits add_unsigned(DynBits const& a, DynBits const& b) {
-    size_t wr = std::max(a.width(), b.width()) + 1;
-    return dyn_same_width::add(a.zero_extend(wr), b.zero_extend(wr));
+    DynBits result(std::max(a.width(), b.width()) + 1);
+    add_extended(result.mut(), a.cref(), b.cref(), false, false);
+    return result;
 }
 
 inline DynBits add_signed(DynBits const& a, DynBits const& b) {
-    size_t wr = std::max(a.width(), b.width()) + 1;
-    return dyn_same_width::add(a.sign_extend(wr), b.sign_extend(wr));
+    DynBits result(std::max(a.width(), b.width()) + 1);
+    add_extended(result.mut(), a.cref(), b.cref(), true, true);
+    return result;
 }
 
 inline DynBits sub_unsigned(DynBits const& a, DynBits const& b) {
-    size_t wr = std::max(a.width(), b.width()) + 1;
-    return dyn_same_width::sub(a.zero_extend(wr), b.zero_extend(wr));
+    DynBits result(std::max(a.width(), b.width()) + 1);
+    sub_extended(result.mut(), a.cref(), b.cref(), false, false);
+    return result;
 }
 
 inline DynBits sub_signed(DynBits const& a, DynBits const& b) {
-    size_t wr = std::max(a.width(), b.width()) + 1;
-    return dyn_same_width::sub(a.sign_extend(wr), b.sign_extend(wr));
+    DynBits result(std::max(a.width(), b.width()) + 1);
+    sub_extended(result.mut(), a.cref(), b.cref(), true, true);
+    return result;
 }
 
 inline DynBits mul_unsigned(DynBits const& a, DynBits const& b) {
-    size_t wr = a.width() + b.width();
-    return dyn_same_width::mul(a.zero_extend(wr), b.zero_extend(wr));
+    DynBits result(a.width() + b.width());
+    detail::multiply_unsigned(result.mut(), a.cref(), b.cref());
+    return result;
 }
 
 inline DynBits mul_signed(DynBits const& a, DynBits const& b) {
-    size_t wr = a.width() + b.width();
-    return dyn_same_width::mul(a.sign_extend(wr), b.sign_extend(wr));
+    DynBits result(a.width() + b.width());
+    detail::multiply_signed(result.mut(), a.cref(), b.cref());
+    return result;
+}
+
+inline std::pair<DynBits, DynBits> divrem_impl(
+    DynBits const& a, DynBits const& b, bool is_signed, bool modulo
+) {
+    size_t magnitude_width = std::max(a.width(), b.width()) + 1;
+    DynBits quotient(a.width() + 1);
+    DynBits remainder(b.width());
+    OwnedDivScratch scratch = make_owned_div_scratch(
+        (magnitude_width + word_bits - 1) / word_bits * limbs_per_word
+    );
+    if (is_signed) {
+        DynBits lhs_magnitude(magnitude_width);
+        DynBits rhs_magnitude(magnitude_width);
+        if (modulo) {
+            detail::divide_modulo(
+                quotient.mut(),
+                remainder.mut(),
+                a.cref(),
+                b.cref(),
+                lhs_magnitude.mut(),
+                rhs_magnitude.mut(),
+                scratch.view
+            );
+        } else {
+            detail::divide_signed(
+                quotient.mut(),
+                remainder.mut(),
+                a.cref(),
+                b.cref(),
+                lhs_magnitude.mut(),
+                rhs_magnitude.mut(),
+                scratch.view
+            );
+        }
+    } else {
+        detail::divide_unsigned(
+            quotient.mut(), remainder.mut(), a.cref(), b.cref(), scratch.view
+        );
+    }
+    return {std::move(quotient), std::move(remainder)};
 }
 
 inline std::pair<DynBits, DynBits> divrem_unsigned(DynBits const& a, DynBits const& b) {
-    size_t wr = std::max(a.width(), b.width()) + 1;
-    auto result = dyn_same_width::udivrem(a.zero_extend(wr), b.zero_extend(wr));
-    return {result.first.truncate(a.width() + 1), result.second.truncate(b.width())};
+    return divrem_impl(a, b, false, false);
 }
 
 inline std::pair<DynBits, DynBits> divrem_signed(DynBits const& a, DynBits const& b) {
-    size_t wr = std::max(a.width(), b.width()) + 1;
-    auto result = dyn_same_width::sdivrem(a.sign_extend(wr), b.sign_extend(wr));
-    return {result.first.truncate(a.width() + 1), result.second.truncate(b.width())};
+    return divrem_impl(a, b, true, false);
 }
 
 inline std::pair<DynBits, DynBits> divmod_signed(DynBits const& a, DynBits const& b) {
-    size_t wr = std::max(a.width(), b.width()) + 1;
-    auto result = dyn_same_width::sdivmod(a.sign_extend(wr), b.sign_extend(wr));
-    return {result.first.truncate(a.width() + 1), result.second.truncate(b.width())};
+    return divrem_impl(a, b, true, true);
 }
 
 inline DynBits div_unsigned(DynBits const& a, DynBits const& b) {
@@ -513,14 +509,14 @@ inline DynBits mod_signed(DynBits const& a, DynBits const& b) {
 
 inline DynBits negate_signed(DynBits const& a) {
     size_t wr = a.width() + 1;
-    return dyn_same_width::sub(DynBits(wr), a.sign_extend(wr));
+    return DynBits::exact_sub(DynBits(wr), a.sign_extend(wr));
 }
 
 inline DynBits abs_signed(DynBits const& a) {
     size_t wr = a.width() + 1;
     DynBits ext = a.sign_extend(wr);
     if (a.width() > 0 && a.get_bit(a.width() - 1)) {
-        return dyn_same_width::sub(DynBits(wr), ext);
+        return DynBits::exact_sub(DynBits(wr), ext);
     }
     return ext;
 }
