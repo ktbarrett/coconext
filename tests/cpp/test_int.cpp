@@ -5,6 +5,7 @@
 #include <type_traits>
 
 using namespace coconext::types;
+using namespace coconext::literals;
 
 template <size_t W>
 constexpr auto exact_add(detail::Bits<W> const& a, detail::Bits<W> const& b) {

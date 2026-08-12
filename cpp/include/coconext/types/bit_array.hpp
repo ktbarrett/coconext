@@ -195,7 +195,7 @@ constexpr auto operator""_b() {
         size_t bit_pos = N - 1;
         for (auto in = S.data; in != S.data + S.size; ++in) {
             if (*in != '_') {
-                if (static_cast<bool>(Bit(*in))) {
+                if (static_cast<bool>(::coconext::types::Bit(*in))) {
                     packed_val = packed_val | (one << bit_pos);
                 }
                 bit_pos--;
@@ -203,7 +203,7 @@ constexpr auto operator""_b() {
         }
     }
 
-    return Array<::coconext::types::Bit, R>(packed_val);
+    return ::coconext::types::detail::Array<::coconext::types::Bit, R>(packed_val);
 }
 
 }  // namespace coconext::literals

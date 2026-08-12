@@ -145,8 +145,9 @@ class DynBits {
 
     // Equality is total: differing widths compare unequal rather than throwing,
     // so a DynBits can be a hash key without width-matched lookups blowing up.
-    // The orderings below cannot do the same -- "less than" across widths has no
-    // answer that is right for both zero- and sign-extension -- so they throw.
+    // Named orderings define their extension explicitly, so differing widths
+    // are valid: unsigned comparisons zero-extend and signed comparisons
+    // sign-extend.
     bool operator==(DynBits const& other) const {
         if (width_ != other.width_) {
             return false;
