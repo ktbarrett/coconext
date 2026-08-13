@@ -239,7 +239,7 @@ inline Coro<void> TaskManager::join() & {
             co_await completion_;
             break;
         } catch (Cancelled const&) {
-            if (!task->cancelled()) {
+            if (task->cancelling() == 0) {
                 completion_exception = std::current_exception();
                 break;
             }

@@ -108,8 +108,14 @@ A Task moves through these execution states:
 unstarted -> Scheduled -> Running -> Pending -> Running -> ... -> done
 ```
 
-Cancellation is counted so `cancel()` and `uncancel()` can compose. Delivery
-depends on the execution state:
+Cancellation is counted so `cancel()` and `uncancel()` can compose.
+`cancelling()` reports the number of outstanding requests; `cancelled()` is
+true only after the Task has terminated by propagating `Cancelled`. The
+terminal state uses a dedicated `CancelledOutcome` tag rather than retaining
+an `exception_ptr`; `result()` throws a fresh `Cancelled`, and `exception()`
+constructs one on demand.
+
+Delivery depends on the execution state:
 
 - done: no-op;
 - unstarted: complete immediately with `Cancelled`;
@@ -120,6 +126,13 @@ depends on the execution state:
 
 The Scheduled case is important for fail-fast managers. A sibling queued
 behind a failing Task must not begin running after the manager cancels it.
+
+Catching `Cancelled` does not clear its request. Before continuing, the Task
+must call `uncancel()` once for every outstanding request. Returning normally,
+propagating a different exception, or attempting another scheduler suspension
+while requests remain turns the Task outcome into `std::runtime_error`. A
+`Cancelled` thrown without an outstanding request remains an ordinary stored
+exception and does not make `cancelled()` true.
 
 ## Futures
 
@@ -177,7 +190,8 @@ awaiter.
 When completion schedules the awaiter, `event_run()` takes a temporary Task
 reference, marks it Running, resumes the saved parent handle, restores the
 previous `current_task`, and releases the reference. `await_resume()` checks
-Task cancellation before returning or rethrowing the awaitable's result.
+for outstanding cancellation requests before returning or rethrowing the
+awaitable's result.
 
 `CoroState` and `TaskState` promises both expose the enclosing Task, so this
 lookup follows the promise chain rather than depending on thread-local state.

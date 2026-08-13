@@ -164,7 +164,7 @@ Coro<void> join_and_record_cancellation(
         co_await manager->join();
     } catch (Cancelled const&) {
         *ended_before_cancel = manager->ended();
-        while (task->cancelled()) {
+        while (task->cancelling() != 0) {
             task->uncancel();
             ++*restored_cancellations;
         }

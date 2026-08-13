@@ -315,6 +315,7 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
     };
 
     struct Running {};
+    struct CancelledOutcome {};
 
   public:
     using value_type = detail::Erased;
@@ -323,7 +324,10 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
     [[nodiscard]] bool running() const noexcept {
         return std::holds_alternative<Running>(state_);
     }
-    [[nodiscard]] bool cancelled() const noexcept { return cancelled_ > 0; }
+    [[nodiscard]] size_t cancelling() const noexcept { return cancellation_requests_; }
+    [[nodiscard]] bool cancelled() const noexcept {
+        return std::holds_alternative<CancelledOutcome>(result_);
+    }
 
     [[nodiscard]] bool done() const noexcept {
         return !std::holds_alternative<std::monostate>(result_);
@@ -335,6 +339,9 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
         }
         if (std::holds_alternative<std::exception_ptr>(result_)) {
             return std::get<std::exception_ptr>(result_);
+        }
+        if (cancelled()) {
+            return std::make_exception_ptr(Cancelled{});
         }
         return nullptr;
     }
@@ -348,17 +355,17 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
         if (done()) {
             return;
         }
+        cancellation_requests_++;
         if (running()) {
             throw Cancelled{};
         }
-        cancelled_++;
         if (!started()) {
-            set_exception(std::make_exception_ptr(Cancelled{}));
+            mark_cancelled();
             return;
         } else if (std::holds_alternative<Scheduled>(state_)) {
             inc_ref();
             std::get<Scheduled>(state_).event_unschedule();
-            set_exception(std::make_exception_ptr(Cancelled{}));
+            mark_cancelled();
             dec_ref();
             return;
         } else if (std::holds_alternative<Pending>(state_)) {
@@ -372,10 +379,10 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
         if (done()) {
             return;
         }
-        if (cancelled_ == 0) {
+        if (cancellation_requests_ == 0) {
             throw std::runtime_error("Task is not cancelled");
         }
-        cancelled_--;
+        cancellation_requests_--;
     }
 
   protected:
@@ -386,8 +393,25 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
     }
 
     void mark_value() noexcept {
+        if (cancellation_requests_ != 0) {
+            mark_cancellation_ignored();
+            return;
+        }
         result_ = detail::Value<detail::Erased>{};
         on_done();
+    }
+
+    void mark_cancelled() noexcept {
+        result_ = CancelledOutcome{};
+        on_done();
+    }
+
+    void mark_cancellation_ignored() noexcept {
+        try {
+            throw_cancellation_ignored();
+        } catch (...) {
+            set_exception(std::current_exception());
+        }
     }
 
   private:
@@ -399,10 +423,14 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
     }
 
     [[nodiscard]] size_t take_cancellations() noexcept {
-        return std::exchange(cancelled_, 0);
+        return std::exchange(cancellation_requests_, 0);
     }
 
-    void restore_cancellations(size_t count) noexcept { cancelled_ += count; }
+    void restore_cancellations(size_t count) noexcept { cancellation_requests_ += count; }
+
+    [[noreturn]] static void throw_cancellation_ignored() {
+        throw std::runtime_error("Task ignored cancellation without calling uncancel()");
+    }
 
     [[nodiscard]] not_null<TaskState<>*> get_task() noexcept { return this; }
 
@@ -456,13 +484,21 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
         state_ = Running{};
     }
 
-    void on_awaiting(not_null<detail::Event*> awaiter) noexcept {
+    void on_awaiting(not_null<detail::Event*> awaiter) {
+        if (cancellation_requests_ != 0) {
+            throw_cancellation_ignored();
+        }
         state_ = Pending{awaiter};
     }
 
   private:
     std::variant<std::monostate, Scheduled, Pending, Running> state_;
-    std::variant<std::monostate, std::exception_ptr, detail::Value<detail::Erased>> result_;
+    std::variant<
+        std::monostate,
+        std::exception_ptr,
+        detail::Value<detail::Erased>,
+        CancelledOutcome>
+        result_;
     detail::IntrusiveDeque<detail::Event> waiters_;
     std::vector<std::function<void()>> callbacks_;
     detail::EventLoop* event_loop_ = nullptr;
@@ -471,7 +507,7 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
     TaskManager* global_task_manager_ = nullptr;
     std::coroutine_handle<> handle_;
     size_t ref_count_{0};
-    size_t cancelled_{0};
+    size_t cancellation_requests_{0};
     bool started_ = false;
     bool scheduler_owned_ = false;
 };
@@ -494,7 +530,21 @@ class TaskStateBase : public TaskState<> {
     [[nodiscard]] std::suspend_always final_suspend() noexcept { return {}; }
 
     void unhandled_exception() noexcept {
-        TaskState<>::set_exception(std::current_exception());
+        try {
+            throw;
+        } catch (Cancelled const&) {
+            if (this->cancelling() != 0) {
+                this->mark_cancelled();
+            } else {
+                this->set_exception(std::current_exception());
+            }
+        } catch (...) {
+            if (this->cancelling() != 0) {
+                this->mark_cancellation_ignored();
+            } else {
+                this->set_exception(std::current_exception());
+            }
+        }
     }
 };
 
@@ -514,6 +564,9 @@ class TaskState : public detail::TaskStateBase<T> {
         if (!TaskState<>::done()) {
             throw std::runtime_error("Not done");
         }
+        if (TaskState<>::cancelled()) {
+            throw Cancelled{};
+        }
         if (auto exc = TaskState<>::exception()) {
             std::rethrow_exception(exc);
         }
@@ -532,6 +585,9 @@ class TaskState<void> : public detail::TaskStateBase<void> {
     void result() const {
         if (!TaskState<>::done()) {
             throw std::runtime_error("Not done");
+        }
+        if (TaskState<>::cancelled()) {
+            throw Cancelled{};
         }
         if (auto exc = TaskState<>::exception()) {
             std::rethrow_exception(exc);
@@ -572,6 +628,7 @@ class Task {
 
     [[nodiscard]] bool started() const noexcept { return handle_->started(); }
     [[nodiscard]] bool done() const noexcept { return handle_->done(); }
+    [[nodiscard]] size_t cancelling() const noexcept { return handle_->cancelling(); }
     [[nodiscard]] bool cancelled() const noexcept { return handle_->cancelled(); }
     [[nodiscard]] std::exception_ptr exception() const { return handle_->exception(); }
     [[nodiscard]] T result() const { return handle_->result(); }
@@ -678,7 +735,7 @@ typename detail::AwaitableAwaiter<S>::value_type detail::AwaitableAwaiter<
     // already-done awaitable, we skip the cancellation check as there was no possible
     // suspension point where the Task could become cancelled. The one caveat is a
     // self-cancellation, which is handled by throwing in a call to cancel();
-    if (task_ != nullptr && task_->cancelled()) {
+    if (task_ != nullptr && task_->cancelling() != 0) {
         throw coconext::Cancelled{};
     }
     return awaitable_->result();
