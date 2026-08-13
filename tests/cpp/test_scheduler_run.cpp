@@ -62,14 +62,14 @@ Coro<int> coro_catches_throwing() {
     co_return -1;
 }
 
-Coro<int> coro_awaits_task_int() {
-    Task<int> t = coro_return_int();
+Coro<int> coro_awaits_started_task_int() {
+    Task<int> t = coconext::start_soon(coro_return_int());
     int v = co_await t;
     co_return v * 2;
 }
 
-Coro<void> coro_awaits_task_void() {
-    Task<void> t = coro_return_void();
+Coro<void> coro_awaits_started_task_void() {
+    Task<void> t = coconext::start_soon(coro_return_void());
     co_await t;
     co_return;
 }
@@ -77,7 +77,7 @@ Coro<void> coro_awaits_task_void() {
 Coro<int> coro_awaits_task_twice() {
     // A Task is a shared handle -- awaiting the same finished Task twice must
     // return the same result without re-executing the body.
-    Task<int> t = coro_return_int();
+    Task<int> t = coconext::start_soon(coro_return_int());
     int a = co_await t;
     int b = co_await t;
     co_return a + b;
@@ -93,20 +93,6 @@ TEST(TestRun, CoroReturnsVoid) { EXPECT_NO_THROW(run(coro_return_void())); }
 
 TEST(TestRun, CoroReturnsString) {
     EXPECT_EQ(run(coro_return_string()), std::string("hello"));
-}
-
-// -- run(Task<T>) via Coro->Task conversion --------------------------------
-
-TEST(TestRun, TaskFromCoro) {
-    Task<int> t = coro_return_int();
-    EXPECT_FALSE(t.done());
-    EXPECT_FALSE(t.started());
-    EXPECT_EQ(run(std::move(t)), 42);
-}
-
-TEST(TestRun, TaskVoidFromCoro) {
-    Task<void> t = coro_return_void();
-    EXPECT_NO_THROW(run(std::move(t)));
 }
 
 // -- Coro awaiting Coro (symmetric transfer chain) -------------------------
@@ -137,12 +123,9 @@ TEST(TestRun, CoroCanCatchThrownFromChild) { EXPECT_EQ(run(coro_catches_throwing
 
 // -- Coro awaiting Task ----------------------------------------------------
 
-TEST(TestRun, CoroAwaitsUnstartedTask) {
-    // Awaiting an unstarted Task should implicitly kick it off.
-    EXPECT_EQ(run(coro_awaits_task_int()), 84);
-}
+TEST(TestRun, CoroAwaitsStartedTask) { EXPECT_EQ(run(coro_awaits_started_task_int()), 84); }
 
-TEST(TestRun, CoroAwaitsVoidTask) { EXPECT_NO_THROW(run(coro_awaits_task_void())); }
+TEST(TestRun, CoroAwaitsVoidTask) { EXPECT_NO_THROW(run(coro_awaits_started_task_void())); }
 
 TEST(TestRun, TaskAwaitedTwiceReturnsSameResult) {
     EXPECT_EQ(run(coro_awaits_task_twice()), 84);

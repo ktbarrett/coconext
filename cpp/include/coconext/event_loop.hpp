@@ -27,8 +27,8 @@ class EventLoop {
     // An external source of events drives the loop by acquiring a handle, scheduling
     // callbacks, and running the loop until exhaustion before releasing ownership to allow
     // another external event to be handled. The EventLoop does not own the entries; it
-    // merely manages their scheduling and invocation. Task lifetime is managed by
-    // TaskManagers.
+    // merely manages their scheduling and invocation. Task lifetime is managed by the
+    // intrusive references held by TaskManagers and the scheduler.
     //
     // The lock acquisition uses a recursive mutex so multiple external users see
     // exclusivity, but the events in the event loop can schedule other events, making lock
