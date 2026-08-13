@@ -13,12 +13,13 @@
 #include <thread>
 #include <utility>
 
+using coconext::AbstractFuture;
+using coconext::AbstractFutureState;
 using coconext::Cancelled;
 using coconext::Coro;
 using coconext::current_context;
 using coconext::current_task;
 using coconext::Future;
-using coconext::FutureState;
 using coconext::not_null;
 using coconext::run;
 using coconext::start_soon;
@@ -209,8 +210,8 @@ TEST(TestSchedulerBinding, UncancelAfterDoneIsNoOp) {
 namespace {
 
 // A never-resolved Future so the awaiter stays Pending until cancelled.
-class UnresolvableVoidState : public FutureState<void> {};
-using UnresolvableVoid = Future<UnresolvableVoidState>;
+class UnresolvableVoidState : public AbstractFutureState<void> {};
+using UnresolvableVoid = AbstractFuture<UnresolvableVoidState>;
 
 // Coro-returning form: the Task-from-Coro wrapper stacks an extra frame
 // between the Task's outer handle and the coroutine actually suspended on

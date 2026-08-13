@@ -30,6 +30,9 @@ class RunTaskManager;
 }  // namespace detail
 
 template <typename T>
+class AbstractFutureState;
+
+template <typename T>
 class FutureState;
 
 template <typename T = detail::Erased>
@@ -74,7 +77,7 @@ class AwaitableAwaiter : private Event {
 
   private:
     template <typename>
-    friend class ::coconext::Future;
+    friend class ::coconext::AbstractFuture;
     template <typename>
     friend class ::coconext::Task;
     template <typename>
@@ -93,16 +96,19 @@ class AwaitableAwaiter : private Event {
 }  // namespace detail
 
 template <typename T>
-class FutureState {
+class AbstractFutureState {
     template <typename>
-    friend class Future;
+    friend class AbstractFuture;
     template <typename>
     friend class detail::AwaitableAwaiter;
 
   public:
     using value_type = T;
 
-    virtual ~FutureState() = default;
+    // States are deleted through AbstractFutureState<T> when the final AbstractFuture
+    // reference is released. Derived states commonly prime an external trigger in
+    // their constructor and unprime it in their destructor when !done().
+    virtual ~AbstractFutureState() = default;
 
     [[nodiscard]] bool done() const noexcept {
         return !std::holds_alternative<std::monostate>(result_);
@@ -135,6 +141,7 @@ class FutureState {
         callbacks_.emplace_back(std::forward<F>(callback));
     }
 
+  protected:
     template <typename U>
         requires(!std::is_void_v<T> && std::is_convertible_v<U, T>)
     void set_result(U&& value) noexcept {
@@ -168,8 +175,10 @@ class FutureState {
         for (auto& callback : callbacks_) {
             callback();
         }
-        assert(event_loop_ != nullptr);
-        event_loop_->acquire().schedule_all_back(std::move(waiters_));
+        if (!waiters_.empty()) {
+            assert(event_loop_ != nullptr);
+            event_loop_->acquire().schedule_all_back(std::move(waiters_));
+        }
     }
 
     void inc_ref() noexcept { ++ref_count_; }
@@ -190,8 +199,8 @@ class FutureState {
 template <typename StateT>
 class AbstractFuture {
     static_assert(
-        std::is_base_of_v<FutureState<typename StateT::value_type>, StateT>,
-        "Future's StateT must derive from FutureState<T>"
+        std::is_base_of_v<AbstractFutureState<typename StateT::value_type>, StateT>,
+        "AbstractFuture's StateT must derive from AbstractFutureState<T>"
     );
 
   public:
@@ -224,7 +233,7 @@ class AbstractFuture {
     }
 
     [[nodiscard]] auto operator co_await() noexcept {
-        return detail::FutureAwaiter<StateT>(handle_);
+        return detail::AwaitableAwaiter<StateT>(handle_);
     }
 
     [[nodiscard]] not_null<StateT*> get_state() const noexcept { return handle_; }
@@ -235,6 +244,17 @@ class AbstractFuture {
 
   private:
     not_null<StateT*> handle_;
+};
+
+// State for the concrete Future<T>. Unlike trigger-backed AbstractFutureState
+// subclasses, this exposes its completion API publicly for ad-hoc inter-Task
+// communication.
+template <typename T>
+class FutureState : public AbstractFutureState<T> {
+  public:
+    using AbstractFutureState<T>::set_exception;
+    using AbstractFutureState<T>::set_result;
+    using AbstractFutureState<T>::set_void;
 };
 
 template <typename T>
@@ -252,9 +272,7 @@ class Future : public AbstractFuture<FutureState<T>> {
         this->get_state()->set_void();
     }
 
-    void set_exception(std::exception_ptr exc) noexcept {
-        this->get_state()->set_exception(exc);
-    }
+    void set_exception(std::exception_ptr exc) { this->get_state()->set_exception(exc); }
 };
 
 namespace detail {
@@ -279,7 +297,7 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
     template <typename>
     friend class detail::TaskStateBase;
     template <typename>
-    friend class FutureState;
+    friend class AbstractFutureState;
     friend class TaskContext;
 
     struct Scheduled : detail::Event {
@@ -975,7 +993,7 @@ void detail::AwaitableAwaiter<S>::event_run() noexcept {
 }
 
 template <typename T>
-void FutureState<T>::on_awaited(not_null<TaskState<>*> task) {
+void AbstractFutureState<T>::on_awaited(not_null<TaskState<>*> task) {
     if (event_loop_ == nullptr) {
         event_loop_ = task->get_event_loop();
     } else if (event_loop_ != task->get_event_loop()) {

@@ -6,21 +6,24 @@ model, state machines, binding rules, and the substrate (`EventLoop`,
 
 ## Object model at a glance
 
-Five user-visible types plus their per-type "state" holders:
+The user-visible coroutine and awaitable types plus their state holders:
 
 | Return object     | State holder            | Role                                          |
 | ----------------- | ----------------------- | --------------------------------------------- |
 | `Coro<T>`         | `CoroState<T>`          | Lightweight chained coroutine. Move-only.     |
 | `Task<T>`         | `TaskState<T>`          | Scheduled, refcounted, shared awaitable.      |
-| `Future<StateT>`  | `FutureState<T>`        | Shared, single-shot, externally-resolved.     |
+| `AbstractFuture<StateT>` | `AbstractFutureState<T>` | Extensible, trigger-backed shared awaitable. |
+| `Future<T>`       | `FutureState<T>`       | Concrete ad-hoc shared communication object. |
 | `TaskManager<S>`  | `TaskManagerState<T>`   | Structured-concurrency group of Tasks.        |
 | (none)            | `EventLoop` / `Event`   | The scheduling substrate.                     |
 
-Three of these — `Task`, `Future`, `TaskManager` — are refcounted handles to a
-heap-allocated `*State` object. `Coro` is a move-only owner of a coroutine
-frame with no shared state. `EventLoop` is a plain object driven from outside.
+Three of these — `Task`, the Future handles, and `TaskManager` — are refcounted
+handles to a heap-allocated `*State` object. `Coro` is a move-only owner of a
+coroutine frame with no shared state. `EventLoop` is a plain object driven from
+outside.
 
-All three shared-state types (`FutureState`, `TaskState<>`, `TaskManagerState<>`)
+All three shared-state types (`AbstractFutureState`, `TaskState<>`,
+`TaskManagerState<>`)
 follow the same shape: a result slot, an awaiter list, a done-callback list,
 a lazily-bound `EventLoop*`, and a refcount. That shape is what
 `AwaitableAwaiter` (below) is written against as a concept.
@@ -57,7 +60,7 @@ Why intrusive rather than `std::deque<T*>`:
   frame (which is already allocated); pushing it onto a waiter list is a
   four-pointer store, popping is another four.
 - **Splice in O(1).** `extend_back` moves an entire foreign list onto the tail
-  in constant time. `FutureState::on_done` uses this to move all waiters onto
+  in constant time. `AbstractFutureState::on_done` uses this to move all waiters onto
   the event loop's ready queue in one call rather than N `schedule_back`
   invocations.
 - **Same node, many roles.** `Event` is both a waiter (lives in a Future's
@@ -95,10 +98,10 @@ just extend the current drain.
 
 Why `std::recursive_mutex` instead of a plain mutex:
 
-- **Single `on_done()` in `FutureState`.** A Future can be resolved either by
+- **Single `on_done()` in `AbstractFutureState`.** A Future can be resolved either by
   an external event (a DPI callback, a user calling `set_result`) or by a
   coroutine that is *itself* running under the loop lock. Both must schedule
-  the Future's waiters. With a recursive mutex, `FutureState::on_done` can
+  the Future's waiters. With a recursive mutex, `AbstractFutureState::on_done` can
   unconditionally `event_loop_->acquire()` — it works whether we already hold
   the lock or not. With a non-recursive mutex, every resolver would need to
   know its calling context and pass it in.
@@ -117,7 +120,7 @@ if `is_running_` is set), but forbids nested `run()`.
 
 ## Shared awaitable state and the unified awaiter
 
-The three shared-state types (`FutureState<T>`, `TaskState<>`,
+The three shared-state types (`AbstractFutureState<T>`, `TaskState<>`,
 `TaskManagerState<>`) all expose the same small set of members that the
 awaiter machinery relies on:
 
@@ -125,7 +128,7 @@ awaiter machinery relies on:
 - `done()` — result is available (drives `await_ready` short-circuit).
 - `get_event_loop()` — the bound loop, or `nullptr` if still unbound.
 - `register_waiter(event)` — append an awaiter's `Event` to `waiters_`.
-- `on_awaited(task)` — late-bind bookkeeping. For `FutureState` this
+- `on_awaited(task)` — late-bind bookkeeping. For `AbstractFutureState` this
   propagates the awaiter's loop. For an unstarted `TaskState` it also
   schedules the body. For a `TaskManagerState` it also starts every
   queued child.
@@ -312,10 +315,10 @@ unconditionally.
 `get_global_task_manager()` / `get_task()` accessors `private`; `TaskContext`
 is a friend, and so is the awaiter machinery that needs `get_task()` for the
 promise-chain lookup. Users reach those fields only through a `TaskContext`.
-`TaskManagerState` and `FutureState` keep their own `get_event_loop()` /
-`get_global_task_manager()` at `protected`, because subclass hooks (`on_add`,
-`on_child_done`, `on_drain_complete`, and `FutureState` unprime paths)
-legitimately need direct access to their enclosing object's bindings.
+`TaskManagerState` exposes its bindings for subclass policy hooks (`on_add`,
+`on_child_done`, and `on_drain_complete`). `AbstractFutureState` keeps its loop
+binding private; trigger-backed subclasses interact through `done()` and the
+protected completion methods instead.
 
 **`Task::start_soon(TaskContext)`.** The user-facing counterpart of the
 internal `TaskState<>::start_soon(loop, gtm)` used by `TaskManager::add` /
@@ -530,20 +533,32 @@ cancel/uncancel scopes compose. Behavior depends on state:
 awaiters check the flag, so cancellation is delivered exclusively at suspend
 points — same behavior as Python asyncio, different mechanism.
 
-## `Future<StateT>`: shared externally-resolved
+## `AbstractFuture<StateT>` and `Future<T>`: shared externally-resolved
 
-The plainest of the three shared types. `FutureState<T>` has a result slot,
+The plainest of the three shared types. `AbstractFutureState<T>` has a result slot,
 a waiter deque, done callbacks, an event-loop slot, and a refcount. Users
-subclass `FutureState<T>` to add domain state (e.g. a Timer holds an
-`NTime`, a ValueChange holds a signal handle) and override the virtual
-`unprime()` hook — called when the refcount reaches zero while still
-pending, so the subclass can un-register from whatever external event
-source it hooked into. `Future<StateT>` is the refcounted handle.
+subclass `AbstractFutureState<T>` to add domain state (e.g. a Timer holds an `NTime`,
+a ValueChange holds a signal handle). The state constructor primes the
+underlying trigger and registers a callback that calls `set_result`,
+`set_void`, or `set_exception`. `AbstractFutureState` has a virtual destructor
+so a derived state deleted through the intrusive refcount can unprime that
+trigger when it is still pending.
 
-Late binding on `FutureState`: `event_loop_` is nullptr until first awaited.
+`AbstractFuture<StateT>` is the refcounted handle. A domain handle subclasses
+it and forwards any additional API exposed by `StateT`; together the handle
+and state have `shared_ptr` semantics without a separate control-block
+allocation.
+
+For ad-hoc inter-Task communication, `Future<T>` is a concrete
+`AbstractFuture<FutureState<T>>`. `FutureState<T>` makes the three completion
+methods public, and `Future<T>` forwards them directly. A trigger-backed
+`AbstractFutureState` keeps those methods protected so only its trigger callback
+and derived implementation can resolve it.
+
+Late binding on `AbstractFutureState`: `event_loop_` is nullptr until first awaited.
 `on_awaited` propagates from the awaiting Task. If never awaited, never
-bound — a Future that's created, resolved, and dropped without a consumer
-does no loop work at all.
+bound — a Future can be resolved before its first await, and one that's
+created, resolved, and dropped without a consumer does no loop work at all.
 
 `add_done_callback` runs synchronously from `on_done`, before waiters are
 scheduled. Prefer awaits over callbacks — callbacks are the escape hatch
@@ -649,7 +664,7 @@ AwaitableAwaiter awaiter(some_future_state);
 
 // external event resolves the Future:
 some_future.set_result(v);
-  -> FutureState::on_done()
+  -> AbstractFutureState::on_done()
        loop.acquire().schedule_all_back(std::move(waiters_))   // O(1) splice
 
 // loop runs the awaiter's event_run():
@@ -843,9 +858,9 @@ Python-side, the wrappers implement the awaitable protocol by hand —
 `__await__` returns a generator that `yield`s the wrapped object itself
 (a Future) so the enclosing `PyCoro`'s `send()`-loop receives it.
 
-- **`Future<StateT>` → Python.** Direct nanobind wrapper implementing
-  `__await__`. This is the load-bearing case — every awaitable that
-  crosses into Python is either already a Future or is wrapped in one
+- **`AbstractFuture<StateT>` / `Future<T>` → Python.** Direct nanobind wrapper
+  implementing `__await__`. This is the load-bearing case — every awaitable
+  that crosses into Python is either already a Future or is wrapped in one
   under the hood.
 - **`Task<T>` → Python.** Direct nanobind wrapper. Because `Task` is
   already awaitable-state-shaped and refcounted, the wrapper's
