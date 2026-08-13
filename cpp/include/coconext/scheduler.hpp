@@ -637,22 +637,22 @@ class TaskManager {
       public:
         ~JoinAwaiter() {
             event_unschedule();
-            if (manager_ != nullptr && manager_->join_waiter_ == this) {
-                manager_->join_waiter_ = nullptr;
-                manager_->join_started_ = false;
+            if (manager_.join_waiter_ == this) {
+                manager_.join_waiter_ = nullptr;
+                manager_.join_started_ = false;
             }
         }
 
         [[nodiscard]] bool await_ready() {
-            manager_->begin_join();
-            return manager_->done();
+            manager_.begin_join();
+            return manager_.done();
         }
 
         template <typename PromiseType>
         void await_suspend(std::coroutine_handle<PromiseType> parent) {
             auto task = parent.promise().get_task();
-            if (manager_->event_loop_ != task->get_event_loop()) {
-                manager_->join_started_ = false;
+            if (manager_.event_loop_ != task->get_event_loop()) {
+                manager_.join_started_ = false;
                 throw std::runtime_error(
                     "TaskManager is already bound to another EventLoop"
                 );
@@ -660,36 +660,31 @@ class TaskManager {
             parent_ = parent;
             task->on_awaiting(this);
             task_ = task;
-            manager_->join_waiter_ = this;
+            manager_.join_waiter_ = this;
         }
 
         void await_resume() {
-            auto manager = manager_;
-            manager_ = nullptr;
-            if (manager == nullptr) {
-                throw std::logic_error("TaskManager was destroyed while join() waited");
-            }
-            manager->finish_join();
+            manager_.finish_join();
             if (task_ != nullptr && task_->cancelled()) {
                 throw Cancelled{};
             }
-            if (manager->exception_) {
-                std::rethrow_exception(manager->exception_);
+            if (manager_.exception_) {
+                std::rethrow_exception(manager_.exception_);
             }
         }
 
       private:
-        explicit JoinAwaiter(TaskManager& manager) noexcept : manager_(&manager) {}
+        explicit JoinAwaiter(TaskManager& manager) noexcept : manager_(manager) {}
 
         void event_run() noexcept override {
             assert(task_ != nullptr);
-            if (manager_ != nullptr && !manager_->done()) {
+            if (!manager_.done()) {
                 assert(task_->cancelled());
                 try {
-                    manager_->cancel();
+                    manager_.cancel();
                 } catch (...) {
-                    manager_->set_exception(std::current_exception());
-                    manager_->close();
+                    manager_.set_exception(std::current_exception());
+                    manager_.close();
                 }
                 return;
             }
@@ -702,7 +697,7 @@ class TaskManager {
             task->dec_ref();
         }
 
-        TaskManager* manager_;
+        TaskManager& manager_;
         std::coroutine_handle<> parent_ = nullptr;
         TaskState<>* task_ = nullptr;
     };
@@ -855,14 +850,6 @@ class TaskManager {
     }
 
     void abandon_children() noexcept {
-        if (join_waiter_ != nullptr) {
-            auto waiter = join_waiter_;
-            waiter->event_unschedule();
-            waiter->manager_ = nullptr;
-            join_waiter_ = nullptr;
-            assert(event_loop_ != nullptr);
-            event_loop_->acquire().schedule_back(waiter);
-        }
         while (auto task = tasks_.pop_front()) {
             task->task_manager_ = nullptr;
             if (task->global_task_manager_ == this) {

@@ -221,7 +221,7 @@ states:
 - `Ended`, because its owner completed `join()`.
 
 Destroying a started manager in Open, Closed, or Done detaches and cancels its
-children, invalidates a join back-pointer, and throws `std::logic_error`.
+children, then throws `std::logic_error`.
 This is a misuse diagnostic, not a mechanism for extending the manager's
 lifetime. As with every throwing destructor, destruction during unrelated
 exception unwinding would call `std::terminate`; owners should structure
