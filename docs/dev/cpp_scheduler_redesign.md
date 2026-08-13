@@ -61,8 +61,9 @@ The concrete events are:
 - `TaskState<>::Scheduled`, which starts a queued Task; and
 - `AwaitableAwaiter<S>`, which resumes a Task parked on a Future or Task.
 
-`TaskManager::JoinAwaiter` is also an `Event`, but is purpose-built for the
-manager lifecycle rather than the shared-awaitable protocol.
+`TaskManager::join()` is an ordinary `Coro<void>` built on a private
+`Future<void>`. It therefore uses the same multi-consumer awaitable machinery
+as other Future users rather than defining a manager-specific event.
 
 ## Coro and Task
 
@@ -94,6 +95,10 @@ destroy an active coroutine. The resume guard means completion may release
 both the manager and scheduler references without destroying the coroutine
 frame until `.resume()` has returned and the frame is safely suspended at
 `final_suspend`.
+
+Manager ownership also installs a dedicated, allocation-free internal done
+callback on the `TaskState`. The callback notifies the owning manager and is
+cleared when the Task is unlinked or detached; user callbacks remain separate.
 
 ### Task state and cancellation
 
@@ -187,22 +192,33 @@ Created --co_await start()--> Open --close()--> Closed
                                       |             |
                                       |       children empty
                                       |             v
-                                      +----------> Done --join resumes--> Ended
+                                      +----------> Done --first join--> Ended
 ```
 
 - `Created`: unbound; `start_soon`, `close`, `cancel`, and `join` are invalid.
 - `Open`: accepts new Coros and starts them immediately.
 - `Closed`: rejects new Coros and drains existing Tasks.
-- `Done`: closed and empty; a join waiter is made ready.
-- `Ended`: `join()` completed successfully, including exception delivery.
+- `Done`: closed and empty; every join waiter is made ready.
+- `Ended`: at least one `join()` completed its lifecycle bookkeeping. Later
+  joins remain valid and observe the same completion result.
 
 An empty Open manager does not become Done automatically. It has no child
 whose policy hook could decide that work is complete, so the owner must call
 `close()` explicitly.
 
-Only one `join()` operation may be active. `join()` does not call `close()`:
-while its caller is suspended, existing children may use the manager to add
-more siblings. Completion policy belongs in `on_child_done()`.
+Any number of callers may wait concurrently or sequentially in `join()`.
+`join()` does not call `close()`: while its caller is suspended, existing
+children may use the manager to add more siblings. Completion policy belongs
+in `on_child_done()`.
+
+If a joining Task is canceled before the manager is Done, `join()` cancels the
+manager but continues waiting for every child to finish its cancellation
+cleanup. It temporarily removes all cancellation requests from the joining
+Task so it can suspend again. Further cancellation requests repeat that
+process. Once the manager is Done, `join()` transitions it to Ended, restores
+the full cancellation count, and throws `Cancelled`. A `Cancelled` stored as
+the manager's own completion exception is distinguished by the absence of a
+pending cancellation request on the joining Task.
 
 `cancel()` first closes the manager and then cancels every remaining child.
 Thus cancellation always rejects new work and drains to Done. This pairing is
@@ -211,8 +227,8 @@ its shutdown pass and never allow its joiner to finish.
 
 ### Ownership and destruction
 
-`TaskManager` is non-copyable and non-movable. Child `TaskState`s and a live
-join awaiter store raw back-pointers to its stable address.
+`TaskManager` is non-copyable and non-movable. Its child `TaskState`s store raw
+back-pointers to its stable address.
 
 Its virtual destructor is `noexcept(false)`. Destruction is valid in only two
 states:

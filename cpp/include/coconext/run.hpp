@@ -4,7 +4,7 @@
 #include <coconext/coro.hpp>
 #include <coconext/event_loop.hpp>
 #include <coconext/not_null.hpp>
-#include <coconext/scheduler.hpp>
+#include <coconext/task_manager.hpp>
 
 #include <condition_variable>
 #include <exception>

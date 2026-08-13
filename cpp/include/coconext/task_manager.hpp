@@ -1,6 +1,278 @@
 #ifndef COCONEXT_TASK_MANAGER_HPP
 #define COCONEXT_TASK_MANAGER_HPP
 
-#include <coconext/scheduler.hpp>
+#include <coconext/coro.hpp>
+#include <coconext/future.hpp>
+#include <coconext/task.hpp>
+
+#include <cassert>
+#include <coroutine>
+#include <cstddef>
+#include <exception>
+#include <stdexcept>
+#include <utility>
+
+namespace coconext {
+
+namespace detail {
+
+template <typename T>
+class RunTaskManager;
+
+}  // namespace detail
+
+class TaskManager {
+    template <typename>
+    friend class detail::RunTaskManager;
+
+    enum class State {
+        Created,
+        Open,
+        Closed,
+        Done,
+        Ended
+    };
+
+  public:
+    class StartAwaiter {
+        friend class TaskManager;
+
+      public:
+        [[nodiscard]] bool await_ready() const noexcept { return false; }
+
+        template <typename PromiseType>
+        bool await_suspend(std::coroutine_handle<PromiseType> parent) {
+            auto task = parent.promise().get_task();
+            manager_.start_internal(
+                task->get_event_loop(), task->get_global_task_manager()
+            );
+            return false;
+        }
+
+        void await_resume() const noexcept {}
+
+      private:
+        explicit StartAwaiter(TaskManager& manager) noexcept : manager_(manager) {}
+
+        TaskManager& manager_;
+    };
+
+    TaskManager() noexcept = default;
+    TaskManager(TaskManager const&) = delete;
+    TaskManager& operator=(TaskManager const&) = delete;
+    TaskManager(TaskManager&&) = delete;
+    TaskManager& operator=(TaskManager&&) = delete;
+
+    virtual ~TaskManager() noexcept(false) {
+        if (state_ != State::Created && state_ != State::Ended) {
+            abandon_children();
+            throw std::logic_error("TaskManager destroyed before join() completed");
+        }
+    }
+
+    [[nodiscard]] StartAwaiter start() & {
+        if (state_ != State::Created) {
+            throw std::logic_error("TaskManager is already started");
+        }
+        return StartAwaiter{*this};
+    }
+
+    [[nodiscard]] Coro<void> join() &;
+
+    template <typename T>
+    [[nodiscard]] Task<T> start_soon(Coro<T> coro);
+
+    void close() {
+        if (state_ == State::Created) {
+            throw std::logic_error("Cannot close an unstarted TaskManager");
+        }
+        if (state_ != State::Open) {
+            return;
+        }
+        state_ = State::Closed;
+        complete_if_ready();
+    }
+
+    void cancel() {
+        close();
+        if (cancelling_) {
+            return;
+        }
+        cancelling_ = true;
+        try {
+            for (auto it = tasks_.begin(); it != tasks_.end();) {
+                auto& task = *it++;
+                task.cancel();
+            }
+        } catch (...) {
+            cancelling_ = false;
+            throw;
+        }
+        cancelling_ = false;
+    }
+
+    [[nodiscard]] bool started() const noexcept { return state_ != State::Created; }
+    [[nodiscard]] bool closed() const noexcept { return state_ == State::Closed || done(); }
+    [[nodiscard]] bool done() const noexcept {
+        return state_ == State::Done || state_ == State::Ended;
+    }
+    [[nodiscard]] bool ended() const noexcept { return state_ == State::Ended; }
+    [[nodiscard]] bool empty() const noexcept { return tasks_.empty(); }
+
+  protected:
+    // Called after a child is linked and scheduled.
+    virtual void on_add(not_null<TaskState<>*>) noexcept {}
+
+    // Called after a completed child is unlinked. The default policy closes once no
+    // child remains, but specialized managers can close or cancel earlier.
+    virtual void on_child_done(not_null<TaskState<>*>) noexcept {
+        if (empty()) {
+            close();
+        }
+    }
+
+    // Called exactly once when a closed manager finishes draining.
+    virtual void on_done() noexcept {}
+
+    void set_exception(std::exception_ptr exc) noexcept {
+        assert(exc);
+        if (!exception_) {
+            exception_ = exc;
+        }
+    }
+
+  private:
+    void start_internal(
+        not_null<detail::EventLoop*> event_loop, not_null<TaskManager*> global_task_manager
+    ) {
+        if (state_ != State::Created) {
+            throw std::logic_error("TaskManager is already started");
+        }
+        event_loop_ = event_loop;
+        global_task_manager_ = global_task_manager;
+        state_ = State::Open;
+    }
+
+    void finish_join() {
+        assert(done());
+        state_ = State::Ended;
+    }
+
+    void add_and_start(not_null<TaskState<>*> task) {
+        if (state_ != State::Open) {
+            throw std::logic_error("Cannot start a Task on a non-open TaskManager");
+        }
+        assert(event_loop_ != nullptr);
+        assert(global_task_manager_ != nullptr);
+        assert(task->task_manager_ == nullptr);
+        assert(task->internal_done_callback_ == nullptr);
+
+        task->task_manager_ = this;
+        task->internal_done_callback_ = &TaskManager::child_done_callback;
+        task->inc_ref();
+        tasks_.push_back(task);
+        task->start_soon(event_loop_, global_task_manager_);
+        on_add(task);
+    }
+
+    static void child_done_callback(not_null<TaskState<>*> task) noexcept {
+        assert(task->task_manager_ != nullptr);
+        task->task_manager_->child_done(task);
+    }
+
+    void child_done(not_null<TaskState<>*> task) noexcept {
+        task->deque_remove();
+        task->task_manager_ = nullptr;
+        task->internal_done_callback_ = nullptr;
+        on_child_done(task);
+        complete_if_ready();
+        task->dec_ref();
+    }
+
+    void complete_if_ready() noexcept {
+        if (state_ != State::Closed || !tasks_.empty()) {
+            return;
+        }
+        state_ = State::Done;
+        on_done();
+        if (exception_) {
+            completion_.set_exception(exception_);
+        } else {
+            completion_.set_void();
+        }
+    }
+
+    void abandon_children() noexcept {
+        while (auto task = tasks_.pop_front()) {
+            task->task_manager_ = nullptr;
+            task->internal_done_callback_ = nullptr;
+            if (task->global_task_manager_ == this) {
+                task->global_task_manager_ = nullptr;
+            }
+            try {
+                task->cancel();
+            } catch (...) {}
+            task->dec_ref();
+        }
+    }
+
+    detail::IntrusiveDeque<TaskState<>> tasks_;
+    Future<void> completion_;
+    detail::EventLoop* event_loop_ = nullptr;
+    TaskManager* global_task_manager_ = nullptr;
+    std::exception_ptr exception_;
+    State state_ = State::Created;
+    bool cancelling_ = false;
+};
+
+inline Coro<void> TaskManager::join() & {
+    if (state_ == State::Created) {
+        throw std::logic_error("Cannot join an unstarted TaskManager");
+    }
+
+    auto task = (co_await get_context()).get_task();
+    size_t cancellation_requests = 0;
+    std::exception_ptr completion_exception;
+
+    while (true) {
+        try {
+            co_await completion_;
+            break;
+        } catch (Cancelled const&) {
+            if (!task->cancelled()) {
+                completion_exception = std::current_exception();
+                break;
+            }
+            cancel();
+            cancellation_requests += task->take_cancellations();
+        } catch (...) {
+            completion_exception = std::current_exception();
+            break;
+        }
+    }
+
+    finish_join();
+    if (cancellation_requests != 0) {
+        task->restore_cancellations(cancellation_requests);
+        throw Cancelled{};
+    }
+    if (completion_exception) {
+        std::rethrow_exception(completion_exception);
+    }
+}
+
+template <typename T>
+Task<T> TaskManager::start_soon(Coro<T> coro) {
+    Task<T> task{std::move(coro)};
+    add_and_start(task.get_state());
+    return task;
+}
+
+template <typename T>
+[[nodiscard]] Task<T> start_soon(Coro<T> coro) {
+    return current_context().get_global_task_manager()->start_soon(std::move(coro));
+}
+
+}  // namespace coconext
 
 #endif  // COCONEXT_TASK_MANAGER_HPP
