@@ -39,10 +39,10 @@ class Signed {
             R.length() > 0, "Signed<0> has no integer value; cannot convert to native int"
         );
         static_assert(
-            !detail::Bits<R.length()>::is_wide, "Conversion from wide Bits to native int"
+            !detail::SInt<R.length()>::is_wide, "Conversion from wide SInt to native int"
         );
 
-        auto ext = value_.sra(0).raw();
+        auto ext = value_.raw();
         using SType = std::make_signed_t<decltype(ext)>;
         SType signed_val = static_cast<SType>(ext << (sizeof(ext) * 8 - R.length()))
                         >> (sizeof(ext) * 8 - R.length());
@@ -71,11 +71,8 @@ class Signed {
 
     constexpr Signed() noexcept = default;
 
-    template <size_t W>
-    constexpr Signed(Bits<W> const& val) {
-        static_assert(W == R.length(), "Construction from Bits requires identical width");
-        value_ = val;
-    }
+    template <bool IsSigned>
+    constexpr Signed(Int<R.length(), IsSigned> const& val) : value_(val.logical_bits()) {}
 
     template <NativeInteger T>
     explicit(
@@ -99,7 +96,7 @@ class Signed {
             }
         }
 
-        value_ = detail::Bits<R.length()>(static_cast<uint64_t>(v));
+        value_ = detail::SInt<R.length()>(static_cast<uint64_t>(v));
         if constexpr (R.length() > 64) {
             if constexpr (std::is_signed_v<T>) {
                 if (v < 0) {
@@ -141,11 +138,7 @@ class Signed {
             }
         }
 
-        if constexpr (R.length() >= R2.length()) {
-            value_ = src_bits.template zero_extend<R.length()>();
-        } else {
-            value_ = src_bits.template truncate<R.length()>();
-        }
+        value_ = SInt<R.length()>(UInt<R2.length()>(src_bits));
     }
 
     template <Range R2>
@@ -153,7 +146,7 @@ class Signed {
         static_assert(
             R.length() == R2.length(), "BitArray reinterpret requires identical width"
         );
-        detail::Bits<R.length()> temp_bit(0);
+        detail::SInt<R.length()> temp_bit(0);
         for (auto const& bit : other) {
             temp_bit = bit ? 1 : 0;
             value_ = (value_ << 1) | temp_bit;
@@ -195,9 +188,9 @@ class Signed {
 
         if constexpr (TargetW >= SourceW) {
             // Widening (and the null cases) never lose information.
-            value_ = src.value_.template sign_extend<TargetW>();
+            value_ = SInt<TargetW>(src.value_);
         } else if (ovf == overflow_mode::wrap) {
-            value_ = src.value_.template truncate<TargetW>();
+            value_ = SInt<TargetW>(src.value_);
         } else {
             value_ = src.value_.template saturate_signed<TargetW>();
         }
@@ -209,28 +202,8 @@ class Signed {
         return *this;
     }
 
-    friend constexpr bool operator==(Signed const& lhs, Signed const& rhs) noexcept {
-        return lhs.value_ == rhs.value_;
-    }
-
-    friend constexpr auto operator<(Signed const& lhs, Signed const& rhs) noexcept {
-        return lhs.value_.slt(rhs.value_);
-    }
-
-    friend constexpr auto operator<=(Signed const& lhs, Signed const& rhs) noexcept {
-        return lhs.value_.sle(rhs.value_);
-    }
-
-    friend constexpr auto operator>(Signed const& lhs, Signed const& rhs) noexcept {
-        return lhs.value_.sgt(rhs.value_);
-    }
-
-    friend constexpr auto operator>=(Signed const& lhs, Signed const& rhs) noexcept {
-        return lhs.value_.sge(rhs.value_);
-    }
-
     explicit constexpr operator bool() const noexcept {
-        return this->value_ != detail::Bits<R.length()>{};
+        return this->value_ != detail::SInt<R.length()>{};
     }
 
     explicit constexpr operator signed char() const noexcept(
@@ -355,10 +328,10 @@ class Signed {
         }
 
         if (safe_shift >= R.length()) {
-            return Signed<R>(value_.sra(R.length() > 0 ? R.length() - 1 : 0));
+            return Signed<R>(value_ >> (R.length() > 0 ? R.length() - 1 : 0));
         }
 
-        return Signed<R>(value_.sra(safe_shift));
+        return Signed<R>(value_ >> safe_shift);
     }
 
     template <typename ShiftType>
@@ -376,27 +349,27 @@ class Signed {
 
     constexpr auto operator-() const {
         constexpr Range R_res = detail::int_downto_range(R.length() + 1);
-        return Signed<R_res>(detail::negate_signed(value_));
+        return Signed<R_res>(-value_);
     }
 
     template <Range R2>
     constexpr auto operator+(Signed<R2> const& rhs) const {
         constexpr Range R_res =
             detail::int_downto_range(std::max(R.length(), R2.length()) + 1);
-        return Signed<R_res>(detail::add_signed(value_, rhs.value_));
+        return Signed<R_res>(value_ + rhs.value_);
     }
 
     template <Range R2>
     constexpr auto operator-(Signed<R2> const& rhs) const {
         constexpr Range R_res =
             detail::int_downto_range(std::max(R.length(), R2.length()) + 1);
-        return Signed<R_res>(detail::sub_signed(value_, rhs.value_));
+        return Signed<R_res>(value_ - rhs.value_);
     }
 
     template <Range R2>
     constexpr auto operator*(Signed<R2> const& rhs) const {
         constexpr Range R_res = detail::int_downto_range(R.length() + R2.length());
-        return Signed<R_res>(detail::mul_signed(value_, rhs.value_));
+        return Signed<R_res>(value_ * rhs.value_);
     }
 
     template <Range R2>
@@ -405,7 +378,7 @@ class Signed {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        return Signed<R_res>(detail::div_signed(value_, rhs.value_));
+        return Signed<R_res>(value_ / rhs.value_);
     }
 
     template <Range R2>
@@ -413,7 +386,7 @@ class Signed {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        return Signed<R2>(detail::rem_signed(value_, rhs.value_));
+        return Signed<R2>(value_ % rhs.value_);
     }
 
     template <Range R2>
@@ -590,8 +563,18 @@ class Signed {
   private:
     friend struct bits_fn;
 
-    Bits<R.length()> value_{};
+    SInt<R.length()> value_{};
 };
+
+template <Range R>
+constexpr bool operator==(Signed<R> const& lhs, Signed<R> const& rhs) noexcept {
+    return bits(lhs) == bits(rhs);
+}
+
+template <Range R>
+constexpr auto operator<=>(Signed<R> const& lhs, Signed<R> const& rhs) noexcept {
+    return bits(lhs) <=> bits(rhs);
+}
 
 template <Range R>
 inline constexpr bool is_coconext_signed_v<Signed<R>> = true;
@@ -723,7 +706,7 @@ struct std::hash<coconext::types::detail::Signed<R>> {
         size_t value_hash = 0;
 
         if constexpr (W > 0) {
-            if constexpr (!coconext::types::detail::Bits<W>::is_wide) {
+            if constexpr (!coconext::types::detail::SInt<W>::is_wide) {
                 auto raw_val = v.value_.raw();
                 if constexpr (sizeof(raw_val) > sizeof(size_t)) {
                     uint64_t low = static_cast<uint64_t>(raw_val);

@@ -6,7 +6,7 @@ written.
 
 These types model VHDL 2008 `ieee.fixed_pkg`'s `sfixed`/`ufixed`, adapted
 to modern C++ conventions where the VHDL surface is awkward or under-defined.
-They share storage (`detail::Bits<W>`), `resize`/`as`/`reverse` machinery,
+They share `detail::UInt<W>`/`detail::SInt<W>` representations, `resize`/`as`/`reverse` machinery,
 and the subtype-of-`BitArray` relationship with `Unsigned<R>` and `Signed<R>`.
 The Unsigned/Signed spec (`unsigned_signed_api.md`) is the prerequisite reading;
 this spec frequently references it for shared behavior and only fully documents
@@ -28,10 +28,10 @@ is implicit. Bit-level operations (`~`, `&`, `|`, `^`, slicing, iteration,
 range), not routed through the upcast (see Unsigned/Signed spec for the
 rationale).
 
-Storage is `detail::Bits<W>` with `W = R.length()`, sign-agnostic
-two's-complement, SBO for `W <= 64` (and `W <= 128` where `__int128_t` is
-available), `BigInt<W>` for wider. The same primitive backs `BitArray`,
-`Unsigned`, `Signed`, and the future `Float`. There is no width cap.
+Storage uses `detail::UInt<W>` or `detail::SInt<W>` with `W = R.length()`.
+Unsigned storage is canonically zero-extended and signed storage is canonically
+sign-extended. Native storage is used through 64 bits (and 128 bits where
+available), with owned word arrays for wider values. There is no width cap.
 
 There are no dynamic-range counterparts (no `DynSfixed`/`DynUfixed`). All
 widths and radix-point positions are part of the type.
@@ -226,7 +226,7 @@ meant, which the type system cannot infer.
 
 ```
 cpp/include/coconext/types/
-  int_base.hpp       -- detail::Bits<W>           [internal, existing]
+  int_base.hpp       -- detail::Int<W, Signed> with UInt/SInt aliases [internal, existing]
   resize_mode.hpp    -- overflow_mode / round_mode  [shared with Unsigned/Signed]
   unsigned.hpp       -- Unsigned<R>                 [existing-spec]
   signed.hpp         -- Signed<R>                   [existing-spec]
@@ -249,7 +249,7 @@ All public symbols live in `coconext::types`. Internal helpers live in
 
 ## Storage and `constexpr`
 
-Storage is `detail::Bits<W>` with `W = R.length()`. Default-constructed value
+Storage uses `detail::UInt<W>` or `detail::SInt<W>` with `W = R.length()`. Default-constructed value
 is `0` (numeric zero, all bits zero). Same constexpr contract as
 Unsigned/Signed: SBO widths are constexpr-callable everywhere; the wide path
 is implementation-defined.
@@ -849,6 +849,6 @@ hexadecimal?) and the answer is already available through `std::format`.
 - Decision on `{:e}` / `{:g}` formatter specs for scientific display.
 - Octal/hex formatter spec with a fixed radix-character convention.
 - Q-format or named-shape helpers if a clear pattern emerges.
-- The shared `Float<R>` type (separate spec; will use the same `Bits<W>`
-  storage, the same `resize_mode.hpp` enums, and similar implicit-conversion
+- The shared `Float<R>` type (separate spec; can reuse the integer
+  representations, the same `resize_mode.hpp` enums, and similar implicit-conversion
   shape).

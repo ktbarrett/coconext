@@ -40,12 +40,12 @@ class Unsigned {
             R.length() > 0, "Unsigned<0> has no integer value; cannot convert to native int"
         );
         static_assert(
-            !detail::Bits<R.length()>::is_wide, "Conversion from wide Bits to native int"
+            !detail::UInt<R.length()>::is_wide, "Conversion from wide UInt to native int"
         );
 
         auto val = this->value_;
         if constexpr (R.length() > std::numeric_limits<T>::digits) {
-            if (val.ugt(detail::Bits<R.length()>(std::numeric_limits<T>::max()))) {
+            if (val > detail::UInt<R.length()>(std::numeric_limits<T>::max())) {
                 throw std::out_of_range("Value too large for destination native type");
             }
         }
@@ -65,11 +65,8 @@ class Unsigned {
 
     constexpr Unsigned() noexcept = default;
 
-    template <size_t W>
-    constexpr Unsigned(Bits<W> const& val) {
-        static_assert(W == R.length(), "Construction from Bits requires identical width");
-        value_ = val;
-    }
+    template <bool IsSigned>
+    constexpr Unsigned(Int<R.length(), IsSigned> const& val) : value_(val.logical_bits()) {}
 
     // Construct from a native integer. Throws std::out_of_range if the value is
     // negative or does not fit in R.length() bits.
@@ -101,11 +98,8 @@ class Unsigned {
     template <Range R2>
     explicit(R.length() < R2.length()) constexpr Unsigned(Unsigned<R2> const& other) {
         if constexpr (R.length() >= R2.length()) {
-            value_ = other.value_;
-        } else if (
-            other.value_.ule((~Bits<R.length()>{}).template zero_extend<R2.length()>())
-        )
-        {
+            value_ = UInt<R.length()>(other.value_);
+        } else if (other.value_ <= UInt<R2.length()>(~UInt<R.length()>{})) {
             value_ = coconext::types::resize<R.length()>(other).value_;
         } else {
             throw std::out_of_range("value does not fit in Unsigned width");
@@ -134,7 +128,7 @@ class Unsigned {
             R.length() == R2.length(), "BitArray reinterpret requires identical width"
         );
 
-        value_ = bits(other);
+        value_ = UInt<R.length()>(bits(other));
     }
 
     // Implicit conversion to supertype BitArray
@@ -174,9 +168,9 @@ class Unsigned {
 
         if constexpr (TargetW >= SourceW) {
             // Widening (and the null cases) never lose information.
-            value_ = src.value_.template zero_extend<TargetW>();
+            value_ = UInt<TargetW>(src.value_);
         } else if (ovf == overflow_mode::wrap) {
-            value_ = src.value_.template truncate<TargetW>();
+            value_ = UInt<TargetW>(src.value_);
         } else {
             value_ = src.value_.template saturate_unsigned<TargetW>();
         }
@@ -188,28 +182,8 @@ class Unsigned {
         return *this;
     }
 
-    friend constexpr bool operator==(Unsigned const& lhs, Unsigned const& rhs) noexcept {
-        return lhs.value_ == rhs.value_;
-    }
-
-    friend constexpr auto operator<(Unsigned const& lhs, Unsigned const& rhs) noexcept {
-        return lhs.value_.ult(rhs.value_);
-    }
-
-    friend constexpr auto operator<=(Unsigned const& lhs, Unsigned const& rhs) noexcept {
-        return lhs.value_.ule(rhs.value_);
-    }
-
-    friend constexpr auto operator>(Unsigned const& lhs, Unsigned const& rhs) noexcept {
-        return lhs.value_.ugt(rhs.value_);
-    }
-
-    friend constexpr auto operator>=(Unsigned const& lhs, Unsigned const& rhs) noexcept {
-        return lhs.value_.uge(rhs.value_);
-    }
-
     explicit constexpr operator bool() const noexcept {
-        return this->value_ != detail::Bits<R.length()>{};
+        return this->value_ != detail::UInt<R.length()>{};
     }
 
     explicit constexpr operator signed char() const noexcept(
@@ -353,7 +327,7 @@ class Unsigned {
             return Unsigned<R>(0);
         }
 
-        return Unsigned<R>(value_.srl(safe_shift));
+        return Unsigned<R>(value_ >> safe_shift);
     }
 
     template <typename ShiftType>
@@ -379,16 +353,14 @@ class Unsigned {
     // being negated: -Unsigned<8>(150) is -150, not -(-106).
     constexpr auto operator-() const {
         constexpr size_t Wr = R.length() + 1;
-        return Signed<detail::int_downto_range(Wr)>(
-            detail::Bits<Wr>{} - value_.template zero_extend<Wr>()
-        );
+        return Signed<detail::int_downto_range(Wr)>(-value_);
     }
 
     template <Range R2>
     constexpr auto operator+(Unsigned<R2> const& rhs) const {
         constexpr Range R_res =
             detail::int_downto_range(std::max(R.length(), R2.length()) + 1);
-        return Unsigned<R_res>(detail::add_unsigned(value_, rhs.value_));
+        return Unsigned<R_res>(value_ + rhs.value_);
     }
 
     // Unsigned subtraction can go below zero, so the result is Signed.
@@ -396,13 +368,13 @@ class Unsigned {
     constexpr auto operator-(Unsigned<R2> const& rhs) const {
         constexpr Range R_res =
             detail::int_downto_range(std::max(R.length(), R2.length()) + 1);
-        return Signed<R_res>(detail::sub_unsigned(value_, rhs.value_));
+        return Signed<R_res>(value_ - rhs.value_);
     }
 
     template <Range R2>
     constexpr auto operator*(Unsigned<R2> const& rhs) const {
         constexpr Range R_res = detail::int_downto_range(R.length() + R2.length());
-        return Unsigned<R_res>(detail::mul_unsigned(value_, rhs.value_));
+        return Unsigned<R_res>(value_ * rhs.value_);
     }
 
     template <Range R2>
@@ -411,7 +383,7 @@ class Unsigned {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        return Unsigned<R_res>(detail::div_unsigned(value_, rhs.value_));
+        return Unsigned<R_res>(value_ / rhs.value_);
     }
 
     template <Range R2>
@@ -419,7 +391,7 @@ class Unsigned {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        return Unsigned<R2>(detail::rem_unsigned(value_, rhs.value_));
+        return Unsigned<R2>(value_ % rhs.value_);
     }
 
     template <Range R2>
@@ -602,8 +574,18 @@ class Unsigned {
   private:
     friend struct bits_fn;
 
-    Bits<R.length()> value_{};
+    UInt<R.length()> value_{};
 };
+
+template <Range R>
+constexpr bool operator==(Unsigned<R> const& lhs, Unsigned<R> const& rhs) noexcept {
+    return bits(lhs) == bits(rhs);
+}
+
+template <Range R>
+constexpr auto operator<=>(Unsigned<R> const& lhs, Unsigned<R> const& rhs) noexcept {
+    return bits(lhs) <=> bits(rhs);
+}
 
 template <Range R>
 inline constexpr bool is_coconext_unsigned_v<Unsigned<R>> = true;
@@ -679,7 +661,7 @@ struct std::hash<coconext::types::detail::Unsigned<R>> {
         size_t value_hash = 0;
 
         if constexpr (W > 0) {
-            if constexpr (!coconext::types::detail::Bits<W>::is_wide) {
+            if constexpr (!coconext::types::detail::UInt<W>::is_wide) {
                 auto raw_val = v.value_.raw();
                 if constexpr (sizeof(raw_val) > sizeof(size_t)) {
                     uint64_t low = static_cast<uint64_t>(raw_val);

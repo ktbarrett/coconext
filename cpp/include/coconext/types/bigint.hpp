@@ -3,10 +3,9 @@
 
 // The multi-word arithmetic kernels below (the `tc*` word-array primitives, the
 // Knuth division algorithm, and the division driver) are derived from LLVM's
-// APInt implementation (llvm/lib/Support/APInt.cpp). Storage is factored out
-// via non-owning views (WordConstSpan / WordSpan): the kernels operate on
-// spans of words and carry no notion of who owns them, so the same code serves
-// any width and any storage strategy.
+// APInt implementation (llvm/lib/Support/APInt.cpp). The owning Int/DynInt
+// representations expose non-owning views (WordConstSpan / WordSpan) to these
+// kernels, which carry no notion of ownership or numeric type.
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -34,7 +33,7 @@ inline constexpr unsigned word_bits = 64;
 // Word-array kernels (derived from LLVM APInt tc* primitives)
 //
 // Little-endian (word 0 is least significant). They carry no notion of bit
-// width; the caller masks the top word after each mutating op.
+// width; the span-level drivers below provide the applicable physical width.
 // ---------------------------------------------------------------------------
 
 constexpr Word tc_add(std::span<Word> dst, std::span<Word const> rhs, Word carry) {
@@ -469,9 +468,9 @@ inline OwnedDivScratch make_owned_div_scratch(size_t max_limbs) {
 
 // ---------------------------------------------------------------------------
 // WordConstSpan / WordSpan: non-owning views over word storage.
-// Storage-agnostic algorithms are free functions taking these views; owners
-// implicitly convert to the appropriate view, so every kernel has exactly one
-// implementation regardless of how the words are stored.
+// Storage-agnostic algorithms are free functions taking these views. Int and
+// DynInt form the views explicitly, so every primitive has one implementation
+// regardless of how the words are stored.
 // ---------------------------------------------------------------------------
 
 class WordConstSpan {
@@ -541,8 +540,8 @@ constexpr void check_same_width(WordConstSpan a, WordConstSpan b) {
     }
 }
 
-constexpr Word extended_word(WordConstSpan value, size_t index, bool sign_extend) {
-    bool negative = sign_extend && is_negative(value);
+constexpr Word extended_word(WordConstSpan value, size_t index, bool signed_value) {
+    bool negative = signed_value && is_negative(value);
     if (index >= value.num_words()) {
         return negative ? ~Word{0} : Word{0};
     }
@@ -652,8 +651,9 @@ constexpr Word extract_bits(WordConstSpan v, size_t first, unsigned count) {
 
 constexpr void clear_unused_bits(WordSpan v) {
     auto d = v.data();
-    if (!d.empty()) {
-        d.back() &= v.last_word_mask();
+    unsigned valid_bits = v.bit_width() % word_bits;
+    if (!d.empty() && valid_bits != 0) {
+        d.back() &= (Word{1} << valid_bits) - 1;
     }
 }
 
@@ -692,80 +692,11 @@ constexpr void copy_bits(WordSpan dst, WordConstSpan src) {
     clear_unused_bits(dst);
 }
 
-constexpr void zero_extend(WordSpan dst, WordConstSpan src) {
-    if (dst.bit_width() < src.bit_width()) {
-        throw std::invalid_argument("zero_extend cannot narrow");
-    }
-    copy_bits(dst, src);
-}
-
 constexpr void truncate(WordSpan dst, WordConstSpan src) {
     if (dst.bit_width() > src.bit_width()) {
         throw std::invalid_argument("truncate cannot widen");
     }
     copy_bits(dst, src);
-}
-
-constexpr void sign_extend(WordSpan dst, WordConstSpan src) {
-    if (dst.bit_width() < src.bit_width()) {
-        throw std::invalid_argument("sign_extend cannot narrow");
-    }
-    copy_bits(dst, src);
-    if (src.bit_width() == 0 || !is_negative(src) || dst.bit_width() == src.bit_width()) {
-        return;
-    }
-
-    size_t first = src.bit_width();
-    size_t word_index = first / word_bits;
-    unsigned bit_index = first % word_bits;
-    auto d = dst.data();
-    if (bit_index != 0) {
-        d[word_index++] |= ~Word{0} << bit_index;
-    }
-    for (size_t i = word_index; i < d.size(); ++i) {
-        d[i] = ~Word{0};
-    }
-    clear_unused_bits(dst);
-}
-
-constexpr bool all_bits_from(WordConstSpan src, size_t first, bool value) {
-    if (first >= src.bit_width()) {
-        return true;
-    }
-    size_t word_index = first / word_bits;
-    unsigned bit_index = first % word_bits;
-    auto data = src.data();
-    unsigned valid_bits = src.bit_width() % word_bits;
-    Word valid_top = valid_bits == 0 ? ~Word{0} : (Word{1} << valid_bits) - 1;
-
-    for (size_t i = word_index; i < data.size(); ++i) {
-        Word mask = ~Word{0};
-        if (i == word_index && bit_index != 0) {
-            mask &= ~Word{0} << bit_index;
-        }
-        if (i + 1 == data.size()) {
-            mask &= valid_top;
-        }
-        if ((data[i] & mask) != (value ? mask : Word{0})) {
-            return false;
-        }
-    }
-    return true;
-}
-
-constexpr bool fits_unsigned(WordConstSpan src, size_t target_width) {
-    return target_width >= src.bit_width() || all_bits_from(src, target_width, false);
-}
-
-constexpr bool fits_signed(WordConstSpan src, size_t target_width) {
-    if (target_width >= src.bit_width()) {
-        return true;
-    }
-    if (target_width == 0) {
-        return src.bit_width() == 0;
-    }
-    bool target_sign = get_bit(src, target_width - 1);
-    return all_bits_from(src, target_width - 1, target_sign);
 }
 
 template <typename DigitToChar>
@@ -1061,16 +992,15 @@ constexpr void divide_signed(
     WordSpan rhs_magnitude,
     DivideScratch scratch
 ) {
-    size_t magnitude_width = std::max(lhs.bit_width(), rhs.bit_width());
-    if (lhs_magnitude.bit_width() != rhs_magnitude.bit_width()
-        || lhs_magnitude.bit_width() < magnitude_width)
+    if (lhs_magnitude.bit_width() != lhs.bit_width()
+        || rhs_magnitude.bit_width() != rhs.bit_width())
     {
         throw std::invalid_argument("division magnitude bit width mismatch");
     }
     bool lhs_negative = is_negative(lhs);
     bool rhs_negative = is_negative(rhs);
-    sign_extend(lhs_magnitude, lhs);
-    sign_extend(rhs_magnitude, rhs);
+    copy_bits(lhs_magnitude, lhs);
+    copy_bits(rhs_magnitude, rhs);
     if (lhs_negative) {
         negate(lhs_magnitude);
     }

@@ -2,13 +2,13 @@
 
 This document specifies the API for the `Unsigned` and `Signed` fixed-width integer types in coconext. It is a design spec; the implementation has not been written. The closest existing approximation lives on `origin/unsigned-signed`, which this spec deliberately diverges from.
 
-These types model VHDL `numeric_std`'s `unsigned`/`signed` with semantics informed by `fixed_pkg` `ufixed`/`sfixed` restricted to zero fractional bits. They are intended to share a storage primitive (`detail::Bits<W>`) and a resize API with future `Sfixed`/`Usfixed`/`Float` types.
+These types model VHDL `numeric_std`'s `unsigned`/`signed` with semantics informed by `fixed_pkg` `ufixed`/`sfixed` restricted to zero fractional bits. They use the bounded integer aliases `detail::UInt<W>` and `detail::SInt<W>` of the owning `detail::Int<W, Signed>` representation, which future `Ufixed`/`Sfixed` types can also reuse.
 
 ## Overview
 
 `Unsigned<R>` and `Signed<R>` are bit-arrays indexed by an HDL `Range`, interpreted respectively as unsigned binary and two's-complement signed integers. They are **proper subtypes** of `BitArray<R>`: every `Unsigned<R>`/`Signed<R>` *is* a `BitArray<R>` with added numeric semantics, and the upcast is implicit. Indexing, slicing, iteration, formatting-as-bits, bitwise operators, and concat all reach the BitArray surface either via the upcast or via forwarding members on Unsigned/Signed. Equality and hash are intentionally **not** routed through the upcast — they are per-(type, range) only; see [Comparisons](#comparisons) and [Hash](#hash).
 
-Storage is `detail::Bits<W>`, a sign-agnostic two's-complement primitive with small-buffer optimization (SBO) for `W <= 64` (native `intN_t`/`uintN_t`) and roll-your-own `std::array<uint64_t, N>` for wider. The same primitive backs `BitArray` and the future `Sfixed`/`Usfixed`/`Float`. There is no width cap.
+The representation is `detail::UInt<W>` or `detail::SInt<W>`. Signedness is part of the type and its canonical storage invariant: unsigned representations are zero-extended and signed representations are sign-extended through their physical storage tier. Native integers are used through 64 bits (and 128 bits where available); wider values use owned word arrays. There is no width cap.
 
 There is no `value()` accessor and no implicit native-int conversion. Egress to native integers is via explicit conversion operators (one per supported native type); see [Integer egress](#integer-egress). There are no dynamic-range counterparts (no `DynUnsigned`/`DynSigned`). All widths are part of the type.
 
@@ -22,7 +22,7 @@ Operator results carry `{N-1 DOWNTO 0}` for length-only requests; `resize` honor
 
 ```
 cpp/include/coconext/types/
-  int_base.hpp       — detail::Bits<W>           [internal]
+  int_base.hpp       — detail::Int<W, Signed> with UInt/SInt aliases [internal]
   resize_mode.hpp    — overflow_mode / round_mode (shared with Sfixed/Ufixed/Float)
   unsigned.hpp       — Unsigned<R>: class + same-type ops + literal helpers (u8..u64)
                        + resize<...>(Unsigned) / as overloads
@@ -53,7 +53,7 @@ Identical for `Signed`.
 
 ## Storage and `constexpr`
 
-Storage is `detail::Bits<W>`, sign-agnostic.
+Storage uses the signedness-aware `detail::UInt<W>` or `detail::SInt<W>` representation.
 
 **Public contract**: `constexpr` is supported for **SBO widths** (`R.length() <= 64`). All members and operators are marked `constexpr` uniformly; the SBO path is constexpr-callable everywhere.
 
@@ -464,7 +464,7 @@ Unsigned/Signed expose the BitArray surface via **forwarding members**, not via 
 
 ### Deferred to BitProxy work
 
-The `BitProxy` machinery is needed for `BitArray` on packed `Bits<W>` storage and will be designed once with the BitArray packing rework, reused across BitArray/Unsigned/Signed/Sfixed/Ufixed:
+The `BitProxy` machinery is shared by the packed `UInt`/`SInt` representations and reused across BitArray/Unsigned/Signed/Sfixed/Ufixed:
 
 - Mutable `operator[](index_type)` returning a `BitProxy` with a back-pointer to packed storage.
 - `operator[](Range)` → slice (type TBD; possibly a new `BitArraySlice` view that natively walks packed storage).
@@ -484,7 +484,7 @@ Bitwise free functions (`~`, `&`, `|`, `^`), `concat`, `and_reduce`, `or_reduce`
 
 ### `concat` across the integer/bit family
 
-`concat` is the canonical example of the BitArray-as-lingua-franca pattern. Operands of any mix of `Unsigned<R>`, `Signed<R>`, `BitArray<R>` (and future `Sfixed`/`Ufixed`/`Float` once they share `Bits<W>` storage) implicitly upcast to their `BitArray<R_i>` views; the result is `BitArray<R_concat>` with `R_concat.length() == sum of input lengths`.
+`concat` is the canonical example of the BitArray-as-lingua-franca pattern. Operands of any mix of `Unsigned<R>`, `Signed<R>`, `BitArray<R>` (and future `Sfixed`/`Ufixed`/`Float` types using the same integer representations) implicitly upcast to their `BitArray<R_i>` views; the result is `BitArray<R_concat>` with `R_concat.length() == sum of input lengths`.
 
 ```cpp
 auto u = u8(0xAA);              // Unsigned<8>  bits 1010_1010
@@ -505,7 +505,7 @@ No `pow`, no `min`/`max` overloads beyond what `std` provides, no named shifts.
 
 `std::hash<BitArray<R>>` is inherited from `std::hash<Array<Bit, R>>` and is also distinct from the Unsigned/Signed hashes at the same width.
 
-Implementations should compute the bit-pattern hash from shared `Bits<W>` storage when available, then perturb with a type-distinguishing constant.
+Implementations should compute the bit-pattern hash from the underlying `UInt<W>`/`SInt<W>` representation, then perturb it with a type-distinguishing constant.
 
 ## Formatter
 

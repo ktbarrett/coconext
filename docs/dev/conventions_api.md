@@ -2,7 +2,7 @@
 
 This document specifies the cross-cutting conventions that the coconext type family shares: formatting, hashing, construction vs conversion, and the base type-classification customization points. It is a design spec; the implementation may only partially cover these decisions.
 
-Motivation and scope: coconext adds a family of types for dealing with simulations, inspired by cocotb's types but extended and adapted to C++ conventions. This document captures the rules that govern how all of those types are formatted, hashed, constructed, and converted so that per-family API specs (`logic_bit_api.md`, `range_direction_api.md`, `array_vector_api.md`, `array_slice_api.md`, `logic_array_bit_array_api.md`, `ranged_sequence_api.md`, `unsigned_signed_api.md`, `sfixed_ufixed_api.md`, `bits_api.md`) don't need to restate them.
+Motivation and scope: coconext adds a family of types for dealing with simulations, inspired by cocotb's types but extended and adapted to C++ conventions. This document captures the rules that govern how all of those types are formatted, hashed, constructed, and converted so that per-family API specs (`logic_bit_api.md`, `range_direction_api.md`, `array_vector_api.md`, `array_slice_api.md`, `logic_array_bit_array_api.md`, `ranged_sequence_api.md`, `unsigned_signed_api.md`, `sfixed_ufixed_api.md`, `integer_representation_api.md`) don't need to restate them.
 
 ## Formatting
 

@@ -4,11 +4,13 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <climits>
 #include <coconext/types/bigint.hpp>
 #include <coconext/types/direction.hpp>
 #include <coconext/types/logic.hpp>
 #include <coconext/types/range.hpp>
 #include <coconext/types/resize_mode.hpp>
+#include <compare>
 #include <cstddef>
 #include <cstdint>
 #include <format>
@@ -65,107 +67,402 @@ using wide_uint = uint64_t;
 using wide_int = int64_t;
 #endif
 
-struct mixed_width;
+constexpr size_t integer_storage_width(size_t width) {
+    if (width == 0) {
+        return 0;
+    }
+    if (width <= 8) {
+        return 8;
+    }
+    if (width <= 16) {
+        return 16;
+    }
+    if (width <= 32) {
+        return 32;
+    }
+    if (width <= 64) {
+        return 64;
+    }
+    if constexpr (supports_128B) {
+        if (width <= 128) {
+            return 128;
+        }
+    }
+    return ((width + word_bits - 1) / word_bits) * word_bits;
+}
 
-template <size_t W>
-class Bits {
+template <size_t W, bool SignedRepresentation>
+class Int {
+    template <size_t, bool>
+    friend class Int;
+
   public:
-    using IntType = IntTypePicker<W>::type;
-    static constexpr bool is_wide = W > (supports_128B ? 128 : 64);
+    static constexpr size_t width = W;
+    static constexpr size_t physical_width = integer_storage_width(W);
+    static constexpr bool is_signed = SignedRepresentation;
+    static constexpr bool is_wide = physical_width > (supports_128B ? 128 : 64);
+    using IntType = IntTypePicker<physical_width>::type;
+    using RawType = std::conditional_t<is_wide, WordConstSpan, IntType>;
 
-    constexpr Bits() = default;
+  private:
+    // These buffers are used only to bridge a native scalar into an operation
+    // that also has wide storage. Native-only operations never form word spans.
+    using NativeBuffer =
+        std::array<Word, is_wide ? 0 : (physical_width + word_bits - 1) / word_bits>;
+    using NativeArithmetic =
+        std::conditional_t<(sizeof(IntType) < sizeof(unsigned)), unsigned, IntType>;
 
-    // From native ints
-    template <NativeInteger IntT>
-    constexpr Bits(IntT val) {
-        static_assert(W > 0, "Bits<0> has no integer representation; use Bits<0>{}");
-        if constexpr (is_wide) {
-            load_native(mut(), val);
+    constexpr WideWords<physical_width> native_word_array() const
+        requires(!is_wide && physical_width > 0)
+    {
+        WideWords<physical_width> result{};
+        result[0] = static_cast<Word>(storage_);
+#if defined(__SIZEOF_INT128__)
+        if constexpr (sizeof(IntType) > sizeof(Word)) {
+            result[1] = static_cast<Word>(storage_ >> word_bits);
+        }
+#endif
+        return result;
+    }
+
+    constexpr WordConstSpan physical_wide_cref(NativeBuffer& buffer) const {
+        if constexpr (physical_width == 0) {
+            return WordConstSpan{buffer, 0};
+        } else if constexpr (is_wide) {
+            return WordConstSpan{std::span<Word const>{storage_}, physical_width};
         } else {
-            storage_ = static_cast<IntType>(val);
+            buffer = native_word_array();
+            return WordConstSpan{buffer, physical_width};
         }
     }
 
-    template <typename WideWordsT>
-        requires std::is_same_v<std::remove_cvref_t<WideWordsT>, WideWords<W>>
-    constexpr Bits(WideWordsT&& val)
-        requires(is_wide)
-        : storage_(std::forward<WideWordsT>(val)) {
-        clear_unused_bits(mut());
+    constexpr WordSpan physical_mut(NativeBuffer& buffer) {
+        if constexpr (is_wide) {
+            return WordSpan{std::span<Word>{storage_}, physical_width};
+        } else {
+            return WordSpan{buffer, physical_width};
+        }
     }
 
-    constexpr Bits(std::string_view val) {
-        static_assert(W > 0, "Bits<0> has no integer representation; use Bits<0>{}");
-        if constexpr (is_wide) {
-            parse_into(mut(), val);
-        } else {
-            WideWords<W> parsed{};
-            parse_into(WordSpan{parsed, W}, val);
-            storage_ = static_cast<IntType>(parsed[0]);
-            // This handles native ints larger than Word, e.g. __int128_t
+    constexpr void finish_output(NativeBuffer const& buffer) {
+        if constexpr (!is_wide && physical_width > 0) {
+            storage_ = static_cast<IntType>(buffer[0]);
+#if defined(__SIZEOF_INT128__)
             if constexpr (sizeof(IntType) > sizeof(Word)) {
-                if constexpr (parsed.size() > 1) {
-                    storage_ |= static_cast<IntType>(parsed[1]) << word_bits;
-                }
+                storage_ |= static_cast<IntType>(buffer[1]) << word_bits;
+            }
+#endif
+        }
+    }
+
+    static constexpr IntType compute_logical_mask() {
+        if constexpr (W == 0 || is_wide) {
+            return IntType{};
+        } else if constexpr (W == physical_width) {
+            return ~IntType{0};
+        } else {
+            return (IntType{1} << W) - 1;
+        }
+    }
+
+    static constexpr IntType logical_mask = compute_logical_mask();
+
+    constexpr IntType logical_native_value() const
+        requires(!is_wide && W > 0)
+    {
+        return storage_ & logical_mask;
+    }
+
+    constexpr WordConstSpan logical_wide_cref() const
+        requires is_wide
+    {
+        return WordConstSpan{std::span<Word const>{storage_}, W};
+    }
+
+    static constexpr IntType parse_native(std::string_view str)
+        requires(!is_wide && W > 0)
+    {
+        if (str.empty()) {
+            return IntType{};
+        }
+        bool negative = false;
+        size_t pos = 0;
+        if (str[pos] == '-') {
+            negative = true;
+            ++pos;
+        } else if (str[pos] == '+') {
+            ++pos;
+        }
+        bool hexadecimal = pos + 1 < str.size() && str[pos] == '0'
+                        && (str[pos + 1] == 'x' || str[pos + 1] == 'X');
+        if (hexadecimal) {
+            if (negative) {
+                throw std::invalid_argument("Hexadecimal value cannot be negative");
+            }
+            pos += 2;
+        }
+
+        IntType value = 0;
+        IntType maximum = logical_mask;
+        IntType base = hexadecimal ? 16 : 10;
+        for (; pos < str.size(); ++pos) {
+            char c = str[pos];
+            if (c == '\'' || c == '_') {
+                continue;
+            }
+            unsigned digit;
+            if (c >= '0' && c <= '9') {
+                digit = static_cast<unsigned>(c - '0');
+            } else if (hexadecimal && c >= 'a' && c <= 'f') {
+                digit = static_cast<unsigned>(c - 'a' + 10);
+            } else if (hexadecimal && c >= 'A' && c <= 'F') {
+                digit = static_cast<unsigned>(c - 'A' + 10);
+            } else {
+                throw std::invalid_argument(
+                    hexadecimal ? "Invalid hexadecimal character"
+                                : "Invalid base-10 character"
+                );
+            }
+            if (static_cast<IntType>(digit) > maximum || value > (maximum - digit) / base) {
+                throw std::out_of_range(
+                    hexadecimal ? "Hexadecimal literal exceeds bit width"
+                                : "Decimal literal exceeds bit width"
+                );
+            }
+            value = static_cast<IntType>(value * base + digit);
+        }
+        if (negative) {
+            value = static_cast<IntType>(IntType{0} - value) & maximum;
+        }
+        return value;
+    }
+
+    // Storage is zero- or sign-extended from W through physical_width. Only
+    // operations that can disturb those extension bits call canonicalize().
+    constexpr void canonicalize() {
+        if constexpr (W == 0 || W == physical_width) {
+            return;
+        } else if constexpr (!is_wide) {
+            if constexpr (SignedRepresentation) {
+                IntType extension =
+                    static_cast<IntType>(IntType{0} - ((storage_ >> (W - 1)) & IntType{1}));
+                storage_ = static_cast<IntType>(
+                    (storage_ & logical_mask) | (extension & ~logical_mask)
+                );
+            } else {
+                storage_ = static_cast<IntType>(storage_ & logical_mask);
+            }
+        } else {
+            constexpr unsigned valid_bits = W % word_bits;
+            constexpr Word logical_mask = (Word{1} << valid_bits) - 1;
+            Word& top = storage_.back();
+            if constexpr (SignedRepresentation) {
+                Word extension = Word{0} - ((top >> (valid_bits - 1)) & Word{1});
+                top = (top & logical_mask) | (extension & ~logical_mask);
+            } else {
+                top &= logical_mask;
             }
         }
     }
 
-    // From an initializer list of bits
+    template <size_t OtherW, bool OtherSigned>
+    constexpr void copy_from(Int<OtherW, OtherSigned> const& other) {
+        if constexpr (W == 0) {
+            return;
+        } else if constexpr (OtherW == 0) {
+            storage_ = IntType{};
+        } else if constexpr (!is_wide && !Int<OtherW, OtherSigned>::is_wide) {
+            if constexpr (OtherSigned) {
+                using OtherSignedType =
+                    typename as_signed<typename Int<OtherW, OtherSigned>::IntType>::type;
+                storage_ =
+                    static_cast<IntType>(static_cast<OtherSignedType>(other.storage_));
+            } else {
+                storage_ = static_cast<IntType>(other.storage_);
+            }
+        } else {
+            NativeBuffer dst_buffer{};
+            typename Int<OtherW, OtherSigned>::NativeBuffer src_buffer{};
+            auto dst = physical_mut(dst_buffer);
+            auto src = other.physical_wide_cref(src_buffer);
+            for (size_t i = 0; i < dst.num_words(); ++i) {
+                dst.data()[i] = extended_word(src, i, OtherSigned);
+            }
+            finish_output(dst_buffer);
+        }
+        if constexpr (W < OtherW || SignedRepresentation != OtherSigned) {
+            canonicalize();
+        }
+    }
+
+    template <size_t OtherW, bool OtherSigned>
+    constexpr bool less(Int<OtherW, OtherSigned> const& other) const {
+        if constexpr (W > 0 && OtherW > 0 && !is_wide && !Int<OtherW, OtherSigned>::is_wide)
+        {
+            if constexpr (SignedRepresentation) {
+                constexpr size_t common_width =
+                    std::max(physical_width, Int<OtherW, OtherSigned>::physical_width);
+                using CommonSigned =
+                    typename as_signed<typename IntTypePicker<common_width>::type>::type;
+                using ThisSigned = typename as_signed<IntType>::type;
+                using OtherSignedType =
+                    typename as_signed<typename Int<OtherW, OtherSigned>::IntType>::type;
+                return static_cast<CommonSigned>(static_cast<ThisSigned>(storage_))
+                     < static_cast<CommonSigned>(
+                           static_cast<OtherSignedType>(other.storage_)
+                     );
+            } else {
+                constexpr size_t common_width =
+                    std::max(physical_width, Int<OtherW, OtherSigned>::physical_width);
+                using CommonUnsigned = typename IntTypePicker<common_width>::type;
+                return static_cast<CommonUnsigned>(storage_)
+                     < static_cast<CommonUnsigned>(other.storage_);
+            }
+        } else {
+            NativeBuffer a_buffer{};
+            typename Int<OtherW, OtherSigned>::NativeBuffer b_buffer{};
+            auto a = physical_wide_cref(a_buffer);
+            auto b = other.physical_wide_cref(b_buffer);
+            if constexpr (SignedRepresentation) {
+                return scompare(a, b) < 0;
+            } else {
+                return ucompare(a, b) < 0;
+            }
+        }
+    }
+
+  public:  // constructors and conversion
+    constexpr Int() = default;
+
+    template <NativeInteger IntT>
+    constexpr Int(IntT val) {
+        static_assert(W > 0, "zero-width Int has no integer representation");
+        if constexpr (!is_wide && W > 0) {
+            storage_ = static_cast<IntType>(val);
+        } else {
+            auto dst = WordSpan{std::span<Word>{storage_}, physical_width};
+#if defined(__SIZEOF_INT128__)
+            if constexpr (sizeof(IntT) > sizeof(Word)) {
+                if constexpr (std::is_signed_v<IntT>) {
+                    load_int128(dst, static_cast<__int128_t>(val));
+                } else {
+                    load_uint128(dst, static_cast<__uint128_t>(val));
+                }
+            } else
+#endif
+            {
+                load_native(dst, val);
+            }
+        }
+        if constexpr (
+            W < sizeof(IntT) * CHAR_BIT || (!SignedRepresentation && std::is_signed_v<IntT>)
+        )
+        {
+            canonicalize();
+        }
+    }
+
+    constexpr Int(std::string_view val) {
+        static_assert(W > 0, "zero-width Int has no integer representation");
+        if constexpr (is_wide) {
+            parse_into(WordSpan{std::span<Word>{storage_}, W}, val);
+        } else {
+            storage_ = parse_native(val);
+        }
+        if constexpr (SignedRepresentation) {
+            canonicalize();
+        }
+    }
+
     template <typename U>
         requires std::convertible_to<U, Bit>
-    constexpr Bits(std::initializer_list<U> init) {
+    constexpr Int(std::initializer_list<U> init) {
         if (init.size() != W) {
             throw std::invalid_argument(
                 "Initializer list of size " + std::to_string(init.size())
-                + " does not match Bits width " + std::to_string(W)
+                + " does not match Int width " + std::to_string(W)
             );
         }
-
         if constexpr (W > 0) {
-            storage_ = IntType{};
             size_t bit_pos = W - 1;
             for (auto const& val : init) {
                 if (static_cast<bool>(Bit(val))) {
                     set_bit(bit_pos, true);
                 }
                 if (bit_pos > 0) {
-                    bit_pos--;
+                    --bit_pos;
                 }
             }
         }
     }
 
-    template <bool IsConst>
-    class IteratorImpl;
+    template <size_t OtherW, bool OtherSigned>
+    constexpr explicit Int(Int<OtherW, OtherSigned> const& other) {
+        copy_from(other);
+    }
+
+    constexpr Int<W, false> logical_bits() const { return Int<W, false>(*this); }
+
+    constexpr RawType raw() const {
+        static_assert(W > 0, "raw() on a zero-width Int is undefined");
+        if constexpr (is_wide) {
+            return WordConstSpan{std::span<Word const>{storage_}, physical_width};
+        } else {
+            return storage_;
+        }
+    }
+
+    constexpr bool get_bit(size_t index) const {
+        if (index >= W) {
+            throw std::out_of_range("Bit index out of bounds");
+        }
+        if constexpr (is_wide) {
+            return detail::get_bit(
+                WordConstSpan{std::span<Word const>{storage_}, physical_width}, index
+            );
+        } else {
+            return (storage_ >> index) & IntType{1};
+        }
+    }
+
+    constexpr void set_bit(size_t index, bool val) {
+        if (index >= W) {
+            throw std::out_of_range("Bit index out of bounds");
+        }
+        if constexpr (is_wide) {
+            detail::set_bit(
+                WordSpan{std::span<Word>{storage_}, physical_width}, index, val
+            );
+        } else {
+            IntType mask = IntType{1} << index;
+            storage_ = val ? static_cast<IntType>(storage_ | mask)
+                           : static_cast<IntType>(storage_ & ~mask);
+        }
+        if constexpr (SignedRepresentation && W < physical_width) {
+            if (index == W - 1) {
+                canonicalize();
+            }
+        }
+    }
 
     class BitReference {
-      private:
-        Bits<W>& parent_;
+        Int& parent_;
         size_t index_;
 
-        template <bool C>
-        friend class IteratorImpl;
-
       public:
-        constexpr BitReference(Bits<W>& parent, size_t index)
+        constexpr BitReference(Int& parent, size_t index)
             : parent_(parent), index_(index) {}
-
         constexpr operator Bit() const {
             return parent_.get_bit(index_) ? Bit::_1 : Bit::_0;
         }
-
         constexpr explicit operator char() const {
             return parent_.get_bit(index_) ? '1' : '0';
         }
-
         constexpr explicit operator bool() const { return parent_.get_bit(index_); }
-
         constexpr BitReference const& operator=(Bit val) const {
             parent_.set_bit(index_, static_cast<bool>(val));
             return *this;
         }
-
         constexpr BitReference const& operator=(BitReference const& other) const {
             parent_.set_bit(index_, static_cast<bool>(static_cast<Bit>(other)));
             return *this;
@@ -174,9 +471,8 @@ class Bits {
 
     template <bool IsConst>
     class IteratorImpl {
-      private:
-        using ParentType = std::conditional_t<IsConst, Bits<W> const, Bits<W>>;
-        ParentType* parent_ = nullptr;
+        using Parent = std::conditional_t<IsConst, Int const, Int>;
+        Parent* parent_ = nullptr;
         size_t index_ = 0;
 
       public:
@@ -188,41 +484,35 @@ class Bits {
         using reference = std::conditional_t<IsConst, Bit, BitReference>;
 
         constexpr IteratorImpl() = default;
-
-        constexpr IteratorImpl(ParentType* parent, size_t index)
+        constexpr IteratorImpl(Parent* parent, size_t index)
             : parent_(parent), index_(index) {}
-
         constexpr reference operator*() const {
             size_t bit_pos = W > 0 ? W - 1 - index_ : 0;
-
             if constexpr (IsConst) {
                 return parent_->get_bit(bit_pos) ? Bit::_1 : Bit::_0;
             } else {
                 return BitReference(*parent_, bit_pos);
             }
         }
-
         constexpr reference operator[](difference_type n) const { return *(*this + n); }
-
         constexpr IteratorImpl& operator++() {
             ++index_;
             return *this;
         }
         constexpr IteratorImpl operator++(int) {
-            IteratorImpl tmp = *this;
-            ++(*this);
-            return tmp;
+            auto copy = *this;
+            ++*this;
+            return copy;
         }
         constexpr IteratorImpl& operator--() {
             --index_;
             return *this;
         }
         constexpr IteratorImpl operator--(int) {
-            IteratorImpl tmp = *this;
-            --(*this);
-            return tmp;
+            auto copy = *this;
+            --*this;
+            return copy;
         }
-
         constexpr IteratorImpl& operator+=(difference_type n) {
             index_ += n;
             return *this;
@@ -231,7 +521,6 @@ class Bits {
             index_ -= n;
             return *this;
         }
-
         constexpr IteratorImpl operator+(difference_type n) const {
             return IteratorImpl(parent_, index_ + n);
         }
@@ -241,45 +530,26 @@ class Bits {
         friend constexpr IteratorImpl operator+(difference_type n, IteratorImpl const& it) {
             return it + n;
         }
-
         constexpr difference_type operator-(IteratorImpl const& other) const {
             return static_cast<difference_type>(index_)
                  - static_cast<difference_type>(other.index_);
         }
-
         constexpr bool operator==(IteratorImpl const& other) const {
             return parent_ == other.parent_ && index_ == other.index_;
         }
-
-        constexpr bool operator<(IteratorImpl const& other) const {
-            return index_ < other.index_;
-        }
-        constexpr bool operator>(IteratorImpl const& other) const {
-            return index_ > other.index_;
-        }
-        constexpr bool operator<=(IteratorImpl const& other) const {
-            return index_ <= other.index_;
-        }
-        constexpr bool operator>=(IteratorImpl const& other) const {
-            return index_ >= other.index_;
+        constexpr auto operator<=>(IteratorImpl const& other) const {
+            return index_ <=> other.index_;
         }
     };
 
     constexpr auto begin() { return IteratorImpl<false>(this, 0); }
-
     constexpr auto begin() const { return IteratorImpl<true>(this, 0); }
-
     constexpr auto end() { return IteratorImpl<false>(this, W); }
-
     constexpr auto end() const { return IteratorImpl<true>(this, W); }
-
-    constexpr auto rbegin() noexcept { return std::make_reverse_iterator(end()); }
-
-    constexpr auto rbegin() const noexcept { return std::make_reverse_iterator(end()); }
-
-    constexpr auto rend() noexcept { return std::make_reverse_iterator(begin()); }
-
-    constexpr auto rend() const noexcept { return std::make_reverse_iterator(begin()); }
+    constexpr auto rbegin() { return std::make_reverse_iterator(end()); }
+    constexpr auto rbegin() const { return std::make_reverse_iterator(end()); }
+    constexpr auto rend() { return std::make_reverse_iterator(begin()); }
+    constexpr auto rend() const { return std::make_reverse_iterator(begin()); }
 
     constexpr BitReference operator[](size_t index) {
         if (index >= W) {
@@ -287,394 +557,281 @@ class Bits {
         }
         return BitReference(*this, index);
     }
-
     constexpr Bit operator[](size_t index) const {
-        if (index >= W) {
-            throw std::out_of_range("Bit index out of bounds");
-        }
         return get_bit(index) ? Bit::_1 : Bit::_0;
-    }
-
-    constexpr Bits operator<<(size_t amount) const {
-        static_assert(W > 0, "shift on Bits<0> is undefined; no bit positions exist");
-        if constexpr (is_wide) {
-            IntType result = storage_;
-            shift_left(WordSpan{result, W}, amount);
-            return Bits<W>(result);
-        } else {
-            if (amount >= W) {
-                return Bits<W>{};
-            }
-            return Bits<W>(raw() << amount);
-        }
-    }
-
-    constexpr Bits sra(size_t amount) const {
-        static_assert(W > 0, "shift on Bits<0> is undefined; no bit positions exist");
-        if constexpr (is_wide) {
-            IntType result = storage_;
-            shift_right_arith(WordSpan{result, W}, amount);
-            return Bits<W>(result);
-        } else {
-            auto ext = this->sign_extended();
-            if (amount >= W) {
-                return Bits<W>(ext < 0 ? ~IntType{0} : IntType{0});
-            }
-            return Bits<W>(ext >> amount);
-        }
-    }
-
-    constexpr Bits srl(size_t amount) const {
-        static_assert(W > 0, "shift on Bits<0> is undefined; no bit positions exist");
-        if constexpr (is_wide) {
-            IntType result = storage_;
-            shift_right_logical(WordSpan{result, W}, amount);
-            return Bits<W>(result);
-        } else {
-            if (amount >= W) {
-                return Bits<W>{};
-            }
-            return Bits<W>(raw() >> amount);
-        }
-    }
-
-    constexpr bool operator==(Bits<W> const& other) const {
-        if constexpr (W == 0) {
-            return true;
-        } else if constexpr (is_wide) {
-            return storage_ == other.storage_;
-        } else {
-            return (raw() == other.raw());
-        }
-    }
-
-    constexpr bool operator!=(Bits<W> const& other) const { return !(*this == other); }
-
-    // Bits is sign-agnostic storage, so ordering must name its interpretation:
-    // u* treat the bits as unsigned, s* as two's-complement. There is
-    // deliberately no operator< / operator<=>; the interpretation is the
-    // caller's (matching LLVM APInt's ult/slt API).
-    template <size_t Wm>
-    constexpr bool ult(Bits<Wm> const& other) const {
-        static_assert(
-            W > 0 && Wm > 0,
-            "ordering on Bits<0> is undefined; the null vector has no value"
-        );
-        if constexpr (is_wide && Bits<Wm>::is_wide) {
-            return detail::ucompare(cref(), other.cref()) < 0;
-        } else if constexpr (!is_wide && !Bits<Wm>::is_wide) {
-            return raw() < other.raw();
-        } else if constexpr (is_wide) {
-            auto other_words = other.native_word_array();
-            return detail::ucompare(cref(), WordConstSpan{other_words, Wm}) < 0;
-        } else {
-            auto this_words = native_word_array();
-            return detail::ucompare(WordConstSpan{this_words, W}, other.cref()) < 0;
-        }
-    }
-
-    template <size_t Wm>
-    constexpr bool ule(Bits<Wm> const& other) const {
-        return !other.ult(*this);
-    }
-    template <size_t Wm>
-    constexpr bool ugt(Bits<Wm> const& other) const {
-        return other.ult(*this);
-    }
-    template <size_t Wm>
-    constexpr bool uge(Bits<Wm> const& other) const {
-        return !ult(other);
-    }
-
-    template <size_t Wm>
-    constexpr bool slt(Bits<Wm> const& other) const {
-        static_assert(
-            W > 0 && Wm > 0,
-            "ordering on Bits<0> is undefined; the null vector has no value"
-        );
-        if constexpr (is_wide && Bits<Wm>::is_wide) {
-            return detail::scompare(cref(), other.cref()) < 0;
-        } else if constexpr (!is_wide && !Bits<Wm>::is_wide) {
-            return sign_extended() < other.sign_extended();
-        } else if constexpr (is_wide) {
-            auto other_words = other.native_word_array();
-            return detail::scompare(cref(), WordConstSpan{other_words, Wm}) < 0;
-        } else {
-            auto this_words = native_word_array();
-            return detail::scompare(WordConstSpan{this_words, W}, other.cref()) < 0;
-        }
-    }
-
-    template <size_t Wm>
-    constexpr bool sle(Bits<Wm> const& other) const {
-        return !other.slt(*this);
-    }
-    template <size_t Wm>
-    constexpr bool sgt(Bits<Wm> const& other) const {
-        return other.slt(*this);
-    }
-    template <size_t Wm>
-    constexpr bool sge(Bits<Wm> const& other) const {
-        return !slt(other);
-    }
-
-    constexpr Bits operator&(Bits<W> const& other) const {
-        if constexpr (W == 0) {
-            return Bits<W>{};
-        } else if constexpr (is_wide) {
-            Bits<W> result(*this);
-            and_assign(result.mut(), other.cref());
-            return result;
-        } else {
-            return Bits<W>(raw() & other.raw());
-        }
-    }
-
-    constexpr Bits operator|(Bits<W> const& other) const {
-        if constexpr (W == 0) {
-            return Bits<W>{};
-        } else if constexpr (is_wide) {
-            Bits<W> result(*this);
-            or_assign(result.mut(), other.cref());
-            return result;
-        } else {
-            return Bits<W>(raw() | other.raw());
-        }
-    }
-
-    constexpr Bits operator^(Bits<W> const& other) const {
-        if constexpr (W == 0) {
-            return Bits<W>{};
-        } else if constexpr (is_wide) {
-            Bits<W> result(*this);
-            xor_assign(result.mut(), other.cref());
-            return result;
-        } else {
-            return Bits<W>(raw() ^ other.raw());
-        }
-    }
-
-    constexpr Bits operator~() const {
-        if constexpr (W == 0) {
-            return Bits<W>{};
-        } else if constexpr (is_wide) {
-            Bits<W> result(*this);
-            bitnot(result.mut());
-            return result;
-        } else {
-            return Bits<W>(~storage_);
-        }
     }
 
     constexpr size_t count_trailing_zeros() const {
         if constexpr (W == 0) {
             return 0;
-        } else if constexpr (is_wide) {
-            return detail::count_trailing_zeros(cref());
-        } else {
-            IntType val = raw();
-            if (val == 0) {
+        } else if constexpr (!is_wide) {
+            IntType value = logical_native_value();
+            if (value == 0) {
                 return W;
             }
-
-            if constexpr (supports_128B && W > 64) {
-                uint64_t lower = static_cast<uint64_t>(val);
-                if (lower != 0) {
-                    return std::countr_zero(lower);
-                }
-                return 64 + std::countr_zero(static_cast<uint64_t>(val >> 64));
-            } else {
-                return std::countr_zero(val);
+#if defined(__SIZEOF_INT128__)
+            if constexpr (sizeof(IntType) > sizeof(Word)) {
+                Word lower = static_cast<Word>(value);
+                return lower != 0
+                         ? std::countr_zero(lower)
+                         : word_bits
+                               + std::countr_zero(static_cast<Word>(value >> word_bits));
+            } else
+#endif
+            {
+                return std::countr_zero(value);
             }
+        } else {
+            return detail::count_trailing_zeros(logical_wide_cref());
         }
     }
-
     constexpr size_t count_leading_zeros() const {
         if constexpr (W == 0) {
             return 0;
-        } else if constexpr (is_wide) {
-            return detail::count_leading_zeros(cref());
-        } else {
-            IntType val = raw();
-            if (val == 0) {
+        } else if constexpr (!is_wide) {
+            IntType value = logical_native_value();
+            if (value == 0) {
                 return W;
             }
-
-            if constexpr (supports_128B && W > 64) {
-                uint64_t upper = static_cast<uint64_t>(val >> 64);
-                size_t unused_bits = 128 - W;
-                if (upper != 0) {
-                    return std::countl_zero(upper) - unused_bits;
-                }
-                return 64 + std::countl_zero(static_cast<uint64_t>(val)) - unused_bits;
-            } else {
-                size_t unused_bits = (sizeof(IntType) * 8) - W;
-                return std::countl_zero(val) - unused_bits;
+            constexpr size_t unused = physical_width - W;
+#if defined(__SIZEOF_INT128__)
+            if constexpr (sizeof(IntType) > sizeof(Word)) {
+                Word upper = static_cast<Word>(value >> word_bits);
+                return upper != 0
+                         ? std::countl_zero(upper) - unused
+                         : word_bits + std::countl_zero(static_cast<Word>(value)) - unused;
+            } else
+#endif
+            {
+                return std::countl_zero(value) - unused;
             }
+        } else {
+            auto logical = logical_wide_cref();
+            size_t unused = logical.num_words() * word_bits - W;
+            for (size_t i = logical.num_words(); i > 0; --i) {
+                Word word = logical.word(i - 1);
+                if (i == logical.num_words() && W % word_bits != 0) {
+                    word &= (Word{1} << (W % word_bits)) - 1;
+                }
+                if (word != 0) {
+                    return ((logical.num_words() - i) * word_bits) + std::countl_zero(word)
+                         - unused;
+                }
+            }
+            return W;
         }
     }
-
     constexpr size_t popcount() const {
         if constexpr (W == 0) {
             return 0;
-        } else if constexpr (is_wide) {
-            return detail::popcount(cref());
-        } else if constexpr (supports_128B && W > 64) {
-            // std::popcount rejects __uint128_t; count each half.
-            auto val = raw();
-            return std::popcount(static_cast<uint64_t>(val))
-                 + std::popcount(static_cast<uint64_t>(val >> 64));
-        } else {
-            return std::popcount(raw());
-        }
-    }
-
-    constexpr bool get_bit(size_t index) const {
-        static_assert(W > 0, "get_bit on Bits<0> is undefined; no bit positions exist");
-        if constexpr (!is_wide) {
-            return (raw() >> index) & 1;
-        } else {
-            return detail::get_bit(cref(), index);
-        }
-    }
-
-    constexpr void set_bit(size_t index, bool val) {
-        static_assert(W > 0, "set_bit on Bits<0> is undefined; no bit positions exist");
-        if constexpr (!is_wide) {
-            IntType mask = static_cast<IntType>(1) << index;
-            if (val) {
-                storage_ |= mask;
-            } else {
-                storage_ &= ~mask;
-            }
-        } else {
-            detail::set_bit(mut(), index, val);
-        }
-    }
-
-    // On the wide tier this is a non-owning view, not a copy: callers only ever
-    // read words out of it, and copying would mean duplicating the whole array.
-    using RawType = std::conditional_t<is_wide, WordConstSpan, IntType>;
-
-    constexpr RawType raw() const {
-        static_assert(W > 0, "raw() on Bits<0> is undefined; the null vector has no value");
-        if constexpr (is_wide) {
-            return cref();
-        } else {
-            return static_cast<IntType>(storage_ & top_mask);
-        }
-    }
-
-    // Width-changing operations. These are the only cross-width construction
-    // path; there is deliberately no cross-width converting constructor.
-
-    template <size_t Wm>
-        requires(Wm >= W)
-    constexpr Bits<Wm> zero_extend() const {
-        return widened<Wm>();
-    }
-
-    template <size_t Wm>
-        requires(Wm >= W)
-    constexpr Bits<Wm> sign_extend() const {
-        if constexpr (W == 0) {
-            return Bits<Wm>{};
-        } else if constexpr (is_wide) {
-            Bits<Wm> result{};
-            detail::sign_extend(result.mut(), cref());
-            return result;
-        } else if constexpr (Bits<Wm>::is_wide) {
-            Bits<Wm> result{};
-            if constexpr (sizeof(IntType) <= sizeof(Word)) {
-                load_native(result.mut(), sign_extended());
-            } else {
+        } else if constexpr (!is_wide) {
+            IntType value = logical_native_value();
 #if defined(__SIZEOF_INT128__)
-                load_int128(result.mut(), sign_extended());
+            if constexpr (sizeof(IntType) > sizeof(Word)) {
+                return std::popcount(static_cast<Word>(value))
+                     + std::popcount(static_cast<Word>(value >> word_bits));
+            } else
 #endif
+            {
+                return std::popcount(value);
             }
-            return result;
         } else {
-            using Dest = typename Bits<Wm>::IntType;
-            return Bits<Wm>(static_cast<Dest>(sign_extended()));
-        }
-    }
-
-    template <size_t Wm>
-        requires(Wm <= W)
-    constexpr Bits<Wm> truncate() const {
-        Bits<Wm> result{};
-        if constexpr (Wm == 0) {
-            return result;
-        } else if constexpr (is_wide && Bits<Wm>::is_wide) {
-            detail::truncate(result.mut(), cref());
-        } else if constexpr (is_wide) {
-            using Dest = typename Bits<Wm>::IntType;
-            if constexpr (sizeof(Dest) <= sizeof(Word)) {
-                result = Bits<Wm>(static_cast<Dest>(storage_[0]));
-            } else {
-#if defined(__SIZEOF_INT128__)
-                __uint128_t value = storage_[0];
-                if (storage_.size() > 1) {
-                    value |= static_cast<__uint128_t>(storage_[1]) << word_bits;
+            auto logical = logical_wide_cref();
+            size_t result = 0;
+            for (size_t i = 0; i < logical.num_words(); ++i) {
+                Word word = logical.word(i);
+                if (i + 1 == logical.num_words() && W % word_bits != 0) {
+                    word &= (Word{1} << (W % word_bits)) - 1;
                 }
-                result = Bits<Wm>(static_cast<Dest>(value));
-#endif
+                result += std::popcount(word);
             }
-        } else {
-            result = Bits<Wm>(static_cast<typename Bits<Wm>::IntType>(raw()));
-        }
-        return result;
-    }
-
-    // Interpret the source as unsigned and clamp to the destination width.
-    template <size_t Wm>
-    constexpr Bits<Wm> saturate_unsigned() const {
-        if constexpr (Wm >= W) {
-            return zero_extend<Wm>();
-        } else if constexpr (Wm == 0) {
-            return Bits<0>{};
-        } else if constexpr (is_wide) {
-            if (!detail::fits_unsigned(cref(), Wm)) {
-                return ~Bits<Wm>{};
-            }
-            return truncate<Wm>();
-        } else {
-            IntType target_max = (static_cast<IntType>(1) << Wm) - 1;
-            if (raw() > target_max) {
-                return ~Bits<Wm>{};
-            }
-            return truncate<Wm>();
+            return result;
         }
     }
 
-    // Interpret the source as two's-complement and clamp to the destination.
-    template <size_t Wm>
-    constexpr Bits<Wm> saturate_signed() const {
-        if constexpr (Wm >= W) {
-            return sign_extend<Wm>();
-        } else if constexpr (Wm == 0) {
-            return Bits<0>{};
-        } else if constexpr (is_wide) {
-            bool negative = detail::is_negative(cref());
-            if (detail::fits_signed(cref(), Wm)) {
-                return truncate<Wm>();
-            }
-            Bits<Wm> limit{};
-            limit.set_bit(Wm - 1, true);
-            return negative ? limit : ~limit;
+    friend constexpr bool operator==(Int const& lhs, Int const& rhs) {
+        if constexpr (W == 0) {
+            return true;
         } else {
-            auto value = sign_extended();
-            using SType = decltype(value);
-            SType target_magnitude = static_cast<SType>(1) << (Wm - 1);
-            SType target_min = -target_magnitude;
-            SType target_max = target_magnitude - 1;
-            if (value >= target_min && value <= target_max) {
-                return truncate<Wm>();
+            return lhs.storage_ == rhs.storage_;
+        }
+    }
+
+    friend constexpr std::strong_ordering operator<=>(Int const& lhs, Int const& rhs) {
+        if (lhs.less(rhs)) {
+            return std::strong_ordering::less;
+        }
+        if (rhs.less(lhs)) {
+            return std::strong_ordering::greater;
+        }
+        return std::strong_ordering::equal;
+    }
+
+    constexpr Int operator&(Int const& other) const {
+        if constexpr (W == 0) {
+            return Int{};
+        } else if constexpr (!is_wide) {
+            Int result;
+            result.storage_ = static_cast<IntType>(storage_ & other.storage_);
+            return result;
+        } else {
+            Int result(*this);
+            and_assign(
+                WordSpan{std::span<Word>{result.storage_}, physical_width},
+                WordConstSpan{std::span<Word const>{other.storage_}, physical_width}
+            );
+            return result;
+        }
+    }
+    constexpr Int operator|(Int const& other) const {
+        if constexpr (W == 0) {
+            return Int{};
+        } else if constexpr (!is_wide) {
+            Int result;
+            result.storage_ = static_cast<IntType>(storage_ | other.storage_);
+            return result;
+        } else {
+            Int result(*this);
+            or_assign(
+                WordSpan{std::span<Word>{result.storage_}, physical_width},
+                WordConstSpan{std::span<Word const>{other.storage_}, physical_width}
+            );
+            return result;
+        }
+    }
+    constexpr Int operator^(Int const& other) const {
+        if constexpr (W == 0) {
+            return Int{};
+        } else if constexpr (!is_wide) {
+            Int result;
+            result.storage_ = static_cast<IntType>(storage_ ^ other.storage_);
+            return result;
+        } else {
+            Int result(*this);
+            xor_assign(
+                WordSpan{std::span<Word>{result.storage_}, physical_width},
+                WordConstSpan{std::span<Word const>{other.storage_}, physical_width}
+            );
+            return result;
+        }
+    }
+    constexpr Int operator~() const {
+        if constexpr (W == 0) {
+            return Int{};
+        } else if constexpr (!is_wide) {
+            Int result;
+            result.storage_ = static_cast<IntType>(~storage_);
+            if constexpr (!SignedRepresentation) {
+                result.canonicalize();
             }
-            // Clamp to signed min (100..0) or signed max (011..1).
-            Bits<Wm> limit{};
-            limit.set_bit(Wm - 1, true);
-            return value < 0 ? limit : ~limit;
+            return result;
+        } else {
+            Int result(*this);
+            bitnot(WordSpan{std::span<Word>{result.storage_}, physical_width});
+            if constexpr (!SignedRepresentation) {
+                result.canonicalize();
+            }
+            return result;
+        }
+    }
+    constexpr Int operator<<(size_t amount) const {
+        if constexpr (W == 0) {
+            return Int{};
+        } else {
+            if (amount >= W) {
+                return Int{};
+            }
+            if constexpr (!is_wide) {
+                Int result;
+                result.storage_ = static_cast<IntType>(storage_ << amount);
+                result.canonicalize();
+                return result;
+            } else {
+                Int result(*this);
+                shift_left(
+                    WordSpan{std::span<Word>{result.storage_}, physical_width}, amount
+                );
+                result.canonicalize();
+                return result;
+            }
+        }
+    }
+    constexpr Int operator>>(size_t amount) const {
+        if constexpr (W == 0) {
+            return Int{};
+        } else {
+            if (amount >= W) {
+                if constexpr (SignedRepresentation) {
+                    return get_bit(W - 1) ? ~Int{} : Int{};
+                } else {
+                    return Int{};
+                }
+            }
+            if constexpr (!is_wide) {
+                Int result;
+                if constexpr (SignedRepresentation) {
+                    using SignedIntType = typename as_signed<IntType>::type;
+                    result.storage_ = static_cast<IntType>(
+                        static_cast<SignedIntType>(storage_) >> amount
+                    );
+                } else {
+                    result.storage_ = static_cast<IntType>(storage_ >> amount);
+                }
+                return result;
+            } else {
+                Int result(*this);
+                if constexpr (SignedRepresentation) {
+                    shift_right_arith(
+                        WordSpan{std::span<Word>{result.storage_}, physical_width}, amount
+                    );
+                } else {
+                    shift_right_logical(
+                        WordSpan{std::span<Word>{result.storage_}, physical_width}, amount
+                    );
+                }
+                return result;
+            }
+        }
+    }
+
+    template <size_t TargetW>
+        requires(TargetW <= W)
+    constexpr Int<TargetW, SignedRepresentation> truncate() const {
+        return Int<TargetW, SignedRepresentation>(*this);
+    }
+
+    template <size_t TargetW>
+    constexpr Int<TargetW, false> saturate_unsigned() const
+        requires(!SignedRepresentation)
+    {
+        if constexpr (TargetW >= W) {
+            return Int<TargetW, false>(*this);
+        } else if constexpr (TargetW == 0) {
+            return Int<0, false>{};
+        } else {
+            Int<TargetW, false> maximum = ~Int<TargetW, false>{};
+            return !maximum.less(*this) ? Int<TargetW, false>(*this) : maximum;
+        }
+    }
+    template <size_t TargetW>
+    constexpr Int<TargetW, true> saturate_signed() const
+        requires SignedRepresentation
+    {
+        if constexpr (TargetW >= W) {
+            return Int<TargetW, true>(*this);
+        } else if constexpr (TargetW == 0) {
+            return Int<0, true>{};
+        } else {
+            Int<TargetW, true> minimum{};
+            minimum.set_bit(TargetW - 1, true);
+            Int<TargetW, true> maximum = ~minimum;
+            if (less(minimum)) {
+                return minimum;
+            }
+            if (maximum.less(*this)) {
+                return maximum;
+            }
+            return Int<TargetW, true>(*this);
         }
     }
 
@@ -682,586 +839,379 @@ class Bits {
         if constexpr (W == 0) {
             return "";
         } else if constexpr (!is_wide) {
-            return std::format("{:0{}b}", static_cast<wide_uint>(raw()), W);
+            return std::format(
+                "{:0{}b}", static_cast<wide_uint>(logical_native_value()), W
+            );
         } else {
-            return format_power_of_two(cref(), 1, W, [](uint8_t d) {
+            return format_power_of_two(logical_wide_cref(), 1, W, [](uint8_t d) {
                 return static_cast<char>('0' + d);
             });
         }
     }
-
-    std::string to_decimal_string(bool is_signed = false) const {
+    std::string to_decimal_string() const {
+        return to_decimal_string(SignedRepresentation);
+    }
+    std::string to_decimal_string(bool signed_value) const {
         if constexpr (W == 0) {
             return "";
-        } else if constexpr (!is_wide) {
-            if (is_signed) {
-                constexpr size_t total_bits = sizeof(wide_int) * 8;
-                wide_int signed_val =
-                    static_cast<wide_int>(static_cast<wide_uint>(raw()) << (total_bits - W))
-                    >> (total_bits - W);
-                return std::format("{}", signed_val);
-            }
-            return std::format("{}", static_cast<wide_uint>(raw()));
+        } else if constexpr (is_wide) {
+            return format_decimal(
+                WordConstSpan{std::span<Word const>{storage_}, physical_width}, signed_value
+            );
+        } else if (signed_value) {
+            using SignedIntType = typename as_signed<IntType>::type;
+            return std::format(
+                "{}", static_cast<wide_int>(static_cast<SignedIntType>(storage_))
+            );
         } else {
-            return format_decimal(cref(), is_signed);
+            return std::format("{}", static_cast<wide_uint>(storage_));
         }
     }
-
     std::string to_hexadecimal_string() const {
-        constexpr size_t hex_chars = (W + 3) / 4;
+        constexpr size_t digits = (W + 3) / 4;
         if constexpr (W == 0) {
             return "";
         } else if constexpr (!is_wide) {
-            return std::format("{:0{}x}", static_cast<wide_uint>(raw()), hex_chars);
+            return std::format(
+                "{:0{}x}", static_cast<wide_uint>(logical_native_value()), digits
+            );
         } else {
             char const hex_digits[] = "0123456789abcdef";
-            return format_power_of_two(cref(), 4, hex_chars, [&](uint8_t d) {
+            return format_power_of_two(logical_wide_cref(), 4, digits, [&](uint8_t d) {
                 return hex_digits[d];
             });
         }
     }
-
     std::string to_octal_string() const {
-        constexpr size_t octal_chars = (W + 2) / 3;
+        constexpr size_t digits = (W + 2) / 3;
         if constexpr (W == 0) {
             return "";
         } else if constexpr (!is_wide) {
-            return std::format("{:0{}o}", static_cast<wide_uint>(raw()), octal_chars);
+            return std::format(
+                "{:0{}o}", static_cast<wide_uint>(logical_native_value()), digits
+            );
         } else {
-            return format_power_of_two(cref(), 3, octal_chars, [](uint8_t d) {
+            return format_power_of_two(logical_wide_cref(), 3, digits, [](uint8_t d) {
                 return static_cast<char>('0' + d);
             });
         }
     }
 
-  private:
-    template <size_t>
-    friend class Bits;
-    friend struct mixed_width;
-
-  public:
-    // Exact-width primitives used internally by the growing operations.
-    // These wrap to W and therefore are not exposed by the numeric frontends.
-    constexpr Bits operator+(Bits<W> const& other) const {
+    static constexpr Int exact_add(Int const& a, Int const& b) {
         if constexpr (W == 0) {
-            return Bits<W>{};
-        } else if constexpr (is_wide) {
-            IntType result = storage_;
-            add_assign(WordSpan{result, W}, other.cref());
-            return Bits<W>(result);
-        } else {
-            return Bits<W>(static_cast<IntType>(raw() + other.raw()));
+            return Int{};
         }
+        Int result;
+        if constexpr (!is_wide && W > 0) {
+            result.storage_ = static_cast<IntType>(
+                static_cast<NativeArithmetic>(a.storage_)
+                + static_cast<NativeArithmetic>(b.storage_)
+            );
+        } else {
+            result = arithmetic(a, b, '+');
+        }
+        result.canonicalize();
+        return result;
     }
-
-    constexpr Bits operator-(Bits<W> const& other) const {
+    static constexpr Int exact_sub(Int const& a, Int const& b) {
         if constexpr (W == 0) {
-            return Bits<W>{};
-        } else if constexpr (is_wide) {
-            IntType result = storage_;
-            sub_assign(WordSpan{result, W}, other.cref());
-            return Bits<W>(result);
-        } else {
-            return Bits<W>(static_cast<IntType>(raw() - other.raw()));
+            return Int{};
         }
+        Int result;
+        if constexpr (!is_wide && W > 0) {
+            result.storage_ = static_cast<IntType>(
+                static_cast<NativeArithmetic>(a.storage_)
+                - static_cast<NativeArithmetic>(b.storage_)
+            );
+        } else {
+            result = arithmetic(a, b, '-');
+        }
+        result.canonicalize();
+        return result;
     }
-
-    constexpr Bits operator*(Bits<W> const& other) const {
+    static constexpr Int exact_mul(Int const& a, Int const& b) {
         if constexpr (W == 0) {
-            return Bits<W>{};
-        } else if constexpr (is_wide) {
-            // multiply() needs dst disjoint from both operands.
-            IntType result = storage_;
-            multiply(WordSpan{result, W}, cref(), other.cref());
-            return Bits<W>(result);
-        } else {
-            return Bits<W>(static_cast<IntType>(raw() * other.raw()));
+            return Int{};
         }
+        Int result;
+        if constexpr (!is_wide && W > 0) {
+            result.storage_ = static_cast<IntType>(
+                static_cast<NativeArithmetic>(a.storage_)
+                * static_cast<NativeArithmetic>(b.storage_)
+            );
+        } else {
+            result = arithmetic(a, b, '*');
+        }
+        result.canonicalize();
+        return result;
     }
 
-    constexpr Bits udiv(Bits<W> const& other) const { return udivrem(other).first; }
-
-    constexpr Bits sdiv(Bits<W> const& other) const { return sdivrem(other).first; }
-
-    constexpr Bits umod(Bits<W> const& other) const { return udivrem(other).second; }
-
-    constexpr Bits smod(Bits<W> const& other) const { return sdivrem(other).second; }
-
-    constexpr std::pair<Bits, Bits> udivrem(Bits<W> const& other) const {
-        static_assert(
-            W > 0, "udivrem on Bits<0> is undefined; the null vector has no value"
-        );
-        if (other == Bits<W>{}) {
-            throw std::domain_error("Division by zero");
-        }
-        if constexpr (is_wide) {
-            return divide_wide(other, false, false);
-        } else {
-            return {Bits<W>(raw() / other.raw()), Bits<W>(raw() % other.raw())};
-        }
-    }
-
-    constexpr std::pair<Bits, Bits> sdivrem(Bits<W> const& other) const {
-        static_assert(
-            W > 0, "sdivrem on Bits<0> is undefined; the null vector has no value"
-        );
-        if (other == Bits<W>{}) {
-            throw std::domain_error("Division by zero");
-        }
-        if constexpr (is_wide) {
-            return divide_wide(other, true, false);
-        } else {
-            auto lhs_ext = this->sign_extended();
-            auto rhs_ext = other.sign_extended();
-            using SType = decltype(lhs_ext);
-            if (rhs_ext == -1 && lhs_ext == std::numeric_limits<SType>::min()) {
-                return {*this, Bits<W>{}};
-            }
-            return {Bits<W>(lhs_ext / rhs_ext), Bits<W>(lhs_ext % rhs_ext)};
-        }
-    }
-
-    constexpr std::pair<Bits, Bits> sdivmod(Bits<W> const& other) const {
-        if constexpr (is_wide) {
-            return divide_wide(other, true, true);
-        } else {
-            auto result = sdivrem(other);
-            if (result.second != Bits<W>{} && (slt(Bits<W>{}) != other.slt(Bits<W>{}))) {
-                result.first = result.first - Bits<W>{1};
-                result.second = result.second + other;
+    template <size_t Wa, bool Sa, size_t Wb, bool Sb>
+    static constexpr Int arithmetic(Int<Wa, Sa> const& a, Int<Wb, Sb> const& b, char op) {
+        static_assert(Sa == Sb);
+        Int result;
+        if constexpr (
+            W > 0 && Wa > 0 && Wb > 0 && !is_wide && !Int<Wa, Sa>::is_wide
+            && !Int<Wb, Sb>::is_wide
+        )
+        {
+            if constexpr (Sa) {
+                using ResultSigned = typename as_signed<IntType>::type;
+                using A_Signed = typename as_signed<typename Int<Wa, Sa>::IntType>::type;
+                using B_Signed = typename as_signed<typename Int<Wb, Sb>::IntType>::type;
+                ResultSigned lhs =
+                    static_cast<ResultSigned>(static_cast<A_Signed>(a.storage_));
+                ResultSigned rhs =
+                    static_cast<ResultSigned>(static_cast<B_Signed>(b.storage_));
+                if (op == '+') {
+                    result.storage_ = static_cast<IntType>(lhs + rhs);
+                } else if (op == '-') {
+                    result.storage_ = static_cast<IntType>(lhs - rhs);
+                } else {
+                    result.storage_ = static_cast<IntType>(lhs * rhs);
+                }
+            } else {
+                IntType lhs = static_cast<IntType>(a.storage_);
+                IntType rhs = static_cast<IntType>(b.storage_);
+                if (op == '+') {
+                    result.storage_ = static_cast<IntType>(lhs + rhs);
+                } else if (op == '-') {
+                    result.storage_ = static_cast<IntType>(lhs - rhs);
+                } else {
+                    result.storage_ = static_cast<IntType>(lhs * rhs);
+                }
             }
             return result;
         }
+        NativeBuffer result_buffer{};
+        typename Int<Wa, Sa>::NativeBuffer a_buffer{};
+        typename Int<Wb, Sb>::NativeBuffer b_buffer{};
+        auto out = result.physical_mut(result_buffer);
+        auto av = a.physical_wide_cref(a_buffer);
+        auto bv = b.physical_wide_cref(b_buffer);
+        if (op == '+') {
+            add_extended(out, av, bv, Sa, Sb);
+        } else if (op == '-') {
+            sub_extended(out, av, bv, Sa, Sb);
+        } else if constexpr (Sa && Sb) {
+            multiply_signed(out, av, bv);
+        } else {
+            multiply_unsigned(out, av, bv);
+        }
+        result.finish_output(result_buffer);
+        return result;
     }
 
-    constexpr WordConstSpan cref() const
-        requires(is_wide)
-    {
-        return WordConstSpan{std::span<Word const>{storage_}, W};
-    }
-
-    constexpr WordSpan mut()
-        requires(is_wide)
-    {
-        return WordSpan{std::span<Word>{storage_}, W};
-    }
-
-    constexpr std::pair<Bits, Bits> divide_wide(
-        Bits const& rhs, bool is_signed, bool modulo
-    ) const
-        requires(is_wide)
-    {
-        constexpr size_t max_limbs = std::tuple_size_v<IntType> * limbs_per_word;
+    template <size_t Wa, bool Sa, size_t Wb, bool Sb>
+    static constexpr std::pair<Int, Int<Wb, SignedRepresentation>> divide(
+        Int<Wa, Sa> const& a, Int<Wb, Sb> const& b, bool modulo
+    ) {
+        static_assert(Sa == Sb && Sa == SignedRepresentation);
+        if constexpr (
+            Wa > 0 && Wb > 0 && !is_wide && !Int<Wb, SignedRepresentation>::is_wide
+            && !Int<Wa, Sa>::is_wide && !Int<Wb, Sb>::is_wide
+        )
+        {
+            Int quotient;
+            Int<Wb, SignedRepresentation> remainder;
+            constexpr size_t common_width =
+                std::max(Int<Wa, Sa>::physical_width, Int<Wb, Sb>::physical_width);
+            using CommonUnsigned = typename IntTypePicker<common_width>::type;
+            if constexpr (SignedRepresentation) {
+                using CommonSigned = typename as_signed<CommonUnsigned>::type;
+                using A_Signed = typename as_signed<typename Int<Wa, Sa>::IntType>::type;
+                using B_Signed = typename as_signed<typename Int<Wb, Sb>::IntType>::type;
+                CommonSigned lhs =
+                    static_cast<CommonSigned>(static_cast<A_Signed>(a.storage_));
+                CommonSigned rhs =
+                    static_cast<CommonSigned>(static_cast<B_Signed>(b.storage_));
+                if (rhs == 0) {
+                    throw std::domain_error("Division by zero");
+                }
+                if (lhs == std::numeric_limits<CommonSigned>::min() && rhs == -1) {
+                    quotient.storage_ =
+                        static_cast<IntType>(CommonUnsigned{1} << (common_width - 1));
+                    remainder.storage_ = {};
+                } else {
+                    auto quotient_value = lhs / rhs;
+                    auto remainder_value = lhs % rhs;
+                    if (modulo && remainder_value != 0 && (lhs < 0) != (rhs < 0)) {
+                        --quotient_value;
+                        remainder_value += rhs;
+                    }
+                    quotient.storage_ = static_cast<IntType>(quotient_value);
+                    remainder.storage_ =
+                        static_cast<typename Int<Wb, SignedRepresentation>::IntType>(
+                            remainder_value
+                        );
+                }
+            } else {
+                CommonUnsigned lhs = static_cast<CommonUnsigned>(a.storage_);
+                CommonUnsigned rhs = static_cast<CommonUnsigned>(b.storage_);
+                if (rhs == 0) {
+                    throw std::domain_error("Division by zero");
+                }
+                quotient.storage_ = static_cast<IntType>(lhs / rhs);
+                remainder.storage_ =
+                    static_cast<typename Int<Wb, SignedRepresentation>::IntType>(lhs % rhs);
+            }
+            return {quotient, remainder};
+        }
+        constexpr size_t magnitude_width = integer_storage_width(std::max(Wa, Wb) + 1);
+        constexpr size_t max_limbs =
+            (magnitude_width + word_bits - 1) / word_bits * limbs_per_word;
+        Int quotient;
+        Int<Wb, SignedRepresentation> remainder;
+        Int<Wa, false> lhs_magnitude;
+        Int<Wb, false> rhs_magnitude;
+        NativeBuffer quotient_buffer{};
+        typename Int<Wb, SignedRepresentation>::NativeBuffer remainder_buffer{};
+        typename Int<Wa, false>::NativeBuffer lhs_magnitude_buffer{};
+        typename Int<Wb, false>::NativeBuffer rhs_magnitude_buffer{};
+        typename Int<Wa, Sa>::NativeBuffer a_buffer{};
+        typename Int<Wb, Sb>::NativeBuffer b_buffer{};
         std::array<DivLimb, max_limbs * 2 + 1> u{};
         std::array<DivLimb, max_limbs> v{};
         std::array<DivLimb, max_limbs * 2> q{};
         std::array<DivLimb, max_limbs> r{};
         DivideScratch scratch{u, v, q, r};
-        Bits quotient;
-        Bits remainder;
-        if (modulo) {
-            Bits lhs_magnitude;
-            Bits rhs_magnitude;
-            detail::divide_modulo(
-                quotient.mut(),
-                remainder.mut(),
-                cref(),
-                rhs.cref(),
-                lhs_magnitude.mut(),
-                rhs_magnitude.mut(),
-                scratch
-            );
-        } else if (is_signed) {
-            Bits lhs_magnitude;
-            Bits rhs_magnitude;
-            detail::divide_signed(
-                quotient.mut(),
-                remainder.mut(),
-                cref(),
-                rhs.cref(),
-                lhs_magnitude.mut(),
-                rhs_magnitude.mut(),
-                scratch
-            );
+        auto quotient_view = quotient.physical_mut(quotient_buffer);
+        auto remainder_view = remainder.physical_mut(remainder_buffer);
+        auto av = a.physical_wide_cref(a_buffer);
+        auto bv = b.physical_wide_cref(b_buffer);
+        if constexpr (SignedRepresentation) {
+            auto lhs_magnitude_view = lhs_magnitude.physical_mut(lhs_magnitude_buffer);
+            auto rhs_magnitude_view = rhs_magnitude.physical_mut(rhs_magnitude_buffer);
+            if (modulo) {
+                divide_modulo(
+                    quotient_view,
+                    remainder_view,
+                    av,
+                    bv,
+                    lhs_magnitude_view,
+                    rhs_magnitude_view,
+                    scratch
+                );
+            } else {
+                divide_signed(
+                    quotient_view,
+                    remainder_view,
+                    av,
+                    bv,
+                    lhs_magnitude_view,
+                    rhs_magnitude_view,
+                    scratch
+                );
+            }
         } else {
-            detail::divide_unsigned(
-                quotient.mut(), remainder.mut(), cref(), rhs.cref(), scratch
-            );
+            divide_unsigned(quotient_view, remainder_view, av, bv, scratch);
         }
+        quotient.finish_output(quotient_buffer);
+        remainder.finish_output(remainder_buffer);
         return {quotient, remainder};
     }
-
-  private:
-    // Zero-fill widen to Wm. Handles all four tier-crossing combinations; the
-    // native-to-native case stays a single cast so the common path is cheap.
-    template <size_t Wm>
-        requires(Wm >= W)
-    constexpr Bits<Wm> widened() const {
-        if constexpr (W == 0 || Wm == 0) {
-            return Bits<Wm>{};
-        } else if constexpr (!is_wide && !Bits<Wm>::is_wide) {
-            return Bits<Wm>(static_cast<typename Bits<Wm>::IntType>(raw()));
-        } else if constexpr (is_wide && Bits<Wm>::is_wide) {
-            Bits<Wm> result{};
-            detail::zero_extend(result.mut(), cref());
-            return result;
-        } else if constexpr (!is_wide && Bits<Wm>::is_wide) {
-            Bits<Wm> result{};
-            if constexpr (sizeof(IntType) <= sizeof(Word)) {
-                load_native(result.mut(), raw());
-            } else {
-#if defined(__SIZEOF_INT128__)
-                load_uint128(result.mut(), raw());
-#endif
-            }
-            return result;
-        }
-    }
-
-    constexpr auto sign_extended() const {
-        static_assert(
-            W > 0, "sign_extended on Bits<0> is undefined; the null vector has no value"
-        );
-        using SType = std::make_signed_t<IntType>;
-        constexpr unsigned shift = sizeof(IntType) * 8 - W;
-        return static_cast<SType>(raw() << shift) >> shift;
-    }
-
-    constexpr WideWords<W> native_word_array() const
-        requires(!is_wide && W > 0)
-    {
-        WideWords<W> result{};
-        result[0] = static_cast<Word>(raw());
-#if defined(__SIZEOF_INT128__)
-        if constexpr (sizeof(IntType) > sizeof(Word)) {
-            result[1] = static_cast<Word>(raw() >> word_bits);
-        }
-#endif
-        return result;
-    }
-
-    // Mask of the W valid low bits within the native storage word. Only used on
-    // the native path; the wide word-array path and the zero-width path have
-    // no meaningful mask.
-    static constexpr IntType compute_top_mask() {
-        if constexpr (W == 0 || is_wide) {
-            return IntType{};
-        } else if constexpr (W % (sizeof(IntType) * 8) == 0) {
-            return ~static_cast<IntType>(0);
-        } else {
-            return (static_cast<IntType>(1) << (W % (sizeof(IntType) * 8))) - 1;
-        }
-    }
-
-    static constexpr IntType top_mask = compute_top_mask();
 
   private:
     IntType storage_{};
 };
 
-struct mixed_width {
-  private:
-    template <size_t W>
-    using NativeBuffer =
-        std::array<Word, Bits<W>::is_wide ? 0 : (W + word_bits - 1) / word_bits>;
+template <size_t W>
+using UInt = Int<W, false>;
 
-    template <size_t W>
-    static constexpr WordConstSpan view(Bits<W> const& value, NativeBuffer<W>& buffer) {
-        if constexpr (Bits<W>::is_wide) {
-            return value.cref();
-        } else {
-            buffer = value.native_word_array();
-            return WordConstSpan{buffer, W};
-        }
-    }
-
-    template <size_t W>
-    static constexpr WordSpan output_view(Bits<W>& value, NativeBuffer<W>& buffer) {
-        if constexpr (Bits<W>::is_wide) {
-            return value.mut();
-        } else {
-            return WordSpan{buffer, W};
-        }
-    }
-
-    template <size_t W>
-    static constexpr void finish_output(Bits<W>& value, NativeBuffer<W> const& buffer) {
-        if constexpr (!Bits<W>::is_wide && W > 0) {
-            value.storage_ = static_cast<typename Bits<W>::IntType>(buffer[0]);
-#if defined(__SIZEOF_INT128__)
-            if constexpr (sizeof(typename Bits<W>::IntType) > sizeof(Word)) {
-                value.storage_ |= static_cast<typename Bits<W>::IntType>(buffer[1])
-                               << word_bits;
-            }
-#endif
-        }
-    }
-
-  public:
-    template <size_t Wr, size_t Wa, size_t Wb>
-    static constexpr Bits<Wr> add(
-        Bits<Wa> const& a, Bits<Wb> const& b, bool signed_operands
-    ) {
-        static_assert(Bits<Wr>::is_wide);
-        NativeBuffer<Wa> a_buffer{};
-        NativeBuffer<Wb> b_buffer{};
-        Bits<Wr> result;
-        add_extended(
-            result.mut(),
-            view(a, a_buffer),
-            view(b, b_buffer),
-            signed_operands,
-            signed_operands
-        );
-        return result;
-    }
-
-    template <size_t Wr, size_t Wa, size_t Wb>
-    static constexpr Bits<Wr> sub(
-        Bits<Wa> const& a, Bits<Wb> const& b, bool signed_operands
-    ) {
-        static_assert(Bits<Wr>::is_wide);
-        NativeBuffer<Wa> a_buffer{};
-        NativeBuffer<Wb> b_buffer{};
-        Bits<Wr> result;
-        sub_extended(
-            result.mut(),
-            view(a, a_buffer),
-            view(b, b_buffer),
-            signed_operands,
-            signed_operands
-        );
-        return result;
-    }
-
-    template <size_t Wr, size_t Wa, size_t Wb>
-    static constexpr Bits<Wr> mul(
-        Bits<Wa> const& a, Bits<Wb> const& b, bool signed_operands
-    ) {
-        static_assert(Bits<Wr>::is_wide);
-        NativeBuffer<Wa> a_buffer{};
-        NativeBuffer<Wb> b_buffer{};
-        Bits<Wr> result;
-        if (signed_operands) {
-            detail::multiply_signed(result.mut(), view(a, a_buffer), view(b, b_buffer));
-        } else {
-            detail::multiply_unsigned(result.mut(), view(a, a_buffer), view(b, b_buffer));
-        }
-        return result;
-    }
-
-    template <size_t Wa, size_t Wb>
-    static constexpr std::pair<Bits<Wa + 1>, Bits<Wb>> divrem(
-        Bits<Wa> const& a, Bits<Wb> const& b, bool is_signed, bool modulo
-    ) {
-        constexpr size_t Wm = std::max(Wa, Wb) + 1;
-        constexpr size_t max_limbs = (Wm + word_bits - 1) / word_bits * limbs_per_word;
-        NativeBuffer<Wa> a_buffer{};
-        NativeBuffer<Wb> b_buffer{};
-        NativeBuffer<Wa + 1> quotient_buffer{};
-        NativeBuffer<Wb> remainder_buffer{};
-        Bits<Wa + 1> quotient;
-        Bits<Wb> remainder;
-        std::array<DivLimb, max_limbs * 2 + 1> u{};
-        std::array<DivLimb, max_limbs> v{};
-        std::array<DivLimb, max_limbs * 2> q{};
-        std::array<DivLimb, max_limbs> r{};
-        DivideScratch scratch{u, v, q, r};
-        auto quotient_view = output_view(quotient, quotient_buffer);
-        auto remainder_view = output_view(remainder, remainder_buffer);
-        auto a_view = view(a, a_buffer);
-        auto b_view = view(b, b_buffer);
-        if (is_signed) {
-            Bits<Wm> lhs_magnitude;
-            Bits<Wm> rhs_magnitude;
-            if (modulo) {
-                detail::divide_modulo(
-                    quotient_view,
-                    remainder_view,
-                    a_view,
-                    b_view,
-                    lhs_magnitude.mut(),
-                    rhs_magnitude.mut(),
-                    scratch
-                );
-            } else {
-                detail::divide_signed(
-                    quotient_view,
-                    remainder_view,
-                    a_view,
-                    b_view,
-                    lhs_magnitude.mut(),
-                    rhs_magnitude.mut(),
-                    scratch
-                );
-            }
-        } else {
-            detail::divide_unsigned(quotient_view, remainder_view, a_view, b_view, scratch);
-        }
-        finish_output(quotient, quotient_buffer);
-        finish_output(remainder, remainder_buffer);
-        return {quotient, remainder};
-    }
-};
-
-// Growing arithmetic. The result width is wide enough to hold every value the
-// operation can produce, so these never wrap and the width arithmetic lives in
-// the return type rather than at each call site. Wide operations consume each
-// operand at its original width and apply virtual zero/sign extension.
+template <size_t W>
+using SInt = Int<W, true>;
 
 template <size_t Wa, size_t Wb>
-constexpr Bits<std::max(Wa, Wb) + 1> add_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
-    constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    if constexpr (Bits<Wr>::is_wide) {
-        return mixed_width::add<Wr>(a, b, false);
-    } else {
-        return a.template zero_extend<Wr>() + b.template zero_extend<Wr>();
-    }
+constexpr UInt<std::max(Wa, Wb) + 1> operator+(UInt<Wa> const& a, UInt<Wb> const& b) {
+    return UInt<std::max(Wa, Wb) + 1>::arithmetic(a, b, '+');
 }
 
 template <size_t Wa, size_t Wb>
-constexpr Bits<std::max(Wa, Wb) + 1> add_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
-    constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    if constexpr (Bits<Wr>::is_wide) {
-        return mixed_width::add<Wr>(a, b, true);
-    } else {
-        return a.template sign_extend<Wr>() + b.template sign_extend<Wr>();
-    }
+constexpr SInt<std::max(Wa, Wb) + 1> operator+(SInt<Wa> const& a, SInt<Wb> const& b) {
+    return SInt<std::max(Wa, Wb) + 1>::arithmetic(a, b, '+');
 }
 
 template <size_t Wa, size_t Wb>
-constexpr Bits<std::max(Wa, Wb) + 1> sub_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
-    constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    if constexpr (Bits<Wr>::is_wide) {
-        return mixed_width::sub<Wr>(a, b, false);
-    } else {
-        return a.template zero_extend<Wr>() - b.template zero_extend<Wr>();
-    }
+constexpr SInt<std::max(Wa, Wb) + 1> operator-(UInt<Wa> const& a, UInt<Wb> const& b) {
+    return SInt<std::max(Wa, Wb) + 1>::arithmetic(a, b, '-');
 }
 
 template <size_t Wa, size_t Wb>
-constexpr Bits<std::max(Wa, Wb) + 1> sub_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
-    constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    if constexpr (Bits<Wr>::is_wide) {
-        return mixed_width::sub<Wr>(a, b, true);
-    } else {
-        return a.template sign_extend<Wr>() - b.template sign_extend<Wr>();
-    }
+constexpr SInt<std::max(Wa, Wb) + 1> operator-(SInt<Wa> const& a, SInt<Wb> const& b) {
+    return SInt<std::max(Wa, Wb) + 1>::arithmetic(a, b, '-');
 }
 
 template <size_t Wa, size_t Wb>
-constexpr Bits<Wa + Wb> mul_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
-    constexpr size_t Wr = Wa + Wb;
-    if constexpr (Bits<Wr>::is_wide) {
-        return mixed_width::mul<Wr>(a, b, false);
-    } else {
-        return a.template zero_extend<Wr>() * b.template zero_extend<Wr>();
-    }
+constexpr UInt<Wa + Wb> operator*(UInt<Wa> const& a, UInt<Wb> const& b) {
+    return UInt<Wa + Wb>::arithmetic(a, b, '*');
 }
 
 template <size_t Wa, size_t Wb>
-constexpr Bits<Wa + Wb> mul_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
-    constexpr size_t Wr = Wa + Wb;
-    if constexpr (Bits<Wr>::is_wide) {
-        return mixed_width::mul<Wr>(a, b, true);
-    } else {
-        return a.template sign_extend<Wr>() * b.template sign_extend<Wr>();
-    }
-}
-
-// Quotient grows by one bit so signed_min / -1 is representable.
-
-template <size_t Wa, size_t Wb>
-constexpr std::pair<Bits<Wa + 1>, Bits<Wb>> divrem_unsigned(
-    Bits<Wa> const& a, Bits<Wb> const& b
-) {
-    constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    if constexpr (Bits<Wr>::is_wide) {
-        return mixed_width::divrem(a, b, false, false);
-    } else {
-        auto result = a.template zero_extend<Wr>().udivrem(b.template zero_extend<Wr>());
-        return {
-            result.first.template truncate<Wa + 1>(), result.second.template truncate<Wb>()
-        };
-    }
+constexpr SInt<Wa + Wb> operator*(SInt<Wa> const& a, SInt<Wb> const& b) {
+    return SInt<Wa + Wb>::arithmetic(a, b, '*');
 }
 
 template <size_t Wa, size_t Wb>
-constexpr std::pair<Bits<Wa + 1>, Bits<Wb>> divrem_signed(
-    Bits<Wa> const& a, Bits<Wb> const& b
-) {
-    constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    if constexpr (Bits<Wr>::is_wide) {
-        return mixed_width::divrem(a, b, true, false);
-    } else {
-        auto result = a.template sign_extend<Wr>().sdivrem(b.template sign_extend<Wr>());
-        return {
-            result.first.template truncate<Wa + 1>(), result.second.template truncate<Wb>()
-        };
-    }
+constexpr std::pair<UInt<Wa + 1>, UInt<Wb>> divrem(UInt<Wa> const& a, UInt<Wb> const& b) {
+    return UInt<Wa + 1>::divide(a, b, false);
 }
 
 template <size_t Wa, size_t Wb>
-constexpr std::pair<Bits<Wa + 1>, Bits<Wb>> divmod_signed(
-    Bits<Wa> const& a, Bits<Wb> const& b
-) {
-    constexpr size_t Wr = std::max(Wa, Wb) + 1;
-    if constexpr (Bits<Wr>::is_wide) {
-        return mixed_width::divrem(a, b, true, true);
-    } else {
-        auto result = a.template sign_extend<Wr>().sdivmod(b.template sign_extend<Wr>());
-        return {
-            result.first.template truncate<Wa + 1>(), result.second.template truncate<Wb>()
-        };
-    }
+constexpr std::pair<SInt<Wa + 1>, SInt<Wb>> divrem(SInt<Wa> const& a, SInt<Wb> const& b) {
+    return SInt<Wa + 1>::divide(a, b, false);
 }
 
 template <size_t Wa, size_t Wb>
-constexpr Bits<Wa + 1> div_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
-    return divrem_unsigned(a, b).first;
+constexpr std::pair<SInt<Wa + 1>, SInt<Wb>> divmod(SInt<Wa> const& a, SInt<Wb> const& b) {
+    return SInt<Wa + 1>::divide(a, b, true);
 }
 
 template <size_t Wa, size_t Wb>
-constexpr Bits<Wa + 1> div_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
-    return divrem_signed(a, b).first;
+constexpr UInt<Wa + 1> operator/(UInt<Wa> const& a, UInt<Wb> const& b) {
+    return divrem(a, b).first;
 }
-
 template <size_t Wa, size_t Wb>
-constexpr Bits<Wb> rem_unsigned(Bits<Wa> const& a, Bits<Wb> const& b) {
-    return divrem_unsigned(a, b).second;
+constexpr SInt<Wa + 1> operator/(SInt<Wa> const& a, SInt<Wb> const& b) {
+    return divrem(a, b).first;
 }
-
-// C-style remainder: the sign follows the dividend.
 template <size_t Wa, size_t Wb>
-constexpr Bits<Wb> rem_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
-    return divrem_signed(a, b).second;
+constexpr UInt<Wb> operator%(UInt<Wa> const& a, UInt<Wb> const& b) {
+    return divrem(a, b).second;
 }
-
-// VHDL/Python modulo: the sign follows the divisor.
 template <size_t Wa, size_t Wb>
-constexpr Bits<Wb> mod_signed(Bits<Wa> const& a, Bits<Wb> const& b) {
-    return divmod_signed(a, b).second;
+constexpr SInt<Wb> operator%(SInt<Wa> const& a, SInt<Wb> const& b) {
+    return divrem(a, b).second;
+}
+template <size_t Wa, size_t Wb>
+constexpr SInt<Wb> mod(SInt<Wa> const& a, SInt<Wb> const& b) {
+    return divmod(a, b).second;
 }
 
 template <size_t W>
-constexpr Bits<W + 1> negate_signed(Bits<W> const& a) {
-    return Bits<W + 1>{} - a.template sign_extend<W + 1>();
+constexpr SInt<W + 1> operator-(SInt<W> const& a) {
+    SInt<W + 1> extended(a);
+    return SInt<W + 1>::arithmetic(SInt<W + 1>{}, extended, '-');
 }
 
 template <size_t W>
-constexpr Bits<W + 1> abs_signed(Bits<W> const& a) {
-    auto ext = a.template sign_extend<W + 1>();
+constexpr SInt<W + 1> operator-(UInt<W> const& a) {
+    return SInt<W + 1>::arithmetic(UInt<W>{}, a, '-');
+}
+
+template <size_t W>
+constexpr SInt<W + 1> abs(SInt<W> const& a) {
+    SInt<W + 1> extended(a);
     if constexpr (W == 0) {
-        return ext;
+        return extended;
     } else {
-        return a.get_bit(W - 1) ? Bits<W + 1>{} - ext : ext;
+        return a.get_bit(W - 1) ? -a : extended;
     }
 }
 
 template <size_t bits>
 constexpr auto max_unsigned() {
     if constexpr ((bits > 64 && !supports_128B) || (bits > 128)) {
-        return ~Bits<bits>{};
+        return ~UInt<bits>{};
     } else if constexpr (bits > 64) {
         if constexpr (bits == 128) {
             return ~__uint128_t{0};
