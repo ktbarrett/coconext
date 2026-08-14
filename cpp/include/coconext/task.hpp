@@ -26,6 +26,9 @@ class Erased {};
 template <typename T>
 class RunTaskManager;
 
+template <typename T>
+class CoroStateBase;
+
 }  // namespace detail
 
 template <typename T = detail::Erased>
@@ -236,7 +239,7 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
         throw std::runtime_error("Task ignored cancellation without calling uncancel()");
     }
 
-    [[nodiscard]] not_null<TaskState<>*> get_task() noexcept { return this; }
+    [[nodiscard]] TaskContext get_context() noexcept;
 
     [[nodiscard]] detail::EventLoop* get_event_loop() const noexcept { return event_loop_; }
     [[nodiscard]] TaskManager* get_task_manager() const noexcept { return task_manager_; }
@@ -244,42 +247,13 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
         return global_task_manager_;
     }
 
-    void start_soon(
-        not_null<detail::EventLoop*> loop, not_null<TaskManager*> task_manager
-    ) {
-        assert(!started() && "Task is already started");
-
-        if (event_loop_ == nullptr) {
-            event_loop_ = loop;
-        } else if (event_loop_ != loop) {
-            throw std::runtime_error("Task is already bound to another EventLoop");
-        }
-
-        if (global_task_manager_ == nullptr) {
-            global_task_manager_ = task_manager;
-        }
-
-        // Keep the coroutine frame alive independently of Task handles and its manager
-        // until the coroutine reaches completion.
-        inc_ref();
-        scheduler_owned_ = true;
-        started_ = true;
-        state_ = Scheduled{this};
-        event_loop_->acquire().schedule_back(&std::get<TaskState<>::Scheduled>(state_));
-    }
+    void start_soon(TaskContext const& context);
 
     void register_waiter(not_null<detail::Event*> awaiter) noexcept {
         waiters_.push_back(awaiter);
     }
 
-    void on_awaited(not_null<detail::EventLoop*> awaiter_event_loop) {
-        if (!started()) {
-            throw std::runtime_error("Cannot await an unstarted Task");
-        }
-        if (event_loop_ != awaiter_event_loop) {
-            throw std::runtime_error("Task is already bound to another EventLoop");
-        }
-    }
+    void on_awaited(TaskContext const& context);
 
     void on_done() noexcept;
 
@@ -470,6 +444,12 @@ class Task {
 class TaskContext final {
     friend TaskContext get_context() noexcept;
     friend TaskContext current_context();
+    friend class TaskManager;
+    friend class TaskState<detail::Erased>;
+    template <typename>
+    friend class detail::CoroStateBase;
+    template <typename>
+    friend class detail::RunTaskManager;
 
   public:
     [[nodiscard]] not_null<TaskState<>*> get_task() const {
@@ -479,14 +459,30 @@ class TaskContext final {
         return task_;
     }
     [[nodiscard]] not_null<TaskManager*> get_global_task_manager() const {
-        auto gtm = get_task()->get_global_task_manager();
-        assert(gtm != nullptr && "Running Task must have a global TaskManager bound");
-        return gtm;
+        if (task_ != nullptr) {
+            auto global_task_manager = task_->get_global_task_manager();
+            if (global_task_manager == nullptr) {
+                throw std::runtime_error("Task has no global TaskManager bound");
+            }
+            return global_task_manager;
+        }
+        if (global_task_manager_ == nullptr) {
+            throw std::runtime_error("Did not await TaskContext before using it");
+        }
+        return global_task_manager_;
     }
     [[nodiscard]] not_null<detail::EventLoop*> get_event_loop() const {
-        auto loop = get_task()->get_event_loop();
-        assert(loop != nullptr && "Running Task must have an EventLoop bound");
-        return loop;
+        if (task_ != nullptr) {
+            auto event_loop = task_->get_event_loop();
+            if (event_loop == nullptr) {
+                throw std::runtime_error("Task has no EventLoop bound");
+            }
+            return event_loop;
+        }
+        if (event_loop_ == nullptr) {
+            throw std::runtime_error("Did not await TaskContext before using it");
+        }
+        return event_loop_;
     }
 
     class Awaiter {
@@ -496,7 +492,7 @@ class TaskContext final {
         [[nodiscard]] bool await_ready() const noexcept { return false; }
         template <typename PromiseType>
         bool await_suspend(std::coroutine_handle<PromiseType> parent) const noexcept {
-            ctxt_.task_ = parent.promise().get_task();
+            ctxt_ = parent.promise().get_context();
             return false;  // don't suspend the caller, just capture the context
         }
         [[nodiscard]] TaskContext await_resume() const noexcept { return ctxt_; }
@@ -510,23 +506,64 @@ class TaskContext final {
     [[nodiscard]] Awaiter operator co_await() noexcept { return Awaiter{*this}; }
 
   private:
-    explicit TaskContext(TaskState<>* task) noexcept : task_(task) {}
+    explicit TaskContext(not_null<TaskState<>*> task) noexcept : task_(task) {}
+    TaskContext(
+        not_null<detail::EventLoop*> event_loop, not_null<TaskManager*> global_task_manager
+    ) noexcept
+        : event_loop_(event_loop), global_task_manager_(global_task_manager) {}
     TaskContext() noexcept = default;
 
     TaskState<>* task_ = nullptr;
+    detail::EventLoop* event_loop_ = nullptr;
+    TaskManager* global_task_manager_ = nullptr;
 };
 
 [[nodiscard]] inline TaskContext get_context() noexcept { return TaskContext{}; }
 
 [[nodiscard]] inline TaskContext current_context() { return TaskContext{current_task()}; }
 
+inline TaskContext TaskState<>::get_context() noexcept { return TaskContext{this}; }
+
+inline void TaskState<>::start_soon(TaskContext const& context) {
+    assert(!started() && "Task is already started");
+
+    auto loop = context.get_event_loop();
+    if (event_loop_ == nullptr) {
+        event_loop_ = loop;
+    } else if (event_loop_ != loop) {
+        throw std::runtime_error("Task is already bound to another EventLoop");
+    }
+
+    if (global_task_manager_ == nullptr) {
+        global_task_manager_ = context.get_global_task_manager();
+    }
+
+    // Keep the coroutine frame alive independently of Task handles and its manager
+    // until the coroutine reaches completion.
+    inc_ref();
+    scheduler_owned_ = true;
+    started_ = true;
+    state_ = Scheduled{this};
+    event_loop_->acquire().schedule_back(&std::get<TaskState<>::Scheduled>(state_));
+}
+
+inline void TaskState<>::on_awaited(TaskContext const& context) {
+    if (!started()) {
+        throw std::runtime_error("Cannot await an unstarted Task");
+    }
+    if (event_loop_ != context.get_event_loop()) {
+        throw std::runtime_error("Task is already bound to another EventLoop");
+    }
+}
+
 template <typename S>
 template <typename PromiseType>
 void detail::AwaitableAwaiter<S>::await_suspend(std::coroutine_handle<PromiseType> h) {
     parent_ = h;
-    // This is non-null, so we want to use this instead of directly assigning to task_.
-    auto task = h.promise().get_task();
-    awaitable_->on_awaited(task->get_event_loop());
+    auto context = h.promise().get_context();
+    // Keep the checked Task pointer local until await registration succeeds.
+    auto task = context.get_task();
+    awaitable_->on_awaited(context);
     task->on_awaiting(this);
     task_ = task;
     awaitable_->register_waiter(this);

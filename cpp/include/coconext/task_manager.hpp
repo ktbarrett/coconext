@@ -42,10 +42,7 @@ class TaskManager {
 
         template <typename PromiseType>
         bool await_suspend(std::coroutine_handle<PromiseType> parent) {
-            auto task = parent.promise().get_task();
-            manager_.start_internal(
-                task->get_event_loop(), task->get_global_task_manager()
-            );
+            manager_.start_internal(parent.promise().get_context());
             return false;
         }
 
@@ -142,14 +139,11 @@ class TaskManager {
     }
 
   private:
-    void start_internal(
-        not_null<detail::EventLoop*> event_loop, not_null<TaskManager*> global_task_manager
-    ) {
+    void start_internal(TaskContext context) {
         if (state_ != State::Created) {
             throw std::logic_error("TaskManager is already started");
         }
-        event_loop_ = event_loop;
-        global_task_manager_ = global_task_manager;
+        context_ = TaskContext{context.get_event_loop(), context.get_global_task_manager()};
         state_ = State::Open;
     }
 
@@ -162,8 +156,6 @@ class TaskManager {
         if (state_ != State::Open) {
             throw std::logic_error("Cannot start a Task on a non-open TaskManager");
         }
-        assert(event_loop_ != nullptr);
-        assert(global_task_manager_ != nullptr);
         assert(task->task_manager_ == nullptr);
         assert(task->internal_done_callback_ == nullptr);
 
@@ -171,7 +163,7 @@ class TaskManager {
         task->internal_done_callback_ = &TaskManager::child_done_callback;
         task->inc_ref();
         tasks_.push_back(task);
-        task->start_soon(event_loop_, global_task_manager_);
+        task->start_soon(context_);
         on_add(task);
     }
 
@@ -218,8 +210,7 @@ class TaskManager {
 
     detail::IntrusiveDeque<TaskState<>> tasks_;
     Future<void> completion_;
-    detail::EventLoop* event_loop_ = nullptr;
-    TaskManager* global_task_manager_ = nullptr;
+    TaskContext context_;
     std::exception_ptr exception_;
     State state_ = State::Created;
     bool cancelling_ = false;

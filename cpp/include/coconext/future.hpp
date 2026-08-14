@@ -85,7 +85,8 @@ class AbstractFutureState {
     }
 
   private:
-    void on_awaited(not_null<detail::EventLoop*> event_loop) {
+    void on_awaited(TaskContext const& context) {
+        auto event_loop = context.get_event_loop();
         if (event_loop_ == nullptr) {
             event_loop_ = event_loop;
         } else if (event_loop_ != event_loop) {

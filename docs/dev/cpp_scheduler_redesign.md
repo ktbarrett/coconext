@@ -177,10 +177,10 @@ Tasks and Futures use `detail::AwaitableAwaiter<S>`. When an await actually
 suspends, it performs these operations in order:
 
 ```text
-parent promise -> enclosing Task
-awaitable.on_awaited(Task)       validate/bind loop before mutating the Task
-Task.on_awaiting(awaiter)        Task becomes Pending
-awaitable.register_waiter(...)   awaiter enters the waiter deque
+parent promise -> enclosing TaskContext
+awaitable.on_awaited(context)      validate/bind loop before mutating the Task
+context.get_task().on_awaiting()   Task becomes Pending
+awaitable.register_waiter(...)     awaiter enters the waiter deque
 ```
 
 Validation happens before the Task records a pointer to the awaiter. If loop
@@ -193,9 +193,10 @@ previous `current_task`, and releases the reference. `await_resume()` checks
 for outstanding cancellation requests before returning or rethrowing the
 awaitable's result.
 
-`CoroState` and `TaskState` promises both expose the enclosing Task, so this
-lookup follows the promise chain rather than depending on thread-local state.
-That remains correct through arbitrarily nested Coros.
+`CoroState` and `TaskState` promises both expose the enclosing `TaskContext`,
+so the Task and its scheduler bindings follow the promise chain rather than
+depending on thread-local state. That remains correct through arbitrarily
+nested Coros.
 
 ## TaskManager lifecycle
 
@@ -335,9 +336,8 @@ than synchronized.
 
 Bindings happen as late as possible:
 
-- `TaskManager::start()` inherits the enclosing Task's loop and global
-  manager;
-- `TaskManager::start_soon()` passes those bindings to each new Task;
+- `TaskManager::start()` inherits the enclosing `TaskContext`;
+- `TaskManager::start_soon()` passes that context to each new Task;
 - a Future binds on its first suspending await;
 - the private run manager binds directly to its newly created loop.
 
@@ -346,9 +346,10 @@ the free `start_soon` and `current_context`. Each resume event saves and
 restores the prior value so no completed Task is left as the ambient context.
 
 `get_context()` is the promise-chain form for coroutine code. Awaiting it does
-not suspend; it captures the enclosing `TaskState<>*`, from which callers can
-obtain the event loop and global manager. Using its accessors before awaiting
-it throws.
+not suspend; it captures the enclosing Task, event loop, and global manager in
+one value. Nested Coros and TaskManagers propagate that value instead of
+unpacking and forwarding its bindings separately. Using its accessors before
+awaiting it throws.
 
 ## Extension constraints
 

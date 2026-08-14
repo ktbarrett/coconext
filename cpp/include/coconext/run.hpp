@@ -21,7 +21,7 @@ class RunTaskManager final : public TaskManager {
         not_null<detail::EventLoop*> loop, std::condition_variable_any& done, Coro<T> root
     )
         : done_(done), root_(std::move(root)) {
-        this->start_internal(loop, this);
+        this->start_internal(TaskContext{loop, this});
         this->add_and_start(root_.get_state());
     }
 

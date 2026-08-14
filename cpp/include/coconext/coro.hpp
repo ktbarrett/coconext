@@ -8,7 +8,6 @@
 #include <utility>
 #include <variant>
 
-#include <coconext/not_null.hpp>
 #include <coconext/task.hpp>
 
 namespace coconext {
@@ -70,16 +69,16 @@ class CoroStateBase {
         throw std::runtime_error("Coro does not have a result");
     }
 
-    // This is an abstraction point between Coro and Task to get the current Task from the
-    // awaiting coroutine's promise instead of a TLS lookup.
-    [[nodiscard]] not_null<TaskState<>*> get_task() noexcept { return task_; }
+    // This carries the enclosing Task's scheduler bindings through arbitrarily nested
+    // Coros without depending on a TLS lookup.
+    [[nodiscard]] TaskContext get_context() const noexcept { return context_; }
 
   private:
     void set_result(detail::Value<T> value) noexcept { value_ = std::move(value); }
 
     std::variant<std::monostate, detail::Value<T>, std::exception_ptr> value_;
     std::coroutine_handle<> parent_;
-    TaskState<>* task_ = nullptr;
+    TaskContext context_;
 };
 
 }  // namespace detail
@@ -115,7 +114,7 @@ class Coro {
             std::coroutine_handle<PromiseType> h
         ) noexcept {
             auto& p = coro_.handle_.promise();
-            p.task_ = h.promise().get_task();
+            p.context_ = h.promise().get_context();
             p.parent_ = h;
             return coro_.handle_;
         }
