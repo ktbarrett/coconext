@@ -48,8 +48,6 @@ class TaskContext;
 
 namespace detail {
 
-// inline thread_local means this variable is included in the user's library, and lookups
-// are fast (Local-Exec mode).
 inline thread_local TaskState<>* current_task = nullptr;
 
 template <typename AwaitableStateT>
