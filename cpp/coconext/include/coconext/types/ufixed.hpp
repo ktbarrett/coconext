@@ -2,8 +2,8 @@
 #define COCONEXT_UFIXED_HPP
 
 #include <cmath>
-#include <coconext/types/bits.hpp>
 #include <coconext/types/concepts.hpp>
+#include <coconext/types/int_base.hpp>
 #include <coconext/types/range.hpp>
 #include <coconext/types/resize_mode.hpp>
 #include <coconext/types/signed.hpp>

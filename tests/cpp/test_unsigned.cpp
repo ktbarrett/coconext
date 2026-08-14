@@ -2,6 +2,8 @@
 #include <gtest/gtest.h>
 
 #include <coconext/types.hpp>
+#include <compare>
+#include <concepts>
 #include <cstdint>
 #include <format>
 #include <stdexcept>
@@ -10,6 +12,14 @@
 
 using namespace coconext::types;
 using namespace coconext::literals;
+
+template <typename L, typename R>
+concept HasEqualityExpression = requires(L const& lhs, R const& rhs) {
+    { lhs == rhs } -> std::same_as<bool>;
+};
+
+template <typename L, typename R>
+concept HasThreeWayExpression = requires(L const& lhs, R const& rhs) { lhs <=> rhs; };
 
 TEST(TestUnsigned, Constructors) {
     static_assert(!std::is_convertible_v<int, Unsigned<6>>);
@@ -182,6 +192,13 @@ TEST(TestUnsigned, CrossRangeConversion) {
 }
 
 TEST(TestUnsigned, Comparisons) {
+    static_assert(!std::equality_comparable_with<Unsigned<8>, Unsigned<16>>);
+    static_assert(!std::three_way_comparable_with<Unsigned<8>, Unsigned<16>>);
+    static_assert(!std::equality_comparable_with<Unsigned<8>, Signed<8>>);
+    static_assert(!HasEqualityExpression<Unsigned<8>, Unsigned<16>>);
+    static_assert(!HasThreeWayExpression<Unsigned<8>, Unsigned<16>>);
+    static_assert(!HasEqualityExpression<Unsigned<8>, Signed<8>>);
+
     Unsigned<8> a(10);
     Unsigned<8> b(10);
     Unsigned<8> c(20);
@@ -208,6 +225,7 @@ TEST(TestUnsigned, Comparisons) {
     EXPECT_TRUE(c >= a);
     EXPECT_TRUE(a >= b);
     EXPECT_FALSE(d >= a);
+    EXPECT_EQ(a <=> b, std::strong_ordering::equal);
 }
 
 TEST(TestUnsigned, CompoundAssignment) {
@@ -544,13 +562,13 @@ TEST(TestUnsigned, zero_width) {
     EXPECT_EQ(a.begin(), a.end());
     EXPECT_EQ(a.size(), 0u);
 
-    // Formatting: value renders as "" (Bits<0>::to_*_string) inside the
+    // Formatting: the zero-width representation renders as "" inside the
     // wrapper's braces.
     EXPECT_EQ(std::format("{:b}", a), "Unsigned[-1 downto 0]{}");
     EXPECT_EQ(std::format("{:d}", a), "Unsigned[-1 downto 0]{}");
 }
 
-// Resize now routes through the Bits width-changing primitives. These pin the
+// Resize now routes through the unsigned representation. These pin the
 // behaviour across the native/wide tier boundary, which the pre-existing tests
 // only covered on the native side.
 
@@ -571,7 +589,7 @@ TEST(TestUnsigned, resize_across_the_tier_boundary) {
 }
 
 TEST(TestUnsigned, saturation_clamps_from_the_wide_tier) {
-    Unsigned<200> big{detail::Bits<200>("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFF")};
+    Unsigned<200> big{detail::UInt<200>("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFF")};
     EXPECT_EQ(static_cast<int>(resize<8>(big, overflow_mode::saturate)), 255);
     EXPECT_EQ(static_cast<int>(resize<16>(big, overflow_mode::saturate)), 65535);
 
@@ -580,12 +598,12 @@ TEST(TestUnsigned, saturation_clamps_from_the_wide_tier) {
     EXPECT_EQ(static_cast<int>(resize<8>(small, overflow_mode::saturate)), 42);
 
     // Wrapping truncates instead.
-    Unsigned<200> v{detail::Bits<200>("0x123456789ABCDEF0123456789")};
+    Unsigned<200> v{detail::UInt<200>("0x123456789ABCDEF0123456789")};
     EXPECT_EQ(static_cast<int>(resize<16>(v, overflow_mode::wrap)), 26505);
 }
 
 TEST(TestUnsigned, wide_arithmetic_still_grows) {
-    Unsigned<104> a{detail::Bits<104>("0xFEDCBA98765432100123456789")};
+    Unsigned<104> a{detail::UInt<104>("0xFEDCBA98765432100123456789")};
     Unsigned<104> b(1000);
 
     auto sum = a + b;

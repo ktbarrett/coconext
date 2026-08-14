@@ -24,8 +24,8 @@ add_executable(coconext_tests
     test_array.cpp
     test_static_array.cpp
     test_logic_array.cpp
-    test_dyn_bits.cpp
-    test_bits.cpp
+    test_dyn_int.cpp
+    test_int.cpp
     test_reverse.cpp
     test_unsigned.cpp
     test_signed.cpp
