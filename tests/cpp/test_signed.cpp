@@ -2,6 +2,8 @@
 #include <gtest/gtest.h>
 
 #include <coconext/types.hpp>
+#include <compare>
+#include <concepts>
 #include <cstdint>
 #include <format>
 #include <stdexcept>
@@ -190,6 +192,10 @@ TEST(TestSigned, CrossRangeConversion) {
 }
 
 TEST(TestSigned, Comparisons) {
+    static_assert(!std::equality_comparable_with<Signed<8>, Signed<16>>);
+    static_assert(!std::three_way_comparable_with<Signed<8>, Signed<16>>);
+    static_assert(!std::equality_comparable_with<Signed<8>, Unsigned<8>>);
+
     Signed<8> a(-10);
     Signed<8> b(-10);
     Signed<8> c(20);
@@ -216,6 +222,7 @@ TEST(TestSigned, Comparisons) {
     EXPECT_TRUE(c >= a);
     EXPECT_TRUE(a >= b);
     EXPECT_FALSE(d >= a);
+    EXPECT_EQ(a <=> b, std::strong_ordering::equal);
 }
 
 TEST(TestSigned, CompoundAssignment) {
@@ -498,7 +505,7 @@ TEST(TestSigned, zero_width) {
     EXPECT_EQ(a.size(), 0u);
 }
 
-// Resize now routes through the Bits width-changing primitives. These pin the
+// Resize now routes through the signed representation. These pin the
 // behaviour across the native/wide tier boundary, and in particular that
 // sign-extension still replicates the sign bit into wide storage.
 
@@ -530,7 +537,7 @@ TEST(TestSigned, saturation_clamps_at_both_ends_from_wide) {
 }
 
 TEST(TestSigned, wide_arithmetic_still_grows) {
-    Signed<110> a{detail::Bits<110>("-20192265560968774111035004381065")};
+    Signed<110> a{detail::SInt<110>("-20192265560968774111035004381065")};
     Signed<110> b(1000);
 
     auto sum = a + b;

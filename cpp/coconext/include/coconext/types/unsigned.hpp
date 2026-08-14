@@ -1,9 +1,9 @@
 #ifndef COCONEXT_UNSIGNED_HPP
 #define COCONEXT_UNSIGNED_HPP
 
-#include <coconext/types/bits.hpp>
 #include <coconext/types/concepts.hpp>
 #include <coconext/types/hash.hpp>
+#include <coconext/types/int_base.hpp>
 #include <coconext/types/logic_array.hpp>
 #include <coconext/types/range.hpp>
 #include <cstddef>
@@ -39,10 +39,13 @@ class Unsigned {
         static_assert(
             R.length() > 0, "Unsigned<0> has no integer value; cannot convert to native int"
         );
+        static_assert(
+            !detail::UInt<R.length()>::is_wide, "Conversion from wide UInt to native int"
+        );
 
         auto val = this->value_;
         if constexpr (R.length() > std::numeric_limits<T>::digits) {
-            if (val.ugt(detail::Bits<R.length()>(std::numeric_limits<T>::max()))) {
+            if (val > detail::UInt<R.length()>(std::numeric_limits<T>::max())) {
                 throw std::out_of_range("Value too large for destination native type");
             }
         }
@@ -55,13 +58,15 @@ class Unsigned {
     static constexpr Range range() noexcept { return R; }
     static constexpr size_t size() noexcept { return R.length(); }
 
+    // Allow different-width Unsigned instantiations to read our private value_
+    // (required for resize and cross-width Unsigned constructor).
+    template <Range R2>
+    friend class Unsigned;
+
     constexpr Unsigned() noexcept = default;
 
-    template <size_t W>
-    constexpr Unsigned(Bits<W> const& val) {
-        static_assert(W == R.length(), "Construction from Bits requires identical width");
-        value_ = val;
-    }
+    template <bool IsSigned>
+    constexpr Unsigned(Int<R.length(), IsSigned> const& val) : value_(val.logical_bits()) {}
 
     // Construct from a native integer. Throws std::out_of_range if the value is
     // negative or does not fit in R.length() bits.
@@ -93,11 +98,8 @@ class Unsigned {
     template <Range R2>
     explicit(R.length() < R2.length()) constexpr Unsigned(Unsigned<R2> const& other) {
         if constexpr (R.length() >= R2.length()) {
-            value_ = other.value_;
-        } else if (
-            bits(other).ule((~Bits<R.length()>{}).template zero_extend<R2.length()>())
-        )
-        {
+            value_ = UInt<R.length()>(other.value_);
+        } else if (other.value_ <= UInt<R2.length()>(~UInt<R.length()>{})) {
             value_ = coconext::types::resize<R.length()>(other).value_;
         } else {
             throw std::out_of_range("value does not fit in Unsigned width");
@@ -119,6 +121,16 @@ class Unsigned {
         *this = Unsigned<R>(Unsigned<R2>(src_bits));
     }
 
+    // Construct from a BitArray. Throws if the source value is not exactly N bits.
+    template <Range R2>
+    explicit constexpr Unsigned(detail::Array<Bit, R2> const& other) {
+        static_assert(
+            R.length() == R2.length(), "BitArray reinterpret requires identical width"
+        );
+
+        value_ = UInt<R.length()>(bits(other));
+    }
+
     // Implicit conversion to supertype BitArray
     template <Range R2>
     constexpr operator detail::Array<Bit, R2>() const noexcept {
@@ -126,6 +138,18 @@ class Unsigned {
             R.length() == R2.length(), "BitArray reinterpret requires identical width"
         );
         return detail::Array<Bit, R2>(value_);
+    }
+
+    // Consume deduced-target reinterpret wrapper
+    template <typename SourceT>
+    constexpr Unsigned(auto_reinterpreted<SourceT>&& wrapper) {
+        *this = as<Unsigned<R>>(std::move(wrapper).consume());
+    }
+
+    template <typename SourceT>
+    constexpr Unsigned& operator=(auto_reinterpreted<SourceT>&& wrapper) {
+        *this = as<Unsigned<R>>(std::move(wrapper).consume());
+        return *this;
     }
 
     template <typename SourceWrapper>
@@ -144,11 +168,11 @@ class Unsigned {
 
         if constexpr (TargetW >= SourceW) {
             // Widening (and the null cases) never lose information.
-            value_ = bits(src).template zero_extend<TargetW>();
+            value_ = UInt<TargetW>(src.value_);
         } else if (ovf == overflow_mode::wrap) {
-            value_ = bits(src).template truncate<TargetW>();
+            value_ = UInt<TargetW>(src.value_);
         } else {
-            value_ = bits(src).template saturate_unsigned<TargetW>();
+            value_ = src.value_.template saturate_unsigned<TargetW>();
         }
     }
 
@@ -158,28 +182,8 @@ class Unsigned {
         return *this;
     }
 
-    friend constexpr bool operator==(Unsigned const& lhs, Unsigned const& rhs) noexcept {
-        return lhs.value_ == rhs.value_;
-    }
-
-    friend constexpr auto operator<(Unsigned const& lhs, Unsigned const& rhs) noexcept {
-        return lhs.value_.ult(rhs.value_);
-    }
-
-    friend constexpr auto operator<=(Unsigned const& lhs, Unsigned const& rhs) noexcept {
-        return lhs.value_.ule(rhs.value_);
-    }
-
-    friend constexpr auto operator>(Unsigned const& lhs, Unsigned const& rhs) noexcept {
-        return lhs.value_.ugt(rhs.value_);
-    }
-
-    friend constexpr auto operator>=(Unsigned const& lhs, Unsigned const& rhs) noexcept {
-        return lhs.value_.uge(rhs.value_);
-    }
-
     explicit constexpr operator bool() const noexcept {
-        return this->value_ != detail::Bits<R.length()>{};
+        return this->value_ != detail::UInt<R.length()>{};
     }
 
     explicit constexpr operator signed char() const noexcept(
@@ -251,6 +255,7 @@ class Unsigned {
         using CleanType = std::remove_cvref_t<ShiftType>;
 
         // Shift amounts must fit in a native integer.
+        // thing
         static_assert(
             std::is_integral_v<CleanType> || detail::is_coconext_unsigned_v<CleanType>
                 || detail::is_coconext_signed_v<CleanType>,
@@ -322,7 +327,7 @@ class Unsigned {
             return Unsigned<R>(0);
         }
 
-        return Unsigned<R>(value_.srl(safe_shift));
+        return Unsigned<R>(value_ >> safe_shift);
     }
 
     template <typename ShiftType>
@@ -348,16 +353,14 @@ class Unsigned {
     // being negated: -Unsigned<8>(150) is -150, not -(-106).
     constexpr auto operator-() const {
         constexpr size_t Wr = R.length() + 1;
-        return Signed<detail::int_downto_range(Wr)>(
-            detail::Bits<Wr>{} - value_.template zero_extend<Wr>()
-        );
+        return Signed<detail::int_downto_range(Wr)>(-value_);
     }
 
     template <Range R2>
     constexpr auto operator+(Unsigned<R2> const& rhs) const {
         constexpr Range R_res =
             detail::int_downto_range(std::max(R.length(), R2.length()) + 1);
-        return Unsigned<R_res>(detail::add_unsigned(value_, bits(rhs)));
+        return Unsigned<R_res>(value_ + rhs.value_);
     }
 
     // Unsigned subtraction can go below zero, so the result is Signed.
@@ -365,13 +368,13 @@ class Unsigned {
     constexpr auto operator-(Unsigned<R2> const& rhs) const {
         constexpr Range R_res =
             detail::int_downto_range(std::max(R.length(), R2.length()) + 1);
-        return Signed<R_res>(detail::sub_unsigned(value_, rhs.value_));
+        return Signed<R_res>(value_ - rhs.value_);
     }
 
     template <Range R2>
     constexpr auto operator*(Unsigned<R2> const& rhs) const {
         constexpr Range R_res = detail::int_downto_range(R.length() + R2.length());
-        return Unsigned<R_res>(detail::mul_unsigned(value_, bits(rhs)));
+        return Unsigned<R_res>(value_ * rhs.value_);
     }
 
     template <Range R2>
@@ -380,7 +383,7 @@ class Unsigned {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        return Unsigned<R_res>(detail::div_unsigned(value_, bits(rhs)));
+        return Unsigned<R_res>(value_ / rhs.value_);
     }
 
     template <Range R2>
@@ -388,7 +391,7 @@ class Unsigned {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        return Unsigned<R2>(detail::rem_unsigned(value_, bits(rhs)));
+        return Unsigned<R2>(value_ % rhs.value_);
     }
 
     template <Range R2>
@@ -400,7 +403,7 @@ class Unsigned {
     template <Range R2>
     constexpr Unsigned& operator-=(Unsigned<R2> const& rhs) {
         auto res = coconext::types::resize<R.length()>(*this - rhs);
-        *this = coconext::types::as<Unsigned<R>>(static_cast<detail::Array<Bit, R>>(res));
+        *this = Unsigned<R>(static_cast<detail::Array<Bit, R>>(res));
         return *this;
     }
 
@@ -444,8 +447,7 @@ class Unsigned {
             auto res = coconext::types::resize<R.length()>(
                 *this - Unsigned<make_int_range<R.length()>()>(rhs)
             );
-            *this =
-                coconext::types::as<Unsigned<R>>(static_cast<detail::Array<Bit, R>>(res));
+            *this = Unsigned<R>(static_cast<detail::Array<Bit, R>>(res));
         }
         return *this;
     }
@@ -483,21 +485,21 @@ class Unsigned {
     template <Range R2>
     constexpr Unsigned& operator+=(Signed<R2> const& rhs) {
         auto res = coconext::types::resize<R.length()>(+(*this) + rhs, overflow_mode::wrap);
-        *this = coconext::types::as<Unsigned<R>>(static_cast<detail::Array<Bit, R>>(res));
+        *this = Unsigned<R>(static_cast<detail::Array<Bit, R>>(res));
         return *this;
     }
 
     template <Range R2>
     constexpr Unsigned& operator-=(Signed<R2> const& rhs) {
         auto res = coconext::types::resize<R.length()>(+(*this) - rhs, overflow_mode::wrap);
-        *this = coconext::types::as<Unsigned<R>>(static_cast<detail::Array<Bit, R>>(res));
+        *this = Unsigned<R>(static_cast<detail::Array<Bit, R>>(res));
         return *this;
     }
 
     template <Range R2>
     constexpr Unsigned& operator*=(Signed<R2> const& rhs) {
         auto res = coconext::types::resize<R.length()>(+(*this) * rhs, overflow_mode::wrap);
-        *this = coconext::types::as<Unsigned<R>>(static_cast<detail::Array<Bit, R>>(res));
+        *this = Unsigned<R>(static_cast<detail::Array<Bit, R>>(res));
         return *this;
     }
 
@@ -507,7 +509,7 @@ class Unsigned {
             throw std::domain_error("Division by zero");
         }
         auto res = coconext::types::resize<R.length()>(+(*this) / rhs, overflow_mode::wrap);
-        *this = coconext::types::as<Unsigned<R>>(static_cast<detail::Array<Bit, R>>(res));
+        *this = Unsigned<R>(static_cast<detail::Array<Bit, R>>(res));
         return *this;
     }
 
@@ -517,7 +519,7 @@ class Unsigned {
             throw std::domain_error("Division by zero");
         }
         auto res = coconext::types::resize<R.length()>(+(*this) % rhs, overflow_mode::wrap);
-        *this = coconext::types::as<Unsigned<R>>(static_cast<detail::Array<Bit, R>>(res));
+        *this = Unsigned<R>(static_cast<detail::Array<Bit, R>>(res));
         return *this;
     }
 
@@ -543,25 +545,11 @@ class Unsigned {
         return tmp;
     }
 
-    constexpr auto begin() { return value_.begin(); }
-    constexpr auto rbegin() { return value_.rbegin(); }
     constexpr auto begin() const { return value_.begin(); }
     constexpr auto rbegin() const { return value_.rbegin(); }
 
-    constexpr auto end() { return value_.end(); }
-    constexpr auto rend() { return value_.rend(); }
     constexpr auto end() const { return value_.end(); }
     constexpr auto rend() const { return value_.rend(); }
-
-    constexpr auto operator[](Range::value_type idx) {
-        auto const offset = offset_of(R, idx);
-        if (!offset.has_value()) {
-            throw std::out_of_range("Index out of bounds");
-        }
-        size_t bit_pos = R.length() - 1 - offset.value();
-
-        return value_[bit_pos];
-    }
 
     constexpr auto operator[](Range::value_type idx) const {
         auto const offset = offset_of(R, idx);
@@ -578,13 +566,26 @@ class Unsigned {
         return value_[N];
     }
 
+    template <typename T, typename CharT>
+    friend struct std::formatter;
+    template <typename T>
+    friend struct std::hash;
+
   private:
-    template <Range>
-    friend class Unsigned;
     friend struct bits_fn;
 
-    Bits<R.length()> value_{};
+    UInt<R.length()> value_{};
 };
+
+template <Range R>
+constexpr bool operator==(Unsigned<R> const& lhs, Unsigned<R> const& rhs) noexcept {
+    return bits(lhs) == bits(rhs);
+}
+
+template <Range R>
+constexpr auto operator<=>(Unsigned<R> const& lhs, Unsigned<R> const& rhs) noexcept {
+    return bits(lhs) <=> bits(rhs);
+}
 
 template <Range R>
 inline constexpr bool is_coconext_unsigned_v<Unsigned<R>> = true;
@@ -600,7 +601,7 @@ template <auto... Args, typename X>
     requires(sizeof...(Args) > 0 && detail::is_coconext_unsigned_v<std::remove_cvref_t<X>>)
 constexpr auto resize(X&& x, overflow_mode ovf, round_mode rnd) {
     constexpr Range TargetRange = detail::make_int_range<Args...>();
-    return Unsigned<TargetRange>(detail::resize(std::forward<X>(x), ovf, rnd));
+    return Unsigned<TargetRange>(resize(std::forward<X>(x), ovf, rnd));
 }
 
 consteval Unsigned<8> u8(unsigned long long v) { return Unsigned<8>(v); }
@@ -636,16 +637,16 @@ struct std::formatter<coconext::types::detail::Unsigned<R>> {
         std::string str_r;
         switch (presentation) {
         case 'b':
-            str_r = coconext::types::detail::bits(v).to_binary_string();
+            str_r = v.value_.to_binary_string();
             break;
         case 'o':
-            str_r = coconext::types::detail::bits(v).to_octal_string();
+            str_r = v.value_.to_octal_string();
             break;
         case 'x':
-            str_r = coconext::types::detail::bits(v).to_hexadecimal_string();
+            str_r = v.value_.to_hexadecimal_string();
             break;
         default:
-            str_r = coconext::types::detail::bits(v).to_decimal_string();
+            str_r = v.value_.to_decimal_string();
         }
         return std::format_to(ctx.out(), "Unsigned{}{{{}}}", R, str_r);
     }
@@ -660,8 +661,8 @@ struct std::hash<coconext::types::detail::Unsigned<R>> {
         size_t value_hash = 0;
 
         if constexpr (W > 0) {
-            if constexpr (!coconext::types::detail::Bits<W>::is_wide) {
-                auto raw_val = coconext::types::detail::bits(v).raw();
+            if constexpr (!coconext::types::detail::UInt<W>::is_wide) {
+                auto raw_val = v.value_.raw();
                 if constexpr (sizeof(raw_val) > sizeof(size_t)) {
                     uint64_t low = static_cast<uint64_t>(raw_val);
                     uint64_t high = static_cast<uint64_t>(raw_val >> 64);
@@ -670,7 +671,7 @@ struct std::hash<coconext::types::detail::Unsigned<R>> {
                     value_hash = std::hash<decltype(raw_val)>{}(raw_val);
                 }
             } else {
-                auto val = coconext::types::detail::bits(v).raw();
+                auto val = v.value_.raw();
                 constexpr size_t num_words = (W + 63) / 64;
                 for (size_t i = 0; i < num_words; ++i) {
                     value_hash =
