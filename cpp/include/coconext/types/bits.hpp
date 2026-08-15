@@ -678,6 +678,14 @@ class Bits {
         }
     }
 
+    constexpr size_t highest_set_index() const noexcept {
+        if constexpr (!is_wide) {
+            return std::bit_width(storage_) - 1;
+        } else {
+            return std::bit_width(storage_[0]) - 1;
+        }
+    }
+
     std::string to_binary_string() const {
         if constexpr (W == 0) {
             return "";
@@ -688,6 +696,27 @@ class Bits {
                 return static_cast<char>('0' + d);
             });
         }
+    }
+
+    std::string to_binary_string(size_t decimal_pos) const {
+        static_assert(W != 0, "Nothing to represent");
+        if (decimal_pos == 0) {
+            return to_binary_string();
+        }
+        std::string res;
+        res.reserve(W + 1);
+        auto val = raw();
+        for (size_t i = W; i > 0; --i) {
+            if (i == decimal_pos) {
+                res.push_back('.');
+            } else {
+                size_t bit_idx = i - 1;
+                res.push_back(
+                    ((val.get_word(bit_idx / 64) >> (bit_idx % 64)) & 1) ? '1' : '0'
+                );
+            }
+        }
+        return res;
     }
 
     std::string to_decimal_string(bool is_signed = false) const {

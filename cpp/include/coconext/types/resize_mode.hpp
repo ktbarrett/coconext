@@ -7,9 +7,13 @@ enum class overflow_mode {
     wrap,
     saturate
 };
+
 enum class round_mode {
     truncate,
-    round
+    round,
+    round_to_even,
+    round_to_zero,
+    round_to_pos
 };
 
 }  // namespace coconext::types

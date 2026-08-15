@@ -36,3 +36,9 @@ TEST(TestUfixed, shape_and_typelevel) {
 TEST(TestUfixed, implicit_conversions) {
     // test bit array implicit upcast
 }
+
+TEST(TestUfixed, Formatter) {
+    // Ufixed<3, -4> a{5.0625};
+    // EXPECT_EQ(std::format("{:b}", a), "Ufixed[3 downto -4]{"0101.0001"}");
+    // EXPECT_EQ(std::format("{:b}", a), "Ufixed[3 downto -4]{"5.0625"}");
+}

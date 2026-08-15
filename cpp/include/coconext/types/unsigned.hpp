@@ -39,9 +39,6 @@ class Unsigned {
         static_assert(
             R.length() > 0, "Unsigned<0> has no integer value; cannot convert to native int"
         );
-        static_assert(
-            !detail::Bits<R.length()>::is_wide, "Conversion from wide Bits to native int"
-        );
 
         auto val = this->value_;
         if constexpr (R.length() > std::numeric_limits<T>::digits) {
@@ -61,7 +58,6 @@ class Unsigned {
     // Friends required for resize and cross-width/type conversions.
     template <Range R2>
     friend class Unsigned;
-    // template <Range R2> friend class Ufixed;
 
     constexpr Unsigned() noexcept = default;
 
@@ -281,7 +277,6 @@ class Unsigned {
         using CleanType = std::remove_cvref_t<ShiftType>;
 
         // Shift amounts must fit in a native integer.
-        // thing
         static_assert(
             std::is_integral_v<CleanType> || detail::is_coconext_unsigned_v<CleanType>
                 || detail::is_coconext_signed_v<CleanType>,

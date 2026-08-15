@@ -3,7 +3,7 @@
 
 #include <algorithm>
 #include <coconext/types/bigint.hpp>
-#include <coconext/types/int_base.hpp>
+#include <coconext/types/bits.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <memory>

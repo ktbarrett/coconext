@@ -7,10 +7,7 @@
 
 // cross kind operators
 
-// constexpr int sign_bit_position() const noexcept {
-//     if constexpr (R.direction == Direction::DOWNTO) {
-//         return R.left;
-//     } else {
-//         return R.right;
-//     }
-// }
+// to_native_int returns value rounded towards zero
+// i.e. neg values magnitude increases by 1
+
+// abs(s) free function for Sfixed<L, R> -> Sfixed<L+1, R>
