@@ -39,6 +39,7 @@ class DynInt {
         if (width == 0) {
             throw std::invalid_argument("DynInt(0) has no integer representation");
         }
+        assert((native_value_fits<SignedRepresentation>(width, val)));
 #if defined(__SIZEOF_INT128__)
         if constexpr (sizeof(IntT) > sizeof(Word)) {
             if constexpr (std::is_signed_v<IntT>) {
@@ -60,12 +61,14 @@ class DynInt {
 
 #if defined(__SIZEOF_INT128__)
     DynInt(size_t width, __int128_t val) : DynInt(width) {
+        assert((native_value_fits<SignedRepresentation>(width, val)));
         load_int128(physical_mut(), val);
         if (width_ < 128 || !SignedRepresentation) {
             canonicalize();
         }
     }
     DynInt(size_t width, __uint128_t val) : DynInt(width) {
+        assert((native_value_fits<SignedRepresentation>(width, val)));
         load_uint128(physical_mut(), val);
         if (width_ < 128) {
             canonicalize();
@@ -435,22 +438,18 @@ class DynInt {
     }
 
     static std::pair<DynInt, DynInt> divide(DynInt const& a, DynInt const& b, bool modulo) {
-        size_t common_width = std::max(a.width_, b.width_) + 1;
-        size_t max_words = (common_width + word_bits - 1) / word_bits;
+        size_t lhs_limbs = a.num_words() * limbs_per_word;
+        size_t rhs_limbs = b.num_words() * limbs_per_word;
         DynInt quotient(a.width_ + 1);
         DynInt remainder(b.width_);
-        OwnedDivScratch scratch = make_owned_div_scratch(max_words * limbs_per_word);
+        OwnedDivScratch scratch = make_owned_div_scratch(lhs_limbs, rhs_limbs);
         if constexpr (SignedRepresentation) {
-            DynInt<false> lhs_magnitude(a.width_);
-            DynInt<false> rhs_magnitude(b.width_);
             if (modulo) {
                 divide_modulo(
                     quotient.physical_mut(),
                     remainder.physical_mut(),
                     a.physical_cref(),
                     b.physical_cref(),
-                    lhs_magnitude.physical_mut(),
-                    rhs_magnitude.physical_mut(),
                     scratch.view
                 );
             } else {
@@ -459,8 +458,6 @@ class DynInt {
                     remainder.physical_mut(),
                     a.physical_cref(),
                     b.physical_cref(),
-                    lhs_magnitude.physical_mut(),
-                    rhs_magnitude.physical_mut(),
                     scratch.view
                 );
             }

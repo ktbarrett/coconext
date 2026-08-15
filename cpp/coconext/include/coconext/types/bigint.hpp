@@ -10,6 +10,11 @@
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Substantial modifications and non-LLVM-derived code provided under the below
+// license.
+// SPDX-FileCopyrightText: 2026 Kaleb Barrett
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include <algorithm>
 #include <bit>
@@ -344,18 +349,6 @@ constexpr void word_to_limbs(Word w, DivLimb* out) {
     }
 }
 
-constexpr Word limbs_to_word(DivLimb const* in) {
-    if constexpr (limbs_per_word == 1) {
-        return static_cast<Word>(in[0]);
-    } else {
-        Word w = 0;
-        for (unsigned k = 0; k < limbs_per_word; ++k) {
-            w |= static_cast<Word>(in[k]) << (k * limb_bits);
-        }
-        return w;
-    }
-}
-
 struct DivideScratch {
     std::span<DivLimb> U;
     std::span<DivLimb> V;
@@ -363,33 +356,80 @@ struct DivideScratch {
     std::span<DivLimb> R;
 };
 
-constexpr void divide_impl(
-    std::span<Word const> lhs,
-    unsigned lhs_words,
-    std::span<Word const> rhs,
-    unsigned rhs_words,
+// Load an operand into the mutable Knuth scratch, optionally taking its
+// two's-complement magnitude as it is loaded. This is the only copy required
+// by wide signed division: negative operands do not need an intermediate
+// owning unsigned value.
+constexpr unsigned load_divide_operand(
+    std::span<Word const> input,
+    unsigned input_words,
+    size_t input_bits,
+    std::span<DivLimb> output,
+    bool negate_input
+) {
+    bool carry = negate_input;
+    for (unsigned i = 0; i < input_words; ++i) {
+        Word word = negate_input ? ~input[i] : input[i];
+        if (carry) {
+            ++word;
+            carry = word == 0;
+        }
+        if (i + 1 == input.size() && input_bits % word_bits != 0) {
+            word &= (Word{1} << (input_bits % word_bits)) - 1;
+        }
+        word_to_limbs(word, &output[i * limbs_per_word]);
+    }
+
+    unsigned limbs = input_words * limbs_per_word;
+    while (limbs != 0 && output[limbs - 1] == 0) {
+        --limbs;
+    }
+    return limbs;
+}
+
+constexpr int compare_divide_operands(
+    std::span<DivLimb const> lhs,
+    unsigned lhs_limbs,
+    std::span<DivLimb const> rhs,
+    unsigned rhs_limbs
+) {
+    if (lhs_limbs != rhs_limbs) {
+        return lhs_limbs > rhs_limbs ? 1 : -1;
+    }
+    while (lhs_limbs != 0) {
+        --lhs_limbs;
+        if (lhs[lhs_limbs] != rhs[lhs_limbs]) {
+            return lhs[lhs_limbs] > rhs[lhs_limbs] ? 1 : -1;
+        }
+    }
+    return 0;
+}
+
+constexpr void store_divide_result(
+    std::span<Word> output, std::span<DivLimb const> input, unsigned input_limbs
+) {
+    unsigned limb = 0;
+    for (Word& word : output) {
+        word = 0;
+        for (unsigned k = 0; k < limbs_per_word && limb < input_limbs; ++k, ++limb) {
+            word |= static_cast<Word>(input[limb]) << (k * limb_bits);
+        }
+    }
+}
+
+// Divide magnitudes already loaded into U and V. lhs must be greater than rhs;
+// the caller handles zero, less-than, and equality without entering Knuth's
+// algorithm.
+constexpr void divide_loaded(
+    unsigned lhs_limbs,
+    unsigned rhs_limbs,
     std::span<Word> quotient,
     std::span<Word> remainder,
     DivideScratch scratch
 ) {
-    unsigned n = rhs_words * limbs_per_word;
-    unsigned m = (lhs_words * limbs_per_word) - n;
-
-    for (unsigned i = 0; i < lhs_words; ++i) {
-        word_to_limbs(lhs[i], &scratch.U[i * limbs_per_word]);
-    }
-    scratch.U[m + n] = 0;
-    for (unsigned i = 0; i < rhs_words; ++i) {
-        word_to_limbs(rhs[i], &scratch.V[i * limbs_per_word]);
-    }
-
-    for (unsigned i = n; i > 0 && scratch.V[i - 1] == 0; --i) {
-        n--;
-        m++;
-    }
-    for (unsigned i = m + n; i > 0 && scratch.U[i - 1] == 0; --i) {
-        m--;
-    }
+    unsigned n = rhs_limbs;
+    unsigned m = lhs_limbs - n;
+    scratch.U[lhs_limbs] = 0;
 
     if (n == 1) {
         using D = typename wider<DivLimb>::type;
@@ -411,7 +451,9 @@ constexpr void divide_impl(
                 rem = static_cast<DivLimb>(partial - (D(scratch.Q[i]) * divisor));
             }
         }
-        scratch.R[0] = rem;
+        if (!remainder.empty()) {
+            scratch.R[0] = rem;
+        }
     } else {
         knuth_div<DivLimb>(
             scratch.U.data(),
@@ -424,38 +466,26 @@ constexpr void divide_impl(
     }
 
     if (!quotient.empty()) {
-        for (unsigned i = 0; i < lhs_words; ++i) {
-            quotient[i] = limbs_to_word(&scratch.Q[i * limbs_per_word]);
-        }
-        for (size_t i = lhs_words; i < quotient.size(); ++i) {
-            quotient[i] = 0;
-        }
+        store_divide_result(quotient, scratch.Q, m + 1);
     }
     if (!remainder.empty()) {
-        for (unsigned i = 0; i < rhs_words; ++i) {
-            remainder[i] = limbs_to_word(&scratch.R[i * limbs_per_word]);
-        }
-        for (size_t i = rhs_words; i < remainder.size(); ++i) {
-            remainder[i] = 0;
-        }
+        store_divide_result(remainder, scratch.R, n);
     }
 }
 
-// Single-allocation heap scratch for divide_impl. Zero-initialized because
-// divide_impl's output loop reads the full lhs_words*lpw / rhs_words*lpw tail,
-// but knuth_div only writes q[0..m] / r[0..n-1].
+// Single-allocation heap scratch for wide dynamic division.
 struct OwnedDivScratch {
     std::unique_ptr<DivLimb[]> buf;
     DivideScratch view;
 };
 
-inline OwnedDivScratch make_owned_div_scratch(size_t max_limbs) {
-    size_t u_len = 2 * max_limbs + 1;
-    size_t v_len = max_limbs;
-    size_t q_len = 2 * max_limbs;
-    size_t r_len = max_limbs;
+inline OwnedDivScratch make_owned_div_scratch(size_t lhs_limbs, size_t rhs_limbs) {
+    size_t u_len = lhs_limbs + 1;
+    size_t v_len = rhs_limbs;
+    size_t q_len = lhs_limbs;
+    size_t r_len = rhs_limbs;
     size_t total = u_len + v_len + q_len + r_len;
-    auto buf = std::make_unique<DivLimb[]>(total);
+    std::unique_ptr<DivLimb[]> buf{new DivLimb[total]};
     DivLimb* p = buf.get();
     DivideScratch view{
         std::span<DivLimb>{p,                         u_len},
@@ -539,6 +569,12 @@ constexpr void check_same_width(WordConstSpan a, WordConstSpan b) {
         throw std::invalid_argument("bit width mismatch");
     }
 }
+
+// TODO extended_word is used to deal with different sized arguments. Indexes above an
+// arguments size gets the sign extended value. Indexes on the boundary get the sign
+// extended applied to their upper bits. This is less than optimal, it would be better to
+// simply handle the differences in different branches and use `if constexpr` to select the
+// correct branches on const-bounded types.
 
 constexpr Word extended_word(WordConstSpan value, size_t index, bool signed_value) {
     bool negative = signed_value && is_negative(value);
@@ -971,14 +1007,15 @@ constexpr void divide_unsigned(
     }
 
     unsigned lhs_words = active_words(lhs);
-    if (lhs_words == 0 || ucompare(lhs, rhs) < 0) {
+    int comparison = ucompare(lhs, rhs);
+    if (lhs_words == 0 || comparison < 0) {
         for (Word& word : quotient.data()) {
             word = 0;
         }
         copy_bits(remainder, lhs);
         return;
     }
-    if (ucompare(lhs, rhs) == 0) {
+    if (comparison == 0) {
         for (Word& word : quotient.data()) {
             word = 0;
         }
@@ -989,15 +1026,11 @@ constexpr void divide_unsigned(
         return;
     }
 
-    divide_impl(
-        lhs.data(),
-        lhs_words,
-        rhs.data(),
-        rhs_words,
-        quotient.data(),
-        remainder.data(),
-        scratch
-    );
+    unsigned lhs_limbs =
+        load_divide_operand(lhs.data(), lhs_words, lhs.bit_width(), scratch.U, false);
+    unsigned rhs_limbs =
+        load_divide_operand(rhs.data(), rhs_words, rhs.bit_width(), scratch.V, false);
+    divide_loaded(lhs_limbs, rhs_limbs, quotient.data(), remainder.data(), scratch);
     clear_unused_bits(quotient);
     clear_unused_bits(remainder);
 }
@@ -1008,26 +1041,47 @@ constexpr void divide_signed(
     WordSpan remainder,
     WordConstSpan lhs,
     WordConstSpan rhs,
-    WordSpan lhs_magnitude,
-    WordSpan rhs_magnitude,
     DivideScratch scratch
 ) {
-    if (lhs_magnitude.bit_width() != lhs.bit_width()
-        || rhs_magnitude.bit_width() != rhs.bit_width())
-    {
-        throw std::invalid_argument("division magnitude bit width mismatch");
-    }
     bool lhs_negative = is_negative(lhs);
     bool rhs_negative = is_negative(rhs);
-    copy_bits(lhs_magnitude, lhs);
-    copy_bits(rhs_magnitude, rhs);
-    if (lhs_negative) {
-        negate(lhs_magnitude);
+
+    unsigned lhs_limbs = load_divide_operand(
+        lhs.data(),
+        static_cast<unsigned>(lhs.num_words()),
+        lhs.bit_width(),
+        scratch.U,
+        lhs_negative
+    );
+    unsigned rhs_limbs = load_divide_operand(
+        rhs.data(),
+        static_cast<unsigned>(rhs.num_words()),
+        rhs.bit_width(),
+        scratch.V,
+        rhs_negative
+    );
+    if (rhs_limbs == 0) {
+        throw std::domain_error("Division by zero");
     }
-    if (rhs_negative) {
-        negate(rhs_magnitude);
+
+    int comparison = compare_divide_operands(scratch.U, lhs_limbs, scratch.V, rhs_limbs);
+    if (lhs_limbs == 0 || comparison < 0) {
+        for (Word& word : quotient.data()) {
+            word = 0;
+        }
+        store_divide_result(remainder.data(), scratch.U, lhs_limbs);
+    } else if (comparison == 0) {
+        for (Word& word : quotient.data()) {
+            word = 0;
+        }
+        for (Word& word : remainder.data()) {
+            word = 0;
+        }
+        set_bit(quotient, 0, true);
+    } else {
+        divide_loaded(lhs_limbs, rhs_limbs, quotient.data(), remainder.data(), scratch);
     }
-    divide_unsigned(quotient, remainder, lhs_magnitude, rhs_magnitude, scratch);
+
     if (lhs_negative != rhs_negative) {
         negate(quotient);
     }
@@ -1042,11 +1096,9 @@ constexpr void divide_modulo(
     WordSpan modulo,
     WordConstSpan lhs,
     WordConstSpan rhs,
-    WordSpan lhs_magnitude,
-    WordSpan rhs_magnitude,
     DivideScratch scratch
 ) {
-    divide_signed(quotient, modulo, lhs, rhs, lhs_magnitude, rhs_magnitude, scratch);
+    divide_signed(quotient, modulo, lhs, rhs, scratch);
     if (active_words(modulo) != 0 && is_negative(lhs) != is_negative(rhs)) {
         Word borrow = 1;
         for (Word& word : quotient.data()) {

@@ -23,6 +23,9 @@ TEST(TestSigned, Constructors) {
 
     EXPECT_THROW(Signed<4>(8), std::out_of_range);
     EXPECT_THROW(Signed<4>(-9), std::out_of_range);
+    EXPECT_EQ(static_cast<int16_t>(Signed<8>(uint8_t{127})), 127);
+    EXPECT_THROW(Signed<8>(uint8_t{128}), std::out_of_range);
+    EXPECT_THROW(Signed<1>(uint8_t{1}), std::out_of_range);
 
     Signed<8> large_val(100);
     Signed<8> small_val(-5);

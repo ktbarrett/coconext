@@ -29,6 +29,29 @@ TEST(Int, storage_tiers_and_formatting) {
     EXPECT_THROW(detail::UInt<8>("999"), std::out_of_range);
 }
 
+TEST(Int, native_value_fit_predicate) {
+    static_assert(detail::native_value_fits<4, false>(0));
+    static_assert(detail::native_value_fits<4, false>(15));
+    static_assert(!detail::native_value_fits<4, false>(-1));
+    static_assert(!detail::native_value_fits<4, false>(16));
+
+    static_assert(detail::native_value_fits<4, true>(-8));
+    static_assert(detail::native_value_fits<4, true>(7));
+    static_assert(!detail::native_value_fits<4, true>(-9));
+    static_assert(!detail::native_value_fits<4, true>(8));
+    static_assert(!detail::native_value_fits<4, true>(uint8_t{8}));
+
+    static_assert(detail::native_value_fits<65, false>(~uint64_t{0}));
+    static_assert(detail::native_value_fits<65, true>(std::numeric_limits<int64_t>::min()));
+
+#if defined(__SIZEOF_INT128__)
+    static_assert(detail::native_value_fits<100, false>((__uint128_t{1} << 100) - 1));
+    static_assert(!detail::native_value_fits<100, false>(__uint128_t{1} << 100));
+    static_assert(detail::native_value_fits<100, true>(-(__int128_t{1} << 99)));
+    static_assert(!detail::native_value_fits<100, true>(__int128_t{1} << 99));
+#endif
+}
+
 TEST(Int, packed_bit_operations) {
     detail::UInt<12> value(0);
     value[0] = '1'_b;
@@ -84,7 +107,7 @@ TEST(IntNative, scalar_tiers_cover_the_complete_native_operation) {
         detail::UInt<16>::exact_mul(maximum, maximum) == detail::UInt<16>(uint16_t{1})
     );
 
-    constexpr detail::SInt<32> minimum(uint32_t{0x80000000});
+    constexpr detail::SInt<32> minimum(std::numeric_limits<int32_t>::min());
     constexpr auto quotient = minimum / detail::SInt<32>(-1);
     static_assert(std::is_same_v<std::remove_cv_t<decltype(quotient)>, detail::SInt<33>>);
     static_assert(quotient.raw() == uint64_t{0x80000000});
@@ -119,8 +142,8 @@ TEST(IntGrowing, additive_grows_by_one_bit) {
 }
 
 TEST(IntGrowing, additive_signed_uses_canonical_storage) {
-    detail::SInt<8> neg(uint8_t{200});  // -56
-    detail::SInt<8> pos(uint8_t{100});  // 100
+    detail::SInt<8> neg(int8_t{-56});
+    detail::SInt<8> pos(int8_t{100});
 
     EXPECT_EQ((neg + pos).to_decimal_string(true), "44");
     EXPECT_EQ((neg - pos).to_decimal_string(true), "-156");
@@ -135,7 +158,7 @@ TEST(IntGrowing, multiply_sums_the_widths) {
     EXPECT_EQ(p.to_decimal_string(), "20000");
 
     // -56 * 100 == -5600
-    EXPECT_EQ((detail::SInt<8>(200) * detail::SInt<8>(100)).to_decimal_string(), "-5600");
+    EXPECT_EQ((detail::SInt<8>(-56) * detail::SInt<8>(100)).to_decimal_string(), "-5600");
 }
 
 TEST(IntGrowing, division_quotient_grows_by_one) {
@@ -166,22 +189,46 @@ TEST(IntGrowing, mixed_width_division) {
     EXPECT_EQ(rem.to_decimal_string(true), "-2");
     EXPECT_EQ(floored.to_decimal_string(true), "-4");
     EXPECT_EQ(mod.to_decimal_string(true), "3");
+
+    auto [narrow_negative_q, narrow_negative_r] =
+        detail::divrem(detail::SInt<8>(-17), detail::SInt<200>(5));
+    EXPECT_EQ(narrow_negative_q.to_decimal_string(true), "-3");
+    EXPECT_EQ(narrow_negative_r.to_decimal_string(true), "-2");
+
+    auto [negative_divisor_q, negative_divisor_r] =
+        detail::divrem(detail::SInt<200>(17), detail::SInt<8>(-5));
+    EXPECT_EQ(negative_divisor_q.to_decimal_string(true), "-3");
+    EXPECT_EQ(negative_divisor_r.to_decimal_string(true), "2");
+
+    auto [both_negative_q, both_negative_r] =
+        detail::divrem(detail::SInt<200>(-17), detail::SInt<8>(-5));
+    EXPECT_EQ(both_negative_q.to_decimal_string(true), "3");
+    EXPECT_EQ(both_negative_r.to_decimal_string(true), "-2");
+
+    auto [smaller_q, smaller_r] =
+        detail::divrem(detail::SInt<8>(-5), detail::SInt<200>(-17));
+    EXPECT_EQ(smaller_q.to_decimal_string(true), "0");
+    EXPECT_EQ(smaller_r.to_decimal_string(true), "-5");
+
+    auto [equal_q, equal_r] = detail::divrem(detail::SInt<8>(-5), detail::SInt<200>(-5));
+    EXPECT_EQ(equal_q.to_decimal_string(true), "1");
+    EXPECT_EQ(equal_r.to_decimal_string(true), "0");
 }
 
 // The extra quotient bit exists so signed_min / -1 stays representable.
 TEST(IntGrowing, signed_min_over_minus_one_does_not_overflow) {
-    detail::SInt<8> min_val(uint8_t{0x80});  // -128
-    detail::SInt<8> minus_one(uint8_t{0xFF});
+    detail::SInt<8> min_val(int8_t{-128});
+    detail::SInt<8> minus_one(int8_t{-1});
 
     EXPECT_EQ((min_val / minus_one).to_decimal_string(true), "128");
 }
 
 // rem follows the dividend's sign (C), mod follows the divisor's (VHDL/Python).
 TEST(IntGrowing, rem_and_mod_differ_on_mixed_signs) {
-    detail::SInt<8> neg56(uint8_t{200});   // -56
-    detail::SInt<8> pos100(uint8_t{100});  // 100
-    detail::SInt<8> neg3(uint8_t{0xFD});   // -3
-    detail::SInt<8> pos56(uint8_t{56});
+    detail::SInt<8> neg56(int8_t{-56});
+    detail::SInt<8> pos100(int8_t{100});
+    detail::SInt<8> neg3(int8_t{-3});
+    detail::SInt<8> pos56(int8_t{56});
 
     EXPECT_EQ((neg56 % pos100).to_decimal_string(true), "-56");
     EXPECT_EQ(detail::mod(neg56, pos100).to_decimal_string(true), "44");
@@ -195,7 +242,7 @@ TEST(IntGrowing, rem_and_mod_differ_on_mixed_signs) {
 }
 
 TEST(IntGrowing, unary_negate_and_abs_grow_by_one) {
-    detail::SInt<8> neg56(uint8_t{200});
+    detail::SInt<8> neg56(int8_t{-56});
 
     auto n = -neg56;
     static_assert(std::is_same_v<decltype(n), detail::SInt<9>>);
@@ -203,7 +250,7 @@ TEST(IntGrowing, unary_negate_and_abs_grow_by_one) {
     EXPECT_EQ(detail::abs(neg56).to_decimal_string(true), "56");
 
     // The growth is what makes abs(signed_min) representable.
-    detail::SInt<8> min_val(uint8_t{0x80});
+    detail::SInt<8> min_val(int8_t{-128});
     EXPECT_EQ(detail::abs(min_val).to_decimal_string(true), "128");
 }
 
@@ -258,7 +305,7 @@ TEST(Int, signed_and_unsigned_are_distinct_canonical_representations) {
     static_assert(sizeof(detail::UInt<129>) == sizeof(detail::SInt<129>));
 
     constexpr detail::UInt<9> unsigned_negative_pattern(0x1FF);
-    constexpr detail::SInt<9> signed_negative_pattern(0x1FF);
+    constexpr detail::SInt<9> signed_negative_pattern(-1);
     static_assert(unsigned_negative_pattern.raw() == uint16_t{0x01FF});
     static_assert(signed_negative_pattern.raw() == uint16_t{0xFFFF});
 
@@ -267,7 +314,7 @@ TEST(Int, signed_and_unsigned_are_distinct_canonical_representations) {
     static_assert(widened_unsigned.raw() == uint16_t{0x00FF});
     static_assert(widened_signed.raw() == uint16_t{0xFFFF});
 
-    detail::UInt<129> wide_unsigned(-1);
+    detail::UInt<129> wide_unsigned(detail::SInt<129>(-1));
     detail::SInt<129> wide_signed(-1);
     EXPECT_EQ(wide_unsigned.raw().word(2), 1);
     EXPECT_EQ(wide_signed.raw().word(2), ~detail::Word{0});
@@ -308,6 +355,11 @@ TEST(Int, native_division_results_are_canonical) {
     constexpr auto signed_result = detail::divrem(detail::SInt<8>(-17), detail::SInt<8>(5));
     static_assert(signed_result.first.raw() == uint16_t{0xFFFD});
     static_assert(signed_result.second.raw() == uint8_t{0xFE});
+
+    constexpr auto wide_result =
+        detail::divrem(detail::SInt<129>(-17), detail::SInt<8>(-5));
+    static_assert(wide_result.first == detail::SInt<130>(3));
+    static_assert(wide_result.second == detail::SInt<8>(-2));
 }
 
 TEST(Int, growing_arithmetic_preserves_the_result_invariant) {
