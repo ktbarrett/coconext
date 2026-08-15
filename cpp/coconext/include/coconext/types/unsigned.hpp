@@ -77,21 +77,10 @@ class Unsigned {
         static_assert(
             R.length() > 0, "Unsigned<0> has no integer representation; use Unsigned<0>{}"
         );
-        if constexpr (std::is_signed_v<T>) {
-            if (v < 0) {
-                throw std::out_of_range("negative value in Unsigned construction");
-            }
+        if (!native_value_fits<R.length(), false>(v)) {
+            throw std::out_of_range("value does not fit in Unsigned width");
         }
-
-        if constexpr (std::numeric_limits<T>::digits <= R.length()) {
-            value_ = v;
-        } else {
-            using unsigned_T = std::make_unsigned_t<T>;
-            if (static_cast<unsigned_T>(v) > max_unsigned<R.length()>()) {
-                throw std::out_of_range("value does not fit in Unsigned width");
-            }
-            value_ = v;
-        }
+        value_ = v;
     }
 
     // Cross-width conversion. Throws if the source value doesn't fit in N bits.

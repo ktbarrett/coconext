@@ -82,31 +82,10 @@ class Signed {
         static_assert(
             R.length() > 0, "Signed<0> has no integer representation; use Signed<0>{}"
         );
-        if constexpr (std::is_unsigned_v<T>) {
-            if (v > std::numeric_limits<T>::max()) {
-                throw std::out_of_range("Unsigned value does not fit in Signed width");
-            }
-        } else {
-            if constexpr (std::numeric_limits<T>::digits >= R.length()) {
-                long long max_val = (1ULL << (R.length() - 1)) - 1;
-                long long min_val = -(1LL << (R.length() - 1));
-                if (v < min_val || v > max_val) {
-                    throw std::out_of_range("Signed value does not fit in Signed width");
-                }
-            }
+        if (!native_value_fits<R.length(), true>(v)) {
+            throw std::out_of_range("value does not fit in Signed width");
         }
-
-        value_ = detail::SInt<R.length()>(static_cast<uint64_t>(v));
-        if constexpr (R.length() > 64) {
-            if constexpr (std::is_signed_v<T>) {
-                if (v < 0) {
-                    Signed<R> temp(value_);
-                    temp = temp << (R.length() - 64);
-                    temp = temp >> (R.length() - 64);
-                    value_ = temp.value_;
-                }
-            }
-        }
+        value_ = v;
     }
 
     template <Range R2>
@@ -146,11 +125,7 @@ class Signed {
         static_assert(
             R.length() == R2.length(), "BitArray reinterpret requires identical width"
         );
-        detail::SInt<R.length()> temp_bit(0);
-        for (auto const& bit : other) {
-            temp_bit = bit ? 1 : 0;
-            value_ = (value_ << 1) | temp_bit;
-        }
+        value_ = SInt<R.length()>(bits(other));
     }
 
     template <Range R2>

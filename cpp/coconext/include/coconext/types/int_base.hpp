@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cassert>
 #include <climits>
 #include <coconext/types/bigint.hpp>
 #include <coconext/types/direction.hpp>
@@ -89,6 +90,40 @@ constexpr size_t integer_storage_width(size_t width) {
         }
     }
     return ((width + word_bits - 1) / word_bits) * word_bits;
+}
+
+template <bool SignedRepresentation, NativeInteger IntT>
+constexpr bool native_value_fits(size_t width, IntT value) {
+    if (width == 0) {
+        return false;
+    }
+
+    size_t const value_bits = width - (SignedRepresentation ? 1 : 0);
+    using UnsignedT = std::make_unsigned_t<IntT>;
+
+    if constexpr (std::is_signed_v<IntT>) {
+        if (value < 0) {
+            if constexpr (!SignedRepresentation) {
+                return false;
+            }
+            if (value_bits >= std::numeric_limits<IntT>::digits) {
+                return true;
+            }
+            UnsignedT const magnitude = UnsignedT{0} - static_cast<UnsignedT>(value);
+            return magnitude <= (UnsignedT{1} << value_bits);
+        }
+    }
+
+    if (value_bits >= std::numeric_limits<IntT>::digits) {
+        return true;
+    }
+    UnsignedT const maximum = (UnsignedT{1} << value_bits) - 1;
+    return static_cast<UnsignedT>(value) <= maximum;
+}
+
+template <size_t W, bool SignedRepresentation, NativeInteger IntT>
+constexpr bool native_value_fits(IntT value) {
+    return native_value_fits<SignedRepresentation>(W, value);
 }
 
 template <size_t W, bool SignedRepresentation>
@@ -337,6 +372,7 @@ class Int {
     template <NativeInteger IntT>
     constexpr Int(IntT val) {
         static_assert(W > 0, "zero-width Int has no integer representation");
+        assert((native_value_fits<W, SignedRepresentation>(val)));
         if constexpr (!is_wide && W > 0) {
             storage_ = static_cast<IntType>(val);
         } else {
@@ -1057,51 +1093,30 @@ class Int {
             }
             return {quotient, remainder};
         }
-        constexpr size_t magnitude_width = integer_storage_width(std::max(Wa, Wb) + 1);
-        constexpr size_t max_limbs =
-            (magnitude_width + word_bits - 1) / word_bits * limbs_per_word;
+        constexpr size_t lhs_limbs =
+            (Int<Wa, Sa>::physical_width + word_bits - 1) / word_bits * limbs_per_word;
+        constexpr size_t rhs_limbs =
+            (Int<Wb, Sb>::physical_width + word_bits - 1) / word_bits * limbs_per_word;
         Int quotient;
         Int<Wb, SignedRepresentation> remainder;
-        Int<Wa, false> lhs_magnitude;
-        Int<Wb, false> rhs_magnitude;
         NativeBuffer quotient_buffer{};
         typename Int<Wb, SignedRepresentation>::NativeBuffer remainder_buffer{};
-        typename Int<Wa, false>::NativeBuffer lhs_magnitude_buffer{};
-        typename Int<Wb, false>::NativeBuffer rhs_magnitude_buffer{};
         typename Int<Wa, Sa>::NativeBuffer a_buffer{};
         typename Int<Wb, Sb>::NativeBuffer b_buffer{};
-        std::array<DivLimb, max_limbs * 2 + 1> u{};
-        std::array<DivLimb, max_limbs> v{};
-        std::array<DivLimb, max_limbs * 2> q{};
-        std::array<DivLimb, max_limbs> r{};
+        std::array<DivLimb, lhs_limbs + 1> u{};
+        std::array<DivLimb, rhs_limbs> v{};
+        std::array<DivLimb, lhs_limbs> q{};
+        std::array<DivLimb, rhs_limbs> r{};
         DivideScratch scratch{u, v, q, r};
         auto quotient_view = quotient.physical_mut(quotient_buffer);
         auto remainder_view = remainder.physical_mut(remainder_buffer);
         auto av = a.physical_wide_cref(a_buffer);
         auto bv = b.physical_wide_cref(b_buffer);
         if constexpr (SignedRepresentation) {
-            auto lhs_magnitude_view = lhs_magnitude.physical_mut(lhs_magnitude_buffer);
-            auto rhs_magnitude_view = rhs_magnitude.physical_mut(rhs_magnitude_buffer);
             if (modulo) {
-                divide_modulo(
-                    quotient_view,
-                    remainder_view,
-                    av,
-                    bv,
-                    lhs_magnitude_view,
-                    rhs_magnitude_view,
-                    scratch
-                );
+                divide_modulo(quotient_view, remainder_view, av, bv, scratch);
             } else {
-                divide_signed(
-                    quotient_view,
-                    remainder_view,
-                    av,
-                    bv,
-                    lhs_magnitude_view,
-                    rhs_magnitude_view,
-                    scratch
-                );
+                divide_signed(quotient_view, remainder_view, av, bv, scratch);
             }
         } else {
             divide_unsigned(quotient_view, remainder_view, av, bv, scratch);
@@ -1205,23 +1220,6 @@ constexpr SInt<W + 1> abs(SInt<W> const& a) {
         return extended;
     } else {
         return a.get_bit(W - 1) ? -a : extended;
-    }
-}
-
-template <size_t bits>
-constexpr auto max_unsigned() {
-    if constexpr ((bits > 64 && !supports_128B) || (bits > 128)) {
-        return ~UInt<bits>{};
-    } else if constexpr (bits > 64) {
-        if constexpr (bits == 128) {
-            return ~__uint128_t{0};
-        } else {
-            return ((__uint128_t)1 << bits) - 1;
-        }
-    } else if constexpr (bits == 64) {
-        return ~uint64_t{0};
-    } else {
-        return (uint64_t{1} << bits) - 1;
     }
 }
 

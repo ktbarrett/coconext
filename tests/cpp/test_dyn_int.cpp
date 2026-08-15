@@ -87,10 +87,10 @@ TEST(DynInt, growing_arithmetic_accepts_mixed_widths) {
 }
 
 TEST(DynInt, signed_growing_arithmetic) {
-    DynSInt neg(8, uint64_t{200});    // -56
-    DynSInt pos(8, uint64_t{100});    // 100
-    DynSInt neg3(8, uint64_t{0xFD});  // -3
-    DynSInt pos56(8, uint64_t{56});
+    DynSInt neg(8, int8_t{-56});
+    DynSInt pos(8, int8_t{100});
+    DynSInt neg3(8, int8_t{-3});
+    DynSInt pos56(8, int8_t{56});
 
     EXPECT_EQ((neg + pos).to_decimal_string(true), "44");
     EXPECT_EQ((neg * pos).to_decimal_string(true), "-5600");
@@ -111,9 +111,27 @@ TEST(DynInt, signed_growing_arithmetic) {
     EXPECT_EQ(floored.to_decimal_string(true), "-4");
     EXPECT_EQ(mod.to_decimal_string(true), "3");
 
+    auto [negative_divisor_q, negative_divisor_r] =
+        detail::divrem(DynSInt(200, 17), DynSInt(8, -5));
+    EXPECT_EQ(negative_divisor_q.to_decimal_string(true), "-3");
+    EXPECT_EQ(negative_divisor_r.to_decimal_string(true), "2");
+
+    auto [both_negative_q, both_negative_r] =
+        detail::divrem(DynSInt(200, -17), DynSInt(8, -5));
+    EXPECT_EQ(both_negative_q.to_decimal_string(true), "3");
+    EXPECT_EQ(both_negative_r.to_decimal_string(true), "-2");
+
+    auto [smaller_q, smaller_r] = detail::divrem(DynSInt(8, -5), DynSInt(200, -17));
+    EXPECT_EQ(smaller_q.to_decimal_string(true), "0");
+    EXPECT_EQ(smaller_r.to_decimal_string(true), "-5");
+
+    auto [equal_q, equal_r] = detail::divrem(DynSInt(8, -5), DynSInt(200, -5));
+    EXPECT_EQ(equal_q.to_decimal_string(true), "1");
+    EXPECT_EQ(equal_r.to_decimal_string(true), "0");
+
     // The extra quotient bit keeps signed_min / -1 representable.
-    DynSInt min_val(8, uint64_t{0x80});
-    DynSInt minus_one(8, uint64_t{0xFF});
+    DynSInt min_val(8, int8_t{-128});
+    DynSInt minus_one(8, int8_t{-1});
     EXPECT_EQ((min_val / minus_one).to_decimal_string(true), "128");
 }
 
@@ -122,11 +140,11 @@ TEST(DynInt, signed_and_unsigned_are_distinct_canonical_representations) {
     static_assert(sizeof(DynUInt) == sizeof(DynSInt));
 
     DynUInt unsigned_negative_pattern(9, 0x1FF);
-    DynSInt signed_negative_pattern(9, 0x1FF);
+    DynSInt signed_negative_pattern(9, -1);
     EXPECT_EQ(unsigned_negative_pattern.raw().word(0), 0x1FF);
     EXPECT_EQ(signed_negative_pattern.raw().word(0), ~detail::Word{0});
 
-    DynUInt wide_unsigned(129, -1);
+    DynUInt wide_unsigned(129, DynSInt(129, -1));
     DynSInt wide_signed(129, -1);
     EXPECT_EQ(wide_unsigned.raw().word(2), 1);
     EXPECT_EQ(wide_signed.raw().word(2), ~detail::Word{0});
@@ -145,19 +163,19 @@ TEST(DynInt, signed_and_unsigned_are_distinct_canonical_representations) {
 }
 
 TEST(DynInt, native_static_and_parsed_construction_preserve_extension) {
-    DynUInt native_unsigned(9, -1);
+    DynUInt native_unsigned(9, 0x1FF);
     DynSInt native_signed(9, -1);
     EXPECT_EQ(native_unsigned.raw().word(0), 0x1FF);
     EXPECT_EQ(native_signed.raw().word(0), ~detail::Word{0});
 
-    DynUInt two_word_unsigned(65, -1);
+    DynUInt two_word_unsigned(65, ~uint64_t{0});
     DynSInt two_word_signed(65, -1);
-    EXPECT_EQ(two_word_unsigned.raw().word(1), 1);
+    EXPECT_EQ(two_word_unsigned.raw().word(1), 0);
     EXPECT_EQ(two_word_signed.raw().word(1), ~detail::Word{0});
 
     DynUInt from_native_static(detail::UInt<9>(0x1FF));
     DynSInt from_native_static_signed(detail::SInt<9>(-1));
-    DynUInt from_wide_static(detail::UInt<129>(-1));
+    DynUInt from_wide_static(detail::UInt<129>(detail::SInt<129>(-1)));
     DynSInt from_wide_static_signed(detail::SInt<129>(-1));
     EXPECT_EQ(from_native_static.raw().word(0), 0x1FF);
     EXPECT_EQ(from_native_static_signed.raw().word(0), ~detail::Word{0});
