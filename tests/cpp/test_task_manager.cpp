@@ -79,11 +79,6 @@ Coro<void> add_sibling(TaskManager* manager, int* calls) {
     co_return;
 }
 
-Coro<void> set_gate(Future<void> gate) {
-    gate.set_void();
-    co_return;
-}
-
 Coro<void> yield_once() { co_return; }
 
 Coro<void> start_only(TaskManager* manager) { co_await manager->start(); }
@@ -129,7 +124,7 @@ Coro<void> join_manager(TaskManager* manager, bool* joined) {
 Coro<void> request_second_join_cancellation(
     Future<void> started,
     Future<void> work,
-    TaskState<>** joiner_state,
+    TaskState<>* joining_task,
     bool* second_cancel_requested
 ) {
     started.set_void();
@@ -137,18 +132,15 @@ Coro<void> request_second_join_cancellation(
         co_await work;
     } catch (CancelledError const&) {
         *second_cancel_requested = true;
-        (*joiner_state)->cancel();
+        joining_task->cancel();
         throw;
     }
     co_return;
 }
 
-Coro<void> join_and_expose_task(
-    TaskManager* manager, TaskState<>** joiner_state, Future<void> started
-) {
-    *joiner_state = current_task().get();
-    started.set_void();
-    co_await manager->join();
+Coro<void> cancel_task(TaskState<>* task) {
+    task->cancel();
+    co_return;
 }
 
 }  // namespace
@@ -314,25 +306,16 @@ TEST(TestTaskManager, CancelledManagerExceptionIsNotJoinerCancellation) {
     EXPECT_NO_THROW(run(body()));
 }
 
-TEST(TestTaskManager, MultipleJoinersMayWaitForCompletion) {
+TEST(TestTaskManager, JoinFromTaskOtherThanOwnerIsRejected) {
     auto body = []() -> Coro<void> {
         TaskManager manager;
-        Future<void> gate;
-        bool first_joined = false;
-        bool second_joined = false;
+        bool joined = false;
         co_await manager.start();
-        (void)manager.start_soon(await_gate(gate));
 
-        Task<void> first = start_soon(join_manager(&manager, &first_joined));
-        Task<void> second = start_soon(join_manager(&manager, &second_joined));
-        Task<void> release = start_soon(set_gate(gate));
-
-        co_await first;
-        co_await second;
-        co_await release;
+        Task<void> other = manager.start_soon(join_manager(&manager, &joined));
+        EXPECT_THROW(co_await other, std::logic_error);
+        EXPECT_FALSE(joined);
         co_await manager.join();
-        EXPECT_TRUE(first_joined);
-        EXPECT_TRUE(second_joined);
         EXPECT_TRUE(manager.done());
     };
 
@@ -340,45 +323,39 @@ TEST(TestTaskManager, MultipleJoinersMayWaitForCompletion) {
 }
 
 TEST(TestTaskManager, CancelledJoinWaitsForChildrenAndCoalescesRepeatedRequests) {
-    auto body = []() -> Coro<void> {
+    bool second_cancel_requested = false;
+    bool manager_done = false;
+    bool child_done = false;
+    bool child_cancelled = false;
+
+    auto body = [&]() -> Coro<void> {
         TaskManager manager;
-        TaskManager joiners;
         Future<void> child_started;
-        Future<void> joiner_started;
         Future<void> work;
-        TaskState<>* joiner_state = nullptr;
-        bool second_cancel_requested = false;
-        bool join_cancelled = false;
+        auto joining_task = current_task();
 
         co_await manager.start();
-        co_await joiners.start();
         Task<void> child = manager.start_soon(request_second_join_cancellation(
-            child_started, work, &joiner_state, &second_cancel_requested
+            child_started, work, joining_task, &second_cancel_requested
         ));
-        Task<void> joiner = joiners.start_soon(
-            join_and_expose_task(&manager, &joiner_state, joiner_started)
-        );
 
         co_await child_started;
-        co_await joiner_started;
-        EXPECT_NE(joiner_state, nullptr);
-        joiner.cancel();
+        (void)start_soon(cancel_task(joining_task));
         try {
-            co_await joiner;
+            co_await manager.join();
         } catch (CancelledError const&) {
-            join_cancelled = true;
+            manager_done = manager.done();
+            child_done = child.done();
+            child_cancelled = child.cancelled();
+            throw;
         }
-
-        EXPECT_TRUE(join_cancelled);
-        EXPECT_TRUE(second_cancel_requested);
-        EXPECT_TRUE(manager.done());
-        EXPECT_TRUE(joiners.done());
-        EXPECT_TRUE(child.done());
-        EXPECT_TRUE(child.cancelled());
-        EXPECT_TRUE(joiner.cancelling());
     };
 
-    EXPECT_NO_THROW(run(body()));
+    EXPECT_THROW(run(body()), CancelledError);
+    EXPECT_TRUE(second_cancel_requested);
+    EXPECT_TRUE(manager_done);
+    EXPECT_TRUE(child_done);
+    EXPECT_TRUE(child_cancelled);
 }
 
 TEST(TestTaskManager, DestructorThrowsIfStartedButNotDone) {

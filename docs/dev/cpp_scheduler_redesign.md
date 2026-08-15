@@ -219,10 +219,9 @@ An empty Open manager does not become Done automatically. It has no child
 whose policy hook could decide that work is complete, so the owner must call
 `close()` explicitly.
 
-Any number of callers may wait concurrently or sequentially in `join()`.
-`join()` does not call `close()`: while its caller is suspended, existing
-children may use the manager to add more siblings. Completion policy belongs
-in `on_child_done()`.
+Only the Task that called `start()` may call `join()`. `join()` does not call
+`close()`: while its caller is suspended, existing children may use the manager
+to add more siblings. Completion policy belongs in `on_child_done()`.
 
 If a joining Task is canceled before the manager is Done, `join()` cancels the
 manager but continues waiting for every child to finish its cancellation

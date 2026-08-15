@@ -19,6 +19,22 @@ namespace detail {
 template <typename T>
 class RunTaskManager;
 
+class TaskContextAwaiter {
+  public:
+    [[nodiscard]] bool await_ready() const noexcept { return false; }
+
+    template <typename PromiseType>
+    bool await_suspend(std::coroutine_handle<PromiseType> parent) noexcept {
+        context_ = parent.promise().get_context();
+        return false;
+    }
+
+    [[nodiscard]] TaskContext await_resume() const noexcept { return *context_; }
+
+  private:
+    std::optional<TaskContext> context_;
+};
+
 }  // namespace detail
 
 class TaskManager {
@@ -195,7 +211,13 @@ inline Coro<void> TaskManager::join() & {
         throw std::logic_error("Cannot join an unstarted TaskManager");
     }
 
-    auto task = current_task();
+    auto context = co_await detail::TaskContextAwaiter{};
+    if (context.get_task() != context_->get_task()) {
+        throw std::logic_error(
+            "TaskManager can only be joined by the Task that started it"
+        );
+    }
+    auto task = not_null{context.get_task()};
     bool cancelled = false;
     std::exception_ptr completion_exception;
 
