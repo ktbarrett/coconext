@@ -1,6 +1,7 @@
 #ifndef COCONEXT_TASK_HPP
 #define COCONEXT_TASK_HPP
 
+#include <coconext/awaitable.hpp>
 #include <coconext/event_loop.hpp>
 #include <coconext/intrusive_deque.hpp>
 #include <coconext/not_null.hpp>
@@ -52,6 +53,7 @@ template <typename AwaitableStateT>
 class AwaitableAwaiter : private Event {
   public:
     using value_type = typename AwaitableStateT::value_type;
+    using coconext_awaiter = void;
 
     [[nodiscard]] explicit AwaitableAwaiter(not_null<AwaitableStateT*> awaitable)
         : awaitable_(awaitable) {}
@@ -92,7 +94,7 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
     template <typename>
     friend class detail::TaskStateBase;
     friend class TaskContext;
-    friend TaskContext current_context();
+    friend TaskContext lookup_context();
 
     struct Scheduled : detail::Event {
         [[nodiscard]] explicit Scheduled(not_null<TaskState<>*> task) : task_(task) {}
@@ -166,6 +168,8 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
         callbacks_.emplace_back(std::forward<F>(callback));
     }
 
+    void start_soon(TaskContext const& context);
+
     void cancel() {
         if (done()) {
             return;
@@ -229,8 +233,6 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
     [[nodiscard]] TaskManager* get_global_task_manager() const noexcept {
         return global_task_manager_;
     }
-
-    void start_soon(TaskContext const& context);
 
     void register_waiter(not_null<detail::Event*> awaiter) noexcept {
         waiters_.push_back(awaiter);
@@ -386,7 +388,7 @@ class Task {
 
     [[nodiscard]] not_null<TaskState<T>*> get_state() const noexcept { return handle_; }
 
-    [[nodiscard]] auto operator co_await() noexcept {
+    [[nodiscard]] CoconextAwaitable auto operator co_await() noexcept {
         return detail::AwaitableAwaiter<TaskState<T>>(handle_);
     }
 
@@ -395,17 +397,21 @@ class Task {
         handle_->inc_ref();
     }
 
-    [[nodiscard]] Task(Coro<T> coro) : Task(std::move(wrap_impl(std::move(coro)))) {}
+    template <CoconextAwaitable A>
+        requires std::same_as<await_result_t<A>, T>
+    [[nodiscard]] Task(A awaitable) : Task(std::move(wrap_impl(std::move(awaitable)))) {}
 
-    [[nodiscard]] static Task<T> wrap_impl(Coro<T> coro) {
-        co_return co_await std::move(coro);
+    template <CoconextAwaitable A>
+        requires std::same_as<await_result_t<A>, T>
+    [[nodiscard]] static Task<T> wrap_impl(A awaitable) {
+        co_return co_await std::move(awaitable);
     }
 
     not_null<TaskState<T>*> handle_;
 };
 
 class TaskContext final {
-    friend TaskContext current_context();
+    friend TaskContext lookup_context();
     friend class TaskManager;
     friend class TaskState<detail::Erased>;
     template <typename>
@@ -435,14 +441,40 @@ class TaskContext final {
     TaskState<>* task_ = nullptr;
 };
 
-[[nodiscard]] inline not_null<TaskState<>*> current_task() {
+namespace detail {
+
+class TaskContextAwaiter {
+  public:
+    using coconext_awaiter = void;
+
+    [[nodiscard]] bool await_ready() const noexcept { return false; }
+
+    template <typename PromiseType>
+    bool await_suspend(std::coroutine_handle<PromiseType> parent) noexcept {
+        context_ = parent.promise().get_context();
+        return false;
+    }
+
+    [[nodiscard]] TaskContext await_resume() const noexcept { return *context_; }
+
+  private:
+    std::optional<TaskContext> context_;
+};
+
+}  // namespace detail
+
+[[nodiscard]] inline CoconextAwaitable auto get_context() {
+    return detail::TaskContextAwaiter{};
+}
+
+[[nodiscard]] inline not_null<TaskState<>*> lookup_task() {
     if (detail::current_task == nullptr) {
         throw std::runtime_error("No current task");
     }
     return detail::current_task;
 }
 
-[[nodiscard]] inline TaskContext current_context() { return current_task()->get_context(); }
+[[nodiscard]] inline TaskContext lookup_context() { return lookup_task()->get_context(); }
 
 inline TaskContext TaskState<>::get_context() noexcept {
     return TaskContext{not_null{event_loop_}, global_task_manager_, this};

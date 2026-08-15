@@ -159,7 +159,7 @@ class AbstractFuture {
         handle_->add_done_callback(std::forward<F>(callback));
     }
 
-    [[nodiscard]] auto operator co_await() noexcept {
+    [[nodiscard]] CoconextAwaitable auto operator co_await() noexcept {
         return detail::AwaitableAwaiter<StateT>(handle_);
     }
 

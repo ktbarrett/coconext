@@ -19,22 +19,6 @@ namespace detail {
 template <typename T>
 class RunTaskManager;
 
-class TaskContextAwaiter {
-  public:
-    [[nodiscard]] bool await_ready() const noexcept { return false; }
-
-    template <typename PromiseType>
-    bool await_suspend(std::coroutine_handle<PromiseType> parent) noexcept {
-        context_ = parent.promise().get_context();
-        return false;
-    }
-
-    [[nodiscard]] TaskContext await_resume() const noexcept { return *context_; }
-
-  private:
-    std::optional<TaskContext> context_;
-};
-
 }  // namespace detail
 
 class TaskManager {
@@ -54,6 +38,8 @@ class TaskManager {
         friend class TaskManager;
 
       public:
+        using coconext_awaiter = void;
+
         [[nodiscard]] bool await_ready() const noexcept { return false; }
 
         template <typename PromiseType>
@@ -92,8 +78,25 @@ class TaskManager {
 
     [[nodiscard]] Coro<void> join() &;
 
+    template <CoconextAwaitable A>
+    [[nodiscard]] Task<await_result_t<A>> start_soon(A awaitable) {
+        using Result = await_result_t<A>;
+        Task<Result> task{Task<Result>::wrap_impl(std::move(awaitable))};
+        add_and_start(task.get_state());
+        return task;
+    }
+
     template <typename T>
-    [[nodiscard]] Task<T> start_soon(Coro<T> coro);
+    [[nodiscard]] Task<T> start_soon(Task<T>& task) {
+        add_and_start(task.get_state());
+        return task;
+    }
+
+    template <typename T>
+    [[nodiscard]] Task<T> start_soon(Task<T>&& task) {
+        add_and_start(task.get_state());
+        return task;
+    }
 
     void close() {
         if (state_ == State::Created) {
@@ -159,12 +162,19 @@ class TaskManager {
         if (state_ != State::Open) {
             throw std::logic_error("Cannot start a Task on a non-open TaskManager");
         }
-        assert(task->task_manager_ == nullptr);
+        if (task->done()) {
+            throw std::logic_error("Cannot adopt a completed Task");
+        }
+        if (task->task_manager_ != nullptr) {
+            throw std::logic_error("Task is already managed by another TaskManager");
+        }
 
         task->task_manager_ = this;
         task->inc_ref();
         tasks_.push_back(task);
-        task->start_soon(*context_);
+        if (!task->started()) {
+            task->start_soon(*context_);
+        }
         on_add(task);
     }
 
@@ -211,7 +221,7 @@ inline Coro<void> TaskManager::join() & {
         throw std::logic_error("Cannot join an unstarted TaskManager");
     }
 
-    auto context = co_await detail::TaskContextAwaiter{};
+    auto context = co_await get_context();
     if (context.get_task() != context_->get_task()) {
         throw std::logic_error(
             "TaskManager can only be joined by the Task that started it"
@@ -247,20 +257,31 @@ inline Coro<void> TaskManager::join() & {
     }
 }
 
-template <typename T>
-Task<T> TaskManager::start_soon(Coro<T> coro) {
-    Task<T> task{std::move(coro)};
-    add_and_start(task.get_state());
-    return task;
-}
-
-template <typename T>
-[[nodiscard]] Task<T> start_soon(Coro<T> coro) {
-    auto global_task_manager = current_context().get_global_task_manager();
+template <CoconextAwaitable A>
+[[nodiscard]] Task<await_result_t<A>> start_soon(A awaitable) {
+    auto global_task_manager = lookup_context().get_global_task_manager();
     if (global_task_manager == nullptr) {
         throw std::runtime_error("No global TaskManager");
     }
-    return global_task_manager->start_soon(std::move(coro));
+    return global_task_manager->start_soon(std::move(awaitable));
+}
+
+template <typename T>
+[[nodiscard]] Task<T> start_soon(Task<T>& task) {
+    auto global_task_manager = lookup_context().get_global_task_manager();
+    if (global_task_manager == nullptr) {
+        throw std::runtime_error("No global TaskManager");
+    }
+    return global_task_manager->start_soon(task);
+}
+
+template <typename T>
+[[nodiscard]] Task<T> start_soon(Task<T>&& task) {
+    auto global_task_manager = lookup_context().get_global_task_manager();
+    if (global_task_manager == nullptr) {
+        throw std::runtime_error("No global TaskManager");
+    }
+    return global_task_manager->start_soon(std::move(task));
 }
 
 inline void TaskState<>::on_done(Outcome outcome) noexcept {

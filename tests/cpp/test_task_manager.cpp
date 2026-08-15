@@ -15,8 +15,8 @@
 
 using coconext::CancelledError;
 using coconext::Coro;
-using coconext::current_task;
 using coconext::Future;
+using coconext::lookup_task;
 using coconext::not_null;
 using coconext::run;
 using coconext::start_soon;
@@ -171,6 +171,104 @@ TEST(TestTaskManager, StartBindsManagerAndStartSoonReturnsStartedTask) {
     EXPECT_EQ(run(body()), 42);
 }
 
+TEST(TestTaskManager, StartSoonAdoptsAndStartsUnstartedTask) {
+    auto body = []() -> Coro<void> {
+        RecordingTaskManager manager;
+        Task<int> task = []() -> Task<int> { co_return 42; }();
+        auto state = task.get_state();
+
+        EXPECT_FALSE(task.started());
+        co_await manager.start();
+        Task<int> adopted = manager.start_soon(task);
+
+        EXPECT_EQ(adopted.get_state(), state);
+        EXPECT_EQ(task.get_state(), state);
+        EXPECT_TRUE(task.started());
+        EXPECT_EQ(manager.added.size(), 1u);
+        if (!manager.added.empty()) {
+            EXPECT_EQ(manager.added.front(), state.get());
+        }
+
+        co_await manager.join();
+        EXPECT_TRUE(manager.done());
+        EXPECT_EQ(task.result(), 42);
+    };
+
+    EXPECT_NO_THROW(run(body()));
+}
+
+TEST(TestTaskManager, StartSoonAdoptsRvalueTaskWithoutWrapping) {
+    auto body = []() -> Coro<void> {
+        RecordingTaskManager manager;
+        Task<int> task = []() -> Task<int> { co_return 42; }();
+        auto state = task.get_state();
+
+        co_await manager.start();
+        Task<int> adopted = manager.start_soon(std::move(task));
+
+        EXPECT_EQ(adopted.get_state(), state);
+        EXPECT_TRUE(adopted.started());
+        co_await manager.join();
+        EXPECT_EQ(adopted.result(), 42);
+    };
+
+    EXPECT_NO_THROW(run(body()));
+}
+
+TEST(TestTaskManager, StartSoonRejectsCompletedTask) {
+    auto body = []() -> Coro<void> {
+        TaskManager manager;
+        Task<int> task = []() -> Task<int> { co_return 42; }();
+
+        co_await manager.start();
+        EXPECT_EQ(co_await task, 42);
+        EXPECT_TRUE(task.done());
+        EXPECT_THROW((void)manager.start_soon(task), std::logic_error);
+
+        manager.close();
+        co_await manager.join();
+    };
+
+    EXPECT_NO_THROW(run(body()));
+}
+
+TEST(TestTaskManager, CancellingManagerCancelsAdoptedTaskDirectly) {
+    auto body = []() -> Coro<void> {
+        TaskManager manager;
+        Future<void> never;
+        Task<void> task = [](Future<void> gate) -> Task<void> { co_await gate; }(never);
+
+        co_await manager.start();
+        Task<void> adopted = manager.start_soon(task);
+        manager.cancel();
+        co_await manager.join();
+
+        EXPECT_EQ(adopted.get_state(), task.get_state());
+        EXPECT_TRUE(task.done());
+        EXPECT_TRUE(task.cancelled());
+    };
+
+    EXPECT_NO_THROW(run(body()));
+}
+
+TEST(TestTaskManager, StartSoonRejectsTaskAlreadyOwnedByManager) {
+    auto body = []() -> Coro<void> {
+        TaskManager first;
+        TaskManager second;
+        co_await first.start();
+        co_await second.start();
+
+        Task<int> task = first.start_soon(return_int());
+        EXPECT_THROW((void)second.start_soon(task), std::logic_error);
+
+        second.close();
+        co_await first.join();
+        co_await second.join();
+    };
+
+    EXPECT_NO_THROW(run(body()));
+}
+
 TEST(TestTaskManager, StartSoonBeforeStartIsRejected) {
     auto body = []() -> Coro<void> {
         TaskManager manager;
@@ -288,7 +386,7 @@ TEST(TestTaskManager, PolicyCanPropagateChildFailureAndCancelSiblings) {
 TEST(TestTaskManager, CancelledManagerExceptionIsNotJoinerCancellation) {
     auto body = []() -> Coro<void> {
         FailFastTaskManager manager;
-        auto task = current_task();
+        auto task = lookup_task();
         co_await manager.start();
         (void)manager.start_soon(throw_cancelled());
 
@@ -332,7 +430,7 @@ TEST(TestTaskManager, CancelledJoinWaitsForChildrenAndCoalescesRepeatedRequests)
         TaskManager manager;
         Future<void> child_started;
         Future<void> work;
-        auto joining_task = current_task();
+        auto joining_task = lookup_task();
 
         co_await manager.start();
         Task<void> child = manager.start_soon(request_second_join_cancellation(

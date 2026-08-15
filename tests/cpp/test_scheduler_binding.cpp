@@ -1,6 +1,7 @@
 // LCOV_EXCL_BR_START -- gtest macros generate noisy uncovered branches
 #include <gtest/gtest.h>
 
+#include <coconext/awaitable.hpp>
 #include <coconext/coro.hpp>
 #include <coconext/future.hpp>
 #include <coconext/outcome.hpp>
@@ -8,17 +9,26 @@
 #include <coconext/task.hpp>
 #include <coconext/task_manager.hpp>
 
+#include <concepts>
+#include <coroutine>
 #include <exception>
 #include <optional>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
 
+using coconext::await_result_t;
+using coconext::Awaitable;
+using coconext::Awaiter;
 using coconext::CancelledError;
+using coconext::CoconextAwaitable;
+using coconext::CoconextAwaiter;
 using coconext::Coro;
-using coconext::current_context;
-using coconext::current_task;
 using coconext::Future;
+using coconext::get_awaiter;
+using coconext::get_context;
+using coconext::lookup_context;
+using coconext::lookup_task;
 using coconext::run;
 using coconext::start_soon;
 using coconext::Task;
@@ -36,7 +46,7 @@ Coro<void> throw_runtime() {
 Task<int> make_unstarted_task() { co_return 42; }
 
 Coro<void> self_cancel() {
-    current_task()->cancel();
+    lookup_task()->cancel();
     co_return;
 }
 
@@ -83,24 +93,91 @@ Coro<void> throw_cancelled() {
     co_return;
 }
 
+class ImmediateIntAwaitable {
+  public:
+    class Awaiter {
+      public:
+        using coconext_awaiter = void;
+
+        [[nodiscard]] explicit Awaiter(int value) noexcept : value_(value) {}
+        [[nodiscard]] bool await_ready() const noexcept { return true; }
+
+        template <typename PromiseType>
+        void await_suspend(std::coroutine_handle<PromiseType>) const noexcept {}
+
+        [[nodiscard]] int await_resume() const noexcept { return value_; }
+
+      private:
+        int value_;
+    };
+
+    [[nodiscard]] explicit ImmediateIntAwaitable(int value) noexcept : value_(value) {}
+
+    [[nodiscard]] CoconextAwaitable auto operator co_await() const noexcept {
+        return Awaiter{value_};
+    }
+
+  private:
+    int value_;
+};
+
+class UnmarkedIntAwaitable {
+  public:
+    [[nodiscard]] bool await_ready() const noexcept { return true; }
+
+    template <typename PromiseType>
+    void await_suspend(std::coroutine_handle<PromiseType>) const noexcept {}
+
+    [[nodiscard]] int await_resume() const noexcept { return 42; }
+};
+
 }  // namespace
 
 static_assert(!std::is_constructible_v<Task<int>, Coro<int>>);
+static_assert(Awaitable<Coro<int>>);
+static_assert(Awaiter<ImmediateIntAwaitable::Awaiter>);
+static_assert(CoconextAwaiter<ImmediateIntAwaitable::Awaiter>);
+static_assert(CoconextAwaitable<Coro<int>>);
+static_assert(CoconextAwaitable<Task<int>>);
+static_assert(CoconextAwaitable<Future<int>>);
+static_assert(CoconextAwaitable<decltype(get_context())>);
+static_assert(std::same_as<await_result_t<ImmediateIntAwaitable>, int>);
+static_assert(std::same_as<
+              decltype(get_awaiter(std::declval<ImmediateIntAwaitable>())),
+              ImmediateIntAwaitable::Awaiter>);
+static_assert(Awaiter<UnmarkedIntAwaitable>);
+static_assert(Awaitable<UnmarkedIntAwaitable>);
+static_assert(!CoconextAwaiter<UnmarkedIntAwaitable>);
+static_assert(!CoconextAwaitable<UnmarkedIntAwaitable>);
 
-TEST(TestSchedulerBinding, CurrentTaskAndContextThrowOutsideTask) {
-    EXPECT_THROW((void)current_task(), std::runtime_error);
-    EXPECT_THROW((void)current_context(), std::runtime_error);
+TEST(TestSchedulerBinding, LookupTaskAndContextThrowOutsideTask) {
+    EXPECT_THROW((void)lookup_task(), std::runtime_error);
+    EXPECT_THROW((void)lookup_context(), std::runtime_error);
 }
 
-TEST(TestSchedulerBinding, CurrentTaskInsideTaskReturnsSelf) {
+TEST(TestSchedulerBinding, LookupTaskInsideTaskReturnsSelf) {
     auto body = []() -> Coro<void> {
-        auto task = current_task();
-        EXPECT_EQ(current_task().get(), task.get());
+        auto task = lookup_task();
+        EXPECT_EQ(lookup_task().get(), task.get());
         co_return;
     };
 
     EXPECT_NO_THROW(run(body()));
-    EXPECT_THROW((void)current_task(), std::runtime_error);
+    EXPECT_THROW((void)lookup_task(), std::runtime_error);
+}
+
+TEST(TestSchedulerBinding, GetContextReturnsEnclosingTaskContext) {
+    auto body = []() -> Coro<void> {
+        auto context = co_await get_context();
+        auto lookup = lookup_context();
+
+        EXPECT_EQ(context.get_task(), lookup_task().get());
+        EXPECT_EQ(context.get_task(), lookup.get_task());
+        EXPECT_EQ(context.get_event_loop(), lookup.get_event_loop());
+        EXPECT_EQ(context.get_global_task_manager(), lookup.get_global_task_manager());
+    };
+
+    EXPECT_NO_THROW(run(body()));
 }
 
 TEST(TestSchedulerBinding, AwaitingUnstartedTaskStartsIt) {
@@ -120,6 +197,41 @@ TEST(TestSchedulerBinding, FreeStartSoonSpawnsAndReturnsTask) {
         Task<int> task = start_soon(return_int());
         EXPECT_TRUE(task.started());
         co_return co_await task;
+    };
+
+    EXPECT_EQ(run(body()), 42);
+}
+
+TEST(TestSchedulerBinding, FreeStartSoonAcceptsAnyCoconextAwaitable) {
+    auto body = []() -> Coro<int> {
+        co_return co_await start_soon(ImmediateIntAwaitable{21});
+    };
+
+    EXPECT_EQ(run(body()), 21);
+}
+
+TEST(TestSchedulerBinding, FreeStartSoonAdoptsUnstartedTask) {
+    auto body = []() -> Coro<int> {
+        Task<int> task = make_unstarted_task();
+        auto state = task.get_state();
+
+        Task<int> adopted = start_soon(task);
+        EXPECT_EQ(adopted.get_state(), state);
+        EXPECT_TRUE(task.started());
+        co_return co_await adopted;
+    };
+
+    EXPECT_EQ(run(body()), 42);
+}
+
+TEST(TestSchedulerBinding, FreeStartSoonAdoptsRvalueTask) {
+    auto body = []() -> Coro<int> {
+        Task<int> task = make_unstarted_task();
+        auto state = task.get_state();
+
+        Task<int> adopted = start_soon(std::move(task));
+        EXPECT_EQ(adopted.get_state(), state);
+        co_return co_await adopted;
     };
 
     EXPECT_EQ(run(body()), 42);

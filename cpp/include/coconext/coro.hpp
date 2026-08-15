@@ -34,10 +34,12 @@ class CoroStateBase {
         )};
     }
     [[nodiscard]] std::suspend_always initial_suspend() noexcept { return {}; }
-    [[nodiscard]] auto final_suspend() noexcept {
+    [[nodiscard]] CoconextAwaitable auto final_suspend() noexcept {
         // This exists to "chain" coros together.
         class TransferAwaitable {
           public:
+            using coconext_awaiter = void;
+
             explicit TransferAwaitable(std::coroutine_handle<> parent) noexcept
                 : parent_(parent) {}
 
@@ -110,6 +112,8 @@ class Coro {
   public:
     class Awaiter {
       public:
+        using coconext_awaiter = void;
+
         explicit Awaiter(Coro& coro) noexcept : coro_(coro) {}
 
       public:
@@ -156,7 +160,9 @@ class Coro {
     [[nodiscard]] CoroState<T>& get_state() const noexcept { return handle_.promise(); }
     // No from_state() because Coro cannot be copied.
 
-    [[nodiscard]] auto operator co_await() noexcept { return Awaiter{*this}; }
+    [[nodiscard]] CoconextAwaitable auto operator co_await() noexcept {
+        return Awaiter{*this};
+    }
 
   private:
     std::coroutine_handle<CoroState<T>> handle_;

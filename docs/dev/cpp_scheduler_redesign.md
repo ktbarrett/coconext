@@ -15,6 +15,13 @@ its scope.
 | `TaskManager` | Normal, non-copyable polymorphic object | Owns and applies policy to a set of Tasks |
 | `EventLoop` / `Event` | Plain scheduler objects | Ready-queue substrate |
 
+`Awaiter<T>` and `Awaitable<T>` describe the language-level C++ coroutine
+protocol. `CoconextAwaiter<T>` and `CoconextAwaitable<T>` additionally require
+scheduler compatibility. Compatible Awaiters expose
+`using coconext_awaiter = void`. The marker is necessary because an Awaiter can
+be structurally valid while resuming a Task outside coconext's event loop and
+bypassing its state and ambient-context bookkeeping.
+
 `TaskManager` deliberately differs from `Task` and Future handles. It is not
 shared state, it has no result value, and it is not itself awaitable. Its
 lifecycle is explicit:
@@ -71,17 +78,21 @@ as other Future users rather than defining a manager-specific event.
 coroutine frames. It is a composition primitive, not independently scheduled
 work.
 
-A `Task<T>` is what a manager creates when it accepts a `Coro<T>`:
+A `Task<T>` is what a manager creates when it accepts a compatible Awaitable:
 
 ```cpp
-Task<T> TaskManager::start_soon(Coro<T> coro);
+template <CoconextAwaitable A>
+Task<await_result_t<A>> TaskManager::start_soon(A awaitable);
 ```
 
-The Coro-to-Task constructor is private. A raw Task-returning coroutine can
+The Awaitable-to-Task constructor is private. The generic overload creates a
+manager-owned wrapper Task that awaits the supplied object. Separate Task
+overloads adopt lvalues and rvalues directly, preserving their identity and
+rejecting a completed Task or one already owned by another manager. A raw
+Task-returning coroutine can
 still produce an unstarted Task because `Task` is a coroutine return type, but
-awaiting it does not start it implicitly and is an error. Normal scheduled
-work therefore goes through a manager, making the owner explicit before its
-body can run.
+normal scheduled work goes through a manager, making the owner explicit before
+its body can run.
 
 Task handles share an intrusive reference count stored in `TaskState<T>`.
 While a Task is active there can be three additional kinds of ownership:
@@ -189,7 +200,7 @@ awaiter.
 
 When completion schedules the awaiter, `event_run()` takes a temporary Task
 reference, marks it Running, resumes the saved parent handle, restores the
-previous `current_task`, and releases the reference. `await_resume()` checks
+previous ambient Task, and releases the reference. `await_resume()` checks
 for outstanding cancellation requests before returning or rethrowing the
 awaitable's result.
 
@@ -297,9 +308,8 @@ Task<T> task = coconext::start_soon(coro());
 ```
 
 The free function looks up the enclosing Task's global manager and delegates
-to that manager's `start_soon(Coro)`. It does not accept a pre-existing Task.
-Every spawned body is therefore wrapped, owned, bound, and started in one
-operation.
+to that manager's `start_soon()`. General Awaitables are awaited by a new wrapper
+Task; Tasks are instead adopted directly by the global manager.
 
 ## `run()`
 
@@ -337,9 +347,11 @@ Bindings happen as late as possible:
 - a Future binds on its first suspending await;
 - the private run manager binds directly to its newly created loop.
 
-`current_task` is thread-local only for explicitly ambient operations such as
-the free `start_soon` and `current_context`. Each resume event saves and
-restores the prior value so no completed Task is left as the ambient context.
+`lookup_task()` is thread-local and is used only for explicitly ambient
+operations such as the free `start_soon()` and `lookup_context()`. Each resume
+event saves and restores the prior value so no completed Task is left as the
+ambient context. Coroutine code can instead `co_await get_context()` to obtain
+the enclosing promise's context without a thread-local lookup.
 
 A `TaskContext` stores its event loop, optional global manager, and optional
 current Task explicitly. Nested Coros and TaskManagers propagate that context
