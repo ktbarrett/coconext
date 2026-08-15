@@ -1456,9 +1456,7 @@ template <typename T>
 
 template <typename T>
 [[nodiscard]] constexpr auto_resized<T const&> resize(
-    T const& x,
-    overflow_mode ovf = overflow_mode::wrap,
-    round_mode rnd = round_mode::truncate
+    T const& x, overflow_mode ovf, round_mode rnd
 ) noexcept {
     return auto_resized<T const&>(x, ovf, rnd);
 }
@@ -1467,12 +1465,24 @@ template <typename T>
 template <typename T>
     requires(!std::is_lvalue_reference_v<T>)
 [[nodiscard]] constexpr auto_resized<T> resize(
-    T&& x, overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
+    T&& x, overflow_mode ovf, round_mode rnd
 ) noexcept {
     return auto_resized<T>(std::move(x), ovf, rnd);
 }
 
 }  // namespace detail
+
+// Deduced resize for Signed/Unsigned
+template <typename X>
+    requires(
+        detail::is_coconext_unsigned_v<std::remove_cvref_t<X>>
+        || detail::is_coconext_signed_v<std::remove_cvref_t<X>>
+    )
+[[nodiscard]] constexpr auto resize(
+    X&& x, overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
+) noexcept {
+    return detail::resize(std::forward<X>(x), ovf, rnd);
+}
 
 template <detail::HasBits Target, detail::HasBits Source>
 constexpr Target as(Source const& source) noexcept {

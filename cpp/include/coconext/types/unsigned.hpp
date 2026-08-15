@@ -614,7 +614,7 @@ template <auto... Args, typename X>
     requires(sizeof...(Args) > 0 && detail::is_coconext_unsigned_v<std::remove_cvref_t<X>>)
 constexpr auto resize(X&& x, overflow_mode ovf, round_mode rnd) {
     constexpr Range TargetRange = detail::make_int_range<Args...>();
-    return Unsigned<TargetRange>(resize(std::forward<X>(x), ovf, rnd));
+    return Unsigned<TargetRange>(detail::resize(std::forward<X>(x), ovf, rnd));
 }
 
 consteval Unsigned<8> u8(unsigned long long v) { return Unsigned<8>(v); }

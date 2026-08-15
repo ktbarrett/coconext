@@ -655,7 +655,7 @@ template <auto... Args, typename X>
     requires(sizeof...(Args) > 0 && detail::is_coconext_signed_v<std::remove_cvref_t<X>>)
 constexpr auto resize(X&& x, overflow_mode ovf, round_mode rnd) {
     constexpr Range TargetRange = detail::make_int_range<Args...>();
-    return Signed<TargetRange>(resize(std::forward<X>(x), ovf, rnd));
+    return Signed<TargetRange>(detail::resize(std::forward<X>(x), ovf, rnd));
 }
 
 template <Range R>
