@@ -21,54 +21,34 @@ class RunTaskManager final : public TaskManager {
         not_null<detail::EventLoop*> loop, std::condition_variable_any& done, Coro<T> root
     )
         : done_(done), root_(std::move(root)) {
-        this->start_internal(TaskContext{loop, this});
+        this->start_internal(TaskContext{loop, this, nullptr});
         this->add_and_start(root_.get_state());
     }
 
-    [[nodiscard]] bool finished() const noexcept { return this->done(); }
-
-    void finish() {
-        this->finish_join();
-        if (first_exception_) {
-            std::rethrow_exception(first_exception_);
-        }
+    [[nodiscard]] T result() const {
+        this->completion_.result();
+        return root_.result();
     }
-
-    [[nodiscard]] T result() const { return root_.result(); }
 
   private:
     void on_child_done(not_null<TaskState<>*> task) noexcept final {
         if (!this->closed() && task->exception()) {
-            first_exception_ = task->exception();
-            this->set_exception(first_exception_);
-            cancel_remaining();
+            this->set_exception(task->exception());
+            this->cancel();
             return;
         }
 
         if (task.get() == root_.get_state().get()) {
             // The root defines the lifetime of run(). Successful fire-and-forget
             // siblings are still torn down once it returns.
-            cancel_remaining();
+            this->cancel();
         }
     }
 
     void on_done() noexcept final { done_.notify_one(); }
 
-    void cancel_remaining() noexcept {
-        try {
-            this->cancel();
-        } catch (...) {
-            if (!first_exception_) {
-                first_exception_ = std::current_exception();
-                this->set_exception(first_exception_);
-            }
-            this->close();
-        }
-    }
-
     std::condition_variable_any& done_;
     Task<T> root_;
-    std::exception_ptr first_exception_;
 };
 
 }  // namespace detail
@@ -81,15 +61,14 @@ T run(Coro<T> coro) {
 
     {
         auto handle = loop.acquire();
-        while (!manager.finished()) {
+        while (!manager.done()) {
             handle.run();
-            if (!manager.finished()) {
-                handle.wait(done, [&manager] { return manager.finished(); });
+            if (!manager.done()) {
+                handle.wait(done, [&manager] { return manager.done(); });
             }
         }
     }
 
-    manager.finish();
     return manager.result();
 }
 

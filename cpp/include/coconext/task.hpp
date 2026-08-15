@@ -44,8 +44,6 @@ class TaskManager;
 
 class TaskContext;
 
-[[nodiscard]] TaskContext current_context();
-
 namespace detail {
 
 inline thread_local TaskState<>* current_task = nullptr;
@@ -94,6 +92,7 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
     template <typename>
     friend class detail::TaskStateBase;
     friend class TaskContext;
+    friend TaskContext current_context();
 
     struct Scheduled : detail::Event {
         [[nodiscard]] explicit Scheduled(not_null<TaskState<>*> task) : task_(task) {}
@@ -102,12 +101,12 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
             // on_resume() re-emplaces state_, which destroys *this. Copy the fields
             // we need onto the stack before that happens.
             auto task = task_;
-            task->inc_ref();
-            auto previous_task = detail::current_task;
+            auto& current_task = detail::current_task;
+            auto previous_task = current_task;
+            current_task = task;
             task->on_resume();
             task->handle_.resume();
-            detail::current_task = previous_task;
-            task->dec_ref();
+            current_task = previous_task;
         }
 
         not_null<TaskState<>*> task_;
@@ -120,33 +119,44 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
     };
 
     struct Running {};
-    struct CancelledOutcome {};
+    struct Succeeded {};
+    struct Failed {
+        std::exception_ptr exception;
+    };
+    struct Cancelled {};
+    using Outcome = std::variant<Succeeded, Failed, Cancelled>;
+    struct Done {
+        Outcome outcome;
+    };
 
   public:
     using value_type = detail::Erased;
 
-    [[nodiscard]] bool started() const noexcept { return started_; }
+    [[nodiscard]] bool started() const noexcept {
+        return !std::holds_alternative<std::monostate>(state_);
+    }
     [[nodiscard]] bool running() const noexcept {
         return std::holds_alternative<Running>(state_);
     }
-    [[nodiscard]] size_t cancelling() const noexcept { return cancellation_requests_; }
+    [[nodiscard]] bool cancelling() const noexcept { return cancellation_requested_; }
     [[nodiscard]] bool cancelled() const noexcept {
-        return std::holds_alternative<CancelledOutcome>(result_);
+        auto done_state = std::get_if<Done>(&state_);
+        return done_state != nullptr
+            && std::holds_alternative<Cancelled>(done_state->outcome);
     }
-
     [[nodiscard]] bool done() const noexcept {
-        return !std::holds_alternative<std::monostate>(result_);
+        return std::holds_alternative<Done>(state_);
     }
-
     [[nodiscard]] std::exception_ptr exception() const {
         if (!done()) {
             throw std::runtime_error("Not done");
         }
-        if (std::holds_alternative<std::exception_ptr>(result_)) {
-            return std::get<std::exception_ptr>(result_);
+        auto const& outcome = std::get<Done>(state_).outcome;
+        if (auto failed = std::get_if<Failed>(&outcome)) {
+            return failed->exception;
         }
         if (cancelled()) {
-            return std::make_exception_ptr(Cancelled{});
+            return std::make_exception_ptr(CancelledError{});
         }
         return nullptr;
     }
@@ -160,18 +170,16 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
         if (done()) {
             return;
         }
-        cancellation_requests_++;
+        cancellation_requested_ = true;
         if (running()) {
-            throw Cancelled{};
+            throw CancelledError{};
         }
         if (!started()) {
             mark_cancelled();
             return;
         } else if (std::holds_alternative<Scheduled>(state_)) {
-            inc_ref();
             std::get<Scheduled>(state_).event_unschedule();
             mark_cancelled();
-            dec_ref();
             return;
         } else if (std::holds_alternative<Pending>(state_)) {
             auto& pending = std::get<Pending>(state_);
@@ -180,40 +188,25 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
         }
     }
 
-    void uncancel() {
-        if (done()) {
-            return;
-        }
-        if (cancellation_requests_ == 0) {
-            throw std::runtime_error("Task is not cancelled");
-        }
-        cancellation_requests_--;
-    }
-
   protected:
     void set_exception(std::exception_ptr exc) noexcept {
         assert(exc);
-        result_ = exc;
-        on_done();
+        on_done(Failed{std::move(exc)});
     }
 
     void mark_value() noexcept {
-        if (cancellation_requests_ != 0) {
+        if (cancellation_requested_) {
             mark_cancellation_ignored();
             return;
         }
-        result_ = detail::Value<detail::Erased>{};
-        on_done();
+        on_done(Succeeded{});
     }
 
-    void mark_cancelled() noexcept {
-        result_ = CancelledOutcome{};
-        on_done();
-    }
+    void mark_cancelled() noexcept { on_done(Cancelled{}); }
 
     void mark_cancellation_ignored() noexcept {
         try {
-            throw_cancellation_ignored();
+            throw std::runtime_error("Task ignored cancellation");
         } catch (...) {
             set_exception(std::current_exception());
         }
@@ -227,15 +220,7 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
         }
     }
 
-    [[nodiscard]] size_t take_cancellations() noexcept {
-        return std::exchange(cancellation_requests_, 0);
-    }
-
-    void restore_cancellations(size_t count) noexcept { cancellation_requests_ += count; }
-
-    [[noreturn]] static void throw_cancellation_ignored() {
-        throw std::runtime_error("Task ignored cancellation without calling uncancel()");
-    }
+    void uncancel() noexcept { cancellation_requested_ = false; }
 
     [[nodiscard]] TaskContext get_context() noexcept;
 
@@ -253,39 +238,27 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
 
     void on_awaited(TaskContext const& context);
 
-    void on_done() noexcept;
+    void on_done(Outcome outcome) noexcept;
 
-    void on_resume() noexcept {
-        detail::current_task = this;
-        state_ = Running{};
-    }
+    void on_resume() noexcept { state_ = Running{}; }
 
     void on_awaiting(not_null<detail::Event*> awaiter) {
-        if (cancellation_requests_ != 0) {
-            throw_cancellation_ignored();
+        if (cancellation_requested_) {
+            throw std::runtime_error("Task ignored cancellation");
         }
         state_ = Pending{awaiter};
     }
 
   private:
-    std::variant<std::monostate, Scheduled, Pending, Running> state_;
-    std::variant<
-        std::monostate,
-        std::exception_ptr,
-        detail::Value<detail::Erased>,
-        CancelledOutcome>
-        result_;
+    std::variant<std::monostate, Scheduled, Pending, Running, Done> state_;
     detail::IntrusiveDeque<detail::Event> waiters_;
     std::vector<std::function<void()>> callbacks_;
     detail::EventLoop* event_loop_ = nullptr;
     TaskManager* task_manager_ = nullptr;
-    void (*internal_done_callback_)(not_null<TaskState<>*>) noexcept = nullptr;
     TaskManager* global_task_manager_ = nullptr;
     std::coroutine_handle<> handle_;
     size_t ref_count_{0};
-    size_t cancellation_requests_{0};
-    bool started_ = false;
-    bool scheduler_owned_ = false;
+    bool cancellation_requested_ = false;
 };
 
 namespace detail {
@@ -308,14 +281,14 @@ class TaskStateBase : public TaskState<> {
     void unhandled_exception() noexcept {
         try {
             throw;
-        } catch (Cancelled const&) {
-            if (this->cancelling() != 0) {
+        } catch (CancelledError const&) {
+            if (this->cancelling()) {
                 this->mark_cancelled();
             } else {
                 this->set_exception(std::current_exception());
             }
         } catch (...) {
-            if (this->cancelling() != 0) {
+            if (this->cancelling()) {
                 this->mark_cancellation_ignored();
             } else {
                 this->set_exception(std::current_exception());
@@ -341,7 +314,7 @@ class TaskState : public detail::TaskStateBase<T> {
             throw std::runtime_error("Not done");
         }
         if (TaskState<>::cancelled()) {
-            throw Cancelled{};
+            throw CancelledError{};
         }
         if (auto exc = TaskState<>::exception()) {
             std::rethrow_exception(exc);
@@ -363,7 +336,7 @@ class TaskState<void> : public detail::TaskStateBase<void> {
             throw std::runtime_error("Not done");
         }
         if (TaskState<>::cancelled()) {
-            throw Cancelled{};
+            throw CancelledError{};
         }
         if (auto exc = TaskState<>::exception()) {
             std::rethrow_exception(exc);
@@ -404,13 +377,12 @@ class Task {
 
     [[nodiscard]] bool started() const noexcept { return handle_->started(); }
     [[nodiscard]] bool done() const noexcept { return handle_->done(); }
-    [[nodiscard]] size_t cancelling() const noexcept { return handle_->cancelling(); }
+    [[nodiscard]] bool cancelling() const noexcept { return handle_->cancelling(); }
     [[nodiscard]] bool cancelled() const noexcept { return handle_->cancelled(); }
     [[nodiscard]] std::exception_ptr exception() const { return handle_->exception(); }
     [[nodiscard]] T result() const { return handle_->result(); }
 
     void cancel() { handle_->cancel(); }
-    void uncancel() { handle_->uncancel(); }
 
     [[nodiscard]] not_null<TaskState<T>*> get_state() const noexcept { return handle_; }
 
@@ -432,15 +404,7 @@ class Task {
     not_null<TaskState<T>*> handle_;
 };
 
-[[nodiscard]] inline not_null<TaskState<>*> current_task() {
-    if (detail::current_task == nullptr) {
-        throw std::runtime_error("No current task");
-    }
-    return detail::current_task;
-}
-
 class TaskContext final {
-    friend TaskContext get_context() noexcept;
     friend TaskContext current_context();
     friend class TaskManager;
     friend class TaskState<detail::Erased>;
@@ -450,77 +414,39 @@ class TaskContext final {
     friend class detail::RunTaskManager;
 
   public:
-    [[nodiscard]] not_null<TaskState<>*> get_task() const {
-        if (task_ == nullptr) {
-            throw std::runtime_error("Did not await TaskContext before using it");
-        }
-        return task_;
-    }
-    [[nodiscard]] not_null<TaskManager*> get_global_task_manager() const {
-        if (task_ != nullptr) {
-            auto global_task_manager = task_->get_global_task_manager();
-            if (global_task_manager == nullptr) {
-                throw std::runtime_error("Task has no global TaskManager bound");
-            }
-            return global_task_manager;
-        }
-        if (global_task_manager_ == nullptr) {
-            throw std::runtime_error("Did not await TaskContext before using it");
-        }
+    [[nodiscard]] TaskState<>* get_task() const noexcept { return task_; }
+    [[nodiscard]] TaskManager* get_global_task_manager() const noexcept {
         return global_task_manager_;
     }
-    [[nodiscard]] not_null<detail::EventLoop*> get_event_loop() const {
-        if (task_ != nullptr) {
-            auto event_loop = task_->get_event_loop();
-            if (event_loop == nullptr) {
-                throw std::runtime_error("Task has no EventLoop bound");
-            }
-            return event_loop;
-        }
-        if (event_loop_ == nullptr) {
-            throw std::runtime_error("Did not await TaskContext before using it");
-        }
+    [[nodiscard]] not_null<detail::EventLoop*> get_event_loop() const noexcept {
         return event_loop_;
     }
 
-    class Awaiter {
-        friend class TaskContext;
-
-      public:
-        [[nodiscard]] bool await_ready() const noexcept { return false; }
-        template <typename PromiseType>
-        bool await_suspend(std::coroutine_handle<PromiseType> parent) const noexcept {
-            ctxt_ = parent.promise().get_context();
-            return false;  // don't suspend the caller, just capture the context
-        }
-        [[nodiscard]] TaskContext await_resume() const noexcept { return ctxt_; }
-
-      private:
-        explicit Awaiter(TaskContext& ctxt) noexcept : ctxt_(ctxt) {}
-
-        TaskContext& ctxt_;
-    };
-
-    [[nodiscard]] Awaiter operator co_await() noexcept { return Awaiter{*this}; }
-
   private:
-    explicit TaskContext(not_null<TaskState<>*> task) noexcept : task_(task) {}
     TaskContext(
-        not_null<detail::EventLoop*> event_loop, not_null<TaskManager*> global_task_manager
+        not_null<detail::EventLoop*> event_loop,
+        TaskManager* global_task_manager,
+        TaskState<>* task
     ) noexcept
-        : event_loop_(event_loop), global_task_manager_(global_task_manager) {}
-    TaskContext() noexcept = default;
+        : event_loop_(event_loop), global_task_manager_(global_task_manager), task_(task) {}
 
-    TaskState<>* task_ = nullptr;
-    detail::EventLoop* event_loop_ = nullptr;
+    not_null<detail::EventLoop*> event_loop_;
     TaskManager* global_task_manager_ = nullptr;
+    TaskState<>* task_ = nullptr;
 };
 
-[[nodiscard]] inline TaskContext get_context() noexcept { return TaskContext{}; }
+[[nodiscard]] inline not_null<TaskState<>*> current_task() {
+    if (detail::current_task == nullptr) {
+        throw std::runtime_error("No current task");
+    }
+    return detail::current_task;
+}
 
-[[nodiscard]] inline TaskContext current_context() { return TaskContext{current_task()}; }
+[[nodiscard]] inline TaskContext current_context() { return current_task()->get_context(); }
 
-inline TaskContext TaskState<>::get_context() noexcept { return TaskContext{this}; }
+inline TaskContext TaskState<>::get_context() noexcept {
+    return TaskContext{not_null{event_loop_}, global_task_manager_, this};
+}
 
 inline void TaskState<>::start_soon(TaskContext const& context) {
     assert(!started() && "Task is already started");
@@ -536,21 +462,13 @@ inline void TaskState<>::start_soon(TaskContext const& context) {
         global_task_manager_ = context.get_global_task_manager();
     }
 
-    // Keep the coroutine frame alive independently of Task handles and its manager
-    // until the coroutine reaches completion.
-    inc_ref();
-    scheduler_owned_ = true;
-    started_ = true;
     state_ = Scheduled{this};
     event_loop_->acquire().schedule_back(&std::get<TaskState<>::Scheduled>(state_));
 }
 
 inline void TaskState<>::on_awaited(TaskContext const& context) {
     if (!started()) {
-        throw std::runtime_error("Cannot await an unstarted Task");
-    }
-    if (event_loop_ != context.get_event_loop()) {
-        throw std::runtime_error("Task is already bound to another EventLoop");
+        start_soon(context);
     }
 }
 
@@ -574,8 +492,8 @@ typename detail::AwaitableAwaiter<S>::value_type detail::AwaitableAwaiter<
     // already-done awaitable, we skip the cancellation check as there was no possible
     // suspension point where the Task could become cancelled. The one caveat is a
     // self-cancellation, which is handled by throwing in a call to cancel();
-    if (task_ != nullptr && task_->cancelling() != 0) {
-        throw coconext::Cancelled{};
+    if (task_ != nullptr && task_->cancelling()) {
+        throw coconext::CancelledError{};
     }
     return awaitable_->result();
 }
@@ -585,30 +503,12 @@ void detail::AwaitableAwaiter<S>::event_run() noexcept {
     assert(parent_ != nullptr);
     assert(task_ != nullptr);
     auto task = not_null{task_};
-    task->inc_ref();
-    auto previous_task = detail::current_task;
+    auto& current_task = detail::current_task;
+    auto previous_task = current_task;
+    current_task = task;
     task->on_resume();
     parent_.resume();
-    detail::current_task = previous_task;
-    task->dec_ref();
-}
-
-inline void TaskState<>::on_done() noexcept {
-    state_ = std::monostate{};
-    for (auto& callback : callbacks_) {
-        callback();
-    }
-    if (!waiters_.empty()) {
-        assert(event_loop_ != nullptr);
-        event_loop_->acquire().schedule_all_back(std::move(waiters_));
-    }
-    if (internal_done_callback_ != nullptr) {
-        internal_done_callback_(this);
-    }
-    if (scheduler_owned_) {
-        scheduler_owned_ = false;
-        dec_ref();
-    }
+    current_task = previous_task;
 }
 
 }  // namespace coconext

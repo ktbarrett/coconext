@@ -108,30 +108,30 @@ A Task moves through these execution states:
 unstarted -> Scheduled -> Running -> Pending -> Running -> ... -> done
 ```
 
-Cancellation is counted so `cancel()` and `uncancel()` can compose.
-`cancelling()` reports the number of outstanding requests; `cancelled()` is
-true only after the Task has terminated by propagating `Cancelled`. The
-terminal state uses a dedicated `CancelledOutcome` tag rather than retaining
-an `exception_ptr`; `result()` throws a fresh `Cancelled`, and `exception()`
+Cancellation is a pending-request flag. `cancelling()` reports whether cancellation
+is pending; `cancelled()` is true only after the Task has terminated by propagating
+`CancelledError`. The
+terminal state uses a dedicated `Cancelled` tag rather than retaining an
+`exception_ptr`; `result()` throws a fresh `CancelledError`, and `exception()`
 constructs one on demand.
 
 Delivery depends on the execution state:
 
 - done: no-op;
-- unstarted: complete immediately with `Cancelled`;
+- unstarted: complete immediately with `CancelledError`;
 - Scheduled: remove the ready event and complete without entering the body;
 - Pending: move the parked awaiter to the ready queue so `await_resume()`
-  throws `Cancelled`;
-- Running: throw `Cancelled` synchronously into the running body.
+  throws `CancelledError`;
+- Running: throw `CancelledError` synchronously into the running body.
 
 The Scheduled case is important for fail-fast managers. A sibling queued
 behind a failing Task must not begin running after the manager cancels it.
 
-Catching `Cancelled` does not clear its request. Before continuing, the Task
-must call `uncancel()` once for every outstanding request. Returning normally,
+Catching `CancelledError` does not clear the request. Returning normally,
 propagating a different exception, or attempting another scheduler suspension
-while requests remain turns the Task outcome into `std::runtime_error`. A
-`Cancelled` thrown without an outstanding request remains an ordinary stored
+while cancellation remains pending turns the Task outcome into `std::runtime_error`.
+Only internal structured-concurrency cleanup may temporarily clear cancellation. A
+`CancelledError` thrown without an outstanding request remains an ordinary stored
 exception and does not make `cancelled()` true.
 
 ## Futures
@@ -200,22 +200,20 @@ nested Coros.
 
 ## TaskManager lifecycle
 
-`TaskManager` has five internal states:
+`TaskManager` has four internal states:
 
 ```text
 Created --co_await start()--> Open --close()--> Closed
                                       |             |
                                       |       children empty
                                       |             v
-                                      +----------> Done --first join--> Ended
+                                      +----------> Done
 ```
 
 - `Created`: unbound; `start_soon`, `close`, `cancel`, and `join` are invalid.
 - `Open`: accepts new Coros and starts them immediately.
 - `Closed`: rejects new Coros and drains existing Tasks.
 - `Done`: closed and empty; every join waiter is made ready.
-- `Ended`: at least one `join()` completed its lifecycle bookkeeping. Later
-  joins remain valid and observe the same completion result.
 
 An empty Open manager does not become Done automatically. It has no child
 whose policy hook could decide that work is complete, so the owner must call
@@ -228,10 +226,10 @@ in `on_child_done()`.
 
 If a joining Task is canceled before the manager is Done, `join()` cancels the
 manager but continues waiting for every child to finish its cancellation
-cleanup. It temporarily removes all cancellation requests from the joining
-Task so it can suspend again. Further cancellation requests repeat that
-process. Once the manager is Done, `join()` transitions it to Ended, restores
-the full cancellation count, and throws `Cancelled`. A `Cancelled` stored as
+cleanup. It temporarily clears cancellation from the joining Task so it can
+suspend again. A later cancellation request repeats that process. Once the
+manager is Done, `join()` reasserts cancellation and throws `CancelledError`.
+A `CancelledError` stored as
 the manager's own completion exception is distinguished by the absence of a
 pending cancellation request on the joining Task.
 
@@ -245,14 +243,13 @@ its shutdown pass and never allow its joiner to finish.
 `TaskManager` is non-copyable and non-movable. Its child `TaskState`s store raw
 back-pointers to its stable address.
 
-Its virtual destructor is `noexcept(false)`. Destruction is valid in only two
-states:
+Its virtual destructor is `noexcept(false)`. Destruction is valid in two states:
 
 - `Created`, because it never started; or
-- `Ended`, because its owner completed `join()`.
+- `Done`, because every child has drained.
 
-Destroying a started manager in Open, Closed, or Done detaches and cancels its
-children, then throws `std::logic_error`.
+Destroying a started manager in Open or Closed detaches and cancels its children,
+then throws `std::logic_error`.
 This is a misuse diagnostic, not a mechanism for extending the manager's
 lifetime. As with every throwing destructor, destruction during unrelated
 exception unwinding would call `std::terminate`; owners should structure
@@ -320,8 +317,8 @@ The run-manager policy is fail-fast:
 - completion is reported only after every owned Task has drained.
 
 If an external trigger owns pending work, `run()` waits on a condition
-variable until the manager reaches Done. It then marks the internal manager
-Ended, rethrows the first failure if present, or returns the root result.
+variable until the manager reaches Done. It then rethrows the first failure
+through the root Task's result, or returns that result.
 
 Under a simulator, external callbacks drive the same `EventLoop` directly;
 there is no standalone `run()` loop.
@@ -331,7 +328,7 @@ there is no standalone `run()` loop.
 Each active Task, TaskManager, and Future belongs to exactly one EventLoop.
 Their mutable state is intentionally not protected by per-object locks.
 Cross-loop use would race the Task state machine, manager child deque, waiter
-lists, results, and cancellation counters, so mismatches are rejected rather
+lists, results, and cancellation state, so mismatches are rejected rather
 than synchronized.
 
 Bindings happen as late as possible:
@@ -345,11 +342,10 @@ Bindings happen as late as possible:
 the free `start_soon` and `current_context`. Each resume event saves and
 restores the prior value so no completed Task is left as the ambient context.
 
-`get_context()` is the promise-chain form for coroutine code. Awaiting it does
-not suspend; it captures the enclosing Task, event loop, and global manager in
-one value. Nested Coros and TaskManagers propagate that value instead of
-unpacking and forwarding its bindings separately. Using its accessors before
-awaiting it throws.
+A `TaskContext` stores its event loop, optional global manager, and optional
+current Task explicitly. Nested Coros and TaskManagers propagate that context
+through their promise chain. Root contexts have no current Task, and contexts
+without a global manager reject calls to the free `start_soon` function.
 
 ## Extension constraints
 

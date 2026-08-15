@@ -14,7 +14,7 @@
 #include <type_traits>
 #include <utility>
 
-using coconext::Cancelled;
+using coconext::CancelledError;
 using coconext::Coro;
 using coconext::current_context;
 using coconext::current_task;
@@ -56,14 +56,14 @@ Coro<void> swallow_cancellation(Future<void> started, Future<void> future) {
     started.set_void();
     try {
         co_await future;
-    } catch (Cancelled const&) {}
+    } catch (CancelledError const&) {}
 }
 
 Coro<void> replace_cancellation(Future<void> started, Future<void> future) {
     started.set_void();
     try {
         co_await future;
-    } catch (Cancelled const&) {
+    } catch (CancelledError const&) {
         throw std::logic_error("replacement");
     }
 }
@@ -74,32 +74,12 @@ Coro<void> continue_after_cancellation(
     started.set_void();
     try {
         co_await first;
-    } catch (Cancelled const&) {}
+    } catch (CancelledError const&) {}
     co_await second;
-}
-
-Coro<void> uncancel_then_continue(
-    Future<void> started, Future<void> first, Future<void> second
-) {
-    auto task = current_task();
-    started.set_void();
-    try {
-        co_await first;
-    } catch (Cancelled const&) {
-        while (task->cancelling() != 0) {
-            task->uncancel();
-        }
-    }
-    co_await second;
-}
-
-Coro<void> set_future(Future<void> future) {
-    future.set_void();
-    co_return;
 }
 
 Coro<void> throw_cancelled() {
-    throw Cancelled{};
+    throw CancelledError{};
     co_return;
 }
 
@@ -114,27 +94,25 @@ TEST(TestSchedulerBinding, CurrentTaskAndContextThrowOutsideTask) {
 
 TEST(TestSchedulerBinding, CurrentTaskInsideTaskReturnsSelf) {
     auto body = []() -> Coro<void> {
-        auto context = co_await coconext::get_context();
-        EXPECT_EQ(current_task().get(), context.get_task().get());
+        auto task = current_task();
+        EXPECT_EQ(current_task().get(), task.get());
+        co_return;
     };
 
     EXPECT_NO_THROW(run(body()));
     EXPECT_THROW((void)current_task(), std::runtime_error);
 }
 
-TEST(TestSchedulerBinding, AwaitingUnstartedTaskIsRejected) {
-    auto body = []() -> Coro<void> {
+TEST(TestSchedulerBinding, AwaitingUnstartedTaskStartsIt) {
+    auto body = []() -> Coro<int> {
         Task<int> task = make_unstarted_task();
-        bool rejected = false;
-        try {
-            (void)(co_await task);
-        } catch (std::runtime_error const&) {
-            rejected = true;
-        }
-        EXPECT_TRUE(rejected);
+        EXPECT_FALSE(task.started());
+        auto result = co_await task;
+        EXPECT_TRUE(task.started());
+        co_return result;
     };
 
-    EXPECT_NO_THROW(run(body()));
+    EXPECT_EQ(run(body()), 42);
 }
 
 TEST(TestSchedulerBinding, FreeStartSoonSpawnsAndReturnsTask) {
@@ -158,7 +136,7 @@ TEST(TestSchedulerBinding, FreeStartSoonUsesFailFastGlobalManager) {
 }
 
 TEST(TestSchedulerBinding, SelfCancellationPropagatesFromRun) {
-    EXPECT_THROW(run(self_cancel()), Cancelled);
+    EXPECT_THROW(run(self_cancel()), CancelledError);
 }
 
 TEST(TestSchedulerBinding, SelfCancellationRecordsRequestedAndTerminalCancellation) {
@@ -169,10 +147,10 @@ TEST(TestSchedulerBinding, SelfCancellationRecordsRequestedAndTerminalCancellati
         co_await manager.join();
 
         EXPECT_TRUE(task.done());
-        EXPECT_EQ(task.cancelling(), 1u);
+        EXPECT_TRUE(task.cancelling());
         EXPECT_TRUE(task.cancelled());
-        EXPECT_THROW(task.result(), Cancelled);
-        EXPECT_THROW(std::rethrow_exception(task.exception()), Cancelled);
+        EXPECT_THROW(task.result(), CancelledError);
+        EXPECT_THROW(std::rethrow_exception(task.exception()), CancelledError);
     };
 
     EXPECT_NO_THROW(run(body()));
@@ -186,7 +164,7 @@ TEST(TestSchedulerBinding, PendingTaskCancellationWakesAwaiter) {
         Task<void> waiter = manager.start_soon(wait_for(never));
         (void)manager.start_soon(cancel_task(waiter));
         co_await manager.join();
-        EXPECT_THROW(waiter.result(), Cancelled);
+        EXPECT_THROW(waiter.result(), CancelledError);
     };
 
     EXPECT_NO_THROW(run(body()));
@@ -202,14 +180,14 @@ TEST(TestSchedulerBinding, PendingCancellationIsNotYetACancelledOutcome) {
 
         co_await started;
         task.cancel();
-        EXPECT_EQ(task.cancelling(), 1u);
+        EXPECT_TRUE(task.cancelling());
         EXPECT_FALSE(task.done());
         EXPECT_FALSE(task.cancelled());
 
         co_await manager.join();
         EXPECT_TRUE(task.done());
         EXPECT_TRUE(task.cancelled());
-        EXPECT_THROW(task.result(), Cancelled);
+        EXPECT_THROW(task.result(), CancelledError);
     };
 
     EXPECT_NO_THROW(run(body()));
@@ -227,7 +205,7 @@ TEST(TestSchedulerBinding, SuppressedCancellationFailsTask) {
         task.cancel();
         co_await manager.join();
 
-        EXPECT_EQ(task.cancelling(), 1u);
+        EXPECT_TRUE(task.cancelling());
         EXPECT_FALSE(task.cancelled());
         EXPECT_THROW(task.result(), std::runtime_error);
     };
@@ -247,15 +225,13 @@ TEST(TestSchedulerBinding, ReplacingCancellationWithAnotherExceptionFailsTask) {
         task.cancel();
         co_await manager.join();
 
-        EXPECT_EQ(task.cancelling(), 1u);
+        EXPECT_TRUE(task.cancelling());
         EXPECT_FALSE(task.cancelled());
         try {
             task.result();
             ADD_FAILURE() << "Task did not reject an ignored cancellation";
         } catch (std::runtime_error const& error) {
-            EXPECT_STREQ(
-                error.what(), "Task ignored cancellation without calling uncancel()"
-            );
+            EXPECT_STREQ(error.what(), "Task ignored cancellation");
         }
     };
 
@@ -285,31 +261,6 @@ TEST(TestSchedulerBinding, SuspendingAfterCancellationWithoutUncancelFailsTask) 
     EXPECT_NO_THROW(run(body()));
 }
 
-TEST(TestSchedulerBinding, ExplicitUncancelAllowsAnotherSuspensionAndReturn) {
-    auto body = []() -> Coro<void> {
-        TaskManager manager;
-        Future<void> started;
-        Future<void> first;
-        Future<void> second;
-        co_await manager.start();
-        Task<void> task =
-            manager.start_soon(uncancel_then_continue(started, first, second));
-
-        co_await started;
-        task.cancel();
-        task.cancel();
-        (void)manager.start_soon(set_future(second));
-        co_await manager.join();
-
-        EXPECT_TRUE(task.done());
-        EXPECT_EQ(task.cancelling(), 0u);
-        EXPECT_FALSE(task.cancelled());
-        EXPECT_NO_THROW(task.result());
-    };
-
-    EXPECT_NO_THROW(run(body()));
-}
-
 TEST(TestSchedulerBinding, UnrequestedCancelledIsAnOrdinaryException) {
     auto body = []() -> Coro<void> {
         TaskManager manager;
@@ -317,20 +268,10 @@ TEST(TestSchedulerBinding, UnrequestedCancelledIsAnOrdinaryException) {
         Task<void> task = manager.start_soon(throw_cancelled());
         co_await manager.join();
 
-        EXPECT_EQ(task.cancelling(), 0u);
+        EXPECT_FALSE(task.cancelling());
         EXPECT_FALSE(task.cancelled());
-        EXPECT_THROW(task.result(), Cancelled);
-        EXPECT_THROW(std::rethrow_exception(task.exception()), Cancelled);
-    };
-
-    EXPECT_NO_THROW(run(body()));
-}
-
-TEST(TestSchedulerBinding, UncancelRejectsTaskThatWasNotCancelled) {
-    auto body = []() -> Coro<void> {
-        Task<int> task = start_soon(return_int());
-        EXPECT_THROW(task.uncancel(), std::runtime_error);
-        (void)(co_await task);
+        EXPECT_THROW(task.result(), CancelledError);
+        EXPECT_THROW(std::rethrow_exception(task.exception()), CancelledError);
     };
 
     EXPECT_NO_THROW(run(body()));

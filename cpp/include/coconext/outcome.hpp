@@ -17,9 +17,9 @@ struct Value<void> {};
 
 }  // namespace detail
 
-class Cancelled : public std::exception {
+class CancelledError : public std::exception {
   public:
-    char const* what() const noexcept override { return "Cancelled"; }
+    char const* what() const noexcept override { return "CancelledError"; }
 };
 
 }  // namespace coconext

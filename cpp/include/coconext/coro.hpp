@@ -1,8 +1,10 @@
 #ifndef COCONEXT_CORO_HPP
 #define COCONEXT_CORO_HPP
 
+#include <cassert>
 #include <coroutine>
 #include <exception>
+#include <optional>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -71,14 +73,17 @@ class CoroStateBase {
 
     // This carries the enclosing Task's scheduler bindings through arbitrarily nested
     // Coros without depending on a TLS lookup.
-    [[nodiscard]] TaskContext get_context() const noexcept { return context_; }
+    [[nodiscard]] TaskContext get_context() const noexcept {
+        assert(context_.has_value());
+        return *context_;
+    }
 
   private:
     void set_result(detail::Value<T> value) noexcept { value_ = std::move(value); }
 
     std::variant<std::monostate, detail::Value<T>, std::exception_ptr> value_;
     std::coroutine_handle<> parent_;
-    TaskContext context_;
+    std::optional<TaskContext> context_;
 };
 
 }  // namespace detail
