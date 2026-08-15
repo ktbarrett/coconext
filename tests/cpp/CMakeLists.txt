@@ -26,8 +26,13 @@ add_executable(coconext_tests
     test_dyn_bits.cpp
     test_reverse.cpp
     test_unsigned.cpp
-    test_signed.cpp)
-
+    test_signed.cpp
+    test_intrusive_deque.cpp
+    test_not_null.cpp
+    test_future.cpp
+    test_scheduler_binding.cpp
+    test_scheduler_run.cpp
+    test_task_manager.cpp)
 target_link_libraries(coconext_tests PRIVATE coconext::coconext GTest::gtest_main)
 
 gtest_discover_tests(coconext_tests)
