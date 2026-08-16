@@ -552,6 +552,20 @@ class Bits {
         }
     }
 
+    constexpr Bits reverse() const noexcept {
+        static_assert(W > 0, "Nothing to reverse for Null Vector");
+
+        if constexpr (!is_wide) {
+            constexpr size_t container_bits = sizeof(IntType) * 8;
+            IntType reversed = reverse_bits_native(raw());
+            return Bits(static_cast<IntType>(reversed >> (container_bits - W)));
+        } else {
+            Bits<W> result{};
+            reverse_bits_bigint(result.mut(), cref());
+            return result;
+        }
+    }
+
     // On the wide tier this is a non-owning view, not a copy: callers only ever
     // read words out of it, and copying would mean duplicating the whole array.
     using RawType = std::conditional_t<is_wide, WordConstSpan, IntType>;
@@ -1304,6 +1318,26 @@ constexpr auto max_unsigned() {
     }
 }
 
+constexpr uint64_t reverse_bits_64(uint64_t w) {
+    w = ((w & 0xaaaaaaaaaaaaaaaaULL) >> 1) | ((w & 0x5555555555555555ULL) << 1);
+    w = ((w & 0xccccccccccccccccULL) >> 2) | ((w & 0x3333333333333333ULL) << 2);
+    w = ((w & 0xf0f0f0f0f0f0f0f0ULL) >> 4) | ((w & 0x0f0f0f0f0f0f0f0fULL) << 4);
+    w = ((w & 0xff00ff00ff00ff00ULL) >> 8) | ((w & 0x00ff00ff00ff00ffULL) << 8);
+    w = ((w & 0xffff0000ffff0000ULL) >> 16) | ((w & 0x0000ffff0000ffffULL) << 16);
+    return (w >> 32) | (w << 32);
+}
+
+template <typename T>
+constexpr T reverse_bits_native(T x) {
+    if constexpr (sizeof(T) == 16) {
+        uint64_t lo = reverse_bits_native(static_cast<uint64_t>(x));
+        uint64_t hi = reverse_bits_native(static_cast<uint64_t>(x >> 64));
+        return (static_cast<T>(lo) << 64) | static_cast<T>(hi);
+    } else {
+        return static_cast<T>(reverse_bits_64(static_cast<uint64_t>(x)));
+    }
+}
+
 // Build a {n-1 DOWNTO 0} Range from a length, the HDL convention for numeric
 // types. Used by Unsigned/Signed/DynUnsigned/DynSigned constructors that take
 // just a width.
@@ -1472,16 +1506,23 @@ template <typename T>
 
 }  // namespace detail
 
-// Deduced resize for Signed/Unsigned
+// Deduced resize for Signed/Unsigned, Sfixed/Ufixed
 template <typename X>
     requires(
         detail::is_coconext_unsigned_v<std::remove_cvref_t<X>>
         || detail::is_coconext_signed_v<std::remove_cvref_t<X>>
+        || is_fixed<std::remove_cvref_t<X>>
     )
 [[nodiscard]] constexpr auto resize(
     X&& x, overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
 ) noexcept {
-    return detail::resize(std::forward<X>(x), ovf, rnd);
+    if constexpr (is_fixed<std::remove_cvref_t<X>>) {
+        return detail::resize(
+            std::forward<X>(x), overflow_mode::saturate, round_mode::round_to_even
+        );
+    } else {
+        return detail::resize(std::forward<X>(x), ovf, rnd);
+    }
 }
 
 template <detail::HasBits Target, detail::HasBits Source>

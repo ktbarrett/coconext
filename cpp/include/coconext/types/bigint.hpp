@@ -952,6 +952,26 @@ constexpr void shift_right_arith(WordSpan v, size_t amount) {
     clear_unused_bits(v);
 }
 
+constexpr void reverse_bits_bigint(WordSpan dst, WordConstSpan src) {
+    check_same_width(dst, src);
+    auto d = dst.data();
+    auto s = src.data();
+    size_t n = s.size();
+    for (size_t i = 0; i < n; ++i) {
+        Word w = s[n - 1 - i];
+        w = ((w & 0xaaaaaaaaaaaaaaaaULL) >> 1) | ((w & 0x5555555555555555ULL) << 1);
+        w = ((w & 0xccccccccccccccccULL) >> 2) | ((w & 0x3333333333333333ULL) << 2);
+        w = ((w & 0xf0f0f0f0f0f0f0f0ULL) >> 4) | ((w & 0x0f0f0f0f0f0f0f0fULL) << 4);
+        w = ((w & 0xff00ff00ff00ff00ULL) >> 8) | ((w & 0x00ff00ff00ff00ffULL) << 8);
+        w = ((w & 0xffff0000ffff0000ULL) >> 16) | ((w & 0x0000ffff0000ffffULL) << 16);
+        d[i] = (w >> 32) | (w << 32);
+    }
+    if (n * word_bits > dst.bit_width()) {
+        tc_shift_right(d, static_cast<unsigned>(n * word_bits - dst.bit_width()));
+    }
+    clear_unused_bits(dst);
+}
+
 // dst = lhs * rhs (truncated). dst must be disjoint from operands.
 constexpr void multiply(WordSpan dst, WordConstSpan lhs, WordConstSpan rhs) {
     check_same_width(dst, lhs);

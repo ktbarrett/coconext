@@ -12,6 +12,30 @@ namespace coconext::types {
 namespace detail {
 
 template <Range R>
+class Ufixed;
+
+template <typename T>
+inline constexpr bool is_coconext_ufixed_v = false;
+
+template <Range R>
+inline constexpr bool is_coconext_ufixed_v<detail::Ufixed<R>> = true;
+
+}  // namespace detail
+
+template <auto... Args, typename X>
+    requires(
+        sizeof...(Args) > 0 && sizeof...(Args) <= 3
+        && detail::is_coconext_ufixed_v<std::remove_cvref_t<X>>
+    )
+constexpr auto resize(
+    X&& x,
+    overflow_mode ovf = overflow_mode::saturate,
+    round_mode rnd = round_mode::round_to_even
+);
+
+namespace detail {
+
+template <Range R>
 class Ufixed {
     static_assert(R.length() >= 0, "Width must not be negative");
 
@@ -77,6 +101,12 @@ class Ufixed {
         }
     }
 
+    template <size_t W>
+    constexpr Ufixed(Bits<W> const& val) {
+        static_assert(W == R.length(), "Construction from Bits requires identical width");
+        value_ = val;
+    }
+
   public:
     static constexpr Range static_range = R;
     static constexpr Range range() noexcept { return R; }
@@ -89,7 +119,7 @@ class Ufixed {
     ) constexpr Ufixed(T v) {
         if constexpr (std::is_signed_v<T>) {
             if (v < 0) {
-                throw std::out_of_range("negative value in Unsigned construction");
+                throw std::out_of_range("negative value in Ufixed construction");
             }
         }
 
@@ -102,7 +132,7 @@ class Ufixed {
         } else {
             using unsigned_T = std::make_unsigned_t<T>;
             if (static_cast<unsigned_T>(v) > max_unsigned<int_bits()>()) {
-                throw std::out_of_range("value does not fit in Unsigned width");
+                throw std::out_of_range("value does not fit in Ufixed width");
             }
             value_ = v;
         }
@@ -111,7 +141,7 @@ class Ufixed {
 
     // Construction from Same kind
     template <Range R2>
-    explicit(!(R.left > R2.left && R.right < R2.right)) constexpr Ufixed(
+    explicit(!(R.left >= R2.left && R.right <= R2.right)) constexpr Ufixed(
         Ufixed<R2> const& other,
         overflow_mode om = overflow_mode::saturate,
         round_mode rm = round_mode::round_to_even
@@ -129,58 +159,7 @@ class Ufixed {
                 value_ = padded_bits << frac_shift;
             }
         } else {
-            auto aligned = other.value_;
-            bool round_up = false;
-
-            if constexpr (R.right > R2.right) {
-                int drop_count = R.right - R2.right;
-
-                bool half_bit = aligned.get_bit(drop_count - 1);
-                bool lower_bits = false;
-                for (int i = 0; i < drop_count - 1; ++i) {
-                    if (aligned.get_bit(i)) {
-                        lower_bits = true;
-                    }
-                }
-
-                if (rm == round_mode::round_to_pos) {
-                    round_up = half_bit || lower_bits;
-                } else if (rm == round_mode::round) {
-                    round_up = half_bit;
-                } else if (rm == round_mode::round_to_even) {
-                    bool keep_bit = aligned.get_bit(drop_count);
-                    round_up = half_bit && (lower_bits || keep_bit);
-                }
-
-                aligned = aligned.srl(drop_count);
-                if (round_up) {
-                    aligned = aligned + 1;
-                }
-
-            } else if constexpr (R.right < R2.right) {
-                aligned = aligned << (R2.right - R.right);
-            }
-
-            bool overflow = false;
-            if constexpr (R.left < R2.left) {
-                for (int i = R.length(); i < aligned.length(); ++i) {
-                    if (aligned.get_bit(i)) {
-                        overflow = true;
-                        break;
-                    }
-                }
-            }
-
-            if (overflow && om == overflow_mode::saturate) {
-                value_ = ~Bits<R.length()>(0);
-            } else {
-                value_ = Bits<R.length()>(0);
-                for (int i = 0; i < R.length(); ++i) {
-                    if (i < aligned.length() && aligned.get_bit(i)) {
-                        value_.set_bit(i, true);
-                    }
-                }
-            }
+            value_ = coconext::types::resize<R>(other).value_;
         }
     }
 
@@ -280,6 +259,102 @@ class Ufixed {
             R.length() == R2.length(), "BitArray reinterpret requires identical width"
         );
         value_ = bits(other);
+    }
+
+    template <typename SourceWrapper>
+    constexpr Ufixed(detail::auto_resized<SourceWrapper>&& wrapper) {
+        // TODO
+        // auto [src, ovf, rnd] = std::move(wrapper).consume();
+        // using ActualSource = std::remove_cvref_t<SourceWrapper>;
+
+        // static_assert(
+        //     detail::is_coconext_signed_v<ActualSource>,
+        //     "resize() target and source must both be signed. Use as() for cross-type "
+        //     "conversions."
+        // );
+
+        // constexpr size_t TargetW = R.length();
+        // constexpr size_t SourceW = ActualSource::size();
+
+        // if constexpr (TargetW >= SourceW) {
+        //     // Widening (and the null cases) never lose information.
+        //     value_ = src.value_.template sign_extend<TargetW>();
+        // } else if (ovf == overflow_mode::wrap) {
+        //     value_ = src.value_.template truncate<TargetW>();
+        // } else {
+        //     value_ = src.value_.template saturate_signed<TargetW>();
+        // }
+
+        // auto aligned = other.value_;
+        //     bool round_up = false;
+
+        //     if constexpr (R.right > R2.right) {
+        //         int drop_count = R.right - R2.right;
+
+        //         bool half_bit = aligned.get_bit(drop_count - 1);
+        //         bool lower_bits = false;
+        //         for (int i = 0; i < drop_count - 1; ++i) {
+        //             if (aligned.get_bit(i)) {
+        //                 lower_bits = true;
+        //             }
+        //         }
+
+        //         if (rm == round_mode::round_to_pos) {
+        //             round_up = half_bit || lower_bits;
+        //         } else if (rm == round_mode::round) {
+        //             round_up = half_bit;
+        //         } else if (rm == round_mode::round_to_even) {
+        //             bool keep_bit = aligned.get_bit(drop_count);
+        //             round_up = half_bit && (lower_bits || keep_bit);
+        //         }
+
+        //         aligned = aligned.srl(drop_count);
+        //         if (round_up) {
+        //             aligned = aligned + 1;
+        //         }
+
+        //     } else if constexpr (R.right < R2.right) {
+        //         aligned = aligned << (R2.right - R.right);
+        //     }
+
+        //     bool overflow = false;
+        //     if constexpr (R.left < R2.left) {
+        //         for (int i = R.length(); i < aligned.length(); ++i) {
+        //             if (aligned.get_bit(i)) {
+        //                 overflow = true;
+        //                 break;
+        //             }
+        //         }
+        //     }
+
+        //     if (overflow && om == overflow_mode::saturate) {
+        //         value_ = ~Bits<R.length()>(0);
+        //     } else {
+        //         value_ = Bits<R.length()>(0);
+        //         for (int i = 0; i < R.length(); ++i) {
+        //             if (i < aligned.length() && aligned.get_bit(i)) {
+        //                 value_.set_bit(i, true);
+        //             }
+        //         }
+        //     }
+    }
+
+    template <typename SourceWrapper>
+    constexpr Ufixed& operator=(detail::auto_resized<SourceWrapper>&& wrapper) {
+        *this = Ufixed(std::move(wrapper));
+        return *this;
+    }
+
+    // Consume deduced-target as(reinterpret) wrapper
+    template <typename SourceT>
+    constexpr Ufixed(auto_reinterpreted<SourceT>&& wrapper) {
+        *this = coconext::types::as<Ufixed<R>>(std::move(wrapper).consume());
+    }
+
+    template <typename SourceT>
+    constexpr Ufixed& operator=(auto_reinterpreted<SourceT>&& wrapper) {
+        *this = coconext::types::as<Ufixed<R>>(std::move(wrapper).consume());
+        return *this;
     }
 
     // Implicit conversion to supertype BitArray
@@ -399,6 +474,80 @@ class Ufixed {
         return to_native_float<long double>();
     }
 
+    template <typename T>
+    constexpr Ufixed operator<<(T amount) const {
+        static_assert(
+            R.direction == Direction::DOWNTO, "Shift operation requires downto Direction"
+        );
+        static_assert(
+            std::is_integral_v<T> || is_coconext_unsigned_v<T> || is_coconext_signed_v<T>,
+            "Shift Amount can only be purely Integral"
+        );
+
+        uint64_t v = static_cast<unsigned long long>(amount);
+        if (v < 0) {
+            throw std::invalid_argument("Shift amount cannot be negative");
+        }
+
+        return Ufixed<R>(value_ << v);
+    }
+
+    template <typename T>
+    constexpr Ufixed operator<<=(T amount) const {
+        static_assert(
+            R.direction == Direction::DOWNTO, "Shift operation requires downto Direction"
+        );
+        static_assert(
+            std::is_integral_v<T> || is_coconext_unsigned_v<T> || is_coconext_signed_v<T>,
+            "Shift Amount can only be purely Integral"
+        );
+
+        uint64_t v = static_cast<unsigned long long>(amount);
+        if (v < 0) {
+            throw std::invalid_argument("Shift amount cannot be negative");
+        }
+
+        value_ = value_ << v;
+        return *this;
+    }
+
+    template <typename T>
+    constexpr Ufixed operator>>(T amount) const {
+        static_assert(
+            R.direction == Direction::DOWNTO, "Shift operation requires downto Direction"
+        );
+        static_assert(
+            std::is_integral_v<T> || is_coconext_unsigned_v<T> || is_coconext_signed_v<T>,
+            "Shift Amount can only be purely Integral"
+        );
+
+        uint64_t v = static_cast<unsigned long long>(amount);
+        if (v < 0) {
+            throw std::invalid_argument("Shift amount cannot be negative");
+        }
+
+        return Ufixed<R>(value_.srl(v));
+    }
+
+    template <typename T>
+    constexpr Ufixed operator>>=(T amount) const {
+        static_assert(
+            R.direction == Direction::DOWNTO, "Shift operation requires downto Direction"
+        );
+        static_assert(
+            std::is_integral_v<T> || is_coconext_unsigned_v<T> || is_coconext_signed_v<T>,
+            "Shift Amount can only be purely Integral"
+        );
+
+        uint64_t v = static_cast<unsigned long long>(amount);
+        if (v < 0) {
+            throw std::invalid_argument("Shift amount cannot be negative");
+        }
+
+        value_ = value_.srl(v);
+        return *this;
+    }
+
     template <Range R2>
     constexpr std::strong_ordering operator<=>(Ufixed<R2> const& other) const noexcept {
         static_assert(
@@ -416,6 +565,26 @@ class Ufixed {
 
         return std::strong_ordering::less;
     }
+
+    // TODO
+
+    // All Arithmetic ops
+
+    // constexpr auto operator+() const {
+    //     constexpr Range R_res = detail::int_downto_range(R.length() + 1);
+    //     return coconext::types::as<Signed<R_res>>(
+    //         coconext::types::resize<R_res.length()>(*this)
+    //     );
+    // }
+
+    // // The operand is unsigned, so it zero-extends into the wider result before
+    // // being negated: -Unsigned<8>(150) is -150, not -(-106).
+    // constexpr auto operator-() const {
+    //     constexpr size_t Wr = R.length() + 1;
+    //     return Signed<detail::int_downto_range(Wr)>(
+    //         detail::Bits<Wr>{} - value_.template zero_extend<Wr>()
+    //     );
+    // }
 
     static constexpr size_t frac_bits() {
         if constexpr (R.direction == Direction::DOWNTO) {
@@ -473,6 +642,8 @@ class Ufixed {
     }
 
   private:
+    friend struct bits_fn;
+
     Bits<R.length()> value_{0};
 };
 
@@ -485,20 +656,82 @@ inline constexpr bool is_fixed<detail::Ufixed<R>> = true;
 template <auto... Args>
 using Ufixed = detail::Ufixed<detail::make_fixed_range<Args...>()>;
 
+template <auto... Args, typename X>
+    requires(
+        sizeof...(Args) > 0 && sizeof...(Args) <= 3
+        && detail::is_coconext_ufixed_v<std::remove_cvref_t<X>>
+    )
+constexpr auto resize(X&& x, overflow_mode ovf, round_mode rnd) {
+    constexpr Range TargetRange = detail::make_fixed_range<Args...>();
+    return Ufixed<TargetRange>(detail::resize(std::forward<X>(x), ovf, rnd));
+}
+
+template <typename X>
+    requires detail::is_coconext_ufixed_v<std::remove_cvref_t<X>>
+constexpr auto floor(X&& x) {
+    constexpr Range R = std::remove_cvref_t<X>::range;
+    static_assert(
+        R.direction == Direction::DOWNTO, "resizing to integer requires downto direction"
+    );
+    constexpr Range TargetRange = Range{R.left, Direction::DOWNTO, 0};
+
+    return detail::Ufixed<TargetRange>(detail::resize(
+        std::forward<X>(x), overflow_mode::saturate, round_mode::round_to_zero
+    ));
+}
+
+template <typename X>
+    requires detail::is_coconext_ufixed_v<std::remove_cvref_t<X>>
+constexpr auto ceil(X&& x) {
+    constexpr Range R = std::remove_cvref_t<X>::range;
+    static_assert(
+        R.direction == Direction::DOWNTO, "rounding to integer requires downto direction"
+    );
+    constexpr Range TargetRange = Range{R.left, Direction::DOWNTO, 0};
+
+    return detail::Ufixed<TargetRange>(detail::resize(
+        std::forward<X>(x), overflow_mode::saturate, round_mode::round_to_pos
+    ));
+}
+
+template <typename X>
+    requires detail::is_coconext_ufixed_v<std::remove_cvref_t<X>>
+constexpr auto trunc(X&& x) {
+    constexpr Range R = std::remove_cvref_t<X>::range;
+    static_assert(
+        R.direction == Direction::DOWNTO, "rounding to integer requires downto direction"
+    );
+    constexpr Range TargetRange = Range{R.left, Direction::DOWNTO, 0};
+
+    return detail::Ufixed<TargetRange>(
+        detail::resize(std::forward<X>(x), overflow_mode::saturate, round_mode::truncate)
+    );
+}
+
+template <typename X>
+    requires detail::is_coconext_ufixed_v<std::remove_cvref_t<X>>
+constexpr auto round(X&& x) {
+    constexpr Range R = std::remove_cvref_t<X>::range;
+    static_assert(
+        R.direction == Direction::DOWNTO, "rounding to integer requires downto direction"
+    );
+    constexpr Range TargetRange = Range{R.left, Direction::DOWNTO, 0};
+
+    return detail::Ufixed<TargetRange>(
+        detail::resize(std::forward<X>(x), overflow_mode::saturate, round_mode::round)
+    );
+}
+
 template <Range R>
-constexpr auto reverse(detail::Ufixed<R> v) {
-    if constexpr (R.direction == Direction::DOWNTO) {
-        return detail::Ufixed<Range{R.left, Direction::TO, R.right}>(v);
+constexpr auto reverse(detail::Ufixed<R> const& v) noexcept {
+    if constexpr (R.direction == Direction::TO) {
+        return detail::Ufixed<reverse(R)>(v.value_.reverse());
     } else {
-        return detail::Ufixed<Range{R.left, Direction::DOWNTO, R.right}>(
-            v.value_.reverse()
-        );
+        return detail::Ufixed<reverse(R)>(v.value_);
     }
 }
 
 }  // namespace coconext::types
-
-// TODO hash
 
 template <coconext::types::Range R>
 struct std::formatter<coconext::types::detail::Ufixed<R>> {
@@ -566,10 +799,3 @@ struct std::hash<coconext::types::detail::Ufixed<R>> {
 };
 
 #endif  // COCONEXT_UFIXED_HPP
-
-// TODO
-
-// floor(x), ceil(x), round(x), trunc(x) free functions
-// reverse
-// as
-// resize
