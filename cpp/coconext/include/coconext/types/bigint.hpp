@@ -151,6 +151,19 @@ constexpr int tc_multiply(
     for (size_t i = 0; i < parts; ++i) {
         overflow |= tc_multiply_part(dst.subspan(i), lhs, rhs[i], 0, /*add=*/i != 0);
     }
+
+    // The first partial product overwrites its output and each later partial
+    // product extends that initialized region by one word. Clear only a tail
+    // that cannot contain any part of the product. This also fully defines the
+    // result when rhs is empty, without requiring a zero-initialized dst.
+    size_t initialized = 0;
+    if (parts != 0) {
+        initialized = std::min(dst.size(), lhs.size());
+        initialized += std::min(parts, dst.size() - initialized);
+    }
+    for (size_t i = initialized; i < dst.size(); ++i) {
+        dst[i] = 0;
+    }
     return overflow;
 }
 
@@ -799,13 +812,12 @@ constexpr void sub_assign(WordSpan dst, WordConstSpan rhs) {
     clear_unused_bits(dst);
 }
 
-constexpr void add_extended(
-    WordSpan dst, WordConstSpan lhs, WordConstSpan rhs, bool lhs_signed, bool rhs_signed
-) {
+template <bool SignedOperands>
+constexpr void add_extended(WordSpan dst, WordConstSpan lhs, WordConstSpan rhs) {
     Word carry = 0;
     for (size_t i = 0; i < dst.num_words(); ++i) {
-        Word a = extended_word(lhs, i, lhs_signed);
-        Word b = extended_word(rhs, i, rhs_signed);
+        Word a = extended_word(lhs, i, SignedOperands);
+        Word b = extended_word(rhs, i, SignedOperands);
         Word sum = a + b;
         Word next_carry = sum < a;
         Word with_carry = sum + carry;
@@ -816,13 +828,12 @@ constexpr void add_extended(
     clear_unused_bits(dst);
 }
 
-constexpr void sub_extended(
-    WordSpan dst, WordConstSpan lhs, WordConstSpan rhs, bool lhs_signed, bool rhs_signed
-) {
+template <bool SignedOperands>
+constexpr void sub_extended(WordSpan dst, WordConstSpan lhs, WordConstSpan rhs) {
     Word borrow = 0;
     for (size_t i = 0; i < dst.num_words(); ++i) {
-        Word a = extended_word(lhs, i, lhs_signed);
-        Word b = extended_word(rhs, i, rhs_signed);
+        Word a = extended_word(lhs, i, SignedOperands);
+        Word b = extended_word(rhs, i, SignedOperands);
         Word difference = a - b;
         Word next_borrow = a < b;
         Word with_borrow = difference - borrow;
@@ -948,9 +959,6 @@ constexpr void multiply(WordSpan dst, WordConstSpan lhs, WordConstSpan rhs) {
 }
 
 constexpr void multiply_unsigned(WordSpan dst, WordConstSpan lhs, WordConstSpan rhs) {
-    for (Word& word : dst.data()) {
-        word = 0;
-    }
     tc_multiply(dst.data(), lhs.data(), rhs.data());
     clear_unused_bits(dst);
 }
@@ -1107,7 +1115,7 @@ constexpr void divide_modulo(
             borrow = word > previous;
         }
         clear_unused_bits(quotient);
-        add_extended(modulo, modulo, rhs, true, true);
+        add_extended<true>(modulo, modulo, rhs);
         clear_unused_bits(modulo);
     }
 }

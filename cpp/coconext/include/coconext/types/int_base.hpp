@@ -1026,10 +1026,10 @@ class Int {
         auto av = a.physical_wide_cref(a_buffer);
         auto bv = b.physical_wide_cref(b_buffer);
         if (op == '+') {
-            add_extended(out, av, bv, Sa, Sb);
+            add_extended<Sa>(out, av, bv);
         } else if (op == '-') {
-            sub_extended(out, av, bv, Sa, Sb);
-        } else if constexpr (Sa && Sb) {
+            sub_extended<Sa>(out, av, bv);
+        } else if constexpr (Sa) {
             multiply_signed(out, av, bv);
         } else {
             multiply_unsigned(out, av, bv);

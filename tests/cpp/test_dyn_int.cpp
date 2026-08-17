@@ -2,19 +2,25 @@
 #include <gtest/gtest.h>
 
 #include <coconext/types/dyn_int_base.hpp>
+#include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <unordered_set>
+#include <utility>
 
 using coconext::types::detail::DynSInt;
 using coconext::types::detail::DynUInt;
 namespace detail = coconext::types::detail;
 
 TEST(DynInt, runtime_width_storage_and_formatting) {
-    DynUInt inline_value(128, uint64_t{12345});
-    DynUInt heap_value(129, uint64_t{12345});
-    EXPECT_EQ(inline_value.to_decimal_string(), "12345");
+    static_assert(DynUInt::sbo_bits == 64);
+    static_assert(DynSInt::sbo_bits == 64);
+
+    DynUInt native_value(64, uint64_t{12345});
+    DynUInt heap_value(65, uint64_t{12345});
+    EXPECT_EQ(native_value.to_decimal_string(), "12345");
     EXPECT_EQ(heap_value.to_decimal_string(), "12345");
-    EXPECT_EQ(inline_value.popcount(), heap_value.popcount());
+    EXPECT_EQ(native_value.popcount(), heap_value.popcount());
 
     DynUInt hex(200, "0x1234567890ABCDEF1122334455667788AABBCCDD");
     EXPECT_EQ(
@@ -27,6 +33,89 @@ TEST(DynInt, runtime_width_storage_and_formatting) {
     EXPECT_EQ(DynSInt(12, -1).popcount(), 12u);
     EXPECT_EQ(DynSInt(12, -1).count_leading_zeros(), 0u);
     EXPECT_EQ(DynUInt(65, 1).count_leading_zeros(), 64u);
+}
+
+TEST(DynInt, native_tier_handles_full_64_bit_values) {
+    constexpr uint64_t unsigned_max = std::numeric_limits<uint64_t>::max();
+    constexpr int64_t signed_min = std::numeric_limits<int64_t>::min();
+
+    DynUInt u(64, unsigned_max);
+    EXPECT_EQ(u.raw().word(0), unsigned_max);
+    EXPECT_EQ(u.to_decimal_string(), "18446744073709551615");
+    EXPECT_EQ(u.to_hexadecimal_string(), "ffffffffffffffff");
+    EXPECT_EQ((u >> 63).to_decimal_string(), "1");
+    EXPECT_EQ(DynUInt::exact_add(u, DynUInt(64, uint64_t{1})).to_decimal_string(), "0");
+
+    DynSInt s(64, signed_min);
+    EXPECT_EQ(s.raw().word(0), uint64_t{1} << 63);
+    EXPECT_EQ(s.to_decimal_string(), "-9223372036854775808");
+    EXPECT_EQ((s >> 63).to_decimal_string(), "-1");
+    EXPECT_LT(s, DynSInt(64, int64_t{-1}));
+}
+
+TEST(DynInt, native_operands_produce_wide_results_without_losing_bits) {
+    constexpr uint64_t unsigned_max = std::numeric_limits<uint64_t>::max();
+
+    auto sum = DynUInt(64, unsigned_max) + DynUInt(64, uint64_t{1});
+    EXPECT_EQ(sum.width(), 65u);
+    EXPECT_EQ(sum.to_decimal_string(), "18446744073709551616");
+
+    auto difference = DynUInt(64, uint64_t{0}) - DynUInt(64, unsigned_max);
+    EXPECT_EQ(difference.width(), 65u);
+    EXPECT_EQ(difference.to_decimal_string(), "-18446744073709551615");
+
+    auto product = DynUInt(64, unsigned_max) * DynUInt(64, unsigned_max);
+    EXPECT_EQ(product.width(), 128u);
+    EXPECT_EQ(product.to_decimal_string(), "340282366920938463426481119284349108225");
+
+    auto quotient = DynUInt(64, unsigned_max) / DynUInt(64, uint64_t{3});
+    EXPECT_EQ(quotient.width(), 65u);
+    EXPECT_EQ(quotient.to_decimal_string(), "6148914691236517205");
+
+    auto signed_overflow_quotient =
+        DynSInt(64, std::numeric_limits<int64_t>::min()) / DynSInt(64, int64_t{-1});
+    EXPECT_EQ(signed_overflow_quotient.width(), 65u);
+    EXPECT_EQ(signed_overflow_quotient.to_decimal_string(), "9223372036854775808");
+
+    auto signed_sum =
+        DynSInt(64, std::numeric_limits<int64_t>::max()) + DynSInt(64, int64_t{1});
+    EXPECT_EQ(signed_sum.width(), 65u);
+    EXPECT_EQ(signed_sum.to_decimal_string(), "9223372036854775808");
+
+    auto signed_product =
+        DynSInt(64, std::numeric_limits<int64_t>::min()) * DynSInt(64, int64_t{-1});
+    EXPECT_EQ(signed_product.width(), 128u);
+    EXPECT_EQ(signed_product.to_decimal_string(), "9223372036854775808");
+}
+
+TEST(DynInt, copy_move_and_conversion_cross_native_boundary) {
+    DynUInt native(64, std::numeric_limits<uint64_t>::max());
+    DynUInt wide(65, native);
+    EXPECT_EQ(wide.raw().word(0), std::numeric_limits<uint64_t>::max());
+    EXPECT_EQ(wide.raw().word(1), 0u);
+
+    DynUInt wide_copy(wide);
+    DynUInt wide_move(std::move(wide_copy));
+    EXPECT_EQ(wide_move.to_decimal_string(), "18446744073709551615");
+
+    DynUInt native_copy(64, wide_move);
+    DynUInt native_move(std::move(native_copy));
+    EXPECT_EQ(native_move.to_decimal_string(), "18446744073709551615");
+
+    DynUInt assigned_native(65, uint64_t{0});
+    assigned_native = DynUInt(64, uint64_t{17});
+    EXPECT_EQ(assigned_native.width(), 64u);
+    EXPECT_EQ(assigned_native.to_decimal_string(), "17");
+
+    DynUInt assigned_wide(64, uint64_t{0});
+    assigned_wide = DynUInt(65, std::numeric_limits<uint64_t>::max());
+    EXPECT_EQ(assigned_wide.width(), 65u);
+    EXPECT_EQ(assigned_wide.to_decimal_string(), "18446744073709551615");
+
+    DynSInt signed_native(64, int64_t{-1});
+    DynSInt signed_wide(65, signed_native);
+    EXPECT_EQ(signed_wide.raw().word(1), std::numeric_limits<uint64_t>::max());
+    EXPECT_EQ(DynSInt(64, signed_wide).to_decimal_string(), "-1");
 }
 
 TEST(DynInt, bitwise_shift_compare_and_truncate) {

@@ -1,6 +1,7 @@
 // LCOV_EXCL_BR_START
 #include <gtest/gtest.h>
 
+#include <array>
 #include <coconext/types.hpp>
 #include <type_traits>
 
@@ -99,6 +100,29 @@ TEST(Int, exact_width_arithmetic_is_explicit) {
     static_assert(detail::UInt<8>::exact_add(a, b) == detail::UInt<8>(44));
     static_assert(detail::UInt<8>::exact_sub(b, a) == detail::UInt<8>(156));
     static_assert(detail::UInt<8>::exact_mul(a, b) == detail::UInt<8>(32));
+}
+
+TEST(IntKernel, multiply_overwrites_the_complete_destination) {
+    std::array<detail::Word, 4> destination{
+        ~detail::Word{0}, ~detail::Word{0}, ~detail::Word{0}, ~detail::Word{0}
+    };
+    std::array<detail::Word, 2> lhs{~detail::Word{0}, 1};
+    std::array<detail::Word, 2> rhs{2, 3};
+    detail::multiply_unsigned(
+        detail::WordSpan{destination, 256},
+        detail::WordConstSpan{lhs, 128},
+        detail::WordConstSpan{rhs, 128}
+    );
+    EXPECT_EQ(destination, (std::array<detail::Word, 4>{~detail::Word{1}, 0, 6, 0}));
+
+    destination.fill(~detail::Word{0});
+    std::array<detail::Word, 0> empty_rhs{};
+    detail::multiply_unsigned(
+        detail::WordSpan{destination, 256},
+        detail::WordConstSpan{lhs, 128},
+        detail::WordConstSpan{empty_rhs, 0}
+    );
+    EXPECT_EQ(destination, (std::array<detail::Word, 4>{0, 0, 0, 0}));
 }
 
 TEST(IntNative, scalar_tiers_cover_the_complete_native_operation) {
