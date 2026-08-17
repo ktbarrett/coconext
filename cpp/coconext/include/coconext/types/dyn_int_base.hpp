@@ -8,7 +8,8 @@
 #include <compare>
 #include <cstddef>
 #include <cstdint>
-#include <memory>
+#include <format>
+#include <limits>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -27,10 +28,7 @@ class DynInt {
 
   public:
     static constexpr bool is_signed = SignedRepresentation;
-    static constexpr size_t sbo_words = 2;
-    static constexpr size_t sbo_bits = sbo_words * word_bits;
-
-    static_assert(sbo_words >= 1, "the inline buffer needs at least one word");
+    static constexpr size_t sbo_bits = word_bits;
 
     explicit DynInt(size_t width) : width_(width) { initialize_storage(); }
 
@@ -40,57 +38,61 @@ class DynInt {
             throw std::invalid_argument("DynInt(0) has no integer representation");
         }
         assert((native_value_fits<SignedRepresentation>(width, val)));
+        if (is_native()) {
+            storage_.native_ = static_cast<Word>(val);
+            canonicalize();
+            return;
+        }
 #if defined(__SIZEOF_INT128__)
         if constexpr (sizeof(IntT) > sizeof(Word)) {
             if constexpr (std::is_signed_v<IntT>) {
-                load_int128(physical_mut(), static_cast<__int128_t>(val));
+                assign_int128(static_cast<__int128_t>(val));
             } else {
-                load_uint128(physical_mut(), static_cast<__uint128_t>(val));
+                assign_uint128(static_cast<__uint128_t>(val));
             }
         } else
 #endif
         {
-            load_native(physical_mut(), val);
+            assign_native(val);
         }
-        if (width_ < sizeof(IntT) * CHAR_BIT
-            || (!SignedRepresentation && std::is_signed_v<IntT>))
-        {
-            canonicalize();
-        }
+        canonicalize();
     }
 
 #if defined(__SIZEOF_INT128__)
     DynInt(size_t width, __int128_t val) : DynInt(width) {
         assert((native_value_fits<SignedRepresentation>(width, val)));
-        load_int128(physical_mut(), val);
-        if (width_ < 128 || !SignedRepresentation) {
-            canonicalize();
-        }
+        assign_int128(val);
+        canonicalize();
     }
     DynInt(size_t width, __uint128_t val) : DynInt(width) {
         assert((native_value_fits<SignedRepresentation>(width, val)));
-        load_uint128(physical_mut(), val);
-        if (width_ < 128) {
-            canonicalize();
-        }
+        assign_uint128(val);
+        canonicalize();
     }
 #endif
 
     DynInt(size_t width, std::string_view str) : DynInt(width) {
-        parse_into(logical_mut(), str);
-        if constexpr (SignedRepresentation) {
+        if (is_native()) {
+            storage_.native_ = parse_native(str);
             canonicalize();
+        } else {
+            parse_into(logical_mut(), str);
+            if constexpr (SignedRepresentation) {
+                canonicalize();
+            }
         }
     }
 
     template <size_t W, bool OtherSigned>
     explicit DynInt(Int<W, OtherSigned> const& src) : DynInt(W) {
         if constexpr (W > 0) {
-            auto dst = physical_mut();
-            if constexpr (Int<W, OtherSigned>::is_wide) {
+            if constexpr (W <= word_bits) {
+                storage_.native_ = static_cast<Word>(src.raw());
+            } else if constexpr (Int<W, OtherSigned>::is_wide) {
                 auto source = src.raw().data();
-                for (size_t i = 0; i < dst.num_words(); ++i) {
-                    dst.data()[i] = source[i];
+                auto destination = words();
+                for (size_t i = 0; i < destination.size(); ++i) {
+                    destination[i] = source[i];
                 }
             } else {
 #if defined(__SIZEOF_INT128__)
@@ -99,12 +101,11 @@ class DynInt {
                     if constexpr (OtherSigned) {
                         using SourceSigned =
                             typename as_signed<typename Int<W, OtherSigned>::IntType>::type;
-                        load_int128(
-                            dst,
+                        assign_int128(
                             static_cast<__int128_t>(static_cast<SourceSigned>(src.raw()))
                         );
                     } else {
-                        load_uint128(dst, static_cast<__uint128_t>(src.raw()));
+                        assign_uint128(static_cast<__uint128_t>(src.raw()));
                     }
                 } else
 #endif
@@ -112,15 +113,13 @@ class DynInt {
                     if constexpr (OtherSigned) {
                         using SourceSigned =
                             typename as_signed<typename Int<W, OtherSigned>::IntType>::type;
-                        load_native(dst, static_cast<SourceSigned>(src.raw()));
+                        assign_native(static_cast<SourceSigned>(src.raw()));
                     } else {
-                        load_native(dst, src.raw());
+                        assign_native(src.raw());
                     }
                 }
             }
-            if constexpr (SignedRepresentation != OtherSigned) {
-                canonicalize();
-            }
+            canonicalize();
         }
     }
 
@@ -129,36 +128,37 @@ class DynInt {
 
     template <bool OtherSigned>
     DynInt(size_t width, DynInt<OtherSigned> const& other) : DynInt(width) {
-        auto dst = physical_mut();
-        auto src = other.physical_cref();
-        for (size_t i = 0; i < dst.num_words(); ++i) {
-            dst.data()[i] = extended_word(src, i, OtherSigned);
+        if (is_native()) {
+            storage_.native_ = other.low_word();
+        } else {
+            auto destination = words();
+            Word extension = OtherSigned && other.is_negative() ? ~Word{0} : Word{0};
+            for (size_t i = 0; i < destination.size(); ++i) {
+                destination[i] = i < other.num_words() ? other.word(i) : extension;
+            }
         }
-        if (width_ < other.width_ || SignedRepresentation != OtherSigned) {
-            canonicalize();
-        }
+        canonicalize();
     }
 
     DynInt(DynInt const& other) : DynInt(other.width_) {
-        auto dst = words();
-        auto src = other.words();
-        for (size_t i = 0; i < dst.size(); ++i) {
-            dst[i] = src[i];
+        if (is_native()) {
+            storage_.native_ = other.storage_.native_;
+        } else {
+            auto destination = words();
+            auto source = other.words();
+            for (size_t i = 0; i < destination.size(); ++i) {
+                destination[i] = source[i];
+            }
         }
     }
 
     DynInt(DynInt&& other) noexcept : width_(other.width_) {
-        if (is_inline()) {
-            for (size_t i = 0; i < sbo_words; ++i) {
-                storage_.inline_[i] = other.storage_.inline_[i];
-            }
+        if (is_native()) {
+            storage_.native_ = other.storage_.native_;
         } else {
-            std::construct_at(&storage_.heap_, std::move(other.storage_.heap_));
-            std::destroy_at(&other.storage_.heap_);
+            storage_.heap_ = other.storage_.heap_;
             other.width_ = 0;
-            for (size_t i = 0; i < sbo_words; ++i) {
-                other.storage_.inline_[i] = 0;
-            }
+            other.storage_.native_ = 0;
         }
     }
 
@@ -174,17 +174,12 @@ class DynInt {
         if (this != &other) {
             destroy_storage();
             width_ = other.width_;
-            if (is_inline()) {
-                for (size_t i = 0; i < sbo_words; ++i) {
-                    storage_.inline_[i] = other.storage_.inline_[i];
-                }
+            if (is_native()) {
+                storage_.native_ = other.storage_.native_;
             } else {
-                std::construct_at(&storage_.heap_, std::move(other.storage_.heap_));
-                std::destroy_at(&other.storage_.heap_);
+                storage_.heap_ = other.storage_.heap_;
                 other.width_ = 0;
-                for (size_t i = 0; i < sbo_words; ++i) {
-                    other.storage_.inline_[i] = 0;
-                }
+                other.storage_.native_ = 0;
             }
         }
         return *this;
@@ -200,14 +195,19 @@ class DynInt {
         if (index >= width_) {
             throw std::out_of_range("Bit index out of bounds");
         }
-        return detail::get_bit(logical_cref(), index);
+        if (is_native()) {
+            return (storage_.native_ >> index) & Word{1};
+        }
+        return (storage_.heap_[index / word_bits] >> (index % word_bits)) & Word{1};
     }
 
     void set_bit(size_t index, bool val) {
         if (index >= width_) {
             throw std::out_of_range("Bit index out of bounds");
         }
-        detail::set_bit(logical_mut(), index, val);
+        Word mask = Word{1} << (index % word_bits);
+        Word& target = is_native() ? storage_.native_ : storage_.heap_[index / word_bits];
+        target = val ? target | mask : target & ~mask;
         if constexpr (SignedRepresentation) {
             if (index == width_ - 1) {
                 canonicalize();
@@ -225,6 +225,9 @@ class DynInt {
     DynInt<false> logical_bits() const { return DynInt<false>(width_, *this); }
 
     size_t popcount() const {
+        if (is_native()) {
+            return std::popcount(logical_native_value());
+        }
         size_t count = 0;
         auto data = words();
         for (size_t i = 0; i < data.size(); ++i) {
@@ -238,6 +241,10 @@ class DynInt {
     }
 
     size_t count_leading_zeros() const {
+        if (is_native()) {
+            Word value = logical_native_value();
+            return value == 0 ? width_ : std::countl_zero(value) - (word_bits - width_);
+        }
         auto data = words();
         for (size_t i = data.size(); i > 0; --i) {
             Word word = data[i - 1];
@@ -253,11 +260,21 @@ class DynInt {
     }
 
     size_t count_trailing_zeros() const {
+        if (is_native()) {
+            Word value = logical_native_value();
+            return value == 0 ? width_ : std::countr_zero(value);
+        }
         return detail::count_trailing_zeros(logical_cref());
     }
 
     bool operator==(DynInt const& other) const {
-        return width_ == other.width_ && words_equal(other);
+        if (width_ != other.width_) {
+            return false;
+        }
+        if (is_native()) {
+            return storage_.native_ == other.storage_.native_;
+        }
+        return words_equal(other);
     }
 
     std::strong_ordering operator<=>(DynInt const& other) const {
@@ -274,24 +291,40 @@ class DynInt {
     DynInt operator&(DynInt const& other) const {
         check_same_width(other);
         DynInt result(*this);
-        and_assign(result.physical_mut(), other.physical_cref());
+        if (is_native()) {
+            result.storage_.native_ &= other.storage_.native_;
+        } else {
+            and_assign(result.physical_mut(), other.physical_cref());
+        }
         return result;
     }
     DynInt operator|(DynInt const& other) const {
         check_same_width(other);
         DynInt result(*this);
-        or_assign(result.physical_mut(), other.physical_cref());
+        if (is_native()) {
+            result.storage_.native_ |= other.storage_.native_;
+        } else {
+            or_assign(result.physical_mut(), other.physical_cref());
+        }
         return result;
     }
     DynInt operator^(DynInt const& other) const {
         check_same_width(other);
         DynInt result(*this);
-        xor_assign(result.physical_mut(), other.physical_cref());
+        if (is_native()) {
+            result.storage_.native_ ^= other.storage_.native_;
+        } else {
+            xor_assign(result.physical_mut(), other.physical_cref());
+        }
         return result;
     }
     DynInt operator~() const {
         DynInt result(*this);
-        bitnot(result.physical_mut());
+        if (is_native()) {
+            result.storage_.native_ = ~result.storage_.native_;
+        } else {
+            bitnot(result.physical_mut());
+        }
         if constexpr (!SignedRepresentation) {
             result.canonicalize();
         }
@@ -302,7 +335,11 @@ class DynInt {
             return DynInt(width_);
         }
         DynInt result(*this);
-        shift_left(result.physical_mut(), amount);
+        if (is_native()) {
+            result.storage_.native_ <<= amount;
+        } else {
+            shift_left(result.physical_mut(), amount);
+        }
         result.canonicalize();
         return result;
     }
@@ -318,7 +355,14 @@ class DynInt {
             }
         }
         DynInt result(*this);
-        if constexpr (SignedRepresentation) {
+        if (is_native()) {
+            if constexpr (SignedRepresentation) {
+                result.storage_.native_ =
+                    static_cast<Word>(static_cast<int64_t>(storage_.native_) >> amount);
+            } else {
+                result.storage_.native_ >>= amount;
+            }
+        } else if constexpr (SignedRepresentation) {
             shift_right_arith(result.physical_mut(), amount);
         } else {
             shift_right_logical(result.physical_mut(), amount);
@@ -368,23 +412,44 @@ class DynInt {
     }
 
     std::string to_binary_string() const {
+        if (is_native()) {
+            return width_ == 0 ? ""
+                               : std::format("{:0{}b}", logical_native_value(), width_);
+        }
         return format_power_of_two(logical_cref(), 1, width_, [](uint8_t d) {
             return static_cast<char>('0' + d);
         });
     }
     std::string to_decimal_string() const {
-        return format_decimal(physical_cref(), SignedRepresentation);
+        return to_decimal_string(SignedRepresentation);
     }
     std::string to_decimal_string(bool signed_value) const {
+        if (is_native()) {
+            if (width_ == 0) {
+                return "";
+            }
+            return signed_value ? std::format("{}", static_cast<int64_t>(storage_.native_))
+                                : std::format("{}", storage_.native_);
+        }
         return format_decimal(physical_cref(), signed_value);
     }
     std::string to_hexadecimal_string() const {
+        if (is_native()) {
+            return width_ == 0
+                     ? ""
+                     : std::format("{:0{}x}", logical_native_value(), (width_ + 3) / 4);
+        }
         char const digits[] = "0123456789abcdef";
         return format_power_of_two(logical_cref(), 4, (width_ + 3) / 4, [&](uint8_t d) {
             return digits[d];
         });
     }
     std::string to_octal_string() const {
+        if (is_native()) {
+            return width_ == 0
+                     ? ""
+                     : std::format("{:0{}o}", logical_native_value(), (width_ + 2) / 3);
+        }
         return format_power_of_two(logical_cref(), 3, (width_ + 2) / 3, [](uint8_t d) {
             return static_cast<char>('0' + d);
         });
@@ -393,21 +458,31 @@ class DynInt {
     static DynInt exact_add(DynInt const& a, DynInt const& b) {
         a.check_same_width(b);
         DynInt result(a);
-        add_assign(result.physical_mut(), b.physical_cref());
+        if (a.is_native()) {
+            result.storage_.native_ += b.storage_.native_;
+        } else {
+            add_assign(result.physical_mut(), b.physical_cref());
+        }
         result.canonicalize();
         return result;
     }
     static DynInt exact_sub(DynInt const& a, DynInt const& b) {
         a.check_same_width(b);
         DynInt result(a);
-        sub_assign(result.physical_mut(), b.physical_cref());
+        if (a.is_native()) {
+            result.storage_.native_ -= b.storage_.native_;
+        } else {
+            sub_assign(result.physical_mut(), b.physical_cref());
+        }
         result.canonicalize();
         return result;
     }
     static DynInt exact_mul(DynInt const& a, DynInt const& b) {
         a.check_same_width(b);
         DynInt result(a.width_);
-        if constexpr (SignedRepresentation) {
+        if (a.is_native()) {
+            result.storage_.native_ = a.storage_.native_ * b.storage_.native_;
+        } else if constexpr (SignedRepresentation) {
             multiply_signed(result.physical_mut(), a.physical_cref(), b.physical_cref());
         } else {
             multiply_unsigned(result.physical_mut(), a.physical_cref(), b.physical_cref());
@@ -420,16 +495,69 @@ class DynInt {
     static DynInt arithmetic(
         DynInt<Sa> const& a, DynInt<Sb> const& b, size_t result_width, char operation
     ) {
+        static_assert(Sa == Sb);
         DynInt result(result_width);
+        if (a.is_native() && b.is_native()) {
+            if (result.is_native()) {
+                if constexpr (SignedRepresentation) {
+                    int64_t lhs = Sa ? static_cast<int64_t>(a.storage_.native_)
+                                     : static_cast<int64_t>(a.logical_native_value());
+                    int64_t rhs = Sb ? static_cast<int64_t>(b.storage_.native_)
+                                     : static_cast<int64_t>(b.logical_native_value());
+                    if (operation == '+') {
+                        result.storage_.native_ = static_cast<Word>(lhs + rhs);
+                    } else if (operation == '-') {
+                        result.storage_.native_ = static_cast<Word>(lhs - rhs);
+                    } else {
+                        result.storage_.native_ = static_cast<Word>(lhs * rhs);
+                    }
+                } else {
+                    Word lhs = a.logical_native_value();
+                    Word rhs = b.logical_native_value();
+                    if (operation == '+') {
+                        result.storage_.native_ = lhs + rhs;
+                    } else if (operation == '-') {
+                        result.storage_.native_ = lhs - rhs;
+                    } else {
+                        result.storage_.native_ = lhs * rhs;
+                    }
+                }
+                result.canonicalize();
+                return result;
+            }
+#if defined(__SIZEOF_INT128__)
+            if constexpr (SignedRepresentation) {
+                __int128_t lhs = Sa ? static_cast<int64_t>(a.storage_.native_)
+                                    : static_cast<__int128_t>(a.logical_native_value());
+                __int128_t rhs = Sb ? static_cast<int64_t>(b.storage_.native_)
+                                    : static_cast<__int128_t>(b.logical_native_value());
+                if (operation == '+') {
+                    result.assign_int128(lhs + rhs);
+                } else if (operation == '-') {
+                    result.assign_int128(lhs - rhs);
+                } else {
+                    result.assign_int128(lhs * rhs);
+                }
+            } else {
+                __uint128_t lhs = a.logical_native_value();
+                __uint128_t rhs = b.logical_native_value();
+                if (operation == '+') {
+                    result.assign_uint128(lhs + rhs);
+                } else if (operation == '-') {
+                    result.assign_uint128(lhs - rhs);
+                } else {
+                    result.assign_uint128(lhs * rhs);
+                }
+            }
+            result.canonicalize();
+            return result;
+#endif
+        }
         if (operation == '+') {
-            add_extended(
-                result.physical_mut(), a.physical_cref(), b.physical_cref(), Sa, Sb
-            );
+            add_extended<Sa>(result.physical_mut(), a.physical_cref(), b.physical_cref());
         } else if (operation == '-') {
-            sub_extended(
-                result.physical_mut(), a.physical_cref(), b.physical_cref(), Sa, Sb
-            );
-        } else if constexpr (Sa && Sb) {
+            sub_extended<Sa>(result.physical_mut(), a.physical_cref(), b.physical_cref());
+        } else if constexpr (Sa) {
             multiply_signed(result.physical_mut(), a.physical_cref(), b.physical_cref());
         } else {
             multiply_unsigned(result.physical_mut(), a.physical_cref(), b.physical_cref());
@@ -438,6 +566,35 @@ class DynInt {
     }
 
     static std::pair<DynInt, DynInt> divide(DynInt const& a, DynInt const& b, bool modulo) {
+        if (a.is_native() && b.is_native()) {
+            if constexpr (SignedRepresentation) {
+                int64_t lhs = static_cast<int64_t>(a.storage_.native_);
+                int64_t rhs = static_cast<int64_t>(b.storage_.native_);
+                if (rhs == 0) {
+                    throw std::domain_error("Division by zero");
+                }
+                if (lhs == std::numeric_limits<int64_t>::min() && rhs == -1) {
+                    return {
+                        DynInt(a.width_ + 1, Word{1} << (word_bits - 1)),
+                        DynInt(b.width_, int64_t{0})
+                    };
+                }
+                int64_t quotient = lhs / rhs;
+                int64_t remainder = lhs % rhs;
+                if (modulo && remainder != 0 && (lhs < 0) != (rhs < 0)) {
+                    --quotient;
+                    remainder += rhs;
+                }
+                return {DynInt(a.width_ + 1, quotient), DynInt(b.width_, remainder)};
+            } else {
+                Word lhs = a.logical_native_value();
+                Word rhs = b.logical_native_value();
+                if (rhs == 0) {
+                    throw std::domain_error("Division by zero");
+                }
+                return {DynInt(a.width_ + 1, lhs / rhs), DynInt(b.width_, lhs % rhs)};
+            }
+        }
         size_t lhs_limbs = a.num_words() * limbs_per_word;
         size_t rhs_limbs = b.num_words() * limbs_per_word;
         DynInt quotient(a.width_ + 1);
@@ -473,40 +630,178 @@ class DynInt {
         return {std::move(quotient), std::move(remainder)};
     }
 
+    template <bool SourceSigned>
+    static DynInt growing_negate(DynInt<SourceSigned> const& value)
+        requires SignedRepresentation
+    {
+        size_t result_width = value.width_ + 1;
+        if (value.is_native()) {
+            DynInt result(result_width);
+            if (result.is_native()) {
+                int64_t operand = SourceSigned
+                                    ? static_cast<int64_t>(value.storage_.native_)
+                                    : static_cast<int64_t>(value.logical_native_value());
+                result.storage_.native_ = static_cast<Word>(-operand);
+                result.canonicalize();
+                return result;
+            }
+#if defined(__SIZEOF_INT128__)
+            __int128_t operand = SourceSigned
+                                   ? static_cast<int64_t>(value.storage_.native_)
+                                   : static_cast<__int128_t>(value.logical_native_value());
+            result.assign_int128(-operand);
+            result.canonicalize();
+            return result;
+#endif
+        }
+        return arithmetic(
+            DynInt(result_width), DynInt(result_width, value), result_width, '-'
+        );
+    }
+
   private:
     size_t width_;
     union Storage {
-        Word inline_[sbo_words];
-        std::unique_ptr<Word[]> heap_;
-        Storage() {}
-        ~Storage() {}
+        Word native_;
+        Word* heap_;
     } storage_;
 
-    bool is_inline() const { return width_ <= sbo_bits; }
+    bool is_native() const { return width_ <= sbo_bits; }
 
     void initialize_storage() {
-        if (is_inline()) {
-            for (size_t i = 0; i < sbo_words; ++i) {
-                storage_.inline_[i] = 0;
-            }
+        if (is_native()) {
+            storage_.native_ = 0;
         } else {
-            std::construct_at(&storage_.heap_, new Word[num_words()]());
+            storage_.heap_ = new Word[num_words()]();
         }
     }
 
     void destroy_storage() {
-        if (!is_inline()) {
-            std::destroy_at(&storage_.heap_);
+        if (!is_native()) {
+            delete[] storage_.heap_;
         }
     }
 
     std::span<Word> words() {
-        return is_inline() ? std::span<Word>{storage_.inline_, num_words()}
-                           : std::span<Word>{storage_.heap_.get(), num_words()};
+        return is_native() ? std::span<Word>{&storage_.native_, num_words()}
+                           : std::span<Word>{storage_.heap_, num_words()};
     }
     std::span<Word const> words() const {
-        return is_inline() ? std::span<Word const>{storage_.inline_, num_words()}
-                           : std::span<Word const>{storage_.heap_.get(), num_words()};
+        return is_native() ? std::span<Word const>{&storage_.native_, num_words()}
+                           : std::span<Word const>{storage_.heap_, num_words()};
+    }
+
+    Word low_word() const { return width_ == 0 ? Word{0} : word(0); }
+    Word word(size_t index) const {
+        return is_native() ? storage_.native_ : storage_.heap_[index];
+    }
+
+    Word native_mask() const {
+        return width_ == 0 ? Word{0} : width_ == 64 ? ~Word{0} : (Word{1} << width_) - 1;
+    }
+
+    Word logical_native_value() const { return storage_.native_ & native_mask(); }
+
+    bool is_negative() const {
+        return SignedRepresentation && width_ != 0
+            && ((word((width_ - 1) / word_bits) >> ((width_ - 1) % word_bits)) & 1);
+    }
+
+    template <typename IntT>
+        requires(std::is_integral_v<IntT> && sizeof(IntT) <= sizeof(Word))
+    void assign_native(IntT value) {
+        if (is_native()) {
+            storage_.native_ = static_cast<Word>(value);
+            return;
+        }
+        storage_.heap_[0] = static_cast<Word>(value);
+        Word extension = 0;
+        if constexpr (std::is_signed_v<IntT>) {
+            extension = value < 0 ? ~Word{0} : Word{0};
+        }
+        for (size_t i = 1; i < num_words(); ++i) {
+            storage_.heap_[i] = extension;
+        }
+    }
+
+#if defined(__SIZEOF_INT128__)
+    void assign_int128(__int128_t value) {
+        if (is_native()) {
+            storage_.native_ = static_cast<Word>(value);
+            return;
+        }
+        storage_.heap_[0] = static_cast<Word>(value);
+        storage_.heap_[1] = static_cast<Word>(static_cast<__uint128_t>(value) >> word_bits);
+        Word extension = value < 0 ? ~Word{0} : Word{0};
+        for (size_t i = 2; i < num_words(); ++i) {
+            storage_.heap_[i] = extension;
+        }
+    }
+
+    void assign_uint128(__uint128_t value) {
+        if (is_native()) {
+            storage_.native_ = static_cast<Word>(value);
+            return;
+        }
+        storage_.heap_[0] = static_cast<Word>(value);
+        storage_.heap_[1] = static_cast<Word>(value >> word_bits);
+        for (size_t i = 2; i < num_words(); ++i) {
+            storage_.heap_[i] = 0;
+        }
+    }
+#endif
+
+    Word parse_native(std::string_view str) const {
+        if (str.empty()) {
+            return 0;
+        }
+        bool negative = false;
+        size_t pos = 0;
+        if (str[pos] == '-') {
+            negative = true;
+            ++pos;
+        } else if (str[pos] == '+') {
+            ++pos;
+        }
+        bool hexadecimal = pos + 1 < str.size() && str[pos] == '0'
+                        && (str[pos + 1] == 'x' || str[pos + 1] == 'X');
+        if (hexadecimal) {
+            if (negative) {
+                throw std::invalid_argument("Hexadecimal value cannot be negative");
+            }
+            pos += 2;
+        }
+
+        Word value = 0;
+        Word maximum = native_mask();
+        Word base = hexadecimal ? 16 : 10;
+        for (; pos < str.size(); ++pos) {
+            char c = str[pos];
+            if (c == '\'' || c == '_') {
+                continue;
+            }
+            unsigned digit;
+            if (c >= '0' && c <= '9') {
+                digit = static_cast<unsigned>(c - '0');
+            } else if (hexadecimal && c >= 'a' && c <= 'f') {
+                digit = static_cast<unsigned>(c - 'a' + 10);
+            } else if (hexadecimal && c >= 'A' && c <= 'F') {
+                digit = static_cast<unsigned>(c - 'A' + 10);
+            } else {
+                throw std::invalid_argument(
+                    hexadecimal ? "Invalid hexadecimal character"
+                                : "Invalid base-10 character"
+                );
+            }
+            if (static_cast<Word>(digit) > maximum || value > (maximum - digit) / base) {
+                throw std::out_of_range(
+                    hexadecimal ? "Hexadecimal literal exceeds bit width"
+                                : "Decimal literal exceeds bit width"
+                );
+            }
+            value = value * base + digit;
+        }
+        return negative ? (Word{0} - value) & maximum : value;
     }
 
     WordConstSpan logical_cref() const { return WordConstSpan{words(), width_}; }
@@ -520,7 +815,7 @@ class DynInt {
         }
         unsigned valid_bits = width_ % word_bits;
         Word mask = (Word{1} << valid_bits) - 1;
-        Word& top = words().back();
+        Word& top = is_native() ? storage_.native_ : storage_.heap_[num_words() - 1];
         if constexpr (SignedRepresentation) {
             Word extension = Word{0} - ((top >> (valid_bits - 1)) & Word{1});
             top = (top & mask) | (extension & ~mask);
@@ -530,6 +825,14 @@ class DynInt {
     }
 
     bool less(DynInt const& other) const {
+        if (is_native() && other.is_native()) {
+            if constexpr (SignedRepresentation) {
+                return static_cast<int64_t>(storage_.native_)
+                     < static_cast<int64_t>(other.storage_.native_);
+            } else {
+                return storage_.native_ < other.storage_.native_;
+            }
+        }
         if constexpr (SignedRepresentation) {
             return scompare(physical_cref(), other.physical_cref()) < 0;
         } else {
@@ -592,16 +895,8 @@ inline DynUInt operator%(DynUInt const& a, DynUInt const& b) { return divrem(a, 
 inline DynSInt operator%(DynSInt const& a, DynSInt const& b) { return divrem(a, b).second; }
 inline DynSInt mod(DynSInt const& a, DynSInt const& b) { return divmod(a, b).second; }
 
-inline DynSInt operator-(DynSInt const& a) {
-    size_t result_width = a.width() + 1;
-    return DynSInt::arithmetic(
-        DynSInt(result_width), DynSInt(result_width, a), result_width, '-'
-    );
-}
-inline DynSInt operator-(DynUInt const& a) {
-    size_t result_width = a.width() + 1;
-    return DynSInt::arithmetic(DynUInt(a.width()), a, result_width, '-');
-}
+inline DynSInt operator-(DynSInt const& a) { return DynSInt::growing_negate(a); }
+inline DynSInt operator-(DynUInt const& a) { return DynSInt::growing_negate(a); }
 inline DynSInt abs(DynSInt const& a) {
     DynSInt extended(a.width() + 1, a);
     return a.width() != 0 && a.get_bit(a.width() - 1) ? -a : extended;
