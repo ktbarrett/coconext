@@ -33,6 +33,7 @@ add_executable(coconext_tests
     test_scheduler_binding.cpp
     test_scheduler_run.cpp
     test_task_manager.cpp
+    test_sfixed.cpp
     test_ufixed.cpp)
 
 target_link_libraries(coconext_tests PRIVATE coconext::coconext GTest::gtest_main)

@@ -66,9 +66,6 @@ class Signed {
     static constexpr Range range() noexcept { return R; }
     static constexpr size_t size() noexcept { return R.length(); }
 
-    template <Range R2>
-    friend class Signed;
-
     constexpr Signed() noexcept = default;
 
     template <size_t W>
@@ -195,11 +192,11 @@ class Signed {
 
         if constexpr (TargetW >= SourceW) {
             // Widening (and the null cases) never lose information.
-            value_ = src.value_.template sign_extend<TargetW>();
+            value_ = bits(src).template sign_extend<TargetW>();
         } else if (ovf == overflow_mode::wrap) {
-            value_ = src.value_.template truncate<TargetW>();
+            value_ = bits(src).template truncate<TargetW>();
         } else {
-            value_ = src.value_.template saturate_signed<TargetW>();
+            value_ = bits(src).template saturate_signed<TargetW>();
         }
     }
 
@@ -383,20 +380,20 @@ class Signed {
     constexpr auto operator+(Signed<R2> const& rhs) const {
         constexpr Range R_res =
             detail::int_downto_range(std::max(R.length(), R2.length()) + 1);
-        return Signed<R_res>(detail::add_signed(value_, rhs.value_));
+        return Signed<R_res>(detail::add_signed(value_, bits(rhs)));
     }
 
     template <Range R2>
     constexpr auto operator-(Signed<R2> const& rhs) const {
         constexpr Range R_res =
             detail::int_downto_range(std::max(R.length(), R2.length()) + 1);
-        return Signed<R_res>(detail::sub_signed(value_, rhs.value_));
+        return Signed<R_res>(detail::sub_signed(value_, bits(rhs)));
     }
 
     template <Range R2>
     constexpr auto operator*(Signed<R2> const& rhs) const {
         constexpr Range R_res = detail::int_downto_range(R.length() + R2.length());
-        return Signed<R_res>(detail::mul_signed(value_, rhs.value_));
+        return Signed<R_res>(detail::mul_signed(value_, bits(rhs)));
     }
 
     template <Range R2>
@@ -405,7 +402,7 @@ class Signed {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        return Signed<R_res>(detail::div_signed(value_, rhs.value_));
+        return Signed<R_res>(detail::div_signed(value_, bits(rhs)));
     }
 
     template <Range R2>
@@ -413,7 +410,7 @@ class Signed {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        return Signed<R2>(detail::rem_signed(value_, rhs.value_));
+        return Signed<R2>(detail::rem_signed(value_, bits(rhs)));
     }
 
     template <Range R2>

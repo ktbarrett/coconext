@@ -108,8 +108,6 @@ class Sfixed {
     static constexpr Range range() noexcept { return R; }
     static constexpr size_t size() noexcept { return R.length(); }
 
-    // TODO
-    // review start here
     // Construct from a native integer
     template <NativeInteger T>
     explicit(
@@ -648,7 +646,7 @@ class Sfixed {
 }  // namespace detail
 
 template <Range R>
-inline constexpr bool is_fixed<detail::Ufixed<R>> = true;
+inline constexpr bool is_fixed<detail::Sfixed<R>> = true;
 
 // see detail::make_fixed_range for the rules
 template <auto... Args>

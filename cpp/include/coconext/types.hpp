@@ -10,6 +10,7 @@
 #include "./types/range.hpp"
 #include "./types/resize_mode.hpp"
 #include "./types/reverse.hpp"
+#include "./types/sfixed.hpp"
 #include "./types/signed.hpp"
 #include "./types/ufixed.hpp"
 #include "./types/unsigned.hpp"

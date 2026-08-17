@@ -55,10 +55,6 @@ class Unsigned {
     static constexpr Range range() noexcept { return R; }
     static constexpr size_t size() noexcept { return R.length(); }
 
-    // Friends required for resize and cross-width/type conversions.
-    template <Range R2>
-    friend class Unsigned;
-
     constexpr Unsigned() noexcept = default;
 
     template <size_t W>
@@ -99,7 +95,7 @@ class Unsigned {
         if constexpr (R.length() >= R2.length()) {
             value_ = other.value_;
         } else if (
-            other.value_.ule((~Bits<R.length()>{}).template zero_extend<R2.length()>())
+            bits(other).ule((~Bits<R.length()>{}).template zero_extend<R2.length()>())
         )
         {
             value_ = coconext::types::resize<R.length()>(other).value_;
@@ -170,11 +166,11 @@ class Unsigned {
 
         if constexpr (TargetW >= SourceW) {
             // Widening (and the null cases) never lose information.
-            value_ = src.value_.template zero_extend<TargetW>();
+            value_ = bits(src).template zero_extend<TargetW>();
         } else if (ovf == overflow_mode::wrap) {
-            value_ = src.value_.template truncate<TargetW>();
+            value_ = bits(src).template truncate<TargetW>();
         } else {
-            value_ = src.value_.template saturate_unsigned<TargetW>();
+            value_ = bits(src).template saturate_unsigned<TargetW>();
         }
     }
 
@@ -383,7 +379,7 @@ class Unsigned {
     constexpr auto operator+(Unsigned<R2> const& rhs) const {
         constexpr Range R_res =
             detail::int_downto_range(std::max(R.length(), R2.length()) + 1);
-        return Unsigned<R_res>(detail::add_unsigned(value_, rhs.value_));
+        return Unsigned<R_res>(detail::add_unsigned(value_, bits(rhs)));
     }
 
     // Unsigned subtraction can go below zero, so the result is Signed.
@@ -397,7 +393,7 @@ class Unsigned {
     template <Range R2>
     constexpr auto operator*(Unsigned<R2> const& rhs) const {
         constexpr Range R_res = detail::int_downto_range(R.length() + R2.length());
-        return Unsigned<R_res>(detail::mul_unsigned(value_, rhs.value_));
+        return Unsigned<R_res>(detail::mul_unsigned(value_, bits(rhs)));
     }
 
     template <Range R2>
@@ -406,7 +402,7 @@ class Unsigned {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        return Unsigned<R_res>(detail::div_unsigned(value_, rhs.value_));
+        return Unsigned<R_res>(detail::div_unsigned(value_, bits(rhs)));
     }
 
     template <Range R2>
@@ -414,7 +410,7 @@ class Unsigned {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        return Unsigned<R2>(detail::rem_unsigned(value_, rhs.value_));
+        return Unsigned<R2>(detail::rem_unsigned(value_, bits(rhs)));
     }
 
     template <Range R2>

@@ -112,6 +112,11 @@ class Ufixed {
     static constexpr Range range() noexcept { return R; }
     static constexpr size_t size() noexcept { return R.length(); }
 
+    template <Range R2>
+    friend class Ufixed;
+
+    constexpr Ufixed() noexcept = default;
+
     // Construct from a native integer
     template <NativeInteger T>
     explicit(
@@ -155,11 +160,11 @@ class Ufixed {
                 value_ = other.value_;
             } else {
                 int frac_shift = R2.right - R.right;
-                Bits<R.length()> padded_bits = other.value_;
+                Bits<R.length()> padded_bits(other.value_.raw());
                 value_ = padded_bits << frac_shift;
             }
         } else {
-            value_ = coconext::types::resize<R>(other).value_;
+            value_ = coconext::types::resize<R>(other, om, rm).value_;
         }
     }
 
@@ -249,7 +254,7 @@ class Ufixed {
         static_assert(
             R.length() == R2.length(), "Construction from Unsigned requires equal length"
         );
-        value_ = v.value_;
+        value_ = bits(v);
     }
 
     // Construct from a BitArray
@@ -339,6 +344,8 @@ class Ufixed {
         //     }
     }
 
+    // TODO
+    // start adding tests from here
     template <typename SourceWrapper>
     constexpr Ufixed& operator=(detail::auto_resized<SourceWrapper>&& wrapper) {
         *this = Ufixed(std::move(wrapper));
