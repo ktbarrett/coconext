@@ -25,6 +25,27 @@ namespace coconext::types {
 
 namespace detail {
 
+constexpr uint64_t reverse_bits_64(uint64_t w) {
+    w = ((w & 0xaaaaaaaaaaaaaaaaULL) >> 1) | ((w & 0x5555555555555555ULL) << 1);
+    w = ((w & 0xccccccccccccccccULL) >> 2) | ((w & 0x3333333333333333ULL) << 2);
+    w = ((w & 0xf0f0f0f0f0f0f0f0ULL) >> 4) | ((w & 0x0f0f0f0f0f0f0f0fULL) << 4);
+    w = ((w & 0xff00ff00ff00ff00ULL) >> 8) | ((w & 0x00ff00ff00ff00ffULL) << 8);
+    w = ((w & 0xffff0000ffff0000ULL) >> 16) | ((w & 0x0000ffff0000ffffULL) << 16);
+    return (w >> 32) | (w << 32);
+}
+
+template <typename T>
+constexpr T reverse_bits_native(T x) {
+    if constexpr (sizeof(T) == 16) {
+        uint64_t lo = reverse_bits_native(static_cast<uint64_t>(x));
+        uint64_t hi = reverse_bits_native(static_cast<uint64_t>(x >> 64));
+        return (static_cast<T>(lo) << 64) | static_cast<T>(hi);
+    } else {
+        uint64_t rev64 = reverse_bits_64(static_cast<uint64_t>(x));
+        return static_cast<T>(rev64 >> (64 - sizeof(T) * 8));
+    }
+}
+
 struct EmptyStorage {};
 
 template <size_t W>
@@ -557,7 +578,7 @@ class Bits {
 
         if constexpr (!is_wide) {
             constexpr size_t container_bits = sizeof(IntType) * 8;
-            IntType reversed = reverse_bits_native(raw());
+            IntType reversed = reverse_bits_native(static_cast<IntType>(raw()));
             return Bits(static_cast<IntType>(reversed >> (container_bits - W)));
         } else {
             Bits<W> result{};
@@ -700,37 +721,32 @@ class Bits {
         }
     }
 
-    std::string to_binary_string() const {
+    std::string to_binary_string(size_t decimal_pos = 0) const {
         if constexpr (W == 0) {
             return "";
-        } else if constexpr (!is_wide) {
-            return std::format("{:0{}b}", static_cast<wide_uint>(raw()), W);
-        } else {
-            return format_power_of_two(cref(), 1, W, [](uint8_t d) {
-                return static_cast<char>('0' + d);
-            });
         }
-    }
 
-    std::string to_binary_string(size_t decimal_pos) const {
-        static_assert(W != 0, "Nothing to represent");
-        if (decimal_pos == 0) {
-            return to_binary_string();
-        }
-        std::string res;
-        res.reserve(W + 1);
-        auto val = raw();
-        for (size_t i = W; i > 0; --i) {
-            if (i == decimal_pos) {
-                res.push_back('.');
-            } else {
+        if (decimal_pos) {
+            std::string res;
+            res.reserve(W + 1);
+            auto val = raw();
+            for (size_t i = W; i > 0; --i) {
+                if (i == decimal_pos) {
+                    res.push_back('.');
+                }
                 size_t bit_idx = i - 1;
-                res.push_back(
-                    ((val.get_word(bit_idx / 64) >> (bit_idx % 64)) & 1) ? '1' : '0'
-                );
+                res.push_back(get_bit(bit_idx) ? '1' : '0');
+            }
+            return res;
+        } else {
+            if constexpr (!is_wide) {
+                return std::format("{:0{}b}", static_cast<wide_uint>(raw()), W);
+            } else {
+                return format_power_of_two(cref(), 1, W, [](uint8_t d) {
+                    return static_cast<char>('0' + d);
+                });
             }
         }
-        return res;
     }
 
     std::string to_decimal_string(bool is_signed = false) const {
@@ -747,6 +763,48 @@ class Bits {
             return std::format("{}", static_cast<wide_uint>(raw()));
         } else {
             return format_decimal(cref(), is_signed);
+        }
+    }
+
+    template <size_t FracBits>
+    std::string to_fixed_decimal_string(bool is_signed = false) const {
+        if constexpr (FracBits == 0) {
+            return to_decimal_string(is_signed);
+        } else {
+            constexpr size_t PowerWidth = FracBits * 3;
+            constexpr size_t ResultWidth = W + PowerWidth;
+
+            Bits<PowerWidth> power_of_5(1);
+            Bits<PowerWidth> multiplier(5);
+            for (size_t i = 0; i < FracBits; ++i) {
+                power_of_5 = power_of_5 * multiplier;
+            }
+
+            Bits<ResultWidth> abs_val;
+            bool is_neg = false;
+            if (is_signed && W > 0 && this->get_bit(W - 1)) {
+                Bits<W> neg = (~(*this)) + Bits<W>(1);
+                abs_val = neg.template zero_extend<ResultWidth>();
+                is_neg = true;
+            } else {
+                abs_val = this->template zero_extend<ResultWidth>();
+            }
+
+            Bits<ResultWidth> exact_scaled =
+                abs_val * power_of_5.template zero_extend<ResultWidth>();
+            std::string raw_digits = exact_scaled.to_decimal_string(false);
+
+            if (raw_digits.length() <= FracBits) {
+                raw_digits.insert(0, FracBits - raw_digits.length() + 1, '0');
+            }
+
+            raw_digits.insert(raw_digits.length() - FracBits, ".");
+
+            if (is_neg) {
+                raw_digits.insert(0, "-");
+            }
+
+            return raw_digits;
         }
     }
 
@@ -1315,26 +1373,6 @@ constexpr auto max_unsigned() {
         return ~uint64_t{0};
     } else {
         return (uint64_t{1} << bits) - 1;
-    }
-}
-
-constexpr uint64_t reverse_bits_64(uint64_t w) {
-    w = ((w & 0xaaaaaaaaaaaaaaaaULL) >> 1) | ((w & 0x5555555555555555ULL) << 1);
-    w = ((w & 0xccccccccccccccccULL) >> 2) | ((w & 0x3333333333333333ULL) << 2);
-    w = ((w & 0xf0f0f0f0f0f0f0f0ULL) >> 4) | ((w & 0x0f0f0f0f0f0f0f0fULL) << 4);
-    w = ((w & 0xff00ff00ff00ff00ULL) >> 8) | ((w & 0x00ff00ff00ff00ffULL) << 8);
-    w = ((w & 0xffff0000ffff0000ULL) >> 16) | ((w & 0x0000ffff0000ffffULL) << 16);
-    return (w >> 32) | (w << 32);
-}
-
-template <typename T>
-constexpr T reverse_bits_native(T x) {
-    if constexpr (sizeof(T) == 16) {
-        uint64_t lo = reverse_bits_native(static_cast<uint64_t>(x));
-        uint64_t hi = reverse_bits_native(static_cast<uint64_t>(x >> 64));
-        return (static_cast<T>(lo) << 64) | static_cast<T>(hi);
-    } else {
-        return static_cast<T>(reverse_bits_64(static_cast<uint64_t>(x)));
     }
 }
 

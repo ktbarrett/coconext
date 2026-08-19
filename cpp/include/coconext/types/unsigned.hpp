@@ -585,11 +585,6 @@ class Unsigned {
         return value_[N];
     }
 
-    template <typename T, typename CharT>
-    friend struct std::formatter;
-    template <typename T>
-    friend struct std::hash;
-
   private:
     friend struct bits_fn;
 
@@ -646,16 +641,16 @@ struct std::formatter<coconext::types::detail::Unsigned<R>> {
         std::string str_r;
         switch (presentation) {
         case 'b':
-            str_r = v.value_.to_binary_string();
+            str_r = coconext::types::detail::bits(v).to_binary_string();
             break;
         case 'o':
-            str_r = v.value_.to_octal_string();
+            str_r = coconext::types::detail::bits(v).to_octal_string();
             break;
         case 'x':
-            str_r = v.value_.to_hexadecimal_string();
+            str_r = coconext::types::detail::bits(v).to_hexadecimal_string();
             break;
         default:
-            str_r = v.value_.to_decimal_string();
+            str_r = coconext::types::detail::bits(v).to_decimal_string();
         }
         return std::format_to(ctx.out(), "Unsigned{}{{{}}}", R, str_r);
     }
@@ -671,7 +666,7 @@ struct std::hash<coconext::types::detail::Unsigned<R>> {
 
         if constexpr (W > 0) {
             if constexpr (!coconext::types::detail::Bits<W>::is_wide) {
-                auto raw_val = v.value_.raw();
+                auto raw_val = coconext::types::detail::bits(v).raw();
                 if constexpr (sizeof(raw_val) > sizeof(size_t)) {
                     uint64_t low = static_cast<uint64_t>(raw_val);
                     uint64_t high = static_cast<uint64_t>(raw_val >> 64);
@@ -680,7 +675,7 @@ struct std::hash<coconext::types::detail::Unsigned<R>> {
                     value_hash = std::hash<decltype(raw_val)>{}(raw_val);
                 }
             } else {
-                auto val = v.value_.raw();
+                auto val = coconext::types::detail::bits(v).raw();
                 constexpr size_t num_words = (W + 63) / 64;
                 for (size_t i = 0; i < num_words; ++i) {
                     value_hash =
