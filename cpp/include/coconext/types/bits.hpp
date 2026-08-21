@@ -724,27 +724,27 @@ class Bits {
     std::string to_binary_string(size_t decimal_pos = 0) const {
         if constexpr (W == 0) {
             return "";
-        }
-
-        if (decimal_pos) {
-            std::string res;
-            res.reserve(W + 1);
-            auto val = raw();
-            for (size_t i = W; i > 0; --i) {
-                if (i == decimal_pos) {
-                    res.push_back('.');
-                }
-                size_t bit_idx = i - 1;
-                res.push_back(get_bit(bit_idx) ? '1' : '0');
-            }
-            return res;
         } else {
-            if constexpr (!is_wide) {
-                return std::format("{:0{}b}", static_cast<wide_uint>(raw()), W);
+            if (decimal_pos) {
+                std::string res;
+                res.reserve(W + 1);
+
+                for (size_t i = W; i > 0; --i) {
+                    if (i == decimal_pos) {
+                        res.push_back('.');
+                    }
+                    size_t bit_idx = i - 1;
+                    res.push_back(get_bit(bit_idx) ? '1' : '0');
+                }
+                return res;
             } else {
-                return format_power_of_two(cref(), 1, W, [](uint8_t d) {
-                    return static_cast<char>('0' + d);
-                });
+                if constexpr (!is_wide) {
+                    return std::format("{:0{}b}", static_cast<wide_uint>(raw()), W);
+                } else {
+                    return format_power_of_two(cref(), 1, W, [](uint8_t d) {
+                        return static_cast<char>('0' + d);
+                    });
+                }
             }
         }
     }
@@ -1453,7 +1453,9 @@ constexpr Range make_fixed_range() {
             static_cast<Range::value_type>(std::get<1>(t))
         };
         static_assert(
-            r.left >= r.right, "Ufixed/Sfixed do not allow direction.right as MSB"
+            r.left >= r.right,
+            "Ufixed/Sfixed do not allow direction.right as MSB, use Direction::TO "
+            "explicitly"
         );
         static_assert(r.length() >= 1, "Range cannot be negative or zero");
         if constexpr (r.left == r.right) {
@@ -1554,13 +1556,7 @@ template <typename X>
 [[nodiscard]] constexpr auto resize(
     X&& x, overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
 ) noexcept {
-    if constexpr (is_fixed<std::remove_cvref_t<X>>) {
-        return detail::resize(
-            std::forward<X>(x), overflow_mode::saturate, round_mode::round_to_even
-        );
-    } else {
-        return detail::resize(std::forward<X>(x), ovf, rnd);
-    }
+    return detail::resize(std::forward<X>(x), ovf, rnd);
 }
 
 template <detail::HasBits Target, detail::HasBits Source>

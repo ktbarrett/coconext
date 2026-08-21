@@ -17,22 +17,22 @@ FetchContent_MakeAvailable(googletest)
 include(GoogleTest)
 
 add_executable(coconext_tests
-    # test_logic.cpp
-    # test_range.cpp
-    # test_array.cpp
-    # test_static_array.cpp
-    # test_logic_array.cpp
-    # test_dyn_bits.cpp
-    # test_bits.cpp
-    # test_reverse.cpp
-    # test_unsigned.cpp
-    # test_signed.cpp
-    # test_intrusive_deque.cpp
-    # test_not_null.cpp
-    # test_future.cpp
-    # test_scheduler_binding.cpp
-    # test_scheduler_run.cpp
-    # test_task_manager.cpp
+    test_logic.cpp
+    test_range.cpp
+    test_array.cpp
+    test_static_array.cpp
+    test_logic_array.cpp
+    test_dyn_bits.cpp
+    test_bits.cpp
+    test_reverse.cpp
+    test_unsigned.cpp
+    test_signed.cpp
+    test_intrusive_deque.cpp
+    test_not_null.cpp
+    test_future.cpp
+    test_scheduler_binding.cpp
+    test_scheduler_run.cpp
+    test_task_manager.cpp
     test_sfixed.cpp
     test_ufixed.cpp)
 

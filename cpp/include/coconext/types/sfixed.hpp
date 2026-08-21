@@ -3,7 +3,6 @@
 
 #include <coconext/types/signed.hpp>
 #include <coconext/types/ufixed.hpp>
-#include <coconext/types/unsigned.hpp>
 
 namespace coconext::types {
 
@@ -53,7 +52,7 @@ class Sfixed {
 
             int64_t int_val = 0;
             if constexpr (frac_bits() < 64) {
-                int_val = signed_raw / (1ULL << frac_bits());
+                int_val = signed_raw / static_cast<int64_t>(1ULL << frac_bits());
             }
 
             bool out_of_bounds = false;
@@ -435,16 +434,16 @@ class Sfixed {
 
             switch (rnd) {
             case round_mode::truncate:
-                round_up = false;  // VHDL truncate (floor) simply drops bits in 2s comp
+                round_up = false;
                 break;
             case round_mode::round_to_zero:
                 round_up = is_neg && (half_bit || lower_bits);
                 break;
             case round_mode::round_to_pos:
-                round_up = !is_neg && (half_bit || lower_bits);
+                round_up = (half_bit || lower_bits);
                 break;
             case round_mode::round:
-                round_up = half_bit;
+                round_up = half_bit && (!is_neg || lower_bits);
                 break;
             case round_mode::round_to_even:
                 bool keep_bit = inter_val.get_bit(drop_count);
@@ -652,6 +651,12 @@ class Sfixed {
             "Shift Amount can only be purely Integral"
         );
 
+        if constexpr (std::is_signed_v<T> || is_coconext_signed_v<T>) {
+            if (static_cast<int64_t>(amount) < 0) {
+                throw std::invalid_argument("Negative shift amount");
+            }
+        }
+
         uint64_t v = static_cast<unsigned long long>(amount);
         if (v < 0) {
             throw std::invalid_argument("Shift amount cannot be negative");
@@ -661,7 +666,7 @@ class Sfixed {
     }
 
     template <typename T>
-    constexpr Sfixed operator<<=(T amount) const {
+    constexpr Sfixed operator<<=(T amount) {
         static_assert(
             R.direction == Direction::DOWNTO, "Shift operation requires downto Direction"
         );
@@ -669,6 +674,12 @@ class Sfixed {
             std::is_integral_v<T> || is_coconext_unsigned_v<T> || is_coconext_signed_v<T>,
             "Shift Amount can only be purely Integral"
         );
+
+        if constexpr (std::is_signed_v<T> || is_coconext_signed_v<T>) {
+            if (static_cast<int64_t>(amount) < 0) {
+                throw std::invalid_argument("Negative shift amount");
+            }
+        }
 
         uint64_t v = static_cast<unsigned long long>(amount);
         if (v < 0) {
@@ -689,6 +700,12 @@ class Sfixed {
             "Shift Amount can only be purely Integral"
         );
 
+        if constexpr (std::is_signed_v<T> || is_coconext_signed_v<T>) {
+            if (static_cast<int64_t>(amount) < 0) {
+                throw std::invalid_argument("Negative shift amount");
+            }
+        }
+
         uint64_t v = static_cast<unsigned long long>(amount);
         if (v < 0) {
             throw std::invalid_argument("Shift amount cannot be negative");
@@ -698,7 +715,7 @@ class Sfixed {
     }
 
     template <typename T>
-    constexpr Sfixed operator>>=(T amount) const {
+    constexpr Sfixed operator>>=(T amount) {
         static_assert(
             R.direction == Direction::DOWNTO, "Shift operation requires downto Direction"
         );
@@ -706,6 +723,12 @@ class Sfixed {
             std::is_integral_v<T> || is_coconext_unsigned_v<T> || is_coconext_signed_v<T>,
             "Shift Amount can only be purely Integral"
         );
+
+        if constexpr (std::is_signed_v<T> || is_coconext_signed_v<T>) {
+            if (static_cast<int64_t>(amount) < 0) {
+                throw std::invalid_argument("Negative shift amount");
+            }
+        }
 
         uint64_t v = static_cast<unsigned long long>(amount);
         if (v < 0) {
@@ -718,9 +741,6 @@ class Sfixed {
 
     template <Range R2>
     constexpr std::strong_ordering operator<=>(Sfixed<R2> const& other) const noexcept {
-        static_assert(
-            R.direction == Direction::DOWNTO, "Comparison requires downto Direction"
-        );
         static_assert(R == R2, "Comparison requires equal Ranges");
 
         if (value_ == other.value_) {
@@ -733,6 +753,165 @@ class Sfixed {
 
         return std::strong_ordering::less;
     }
+
+    template <Range R2>
+    constexpr bool operator==(Sfixed<R2> const& other) const noexcept {
+        static_assert(R == R2, "Comparison requires equal Ranges");
+
+        if (value_ == other.value_) {
+            return true;
+        }
+
+        return false;
+    }
+
+    constexpr auto operator+() const {
+        static_assert(
+            R.direction == Direction::DOWNTO,
+            "All arithmetic operations require downto Direction"
+        );
+        return *this;
+    }
+
+    constexpr auto operator-() const {
+        static_assert(
+            R.direction == Direction::DOWNTO,
+            "All arithmetic operations require downto Direction"
+        );
+
+        constexpr auto TR = Range{R.left + 1, R.direction, R.right};
+        constexpr size_t TargetW = TR.length();
+
+        auto extended_bits = value_.template sign_extend<TargetW>();
+        return Sfixed<TR>(Bits<TargetW>(0) - extended_bits);
+    }
+
+    // TODO
+    // template <Range R2>
+    // constexpr auto operator+(Sfixed<R2> const& rhs) const {
+    //     static_assert(R.direction == Direction::DOWNTO && R2.direction ==
+    //     Direction::DOWNTO, "Operations require DOWNTO"); constexpr Range
+    //     R_res{std::max(R.left, R2.left) + 1, Direction::DOWNTO, std::min(R.right,
+    //     R2.right)}; constexpr size_t ShiftL = R.right - R_res.right; constexpr size_t
+    //     ShiftR = R2.right - R_res.right;
+
+    //     auto lhs_aligned = value_.template sign_extend<R.length() + ShiftL>() << ShiftL;
+    //     auto rhs_aligned = bits(rhs).template sign_extend<R2.length() + ShiftR>() <<
+    //     ShiftR;
+
+    //     return Sfixed<R_res>(detail::add_signed(lhs_aligned, rhs_aligned));
+    // }
+
+    // template <Range R2>
+    // constexpr auto operator-(Sfixed<R2> const& rhs) const {
+    //     static_assert(R.direction == Direction::DOWNTO && R2.direction ==
+    //     Direction::DOWNTO, "Operations require DOWNTO"); constexpr Range
+    //     R_res{std::max(R.left, R2.left) + 1, Direction::DOWNTO, std::min(R.right,
+    //     R2.right)}; constexpr size_t ShiftL = R.right - R_res.right; constexpr size_t
+    //     ShiftR = R2.right - R_res.right;
+
+    //     auto lhs_aligned = value_.template sign_extend<R.length() + ShiftL>() << ShiftL;
+    //     auto rhs_aligned = bits(rhs).template sign_extend<R2.length() + ShiftR>() <<
+    //     ShiftR;
+
+    //     return Sfixed<R_res>(detail::sub_signed(lhs_aligned, rhs_aligned));
+    // }
+
+    // template <Range R2>
+    // constexpr auto operator*(Sfixed<R2> const& rhs) const {
+    //     static_assert(R.direction == Direction::DOWNTO && R2.direction ==
+    //     Direction::DOWNTO, "Operations require DOWNTO"); constexpr Range R_res{R.left +
+    //     R2.left + 1, Direction::DOWNTO, R.right + R2.right}; return
+    //     Sfixed<R_res>(detail::mul_signed(value_, bits(rhs)));
+    // }
+
+    // template <Range R2>
+    // constexpr auto operator/(Sfixed<R2> const& rhs) const {
+    //     static_assert(R.direction == Direction::DOWNTO && R2.direction ==
+    //     Direction::DOWNTO, "Operations require DOWNTO"); if (!static_cast<bool>(rhs)) {
+    //         throw std::domain_error("Division by zero");
+    //     }
+    //     constexpr Range R_res{R.left - R2.right + 1, Direction::DOWNTO, R.right - R2.left
+    //     - 1}; constexpr size_t ShiftL = R2.length();
+
+    //     auto lhs_shifted = value_.template sign_extend<R.length() + ShiftL>() << ShiftL;
+    //     return Sfixed<R_res>(detail::div_signed(lhs_shifted, bits(rhs)));
+    // }
+
+    // template <Range R2>
+    // constexpr auto operator%(Sfixed<R2> const& rhs) const {
+    //     static_assert(R.direction == Direction::DOWNTO && R2.direction ==
+    //     Direction::DOWNTO, "Operations require DOWNTO"); if (!static_cast<bool>(rhs)) {
+    //         throw std::domain_error("Division by zero");
+    //     }
+    //     constexpr size_t min_R = std::min(R.right, R2.right);
+    //     constexpr Range R_res{R2.left, Direction::DOWNTO, min_R};
+    //     constexpr size_t ShiftL = R.right - min_R;
+    //     constexpr size_t ShiftR = R2.right - min_R;
+
+    //     auto lhs_aligned = value_.template sign_extend<R.length() + ShiftL>() << ShiftL;
+    //     auto rhs_aligned = bits(rhs).template sign_extend<R2.length() + ShiftR>() <<
+    //     ShiftR;
+
+    //     return Sfixed<R_res>(detail::rem_signed(lhs_aligned, rhs_aligned));
+    // }
+
+    // template <Range R2>
+    // constexpr Sfixed& operator+=(Sfixed<R2> const& rhs) {
+    //     *this = coconext::types::resize<R>(*this + rhs);
+    //     return *this;
+    // }
+    // template <Range R2>
+    // constexpr Sfixed& operator-=(Sfixed<R2> const& rhs) {
+    //     *this = coconext::types::resize<R>(*this - rhs);
+    //     return *this;
+    // }
+    // template <Range R2>
+    // constexpr Sfixed& operator*=(Sfixed<R2> const& rhs) {
+    //     *this = coconext::types::resize<R>(*this * rhs);
+    //     return *this;
+    // }
+    // template <Range R2>
+    // constexpr Sfixed& operator/=(Sfixed<R2> const& rhs) {
+    //     *this = coconext::types::resize<R>(*this / rhs);
+    //     return *this;
+    // }
+    // template <Range R2>
+    // constexpr Sfixed& operator%=(Sfixed<R2> const& rhs) {
+    //     *this = coconext::types::resize<R>(*this % rhs);
+    //     return *this;
+    // }
+
+    // template <NativeInteger T>
+    // constexpr Sfixed& operator+=(T const& rhs) {
+    //     *this = coconext::types::resize<R>(*this + Sfixed<Range{R.length() - 1,
+    //     Direction::DOWNTO, 0}>(rhs)); return *this;
+    // }
+    // template <NativeInteger T>
+    // constexpr Sfixed& operator-=(T const& rhs) {
+    //     *this = coconext::types::resize<R>(*this - Sfixed<Range{R.length() - 1,
+    //     Direction::DOWNTO, 0}>(rhs)); return *this;
+    // }
+    // template <NativeInteger T>
+    // constexpr Sfixed& operator*=(T const& rhs) {
+    //     *this = coconext::types::resize<R>(*this * Sfixed<Range{R.length() - 1,
+    //     Direction::DOWNTO, 0}>(rhs)); return *this;
+    // }
+    // template <NativeInteger T>
+    // constexpr Sfixed& operator/=(T const& rhs) {
+    //     *this = coconext::types::resize<R>(*this / Sfixed<Range{R.length() - 1,
+    //     Direction::DOWNTO, 0}>(rhs)); return *this;
+    // }
+    // template <NativeInteger T>
+    // constexpr Sfixed& operator%=(T const& rhs) {
+    //     *this = coconext::types::resize<R>(*this % Sfixed<Range{R.length() - 1,
+    //     Direction::DOWNTO, 0}>(rhs)); return *this;
+    // }
+
+    // constexpr Sfixed& operator++() { *this += 1; return *this; }
+    // constexpr Sfixed operator++(int) { Sfixed tmp = *this; *this += 1; return tmp; }
+    // constexpr Sfixed& operator--() { *this -= 1; return *this; }
+    // constexpr Sfixed operator--(int) { Sfixed tmp = *this; *this -= 1; return tmp; }
 
     static constexpr size_t frac_bits() {
         if constexpr (R.direction == Direction::DOWNTO) {
@@ -761,11 +940,12 @@ class Sfixed {
         return result;
     }
 
+    // returns bit at index in storage
     constexpr auto at_ordinal(size_t index) const {
-        if (R.length() >= index) {
+        if (R.length() <= index) {
             throw std::out_of_range("index out of bounds");
         }
-        return value_.get_bit(R.length() - index);
+        return value_.get_bit(R.length() - 1 - index);
     }
 
     constexpr auto begin() const { return value_.begin(); }
@@ -793,6 +973,27 @@ class Sfixed {
 
     Bits<R.length()> value_{0};
 };
+
+// TODO
+// template <Range R1, Range R2>
+// constexpr auto operator+(Ufixed<R1> const& lhs, Sfixed<R2> const& rhs) { return (+lhs) +
+// rhs; } template <Range R1, Range R2> constexpr auto operator-(Ufixed<R1> const& lhs,
+// Sfixed<R2> const& rhs) { return (+lhs) - rhs; } template <Range R1, Range R2> constexpr
+// auto operator*(Ufixed<R1> const& lhs, Sfixed<R2> const& rhs) { return (+lhs) * rhs; }
+// template <Range R1, Range R2>
+// constexpr auto operator/(Ufixed<R1> const& lhs, Sfixed<R2> const& rhs) { return (+lhs) /
+// rhs; } template <Range R1, Range R2> constexpr auto operator%(Ufixed<R1> const& lhs,
+// Sfixed<R2> const& rhs) { return (+lhs) % rhs; }
+
+// template <Range R1, Range R2>
+// constexpr auto operator+(Sfixed<R1> const& lhs, Ufixed<R2> const& rhs) { return lhs +
+// (+rhs); } template <Range R1, Range R2> constexpr auto operator-(Sfixed<R1> const& lhs,
+// Ufixed<R2> const& rhs) { return lhs - (+rhs); } template <Range R1, Range R2> constexpr
+// auto operator*(Sfixed<R1> const& lhs, Ufixed<R2> const& rhs) { return lhs * (+rhs); }
+// template <Range R1, Range R2>
+// constexpr auto operator/(Sfixed<R1> const& lhs, Ufixed<R2> const& rhs) { return lhs /
+// (+rhs); } template <Range R1, Range R2> constexpr auto operator%(Sfixed<R1> const& lhs,
+// Ufixed<R2> const& rhs) { return lhs % (+rhs); }
 
 }  // namespace detail
 
@@ -877,6 +1078,19 @@ constexpr auto reverse(detail::Sfixed<R> const& v) noexcept {
     }
 }
 
+// abs(s) free function for Sfixed<L, R> -> Sfixed<L+1, R>
+template <Range R>
+constexpr auto abs(detail::Sfixed<R> const& v) noexcept {
+    constexpr auto TargetRange = Range{R.left + 1, R.direction, R.right};
+
+    if (v < detail::Sfixed<R>{0}) {
+        return -v;
+    }
+    return detail::Sfixed<TargetRange>(
+        detail::resize(v, overflow_mode::saturate, round_mode::round)
+    );
+}
+
 }  // namespace coconext::types
 
 template <coconext::types::Range R>
@@ -894,6 +1108,11 @@ struct std::formatter<coconext::types::detail::Sfixed<R>> {
         if (it != end && *it != '}') {
             throw std::format_error("Invalid format string");
         }
+
+        if (presentation == 'd' && R.direction != coconext::types::Direction::DOWNTO) {
+            throw std::format_error("Decimal format requires downto Direction");
+        }
+
         return it;
     }
 
@@ -903,19 +1122,20 @@ struct std::formatter<coconext::types::detail::Sfixed<R>> {
         std::string str_r;
         switch (presentation) {
         case 'b': {
-            constexpr auto decimal_pos =
-                (v.frac_bits() && v.int_bits()) ? v.frac_bits() : 0;
+            constexpr size_t F = coconext::types::detail::Sfixed<R>::frac_bits();
+            constexpr size_t I = coconext::types::detail::Sfixed<R>::int_bits();
+            constexpr auto decimal_pos = (F && I) ? F : 0;
             str_r = coconext::types::detail::bits(v).to_binary_string(decimal_pos);
             break;
         }
         default: {
-            constexpr size_t F = v.frac_bits();
+            constexpr size_t F = coconext::types::detail::Sfixed<R>::frac_bits();
             str_r =
                 coconext::types::detail::bits(v).template to_fixed_decimal_string<F>(true);
             break;
         }
-            return std::format_to(ctx.out(), "Sfixed{}{{{}}}", R, str_r);
         }
+        return std::format_to(ctx.out(), "Sfixed{}{{{}}}", R, str_r);
     }
 };
 
@@ -952,12 +1172,3 @@ struct std::hash<coconext::types::detail::Sfixed<R>> {
 };
 
 #endif  // COCONEXT_SFIXED_HPP
-
-// TODO
-
-// cross kind operators
-
-// to_native_int returns value rounded towards zero
-// i.e. neg values magnitude increases by 1
-
-// abs(s) free function for Sfixed<L, R> -> Sfixed<L+1, R>

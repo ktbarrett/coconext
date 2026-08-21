@@ -203,7 +203,7 @@ class Ufixed {
 
     // Construct from float
     template <std::floating_point FloatType>
-    explicit Ufixed(
+    explicit constexpr Ufixed(
         FloatType v,
         overflow_mode om = overflow_mode::saturate,
         round_mode rm = round_mode::round_to_even
@@ -274,7 +274,7 @@ class Ufixed {
         }
     }
 
-    // Construction from Unsigned
+    // Implicit construction from Unsigned
     template <Range R2>
     constexpr Ufixed(Unsigned<R2> v)
         requires(R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO)
@@ -637,7 +637,6 @@ class Ufixed {
     template <Range R2>
     constexpr bool operator==(Ufixed<R2> const& other) const noexcept {
         static_assert(R == R2, "Comparison requires equal Ranges");
-
         if (value_ == other.value_) {
             return true;
         }
@@ -645,25 +644,209 @@ class Ufixed {
         return false;
     }
 
-    // TODO
+    constexpr auto operator+() const {
+        static_assert(
+            R.direction == Direction::DOWNTO,
+            "All arithmetic operations require downto Direction"
+        );
 
-    // All Arithmetic ops
+        constexpr auto TR = Range{R.left + 1, R.direction, R.right};
+        constexpr size_t TargetW = TR.length();
 
-    // constexpr auto operator+() const {
-    //     constexpr Range R_res = detail::int_downto_range(R.length() + 1);
-    //     return coconext::types::as<Signed<R_res>>(
-    //         coconext::types::resize<R_res.length()>(*this)
-    //     );
-    // }
+        return Sfixed<TR>(*this);
+    }
 
-    // // The operand is unsigned, so it zero-extends into the wider result before
-    // // being negated: -Unsigned<8>(150) is -150, not -(-106).
-    // constexpr auto operator-() const {
-    //     constexpr size_t Wr = R.length() + 1;
-    //     return Signed<detail::int_downto_range(Wr)>(
-    //         detail::Bits<Wr>{} - value_.template zero_extend<Wr>()
-    //     );
-    // }
+    constexpr auto operator-() const {
+        static_assert(
+            R.direction == Direction::DOWNTO,
+            "All arithmetic operations require downto Direction"
+        );
+
+        constexpr auto TR = Range{R.left + 1, R.direction, R.right};
+        constexpr size_t TargetW = TR.length();
+
+        auto extended_bits = value_.template zero_extend<TargetW>();
+        return Sfixed<TR>(Bits<TargetW>(0) - extended_bits);
+    }
+
+    template <Range R2>
+    constexpr auto operator+(Ufixed<R2> const& rhs) const {
+        static_assert(
+            R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO,
+            "Operations require DOWNTO"
+        );
+        constexpr Range R_res{
+            std::max(R.left, R2.left) + 1, Direction::DOWNTO, std::min(R.right, R2.right)
+        };
+        constexpr size_t ShiftL = R.right - R_res.right;
+        constexpr size_t ShiftR = R2.right - R_res.right;
+
+        auto lhs_aligned = value_.template zero_extend<R.length() + ShiftL>() << ShiftL;
+        auto rhs_aligned = bits(rhs).template zero_extend<R2.length() + ShiftR>() << ShiftR;
+
+        return Ufixed<R_res>(detail::add_unsigned(lhs_aligned, rhs_aligned));
+    }
+
+    template <Range R2>
+    constexpr auto operator-(Ufixed<R2> const& rhs) const {
+        static_assert(
+            R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO,
+            "Operations require DOWNTO"
+        );
+        constexpr Range R_res{
+            std::max(R.left, R2.left) + 1, Direction::DOWNTO, std::min(R.right, R2.right)
+        };
+        constexpr size_t ShiftL = R.right - R_res.right;
+        constexpr size_t ShiftR = R2.right - R_res.right;
+
+        auto lhs_aligned = value_.template zero_extend<R.length() + ShiftL>() << ShiftL;
+        auto rhs_aligned = bits(rhs).template zero_extend<R2.length() + ShiftR>() << ShiftR;
+
+        return Sfixed<R_res>(detail::sub_unsigned(lhs_aligned, rhs_aligned));
+    }
+
+    template <Range R2>
+    constexpr auto operator*(Ufixed<R2> const& rhs) const {
+        static_assert(
+            R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO,
+            "Operations require DOWNTO"
+        );
+        constexpr Range R_res{R.left + R2.left + 1, Direction::DOWNTO, R.right + R2.right};
+        return Ufixed<R_res>(detail::mul_unsigned(value_, bits(rhs)));
+    }
+
+    template <Range R2>
+    constexpr auto operator/(Ufixed<R2> const& rhs) const {
+        static_assert(
+            R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO,
+            "Operations require DOWNTO"
+        );
+        if (!static_cast<bool>(rhs)) {
+            throw std::domain_error("Division by zero");
+        }
+        constexpr Range R_res{
+            R.left - R2.right + 1, Direction::DOWNTO, R.right - R2.left - 1
+        };
+        constexpr auto ShiftL = R2.length();
+
+        auto lhs_shifted = value_.template zero_extend<R.length() + ShiftL>() << ShiftL;
+        return Ufixed<R_res>(detail::div_unsigned(lhs_shifted, bits(rhs)));
+    }
+
+    template <Range R2>
+    constexpr auto operator%(Ufixed<R2> const& rhs) const {
+        static_assert(
+            R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO,
+            "Operations require DOWNTO"
+        );
+        if (!static_cast<bool>(rhs)) {
+            throw std::domain_error("Division by zero");
+        }
+
+        constexpr auto min_R = std::min(R.right, R2.right);
+        constexpr auto min_L = std::min(R.left, R2.left);
+        constexpr Range R_res{min_L, Direction::DOWNTO, min_R};
+
+        constexpr size_t ShiftL = R.right - min_R;
+        constexpr size_t ShiftR = R2.right - min_R;
+
+        constexpr size_t Wa = R.length() + ShiftL;
+        constexpr size_t Wb = R2.length() + ShiftR;
+
+        auto lhs_aligned = value_.template zero_extend<Wa>() << ShiftL;
+        auto rhs_aligned = bits(rhs).template zero_extend<Wb>() << ShiftR;
+
+        auto rem_result = detail::rem_unsigned(lhs_aligned, rhs_aligned);
+
+        return Ufixed<R_res>(rem_result.template truncate<R_res.length()>());
+    }
+
+    template <Range R2>
+    constexpr Ufixed& operator+=(Ufixed<R2> const& rhs) {
+        *this = coconext::types::resize(
+            *this + rhs, overflow_mode::wrap, round_mode::round_to_zero
+        );
+        return *this;
+    }
+    template <Range R2>
+    constexpr Ufixed& operator-=(Ufixed<R2> const& rhs) {
+        auto diff = *this - rhs;
+
+        if (bits(diff).get_bit(R2.length() - 1)) {
+            throw std::out_of_range(
+                "Compound subtraction does not allow a negative result"
+            );
+        }
+
+        *this = Ufixed<R>(diff, overflow_mode::wrap, round_mode::round_to_zero);
+        return *this;
+    }
+    template <Range R2>
+    constexpr Ufixed& operator*=(Ufixed<R2> const& rhs) {
+        *this = coconext::types::resize(
+            *this * rhs, overflow_mode::wrap, round_mode::round_to_zero
+        );
+        return *this;
+    }
+    template <Range R2>
+    constexpr Ufixed& operator/=(Ufixed<R2> const& rhs) {
+        *this = coconext::types::resize(
+            *this / rhs, overflow_mode::wrap, round_mode::round_to_zero
+        );
+        return *this;
+    }
+    template <Range R2>
+    constexpr Ufixed& operator%=(Ufixed<R2> const& rhs) {
+        *this = coconext::types::resize(
+            *this % rhs, overflow_mode::wrap, round_mode::round_to_zero
+        );
+        return *this;
+    }
+
+    template <NativeInteger T>
+    constexpr Ufixed& operator+=(T const& rhs) {
+        *this += Ufixed<R>(rhs);
+        return *this;
+    }
+    template <NativeInteger T>
+    constexpr Ufixed& operator-=(T const& rhs) {
+        *this -= Ufixed<R>(rhs);
+        return *this;
+    }
+    template <NativeInteger T>
+    constexpr Ufixed& operator*=(T const& rhs) {
+        *this *= Ufixed<R>(rhs);
+        return *this;
+    }
+    template <NativeInteger T>
+    constexpr Ufixed& operator/=(T const& rhs) {
+        *this /= Ufixed<R>(rhs);
+        return *this;
+    }
+    template <NativeInteger T>
+    constexpr Ufixed& operator%=(T const& rhs) {
+        *this %= Ufixed<R>(rhs);
+        return *this;
+    }
+
+    constexpr Ufixed& operator++() {
+        *this += 1;
+        return *this;
+    }
+    constexpr Ufixed operator++(int) {
+        Ufixed tmp = *this;
+        *this += 1;
+        return tmp;
+    }
+    constexpr Ufixed& operator--() {
+        *this -= 1;
+        return *this;
+    }
+    constexpr Ufixed operator--(int) {
+        Ufixed tmp = *this;
+        *this -= 1;
+        return tmp;
+    }
 
     static constexpr size_t frac_bits() {
         if constexpr (R.direction == Direction::DOWNTO) {
@@ -725,6 +908,66 @@ class Ufixed {
 
     Bits<R.length()> value_{0};
 };
+
+template <Range R1, Range R2>
+constexpr auto operator+(Ufixed<R1> const& a, Unsigned<R2> const& b) {
+    constexpr auto f_range = Range{R2.length() - 1, Direction::DOWNTO, 0};
+    return a + Ufixed<f_range>(b);
+}
+
+template <Range R1, Range R2>
+constexpr auto operator-(Ufixed<R1> const& a, Unsigned<R2> const& b) {
+    constexpr auto f_range = Range{R2.length() - 1, Direction::DOWNTO, 0};
+    return a - Ufixed<f_range>(b);
+}
+
+template <Range R1, Range R2>
+constexpr auto operator*(Ufixed<R1> const& a, Unsigned<R2> const& b) {
+    constexpr auto f_range = Range{R2.length() - 1, Direction::DOWNTO, 0};
+    return a * Ufixed<f_range>(b);
+}
+
+template <Range R1, Range R2>
+constexpr auto operator/(Ufixed<R1> const& a, Unsigned<R2> const& b) {
+    constexpr auto f_range = Range{R2.length() - 1, Direction::DOWNTO, 0};
+    return a / Ufixed<f_range>(b);
+}
+
+template <Range R1, Range R2>
+constexpr auto operator%(Ufixed<R1> const& a, Unsigned<R2> const& b) {
+    constexpr auto f_range = Range{R2.length() - 1, Direction::DOWNTO, 0};
+    return a % Ufixed<f_range>(b);
+}
+
+template <Range R1, Range R2>
+constexpr auto operator+(Unsigned<R1> const& a, Ufixed<R2> const& b) {
+    constexpr auto f_range = Range{R1.length() - 1, Direction::DOWNTO, 0};
+    return Ufixed<f_range>(a) + b;
+}
+
+template <Range R1, Range R2>
+constexpr auto operator-(Unsigned<R1> const& a, Ufixed<R2> const& b) {
+    constexpr auto f_range = Range{R1.length() - 1, Direction::DOWNTO, 0};
+    return Ufixed<f_range>(a) - b;
+}
+
+template <Range R1, Range R2>
+constexpr auto operator*(Unsigned<R1> const& a, Ufixed<R2> const& b) {
+    constexpr auto f_range = Range{R1.length() - 1, Direction::DOWNTO, 0};
+    return Ufixed<f_range>(a) * b;
+}
+
+template <Range R1, Range R2>
+constexpr auto operator/(Unsigned<R1> const& a, Ufixed<R2> const& b) {
+    constexpr auto f_range = Range{R1.length() - 1, Direction::DOWNTO, 0};
+    return Ufixed<f_range>(a) / b;
+}
+
+template <Range R1, Range R2>
+constexpr auto operator%(Unsigned<R1> const& a, Ufixed<R2> const& b) {
+    constexpr auto f_range = Range{R1.length() - 1, Direction::DOWNTO, 0};
+    return Ufixed<f_range>(a) % b;
+}
 
 }  // namespace detail
 
@@ -841,13 +1084,14 @@ struct std::formatter<coconext::types::detail::Ufixed<R>> {
         std::string str_r;
         switch (presentation) {
         case 'b': {
-            constexpr auto decimal_pos =
-                (v.frac_bits() && v.int_bits()) ? v.frac_bits() : 0;
+            constexpr size_t F = coconext::types::detail::Sfixed<R>::frac_bits();
+            constexpr size_t I = coconext::types::detail::Sfixed<R>::int_bits();
+            constexpr auto decimal_pos = (F && I) ? F : 0;
             str_r = coconext::types::detail::bits(v).to_binary_string(decimal_pos);
             break;
         }
         default: {
-            constexpr size_t F = v.frac_bits();
+            constexpr size_t F = coconext::types::detail::Sfixed<R>::frac_bits();
             str_r =
                 coconext::types::detail::bits(v).template to_fixed_decimal_string<F>(false);
             break;
