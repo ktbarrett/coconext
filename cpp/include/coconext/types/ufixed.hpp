@@ -56,7 +56,11 @@ class Ufixed {
             }
         }
 
-        return static_cast<T>(val.raw());
+        if constexpr (!Bits<R.length()>::is_wide) {
+            return static_cast<T>(val.raw());
+        } else {
+            return static_cast<T>(val.raw().word(0));
+        }
     }
 
     template <typename T>
@@ -82,7 +86,7 @@ class Ufixed {
             }
 
             auto aligned = value_.srl(shift_amount);
-            uint64_t raw_mantissa = static_cast<uint64_t>(aligned.raw());
+            uint64_t raw_mantissa = static_cast<uint64_t>(aligned.raw().word(0));
 
             if (shift_amount > 0) {
                 bool round_bit = value_.get_bit(shift_amount - 1);
@@ -763,6 +767,10 @@ class Ufixed {
 
     template <Range R2>
     constexpr Ufixed& operator+=(Ufixed<R2> const& rhs) {
+        static_assert(
+            R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO,
+            "Operations require DOWNTO"
+        );
         *this = coconext::types::resize(
             *this + rhs, overflow_mode::wrap, round_mode::round_to_zero
         );
@@ -770,6 +778,10 @@ class Ufixed {
     }
     template <Range R2>
     constexpr Ufixed& operator-=(Ufixed<R2> const& rhs) {
+        static_assert(
+            R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO,
+            "Operations require DOWNTO"
+        );
         auto diff = *this - rhs;
 
         if (bits(diff).get_bit(R2.length() - 1)) {
@@ -783,6 +795,10 @@ class Ufixed {
     }
     template <Range R2>
     constexpr Ufixed& operator*=(Ufixed<R2> const& rhs) {
+        static_assert(
+            R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO,
+            "Operations require DOWNTO"
+        );
         *this = coconext::types::resize(
             *this * rhs, overflow_mode::wrap, round_mode::round_to_zero
         );
@@ -790,6 +806,10 @@ class Ufixed {
     }
     template <Range R2>
     constexpr Ufixed& operator/=(Ufixed<R2> const& rhs) {
+        static_assert(
+            R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO,
+            "Operations require DOWNTO"
+        );
         *this = coconext::types::resize(
             *this / rhs, overflow_mode::wrap, round_mode::round_to_zero
         );
@@ -797,6 +817,10 @@ class Ufixed {
     }
     template <Range R2>
     constexpr Ufixed& operator%=(Ufixed<R2> const& rhs) {
+        static_assert(
+            R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO,
+            "Operations require DOWNTO"
+        );
         *this = coconext::types::resize(
             *this % rhs, overflow_mode::wrap, round_mode::round_to_zero
         );

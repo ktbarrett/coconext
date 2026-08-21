@@ -30,6 +30,11 @@ TEST(TestSfixed, shape_and_typelevel) {
     static_assert(b.frac_bits() == 2);
 
     static_assert(is_fixed<decltype(a)>);
+
+    Sfixed<100, -50> wide_a(-37.25);
+    static_assert(wide_a.size() == 151);
+    static_assert(wide_a.int_bits() == 101);
+    static_assert(wide_a.frac_bits() == 50);
 }
 
 TEST(TestSfixed, BooleanConversion) {
@@ -48,6 +53,11 @@ TEST(TestSfixed, BooleanConversion) {
     static_assert(
         noexcept(static_cast<bool>(zero_val)), "Boolean egress must be noexcept."
     );
+
+    Sfixed<100, -50> wide_zero(0.0);
+    Sfixed<100, -50> wide_nonzero(-0.0625);
+    EXPECT_FALSE(static_cast<bool>(wide_zero));
+    EXPECT_TRUE(static_cast<bool>(wide_nonzero));
 }
 
 TEST(TestSfixed, NumericEgress) {
@@ -64,6 +74,16 @@ TEST(TestSfixed, NumericEgress) {
     EXPECT_NO_THROW(static_cast<void>(static_cast<short>(large_val)));
     EXPECT_THROW(static_cast<unsigned char>(large_val), std::out_of_range);
     EXPECT_THROW(static_cast<signed char>(large_val), std::out_of_range);
+
+    Sfixed<100, -50> wide_val(-5.9375);
+    EXPECT_EQ(static_cast<int>(wide_val), -5);
+    Sfixed<100, -50> wide_huge(1);
+    wide_huge <<= 65;
+    EXPECT_EQ(
+        std::format("{}", wide_huge),
+        "Sfixed[100 downto "
+        "-50]{36893488147419103232.00000000000000000000000000000000000000000000000000}"
+    );
 }
 
 TEST(TestSfixed, FloatEgress) {
@@ -81,6 +101,9 @@ TEST(TestSfixed, FloatEgress) {
     EXPECT_EQ(int(val_s), -2);
     EXPECT_EQ((int)val_s, -2);
     EXPECT_DOUBLE_EQ(double(val_s), -2.5);
+
+    Sfixed<100, -50> wide_float(-5.0625);
+    EXPECT_DOUBLE_EQ(static_cast<double>(wide_float), -5.0625);
 }
 
 TEST(TestSfixed, Constructors) {
@@ -124,6 +147,11 @@ TEST(TestSfixed, Constructors) {
 
     EXPECT_EQ(static_cast<int>(narrow_saturated), -8);
     EXPECT_EQ(static_cast<int>(narrow_wrapped), -4);
+
+    Sfixed<100, -50> wide_default;
+    EXPECT_DOUBLE_EQ(static_cast<double>(wide_default), 0.0);
+    Sfixed<100, -50> wide_from_double(-100.5);
+    EXPECT_DOUBLE_EQ(static_cast<double>(wide_from_double), -100.5);
 }
 
 TEST(TestSfixed, as_overloads) {
@@ -140,6 +168,10 @@ TEST(TestSfixed, as_overloads) {
     auto to_val = as<Sfixed<Range{0, Direction::TO, 3}>>(original_downto);
     auto new_downto = as<Sfixed<1, -2>>(to_val);
     EXPECT_DOUBLE_EQ(static_cast<double>(new_downto), -0.25);
+
+    Sfixed<100, -50> wide_s(-1);
+    auto wide_u = as<Ufixed<100, -50>>(wide_s);
+    EXPECT_TRUE(static_cast<bool>(wide_u.at_ordinal(0)));
 }
 
 TEST(TestSfixed, resize) {
@@ -162,6 +194,10 @@ TEST(TestSfixed, resize) {
     Sfixed<7, 0> src(-100);
     Sfixed<3, 0> dst = resize(src, overflow_mode::wrap);
     EXPECT_EQ(static_cast<int>(dst), -4);
+
+    Sfixed<100, -50> wide_orig_res(-5.5);
+    auto narrow_from_wide = resize<3, 0>(wide_orig_res);
+    EXPECT_EQ(static_cast<int>(narrow_from_wide), -6);
 }
 
 TEST(TestSfixed, ShiftOperators) {
@@ -185,6 +221,12 @@ TEST(TestSfixed, ShiftOperators) {
     int neg_shift = -1;
     EXPECT_THROW(val << neg_shift, std::invalid_argument);
     EXPECT_THROW(val >> neg_shift, std::invalid_argument);
+
+    Sfixed<100, -50> wide_shift(-1.0);
+    wide_shift <<= 2;
+    EXPECT_DOUBLE_EQ(static_cast<double>(wide_shift), -4.0);
+    wide_shift >>= 1;
+    EXPECT_DOUBLE_EQ(static_cast<double>(wide_shift), -2.0);
 }
 
 TEST(TestSfixed, ComparisonOperators) {
@@ -205,6 +247,10 @@ TEST(TestSfixed, ComparisonOperators) {
 
     EXPECT_TRUE(a > c);
     EXPECT_TRUE(d > a);
+
+    Sfixed<100, -50> w_cmp_a(-3.25), w_cmp_b(-3.25), w_cmp_c(4.5);
+    EXPECT_TRUE(w_cmp_a == w_cmp_b);
+    EXPECT_TRUE(w_cmp_a < w_cmp_c);
 }
 
 TEST(TestSfixed, AtOrdinalIndexing) {
@@ -216,6 +262,10 @@ TEST(TestSfixed, AtOrdinalIndexing) {
 
     EXPECT_THROW(uf.at_ordinal(6), std::out_of_range);
     EXPECT_THROW(uf.at_ordinal(7), std::out_of_range);
+
+    Sfixed<100, -50> w_ord(-1);
+    EXPECT_TRUE(w_ord.at_ordinal(0));     // MSB (integer) is 1
+    EXPECT_FALSE(w_ord.at_ordinal(150));  // LSB (fraction) is 0
 }
 
 TEST(TestSfixed, Indexing) {
@@ -227,6 +277,10 @@ TEST(TestSfixed, Indexing) {
 
     EXPECT_THROW(uf[5], std::out_of_range);
     EXPECT_THROW(uf[-2], std::out_of_range);
+
+    Sfixed<100, -50> w_idx(-1);
+    EXPECT_TRUE(w_idx[100]);   // Integer part is 1s
+    EXPECT_FALSE(w_idx[-50]);  // Fractional part is 0s
 }
 
 TEST(TestSfixed, IterationSurface) {
@@ -258,6 +312,9 @@ TEST(TestSfixed, IterationSurface) {
         range_based_count++;
     }
     EXPECT_EQ(range_based_count, 8);
+
+    Sfixed<100, -50> w_iter(0);
+    EXPECT_EQ(std::distance(w_iter.begin(), w_iter.end()), 151);
 }
 
 TEST(TestSfixed, RoundFreeFunctions) {
@@ -282,6 +339,9 @@ TEST(TestSfixed, RoundFreeFunctions) {
     EXPECT_EQ((round(Sfixed<10, -10>(9.6))), (Sfixed<10, 0>(10)));
     EXPECT_EQ((round(Sfixed<10, -10>(9.5))), (Sfixed<10, 0>(10)));
     EXPECT_EQ((round(Sfixed<10, -10>(9.052))), (Sfixed<10, 0>(9)));
+
+    EXPECT_EQ((floor(Sfixed<100, -50>(-9.6))), (Sfixed<100, 0>(-10)));
+    EXPECT_EQ((ceil(Sfixed<100, -50>(-9.6))), (Sfixed<100, 0>(-9)));
 }
 
 TEST(TestSfixed, Reverse) {
@@ -296,6 +356,10 @@ TEST(TestSfixed, Reverse) {
 
     EXPECT_EQ(r_to, sf_to);
     EXPECT_EQ(r_down, (Sfixed<3, -4>(ba_r)));
+
+    Sfixed<100, -50> w_rev_down(-1);
+    auto w_rev_to = reverse(w_rev_down);
+    EXPECT_TRUE((std::is_same_v<decltype(w_rev_to), Sfixed<-50, Direction::TO, 100>>));
 }
 
 TEST(TestSfixed, Formatter) {
@@ -308,6 +372,12 @@ TEST(TestSfixed, Formatter) {
     Sfixed<8, -3> val_downto(-120);
     auto val_to = reverse(val_downto);
     EXPECT_THROW(std::vformat("{:d}", std::make_format_args(val_to)), std::format_error);
+
+    Sfixed<100, -50> w_fmt(-5.0625);
+    EXPECT_EQ(
+        std::format("{:d}", w_fmt),
+        "Sfixed[100 downto -50]{-5.06250000000000000000000000000000000000000000000000}"
+    );
 }
 
 TEST(TestSfixed, Hash) {
@@ -359,6 +429,14 @@ TEST(TestSfixed, Hash) {
 
     EXPECT_EQ(hash_wide_a, hash_wide_b);
     EXPECT_NE(hash_wide_a, hash_wide_c);
+
+    Sfixed<100, -50> w_hash_a(5), w_hash_b(5), w_hash_c(2);
+    EXPECT_EQ(
+        (std::hash<Sfixed<100, -50>>{}(w_hash_a)), (std::hash<Sfixed<100, -50>>{}(w_hash_b))
+    );
+    EXPECT_NE(
+        (std::hash<Sfixed<100, -50>>{}(w_hash_a)), (std::hash<Sfixed<100, -50>>{}(w_hash_c))
+    );
 }
 
 TEST(TestSfixed, BitwiseAndReduction) {
@@ -384,6 +462,10 @@ TEST(TestSfixed, BitwiseAndReduction) {
     EXPECT_FALSE(and_reduce(a));  // Contains a zero
     EXPECT_TRUE(or_reduce(a));    // Contains a one
     EXPECT_TRUE(xor_reduce(a));   // Contains an odd number of ones (three 1s)
+
+    Sfixed<100, -50> w_bw_a(-3), w_bw_b(2);
+    EXPECT_EQ((as<Sfixed<100, -50>>(w_bw_a & w_bw_b)), (Sfixed<100, -50>(0)));
+    EXPECT_TRUE(or_reduce(w_bw_a));
 }
 
 TEST(TestSfixed, Concatenation) {
@@ -394,6 +476,11 @@ TEST(TestSfixed, Concatenation) {
     EXPECT_TRUE((std::is_same_v<decltype(cat_res), BitArray<8>>));
 
     EXPECT_EQ(static_cast<int>(as<Sfixed<7, 0>>(cat_res)), 95);
+
+    Sfixed<100, 0> w_cat_a(5);
+    Sfixed<30, 0> w_cat_b(3);
+    auto w_cat_res = concat(w_cat_a, w_cat_b);
+    EXPECT_TRUE((std::is_same_v<decltype(w_cat_res), BitArray<132>>));
 }
 
 TEST(TestSfixed, SubtypeRoundTrip) {
@@ -404,6 +491,10 @@ TEST(TestSfixed, SubtypeRoundTrip) {
 
     EXPECT_EQ(s, restored);
     EXPECT_TRUE(s == (Sfixed<3, -4>(BitArray<Range{3, Direction::DOWNTO, -4}>(s))));
+
+    Sfixed<100, -50> w_rt(-5.0625);
+    BitArray<Range{100, Direction::DOWNTO, -50}> w_ba = w_rt;
+    EXPECT_EQ(w_rt, (Sfixed<100, -50>(w_ba)));
 }
 
 TEST(TestSfixed, InfinityWrapThrows) {
@@ -413,6 +504,11 @@ TEST(TestSfixed, InfinityWrapThrows) {
     );
     EXPECT_THROW(
         (Sfixed<3, -4>(-std::numeric_limits<double>::infinity(), overflow_mode::wrap)),
+        std::domain_error
+    );
+
+    EXPECT_THROW(
+        (Sfixed<100, -50>(std::numeric_limits<double>::infinity(), overflow_mode::wrap)),
         std::domain_error
     );
 }
@@ -431,6 +527,9 @@ TEST(TestSfixed, MinMax) {
 
     EXPECT_EQ(std::min(a, c), c);
     EXPECT_EQ(std::max(b, d), b);
+
+    Sfixed<100, -50> w_minmax_a(3.25), w_minmax_b(4.5);
+    EXPECT_EQ(std::min(w_minmax_a, w_minmax_b), w_minmax_a);
 }
 
 TEST(TestSfixed, StrictTODirectionRejection) {
@@ -443,6 +542,11 @@ TEST(TestSfixed, StrictTODirectionRejection) {
     static_assert(requires(ToType a) {
         static_cast<BitArray<Range{-2, Direction::TO, 6}>>(a);
     });
+
+    using WideToType = Sfixed<-50, Direction::TO, 100>;
+    static_assert(requires(WideToType a) {
+        static_cast<BitArray<Range{-50, Direction::TO, 100}>>(a);
+    });
 }
 
 TEST(TestSfixed, ImplicitCrossKindWidening) {
@@ -452,6 +556,10 @@ TEST(TestSfixed, ImplicitCrossKindWidening) {
     EXPECT_DOUBLE_EQ(static_cast<double>(s), 5.0625);
 
     static_assert(!std::is_convertible_v<Sfixed<3, -4>, Ufixed<3, -4>>);
+
+    Ufixed<100, -50> w_u_cross(5.0625);
+    Sfixed<101, -50> w_s_cross = w_u_cross;
+    EXPECT_DOUBLE_EQ(static_cast<double>(w_s_cross), 5.0625);
 }
 
 TEST(TestSfixed, AbsFunction) {
@@ -466,6 +574,11 @@ TEST(TestSfixed, AbsFunction) {
 
     EXPECT_EQ(static_cast<long double>(abs_val_p), 7.25);
     EXPECT_EQ(static_cast<long double>(abs_val_n), 8.25);
+
+    Sfixed<100, -50> w_abs_val(-8.25);
+    auto w_abs_res = abs(w_abs_val);
+    EXPECT_TRUE((std::is_same_v<decltype(w_abs_res), Sfixed<101, -50>>));
+    EXPECT_DOUBLE_EQ(static_cast<double>(w_abs_res), 8.25);
 }
 
 TEST(TestSfixed, UnaryOperators) {
@@ -488,4 +601,377 @@ TEST(TestSfixed, UnaryOperators) {
     auto pos_res = +val_pos;
     EXPECT_TRUE((std::is_same_v<decltype(pos_res), Sfixed<3, -4>>));
     EXPECT_DOUBLE_EQ(static_cast<double>(pos_res), 3.75);
+
+    Sfixed<100, -50> w_un_val(-5.25);
+    auto w_un_neg = -w_un_val;
+    EXPECT_TRUE((std::is_same_v<decltype(w_un_neg), Sfixed<101, -50>>));
+    EXPECT_DOUBLE_EQ(static_cast<double>(w_un_neg), 5.25);
+}
+
+TEST(TestSfixed, Arithmetic) {
+    Sfixed<5, -6> a(19.25);
+    Sfixed<10, -10> b(5.55);  // Actually stored as ~5.5498
+
+    auto c = a + b;
+    EXPECT_EQ(c, (Sfixed<11, -10>(24.80)));
+
+    auto g = b + a;
+    EXPECT_EQ(g, (Sfixed<11, -10>(24.80)));
+
+    auto d = a - b;
+    EXPECT_EQ(d, (Sfixed<11, -10>(13.7)));
+
+    auto e = b - a;
+    EXPECT_EQ(e, (Sfixed<11, -10>(-13.7)));
+
+    auto f = a * b;
+    auto h = b * a;
+
+    EXPECT_NEAR(static_cast<double>(f), 106.83374, 1e-4);
+    EXPECT_NEAR(static_cast<double>(h), 106.83374, 1e-4);
+
+    auto div_res = a / b;
+    auto div_res_r = b / a;
+    EXPECT_NEAR(static_cast<double>(div_res), 3.46859, 1e-4);
+    EXPECT_NEAR(static_cast<double>(div_res_r), 0.28830, 1e-4);
+
+    auto mod_res = a % b;
+    auto mod_res_r = b % a;
+    EXPECT_NEAR(static_cast<double>(mod_res), 2.60058, 1e-4);
+    EXPECT_NEAR(static_cast<double>(mod_res_r), 5.54980, 1e-4);
+
+    Sfixed<5, -6> a_n(-19.25);
+    Sfixed<10, -10> b_n(-5.55);
+
+    EXPECT_EQ(a_n + b_n, (Sfixed<11, -10>(-24.80)));
+    EXPECT_EQ(a_n + b, (Sfixed<11, -10>(-13.7)));
+    EXPECT_EQ(a + b_n, (Sfixed<11, -10>(13.7)));
+
+    EXPECT_EQ(a_n - b_n, (Sfixed<11, -10>(-13.7)));
+    EXPECT_EQ(a_n - b, (Sfixed<11, -10>(-24.80)));
+    EXPECT_EQ(a - b_n, (Sfixed<11, -10>(24.80)));
+
+    EXPECT_NEAR(static_cast<double>(a_n * b_n), 106.83374, 1e-4);
+    EXPECT_NEAR(static_cast<double>(a_n * b), -106.83374, 1e-4);
+    EXPECT_NEAR(static_cast<double>(a * b_n), -106.83374, 1e-4);
+
+    EXPECT_NEAR(static_cast<double>(a_n / b_n), 3.46859, 1e-4);
+    EXPECT_NEAR(static_cast<double>(a_n / b), -3.46859, 1e-4);
+    EXPECT_NEAR(static_cast<double>(a / b_n), -3.46859, 1e-4);
+
+    EXPECT_NEAR(static_cast<double>(a_n % b_n), -2.60058, 1e-4);
+    EXPECT_NEAR(static_cast<double>(a_n % b), -2.60058, 1e-4);
+    EXPECT_NEAR(static_cast<double>(a % b_n), 2.60058, 1e-4);
+
+    Sfixed<100, -50> w_arith_a(19.25), w_arith_b(5.5);
+    auto w_arith_c = w_arith_a + w_arith_b;
+    EXPECT_TRUE((std::is_same_v<decltype(w_arith_c), Sfixed<101, -50>>));
+    EXPECT_DOUBLE_EQ(static_cast<double>(w_arith_c), 24.75);
+}
+
+TEST(TestSfixed, CompoundArithmetic) {
+    Sfixed<5, -6> a(19.25);
+    Sfixed<10, -10> b(5.55);
+
+    Sfixed<5, -6> a_n(-19.25);
+    Sfixed<10, -10> b_n(-5.55);
+
+    Sfixed<11, -10> c(a);
+    c += b;
+    EXPECT_EQ(c, (Sfixed<11, -10>(24.80)));
+
+    // 7 + 19.25 = 26.25 -> wrap 4-bit = -6
+    Sfixed<3, 0> z(7);
+    z += a;
+    EXPECT_EQ(z, (Sfixed<3, 0>(-6)));
+
+    // -8 - 19.25 = -27.25 -> wrap 4-bit = 5
+    Sfixed<3, 0> z_min(-8);
+    z_min -= a;
+    EXPECT_EQ(z_min, (Sfixed<3, 0>(5)));
+
+    Sfixed<11, -10> d(a);
+    d -= b;
+    EXPECT_EQ(d, (Sfixed<11, -10>(13.7)));
+
+    Sfixed<16, -16> f(a);
+    f *= b;
+    EXPECT_NEAR(static_cast<double>(f), 106.83374, 1e-4);
+
+    Sfixed<15, -10> div_res(a);
+    div_res /= b;
+    EXPECT_NEAR(static_cast<double>(div_res), 3.4677734375, 1e-6);
+
+    Sfixed<15, -10> div_res_r(b);
+    div_res_r /= a;
+    EXPECT_NEAR(static_cast<double>(div_res_r), 0.2880859375, 1e-6);
+
+    Sfixed<10, -10> mod_res(a);
+    mod_res %= b;
+    EXPECT_NEAR(static_cast<double>(mod_res), 2.60058, 1e-4);
+
+    Sfixed<10, -10> mod_res_r(b);
+    mod_res_r %= a;
+    EXPECT_NEAR(static_cast<double>(mod_res_r), 5.54980, 1e-4);
+
+    Sfixed<11, -10> c_nn(a_n);
+    c_nn += b_n;
+    EXPECT_EQ(c_nn, (Sfixed<11, -10>(-24.80)));
+    Sfixed<11, -10> c_np(a_n);
+    c_np += b;
+    EXPECT_EQ(c_np, (Sfixed<11, -10>(-13.7)));
+    Sfixed<11, -10> c_pn(a);
+    c_pn += b_n;
+    EXPECT_EQ(c_pn, (Sfixed<11, -10>(13.7)));
+
+    Sfixed<11, -10> d_nn(a_n);
+    d_nn -= b_n;
+    EXPECT_EQ(d_nn, (Sfixed<11, -10>(-13.7)));
+    Sfixed<11, -10> d_np(a_n);
+    d_np -= b;
+    EXPECT_EQ(d_np, (Sfixed<11, -10>(-24.80)));
+    Sfixed<11, -10> d_pn(a);
+    d_pn -= b_n;
+    EXPECT_EQ(d_pn, (Sfixed<11, -10>(24.80)));
+
+    Sfixed<16, -16> f_nn(a_n);
+    f_nn *= b_n;
+    EXPECT_NEAR(static_cast<double>(f_nn), 106.83374, 1e-4);
+    Sfixed<16, -16> f_np(a_n);
+    f_np *= b;
+    EXPECT_NEAR(static_cast<double>(f_np), -106.83374, 1e-4);
+    Sfixed<16, -16> f_pn(a);
+    f_pn *= b_n;
+    EXPECT_NEAR(static_cast<double>(f_pn), -106.83374, 1e-4);
+
+    Sfixed<15, -10> div_nn(a_n);
+    div_nn /= b_n;
+    EXPECT_NEAR(static_cast<double>(div_nn), 3.4677734375, 1e-6);
+    Sfixed<15, -10> div_np(a_n);
+    div_np /= b;
+    EXPECT_NEAR(static_cast<double>(div_np), -3.4677734375, 1e-6);
+    Sfixed<15, -10> div_pn(a);
+    div_pn /= b_n;
+    EXPECT_NEAR(static_cast<double>(div_pn), -3.4677734375, 1e-6);
+
+    Sfixed<10, -10> mod_nn(a_n);
+    mod_nn %= b_n;
+    EXPECT_NEAR(static_cast<double>(mod_nn), -2.60058, 1e-4);
+    Sfixed<10, -10> mod_np(a_n);
+    mod_np %= b;
+    EXPECT_NEAR(static_cast<double>(mod_np), -2.60058, 1e-4);
+    Sfixed<10, -10> mod_pn(a);
+    mod_pn %= b_n;
+    EXPECT_NEAR(static_cast<double>(mod_pn), 2.60058, 1e-4);
+
+    Sfixed<100, -50> w_comp_a(19.25), w_comp_b(5.5);
+    w_comp_a += w_comp_b;
+    EXPECT_DOUBLE_EQ(static_cast<double>(w_comp_a), 24.75);
+}
+
+TEST(TestSfixed, CompoundArithmeticNativeInt) {
+    Sfixed<11, -10> val(5.25);
+
+    val += 2;
+    EXPECT_EQ(val, (Sfixed<11, -10>(7.25)));
+
+    val -= 1;
+    EXPECT_EQ(val, (Sfixed<11, -10>(6.25)));
+
+    val *= 3;
+    EXPECT_EQ(val, (Sfixed<11, -10>(18.75)));
+
+    val /= 2;
+    EXPECT_EQ(val, (Sfixed<11, -10>(9.375)));
+
+    val %= 4;
+    EXPECT_EQ(val, (Sfixed<11, -10>(1.375)));
+
+    Sfixed<3, 0> tight(2);
+    tight += 6;
+    EXPECT_EQ(tight, (Sfixed<3, 0>(-8)));  // 2 + 6 = 8. Wrapped to 4-bits gives -8.
+
+    // 11 exceeds the Sfixed<3, 0> max constructor bound of 7.
+    EXPECT_THROW((tight -= 11), std::out_of_range);
+
+    Sfixed<11, -10> val_n(-5.25);
+    val_n += 2;
+    EXPECT_EQ(val_n, (Sfixed<11, -10>(-3.25)));
+    val_n -= 1;
+    EXPECT_EQ(val_n, (Sfixed<11, -10>(-4.25)));
+    val_n *= 3;
+    EXPECT_EQ(val_n, (Sfixed<11, -10>(-12.75)));
+    val_n /= 2;
+    EXPECT_EQ(val_n, (Sfixed<11, -10>(-6.375)));
+    val_n %= 4;
+    EXPECT_EQ(val_n, (Sfixed<11, -10>(-2.375)));
+
+    Sfixed<11, -10> val_nn(5.25);
+    val_nn += -2;
+    EXPECT_EQ(val_nn, (Sfixed<11, -10>(3.25)));
+    val_nn -= -1;
+    EXPECT_EQ(val_nn, (Sfixed<11, -10>(4.25)));
+    val_nn *= -3;
+    EXPECT_EQ(val_nn, (Sfixed<11, -10>(-12.75)));
+    val_nn /= -2;
+    EXPECT_EQ(val_nn, (Sfixed<11, -10>(6.375)));
+    val_nn %= -4;
+    EXPECT_EQ(val_nn, (Sfixed<11, -10>(2.375)));
+
+    Sfixed<100, -50> w_cni(5.25);
+    w_cni += 2;
+    EXPECT_DOUBLE_EQ(static_cast<double>(w_cni), 7.25);
+}
+
+TEST(TestSfixed, IncrementDecrement) {
+    Sfixed<11, -10> val(5.25);
+
+    auto pre_inc = ++val;
+    EXPECT_EQ(pre_inc, (Sfixed<11, -10>(6.25)));
+    EXPECT_EQ(val, (Sfixed<11, -10>(6.25)));
+
+    auto post_inc = val++;
+    EXPECT_EQ(post_inc, (Sfixed<11, -10>(6.25)));
+    EXPECT_EQ(val, (Sfixed<11, -10>(7.25)));
+
+    auto pre_dec = --val;
+    EXPECT_EQ(pre_dec, (Sfixed<11, -10>(6.25)));
+    EXPECT_EQ(val, (Sfixed<11, -10>(6.25)));
+
+    auto post_dec = val--;
+    EXPECT_EQ(post_dec, (Sfixed<11, -10>(6.25)));
+    EXPECT_EQ(val, (Sfixed<11, -10>(5.25)));
+
+    Sfixed<3, 0> max_val(7);
+    EXPECT_EQ(++max_val, (Sfixed<3, 0>(-8)));
+    EXPECT_EQ(max_val++, (Sfixed<3, 0>(-8)));
+
+    Sfixed<3, 0> min_val(-8);
+    EXPECT_EQ(--min_val, (Sfixed<3, 0>(7)));
+    EXPECT_EQ(min_val--, (Sfixed<3, 0>(7)));
+
+    Sfixed<11, -10> val_n(-5.25);
+
+    auto pre_inc_n = ++val_n;
+    EXPECT_EQ(pre_inc_n, (Sfixed<11, -10>(-4.25)));
+    EXPECT_EQ(val_n, (Sfixed<11, -10>(-4.25)));
+
+    auto post_inc_n = val_n++;
+    EXPECT_EQ(post_inc_n, (Sfixed<11, -10>(-4.25)));
+    EXPECT_EQ(val_n, (Sfixed<11, -10>(-3.25)));
+
+    auto pre_dec_n = --val_n;
+    EXPECT_EQ(pre_dec_n, (Sfixed<11, -10>(-4.25)));
+    EXPECT_EQ(val_n, (Sfixed<11, -10>(-4.25)));
+
+    auto post_dec_n = val_n--;
+    EXPECT_EQ(post_dec_n, (Sfixed<11, -10>(-4.25)));
+    EXPECT_EQ(val_n, (Sfixed<11, -10>(-5.25)));
+
+    Sfixed<100, -50> w_inc(5.25);
+    EXPECT_DOUBLE_EQ(static_cast<double>(++w_inc), 6.25);
+}
+
+TEST(TestSfixed, CrossKindArithmetic) {
+    Ufixed<5, -6> u(19.25);
+
+    Sfixed<10, -10> s_pos(5.55);
+    Sfixed<10, -10> s_neg(-5.55);
+
+    EXPECT_EQ(u + s_pos, (Sfixed<11, -10>(24.80)));
+    EXPECT_EQ(s_pos + u, (Sfixed<11, -10>(24.80)));
+
+    EXPECT_EQ(u + s_neg, (Sfixed<11, -10>(13.7)));
+    EXPECT_EQ(s_neg + u, (Sfixed<11, -10>(13.7)));
+
+    EXPECT_EQ(u - s_pos, (Sfixed<11, -10>(13.7)));
+    EXPECT_EQ(s_pos - u, (Sfixed<11, -10>(-13.7)));
+
+    EXPECT_EQ(u - s_neg, (Sfixed<11, -10>(24.80)));
+    EXPECT_EQ(s_neg - u, (Sfixed<11, -10>(-24.80)));
+
+    EXPECT_NEAR(static_cast<double>(u * s_pos), 106.83374, 1e-4);
+    EXPECT_NEAR(static_cast<double>(s_pos * u), 106.83374, 1e-4);
+
+    EXPECT_NEAR(static_cast<double>(u * s_neg), -106.83374, 1e-4);
+    EXPECT_NEAR(static_cast<double>(s_neg * u), -106.83374, 1e-4);
+
+    EXPECT_NEAR(static_cast<double>(u / s_pos), 3.46859, 1e-4);
+    EXPECT_NEAR(static_cast<double>(s_pos / u), 0.28830, 1e-4);
+
+    EXPECT_NEAR(static_cast<double>(u / s_neg), -3.46859, 1e-4);
+    EXPECT_NEAR(static_cast<double>(s_neg / u), -0.28830, 1e-4);
+
+    EXPECT_NEAR(static_cast<double>(u % s_pos), 2.60058, 1e-4);
+    EXPECT_NEAR(static_cast<double>(s_pos % u), 5.54980, 1e-4);
+
+    EXPECT_NEAR(static_cast<double>(u % s_neg), 2.60058, 1e-4);
+    EXPECT_NEAR(static_cast<double>(s_neg % u), -5.54980, 1e-4);
+
+    auto result = u + s_pos;
+    EXPECT_TRUE((std::is_same_v<decltype(result), Sfixed<11, -10>>));
+
+    Ufixed<100, -50> w_x_u(19.25);
+    Sfixed<100, -50> w_x_s(-5.5);
+    EXPECT_DOUBLE_EQ(static_cast<double>(w_x_u + w_x_s), 13.75);
+}
+
+TEST(TestSfixed, ImplicitSignedArithmetic) {
+    Sfixed<5, -6> a(19.25);
+    Signed<7, 0> b(15);
+
+    Sfixed<5, -6> a_n(-19.25);
+    Signed<7, 0> b_n(-15);
+
+    auto c = a + b;
+    EXPECT_EQ(c, (Sfixed<8, -6>(34.25)));
+
+    auto g = b + a;
+    EXPECT_EQ(g, (Sfixed<8, -6>(34.25)));
+
+    auto d = a - b;
+    EXPECT_EQ(d, (Sfixed<8, -6>(4.25)));
+
+    auto e = b - a;
+    EXPECT_EQ(e, (Sfixed<8, -6>(-4.25)));
+
+    auto f = a * b;
+    auto h = b * a;
+
+    EXPECT_EQ(static_cast<double>(f), 288.75);
+    EXPECT_EQ(static_cast<double>(h), 288.75);
+
+    auto div_res = a / b;
+    auto div_res_r = b / a;
+
+    EXPECT_NEAR(static_cast<double>(div_res), 1.2833, 1e-4);
+    EXPECT_NEAR(static_cast<double>(div_res_r), 0.75, 1e-6);
+
+    auto mod_res = a % b;
+    auto mod_res_r = b % a;
+
+    EXPECT_NEAR(static_cast<double>(mod_res), 4.25, 1e-4);
+    EXPECT_NEAR(static_cast<double>(mod_res_r), 15, 1e-4);
+
+    EXPECT_EQ(a_n + b_n, (Sfixed<8, -6>(-34.25)));
+    EXPECT_EQ(a_n - b_n, (Sfixed<8, -6>(-4.25)));
+    EXPECT_EQ(static_cast<double>(a_n * b_n), 288.75);
+    EXPECT_NEAR(static_cast<double>(a_n / b_n), 1.2833, 1e-4);
+    EXPECT_NEAR(static_cast<double>(a_n % b_n), -4.25, 1e-4);
+
+    EXPECT_EQ(a_n + b, (Sfixed<8, -6>(-4.25)));
+    EXPECT_EQ(a_n - b, (Sfixed<8, -6>(-34.25)));
+    EXPECT_EQ(static_cast<double>(a_n * b), -288.75);
+    EXPECT_NEAR(static_cast<double>(a_n / b), -1.2833, 1e-4);
+    EXPECT_NEAR(static_cast<double>(a_n % b), -4.25, 1e-4);
+
+    EXPECT_EQ(a + b_n, (Sfixed<8, -6>(4.25)));
+    EXPECT_EQ(a - b_n, (Sfixed<8, -6>(34.25)));
+    EXPECT_EQ(static_cast<double>(a * b_n), -288.75);
+    EXPECT_NEAR(static_cast<double>(a / b_n), -1.2833, 1e-4);
+    EXPECT_NEAR(static_cast<double>(a % b_n), 4.25, 1e-4);
+
+    Sfixed<100, -50> w_is_a(19.25);
+    Signed<100> w_is_b(-15);
+    EXPECT_DOUBLE_EQ(static_cast<double>(w_is_a + w_is_b), 4.25);
 }

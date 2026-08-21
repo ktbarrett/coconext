@@ -162,7 +162,7 @@ class Sfixed {
             }
 
             auto aligned = abs_value.srl(shift_amount);
-            uint64_t raw_mantissa = static_cast<uint64_t>(aligned.raw());
+            uint64_t raw_mantissa = static_cast<uint64_t>(aligned.raw().word(0));
 
             if (shift_amount > 0) {
                 bool round_bit = abs_value.get_bit(shift_amount - 1);
@@ -786,132 +786,193 @@ class Sfixed {
         return Sfixed<TR>(Bits<TargetW>(0) - extended_bits);
     }
 
-    // TODO
-    // template <Range R2>
-    // constexpr auto operator+(Sfixed<R2> const& rhs) const {
-    //     static_assert(R.direction == Direction::DOWNTO && R2.direction ==
-    //     Direction::DOWNTO, "Operations require DOWNTO"); constexpr Range
-    //     R_res{std::max(R.left, R2.left) + 1, Direction::DOWNTO, std::min(R.right,
-    //     R2.right)}; constexpr size_t ShiftL = R.right - R_res.right; constexpr size_t
-    //     ShiftR = R2.right - R_res.right;
+    template <Range R2>
+    constexpr auto operator+(Sfixed<R2> const& rhs) const {
+        static_assert(
+            R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO,
+            "Operations require DOWNTO"
+        );
+        constexpr Range R_res{
+            std::max(R.left, R2.left) + 1, Direction::DOWNTO, std::min(R.right, R2.right)
+        };
+        constexpr size_t ShiftL = R.right - R_res.right;
+        constexpr size_t ShiftR = R2.right - R_res.right;
 
-    //     auto lhs_aligned = value_.template sign_extend<R.length() + ShiftL>() << ShiftL;
-    //     auto rhs_aligned = bits(rhs).template sign_extend<R2.length() + ShiftR>() <<
-    //     ShiftR;
+        auto lhs_aligned = value_.template sign_extend<R.length() + ShiftL>() << ShiftL;
+        auto rhs_aligned = bits(rhs).template sign_extend<R2.length() + ShiftR>() << ShiftR;
 
-    //     return Sfixed<R_res>(detail::add_signed(lhs_aligned, rhs_aligned));
-    // }
+        return Sfixed<R_res>(detail::add_signed(lhs_aligned, rhs_aligned));
+    }
 
-    // template <Range R2>
-    // constexpr auto operator-(Sfixed<R2> const& rhs) const {
-    //     static_assert(R.direction == Direction::DOWNTO && R2.direction ==
-    //     Direction::DOWNTO, "Operations require DOWNTO"); constexpr Range
-    //     R_res{std::max(R.left, R2.left) + 1, Direction::DOWNTO, std::min(R.right,
-    //     R2.right)}; constexpr size_t ShiftL = R.right - R_res.right; constexpr size_t
-    //     ShiftR = R2.right - R_res.right;
+    template <Range R2>
+    constexpr auto operator-(Sfixed<R2> const& rhs) const {
+        static_assert(
+            R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO,
+            "Operations require DOWNTO"
+        );
+        constexpr Range R_res{
+            std::max(R.left, R2.left) + 1, Direction::DOWNTO, std::min(R.right, R2.right)
+        };
+        constexpr size_t ShiftL = R.right - R_res.right;
+        constexpr size_t ShiftR = R2.right - R_res.right;
 
-    //     auto lhs_aligned = value_.template sign_extend<R.length() + ShiftL>() << ShiftL;
-    //     auto rhs_aligned = bits(rhs).template sign_extend<R2.length() + ShiftR>() <<
-    //     ShiftR;
+        auto lhs_aligned = value_.template sign_extend<R.length() + ShiftL>() << ShiftL;
+        auto rhs_aligned = bits(rhs).template sign_extend<R2.length() + ShiftR>() << ShiftR;
 
-    //     return Sfixed<R_res>(detail::sub_signed(lhs_aligned, rhs_aligned));
-    // }
+        return Sfixed<R_res>(detail::sub_signed(lhs_aligned, rhs_aligned));
+    }
 
-    // template <Range R2>
-    // constexpr auto operator*(Sfixed<R2> const& rhs) const {
-    //     static_assert(R.direction == Direction::DOWNTO && R2.direction ==
-    //     Direction::DOWNTO, "Operations require DOWNTO"); constexpr Range R_res{R.left +
-    //     R2.left + 1, Direction::DOWNTO, R.right + R2.right}; return
-    //     Sfixed<R_res>(detail::mul_signed(value_, bits(rhs)));
-    // }
+    template <Range R2>
+    constexpr auto operator*(Sfixed<R2> const& rhs) const {
+        static_assert(
+            R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO,
+            "Operations require DOWNTO"
+        );
+        constexpr Range R_res{R.left + R2.left + 1, Direction::DOWNTO, R.right + R2.right};
+        return Sfixed<R_res>(detail::mul_signed(value_, bits(rhs)));
+    }
 
-    // template <Range R2>
-    // constexpr auto operator/(Sfixed<R2> const& rhs) const {
-    //     static_assert(R.direction == Direction::DOWNTO && R2.direction ==
-    //     Direction::DOWNTO, "Operations require DOWNTO"); if (!static_cast<bool>(rhs)) {
-    //         throw std::domain_error("Division by zero");
-    //     }
-    //     constexpr Range R_res{R.left - R2.right + 1, Direction::DOWNTO, R.right - R2.left
-    //     - 1}; constexpr size_t ShiftL = R2.length();
+    template <Range R2>
+    constexpr auto operator/(Sfixed<R2> const& rhs) const {
+        static_assert(
+            R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO,
+            "Operations require DOWNTO"
+        );
+        if (!static_cast<bool>(rhs)) {
+            throw std::domain_error("Division by zero");
+        }
+        constexpr Range R_res{R.left - R2.right + 1, Direction::DOWNTO, R.right - R2.left};
 
-    //     auto lhs_shifted = value_.template sign_extend<R.length() + ShiftL>() << ShiftL;
-    //     return Sfixed<R_res>(detail::div_signed(lhs_shifted, bits(rhs)));
-    // }
+        constexpr size_t ShiftL = R2.length() - 1;
+        auto lhs_shifted = value_.template sign_extend<R.length() + ShiftL>() << ShiftL;
 
-    // template <Range R2>
-    // constexpr auto operator%(Sfixed<R2> const& rhs) const {
-    //     static_assert(R.direction == Direction::DOWNTO && R2.direction ==
-    //     Direction::DOWNTO, "Operations require DOWNTO"); if (!static_cast<bool>(rhs)) {
-    //         throw std::domain_error("Division by zero");
-    //     }
-    //     constexpr size_t min_R = std::min(R.right, R2.right);
-    //     constexpr Range R_res{R2.left, Direction::DOWNTO, min_R};
-    //     constexpr size_t ShiftL = R.right - min_R;
-    //     constexpr size_t ShiftR = R2.right - min_R;
+        return Sfixed<R_res>(
+            detail::div_signed(lhs_shifted, bits(rhs)).template truncate<R_res.length()>()
+        );
+    }
 
-    //     auto lhs_aligned = value_.template sign_extend<R.length() + ShiftL>() << ShiftL;
-    //     auto rhs_aligned = bits(rhs).template sign_extend<R2.length() + ShiftR>() <<
-    //     ShiftR;
+    template <Range R2>
+    constexpr auto operator%(Sfixed<R2> const& rhs) const {
+        static_assert(
+            R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO,
+            "Operations require DOWNTO"
+        );
+        if (!static_cast<bool>(rhs)) {
+            throw std::domain_error("Division by zero");
+        }
+        constexpr auto min_R = std::min(R.right, R2.right);
+        constexpr Range R_res{R2.left, Direction::DOWNTO, min_R};
+        constexpr size_t ShiftL = R.right - min_R;
+        constexpr size_t ShiftR = R2.right - min_R;
 
-    //     return Sfixed<R_res>(detail::rem_signed(lhs_aligned, rhs_aligned));
-    // }
+        auto lhs_aligned = value_.template sign_extend<R.length() + ShiftL>() << ShiftL;
+        auto rhs_aligned = bits(rhs).template sign_extend<R2.length() + ShiftR>() << ShiftR;
 
-    // template <Range R2>
-    // constexpr Sfixed& operator+=(Sfixed<R2> const& rhs) {
-    //     *this = coconext::types::resize<R>(*this + rhs);
-    //     return *this;
-    // }
-    // template <Range R2>
-    // constexpr Sfixed& operator-=(Sfixed<R2> const& rhs) {
-    //     *this = coconext::types::resize<R>(*this - rhs);
-    //     return *this;
-    // }
-    // template <Range R2>
-    // constexpr Sfixed& operator*=(Sfixed<R2> const& rhs) {
-    //     *this = coconext::types::resize<R>(*this * rhs);
-    //     return *this;
-    // }
-    // template <Range R2>
-    // constexpr Sfixed& operator/=(Sfixed<R2> const& rhs) {
-    //     *this = coconext::types::resize<R>(*this / rhs);
-    //     return *this;
-    // }
-    // template <Range R2>
-    // constexpr Sfixed& operator%=(Sfixed<R2> const& rhs) {
-    //     *this = coconext::types::resize<R>(*this % rhs);
-    //     return *this;
-    // }
+        return Sfixed<R_res>(detail::rem_signed(lhs_aligned, rhs_aligned));
+    }
 
-    // template <NativeInteger T>
-    // constexpr Sfixed& operator+=(T const& rhs) {
-    //     *this = coconext::types::resize<R>(*this + Sfixed<Range{R.length() - 1,
-    //     Direction::DOWNTO, 0}>(rhs)); return *this;
-    // }
-    // template <NativeInteger T>
-    // constexpr Sfixed& operator-=(T const& rhs) {
-    //     *this = coconext::types::resize<R>(*this - Sfixed<Range{R.length() - 1,
-    //     Direction::DOWNTO, 0}>(rhs)); return *this;
-    // }
-    // template <NativeInteger T>
-    // constexpr Sfixed& operator*=(T const& rhs) {
-    //     *this = coconext::types::resize<R>(*this * Sfixed<Range{R.length() - 1,
-    //     Direction::DOWNTO, 0}>(rhs)); return *this;
-    // }
-    // template <NativeInteger T>
-    // constexpr Sfixed& operator/=(T const& rhs) {
-    //     *this = coconext::types::resize<R>(*this / Sfixed<Range{R.length() - 1,
-    //     Direction::DOWNTO, 0}>(rhs)); return *this;
-    // }
-    // template <NativeInteger T>
-    // constexpr Sfixed& operator%=(T const& rhs) {
-    //     *this = coconext::types::resize<R>(*this % Sfixed<Range{R.length() - 1,
-    //     Direction::DOWNTO, 0}>(rhs)); return *this;
-    // }
+    template <Range R2>
+    constexpr Sfixed& operator+=(Sfixed<R2> const& rhs) {
+        static_assert(
+            R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO,
+            "Operations require DOWNTO"
+        );
+        *this = coconext::types::resize(
+            *this + rhs, overflow_mode::wrap, round_mode::round_to_zero
+        );
+        return *this;
+    }
+    template <Range R2>
+    constexpr Sfixed& operator-=(Sfixed<R2> const& rhs) {
+        static_assert(
+            R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO,
+            "Operations require DOWNTO"
+        );
+        *this = coconext::types::resize(
+            *this - rhs, overflow_mode::wrap, round_mode::round_to_zero
+        );
+        return *this;
+    }
+    template <Range R2>
+    constexpr Sfixed& operator*=(Sfixed<R2> const& rhs) {
+        static_assert(
+            R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO,
+            "Operations require DOWNTO"
+        );
+        *this = coconext::types::resize(
+            *this * rhs, overflow_mode::wrap, round_mode::round_to_zero
+        );
+        return *this;
+    }
+    template <Range R2>
+    constexpr Sfixed& operator/=(Sfixed<R2> const& rhs) {
+        static_assert(
+            R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO,
+            "Operations require DOWNTO"
+        );
+        *this = coconext::types::resize(
+            *this / rhs, overflow_mode::wrap, round_mode::round_to_zero
+        );
+        return *this;
+    }
+    template <Range R2>
+    constexpr Sfixed& operator%=(Sfixed<R2> const& rhs) {
+        static_assert(
+            R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO,
+            "Operations require DOWNTO"
+        );
+        *this = coconext::types::resize(
+            *this % rhs, overflow_mode::wrap, round_mode::round_to_zero
+        );
+        return *this;
+    }
 
-    // constexpr Sfixed& operator++() { *this += 1; return *this; }
-    // constexpr Sfixed operator++(int) { Sfixed tmp = *this; *this += 1; return tmp; }
-    // constexpr Sfixed& operator--() { *this -= 1; return *this; }
-    // constexpr Sfixed operator--(int) { Sfixed tmp = *this; *this -= 1; return tmp; }
+    template <NativeInteger T>
+    constexpr Sfixed& operator+=(T const& rhs) {
+        static_assert(R.direction == Direction::DOWNTO, "Downto Direction required");
+
+        *this += Sfixed<R>(rhs);
+        return *this;
+    }
+    template <NativeInteger T>
+    constexpr Sfixed& operator-=(T const& rhs) {
+        *this -= Sfixed<R>(rhs);
+        return *this;
+    }
+    template <NativeInteger T>
+    constexpr Sfixed& operator*=(T const& rhs) {
+        *this *= Sfixed<R>(rhs);
+        return *this;
+    }
+    template <NativeInteger T>
+    constexpr Sfixed& operator/=(T const& rhs) {
+        *this /= Sfixed<R>(rhs);
+        return *this;
+    }
+    template <NativeInteger T>
+    constexpr Sfixed& operator%=(T const& rhs) {
+        *this %= Sfixed<R>(rhs);
+        return *this;
+    }
+
+    constexpr Sfixed& operator++() {
+        *this += 1;
+        return *this;
+    }
+    constexpr Sfixed operator++(int) {
+        Sfixed tmp = *this;
+        *this += 1;
+        return tmp;
+    }
+    constexpr Sfixed& operator--() {
+        *this -= 1;
+        return *this;
+    }
+    constexpr Sfixed operator--(int) {
+        Sfixed tmp = *this;
+        *this -= 1;
+        return tmp;
+    }
 
     static constexpr size_t frac_bits() {
         if constexpr (R.direction == Direction::DOWNTO) {
@@ -974,26 +1035,107 @@ class Sfixed {
     Bits<R.length()> value_{0};
 };
 
-// TODO
-// template <Range R1, Range R2>
-// constexpr auto operator+(Ufixed<R1> const& lhs, Sfixed<R2> const& rhs) { return (+lhs) +
-// rhs; } template <Range R1, Range R2> constexpr auto operator-(Ufixed<R1> const& lhs,
-// Sfixed<R2> const& rhs) { return (+lhs) - rhs; } template <Range R1, Range R2> constexpr
-// auto operator*(Ufixed<R1> const& lhs, Sfixed<R2> const& rhs) { return (+lhs) * rhs; }
-// template <Range R1, Range R2>
-// constexpr auto operator/(Ufixed<R1> const& lhs, Sfixed<R2> const& rhs) { return (+lhs) /
-// rhs; } template <Range R1, Range R2> constexpr auto operator%(Ufixed<R1> const& lhs,
-// Sfixed<R2> const& rhs) { return (+lhs) % rhs; }
+template <Range R1, Range R2>
+constexpr auto operator+(Ufixed<R1> const& lhs, Sfixed<R2> const& rhs) {
+    return (+lhs) + rhs;
+}
+template <Range R1, Range R2>
+constexpr auto operator-(Ufixed<R1> const& lhs, Sfixed<R2> const& rhs) {
+    return (+lhs) - rhs;
+}
+template <Range R1, Range R2>
+constexpr auto operator*(Ufixed<R1> const& lhs, Sfixed<R2> const& rhs) {
+    return (+lhs) * rhs;
+}
+template <Range R1, Range R2>
+constexpr auto operator/(Ufixed<R1> const& lhs, Sfixed<R2> const& rhs) {
+    return (+lhs) / rhs;
+}
+template <Range R1, Range R2>
+constexpr auto operator%(Ufixed<R1> const& lhs, Sfixed<R2> const& rhs) {
+    return (+lhs) % rhs;
+}
 
-// template <Range R1, Range R2>
-// constexpr auto operator+(Sfixed<R1> const& lhs, Ufixed<R2> const& rhs) { return lhs +
-// (+rhs); } template <Range R1, Range R2> constexpr auto operator-(Sfixed<R1> const& lhs,
-// Ufixed<R2> const& rhs) { return lhs - (+rhs); } template <Range R1, Range R2> constexpr
-// auto operator*(Sfixed<R1> const& lhs, Ufixed<R2> const& rhs) { return lhs * (+rhs); }
-// template <Range R1, Range R2>
-// constexpr auto operator/(Sfixed<R1> const& lhs, Ufixed<R2> const& rhs) { return lhs /
-// (+rhs); } template <Range R1, Range R2> constexpr auto operator%(Sfixed<R1> const& lhs,
-// Ufixed<R2> const& rhs) { return lhs % (+rhs); }
+template <Range R1, Range R2>
+constexpr auto operator+(Sfixed<R1> const& lhs, Ufixed<R2> const& rhs) {
+    return lhs + (+rhs);
+}
+template <Range R1, Range R2>
+constexpr auto operator-(Sfixed<R1> const& lhs, Ufixed<R2> const& rhs) {
+    return lhs - (+rhs);
+}
+template <Range R1, Range R2>
+constexpr auto operator*(Sfixed<R1> const& lhs, Ufixed<R2> const& rhs) {
+    return lhs * (+rhs);
+}
+template <Range R1, Range R2>
+constexpr auto operator/(Sfixed<R1> const& lhs, Ufixed<R2> const& rhs) {
+    return lhs / (+rhs);
+}
+template <Range R1, Range R2>
+constexpr auto operator%(Sfixed<R1> const& lhs, Ufixed<R2> const& rhs) {
+    return lhs % (+rhs);
+}
+
+template <Range R1, Range R2>
+constexpr auto operator+(Sfixed<R1> const& a, Signed<R2> const& b) {
+    constexpr auto f_range = Range{R2.length() - 1, Direction::DOWNTO, 0};
+    return a + Sfixed<f_range>(b);
+}
+
+template <Range R1, Range R2>
+constexpr auto operator-(Sfixed<R1> const& a, Signed<R2> const& b) {
+    constexpr auto f_range = Range{R2.length() - 1, Direction::DOWNTO, 0};
+    return a - Sfixed<f_range>(b);
+}
+
+template <Range R1, Range R2>
+constexpr auto operator*(Sfixed<R1> const& a, Signed<R2> const& b) {
+    constexpr auto f_range = Range{R2.length() - 1, Direction::DOWNTO, 0};
+    return a * Sfixed<f_range>(b);
+}
+
+template <Range R1, Range R2>
+constexpr auto operator/(Sfixed<R1> const& a, Signed<R2> const& b) {
+    constexpr auto f_range = Range{R2.length() - 1, Direction::DOWNTO, 0};
+    return a / Sfixed<f_range>(b);
+}
+
+template <Range R1, Range R2>
+constexpr auto operator%(Sfixed<R1> const& a, Signed<R2> const& b) {
+    constexpr auto f_range = Range{R2.length() - 1, Direction::DOWNTO, 0};
+    return a % Sfixed<f_range>(b);
+}
+
+template <Range R1, Range R2>
+constexpr auto operator+(Signed<R1> const& a, Sfixed<R2> const& b) {
+    constexpr auto f_range = Range{R1.length() - 1, Direction::DOWNTO, 0};
+    return Sfixed<f_range>(a) + b;
+}
+
+template <Range R1, Range R2>
+constexpr auto operator-(Signed<R1> const& a, Sfixed<R2> const& b) {
+    constexpr auto f_range = Range{R1.length() - 1, Direction::DOWNTO, 0};
+    return Sfixed<f_range>(a) - b;
+}
+
+template <Range R1, Range R2>
+constexpr auto operator*(Signed<R1> const& a, Sfixed<R2> const& b) {
+    constexpr auto f_range = Range{R1.length() - 1, Direction::DOWNTO, 0};
+    return Sfixed<f_range>(a) * b;
+}
+
+template <Range R1, Range R2>
+constexpr auto operator/(Signed<R1> const& a, Sfixed<R2> const& b) {
+    constexpr auto f_range = Range{R1.length() - 1, Direction::DOWNTO, 0};
+    return Sfixed<f_range>(a) / b;
+}
+
+template <Range R1, Range R2>
+constexpr auto operator%(Signed<R1> const& a, Sfixed<R2> const& b) {
+    constexpr auto f_range = Range{R1.length() - 1, Direction::DOWNTO, 0};
+    return Sfixed<f_range>(a) % b;
+}
 
 }  // namespace detail
 

@@ -32,6 +32,10 @@ TEST(TestUfixed, shape_and_typelevel) {
     static_assert(static_cast<BitArray<9>>(Ufixed<6, -2>(37)) == BitArray<9>(37 << 2));
 
     static_assert(is_fixed<decltype(a)>);
+
+    Ufixed<100, -50> wide_a(37.25);
+    static_assert(wide_a.size() == 151);
+    static_assert(wide_a.int_bits() == 101);
 }
 
 TEST(TestUfixed, BooleanConversion) {
@@ -50,6 +54,11 @@ TEST(TestUfixed, BooleanConversion) {
     static_assert(
         noexcept(static_cast<bool>(zero_val)), "Boolean egress must be noexcept."
     );
+
+    Ufixed<100, -50> wide_zero(0.0);
+    Ufixed<100, -50> wide_nonzero(0.0625);
+    EXPECT_FALSE(static_cast<bool>(wide_zero));
+    EXPECT_TRUE(static_cast<bool>(wide_nonzero));
 }
 
 TEST(TestUfixed, NumericEgress) {
@@ -67,6 +76,12 @@ TEST(TestUfixed, NumericEgress) {
     EXPECT_NO_THROW(static_cast<void>(static_cast<short>(large_val)));
     EXPECT_THROW(static_cast<unsigned char>(large_val), std::out_of_range);
     EXPECT_THROW(static_cast<signed char>(large_val), std::out_of_range);
+
+    Ufixed<100, -50> wide_val(5.9375);
+    EXPECT_EQ(static_cast<int>(wide_val), 5);
+    Ufixed<100, -50> wide_huge(1);
+    wide_huge <<= 65;
+    EXPECT_THROW(static_cast<unsigned long long>(wide_huge), std::out_of_range);
 }
 
 TEST(TestUfixed, FloatEgress) {
@@ -93,6 +108,9 @@ TEST(TestUfixed, FloatEgress) {
     EXPECT_EQ((int)val_s, 2);
     EXPECT_EQ(static_cast<int>(val_s), 2);
     EXPECT_DOUBLE_EQ(double(val_s), 2.5);
+
+    Ufixed<100, -50> wide_float(5.0625);
+    EXPECT_DOUBLE_EQ(static_cast<double>(wide_float), 5.0625);
 }
 
 TEST(TestUfixed, Constructors) {
@@ -153,6 +171,9 @@ TEST(TestUfixed, Constructors) {
 
     EXPECT_EQ(static_cast<int>(narrow_saturated), 15);
     EXPECT_EQ(static_cast<int>(narrow_wrapped), 8);
+
+    Ufixed<100, -50> wide_from_double(100.5);
+    EXPECT_DOUBLE_EQ(static_cast<double>(wide_from_double), 100.5);
 }
 
 TEST(TestUfixed, as_overloads) {
@@ -184,6 +205,10 @@ TEST(TestUfixed, as_overloads) {
     EXPECT_TRUE(bits[3] == Bit('0'));
     auto s_val = as<Ufixed<3, 0>>(bits);
     EXPECT_EQ(static_cast<int>(s_val), 5);
+
+    Ufixed<100, -50> wide_u(15);
+    auto wide_s = as<Sfixed<100, -50>>(wide_u);
+    EXPECT_EQ(static_cast<int>(wide_s), 15);
 }
 
 TEST(TestUfixed, resize) {
@@ -210,6 +235,10 @@ TEST(TestUfixed, resize) {
     Ufixed<7, 0> src(100);
     Ufixed<3, 0> dst = resize(src, overflow_mode::wrap);
     EXPECT_EQ(static_cast<int>(dst), 4);
+
+    Ufixed<100, -50> wide_orig_res(10.5);
+    auto narrow_from_wide = resize<7, -4>(wide_orig_res);
+    EXPECT_DOUBLE_EQ(static_cast<double>(narrow_from_wide), 10.5);
 }
 
 TEST(TestUfixed, ShiftOperators) {
@@ -238,6 +267,10 @@ TEST(TestUfixed, ShiftOperators) {
     EXPECT_THROW(val >> neg_shift, std::invalid_argument);
     EXPECT_THROW(compound_val <<= neg_shift, std::invalid_argument);
     EXPECT_THROW(compound_val >>= neg_shift, std::invalid_argument);
+
+    Ufixed<100, -50> wide_shift(1.0);
+    wide_shift <<= 2;
+    EXPECT_DOUBLE_EQ(static_cast<double>(wide_shift), 4.0);
 }
 
 TEST(TestUfixed, ComparisonOperators) {
@@ -265,6 +298,10 @@ TEST(TestUfixed, ComparisonOperators) {
     EXPECT_TRUE(a >= b);
     EXPECT_TRUE(c >= a);
     EXPECT_FALSE(d >= a);
+
+    Ufixed<100, -50> w_cmp_a(3.25), w_cmp_b(3.25), w_cmp_c(4.5);
+    EXPECT_TRUE(w_cmp_a == w_cmp_b);
+    EXPECT_TRUE(w_cmp_a < w_cmp_c);
 }
 
 TEST(TestUfixed, AtOrdinalIndexing) {
@@ -276,6 +313,11 @@ TEST(TestUfixed, AtOrdinalIndexing) {
 
     EXPECT_THROW(uf.at_ordinal(6), std::out_of_range);
     EXPECT_THROW(uf.at_ordinal(7), std::out_of_range);
+
+    Ufixed<100, -50> w_idx(1.0);
+    EXPECT_FALSE(w_idx.at_ordinal(0));
+    EXPECT_FALSE(w_idx.at_ordinal(150));
+    EXPECT_TRUE(w_idx.at_ordinal(100));
 }
 
 TEST(TestUfixed, Indexing) {
@@ -287,6 +329,11 @@ TEST(TestUfixed, Indexing) {
 
     EXPECT_THROW(uf[6], std::out_of_range);
     EXPECT_THROW(uf[7], std::out_of_range);
+
+    Ufixed<100, -50> w_idx(1.0);
+    EXPECT_FALSE(w_idx[100]);
+    EXPECT_FALSE(w_idx[-50]);
+    EXPECT_TRUE(w_idx[0]);
 }
 
 TEST(TestUfixed, IterationSurface) {
@@ -318,6 +365,9 @@ TEST(TestUfixed, IterationSurface) {
         range_based_count++;
     }
     EXPECT_EQ(range_based_count, 8);
+
+    Ufixed<100, -50> w_iter(0);
+    EXPECT_EQ(std::distance(w_iter.begin(), w_iter.end()), 151);
 }
 
 TEST(TestUfixed, RoundFreeFunctions) {
@@ -338,6 +388,8 @@ TEST(TestUfixed, RoundFreeFunctions) {
     EXPECT_EQ((round(Ufixed<10, -10>(9.5))), (Ufixed<10, 0>(10)));
 
     EXPECT_EQ((round(Ufixed<10, -10>(9.052))), (Ufixed<10, 0>(9)));
+
+    EXPECT_EQ((floor(Ufixed<100, -50>(9.6))), (Ufixed<100, 0>(9)));
 }
 
 TEST(TestUfixed, Reverse) {
@@ -352,6 +404,10 @@ TEST(TestUfixed, Reverse) {
 
     EXPECT_EQ(r_to, uf_to);
     EXPECT_EQ(r_down, (Ufixed<3, -4>(ba_r)));
+
+    Ufixed<100, -50> w_rev_down(1);
+    auto w_rev_to = reverse(w_rev_down);
+    EXPECT_TRUE((std::is_same_v<decltype(w_rev_to), Ufixed<-50, Direction::TO, 100>>));
 }
 
 TEST(TestUfixed, Formatter) {
@@ -379,6 +435,12 @@ TEST(TestUfixed, Formatter) {
     );
     EXPECT_THROW(
         auto s = std::vformat("{:e}", std::make_format_args(val)), std::format_error
+    );
+
+    Ufixed<100, -50> w_fmt(5.0625);
+    EXPECT_EQ(
+        std::format("{:d}", w_fmt),
+        "Ufixed[100 downto -50]{5.06250000000000000000000000000000000000000000000000}"
     );
 }
 
@@ -431,6 +493,11 @@ TEST(TestUfixed, Hash) {
 
     EXPECT_EQ(hash_wide_a, hash_wide_b);
     EXPECT_NE(hash_wide_a, hash_wide_c);
+
+    Ufixed<100, -50> w_hash_a(10), w_hash_b(10), w_hash_c(11);
+    EXPECT_EQ(
+        (std::hash<Ufixed<100, -50>>{}(w_hash_a)), (std::hash<Ufixed<100, -50>>{}(w_hash_b))
+    );
 }
 
 TEST(TestUfixed, BitwiseAndReduction) {
@@ -456,6 +523,9 @@ TEST(TestUfixed, BitwiseAndReduction) {
     EXPECT_FALSE(and_reduce(a));
     EXPECT_TRUE(or_reduce(a));
     EXPECT_FALSE(xor_reduce(a));
+
+    Ufixed<100, -50> w_bw_a(10), w_bw_b(12);
+    EXPECT_EQ((as<Ufixed<100, -50>>(w_bw_a & w_bw_b)), (Ufixed<100, -50>(8)));
 }
 
 TEST(TestUfixed, Concatenation) {
@@ -467,6 +537,11 @@ TEST(TestUfixed, Concatenation) {
 
     // 1010 concatenated with 1111 -> 10101111 = 175
     EXPECT_EQ(static_cast<int>(as<Ufixed<7, 0>>(cat_res)), 175);
+
+    Ufixed<100, 0> w_cat_a(10);
+    Ufixed<30, 0> w_cat_b(3);
+    auto w_cat_res = concat(w_cat_a, w_cat_b);
+    EXPECT_TRUE((std::is_same_v<decltype(w_cat_res), BitArray<132>>));
 }
 
 TEST(TestUfixed, SubtypeRoundTrip) {
@@ -477,6 +552,10 @@ TEST(TestUfixed, SubtypeRoundTrip) {
 
     EXPECT_EQ(s, restored);
     EXPECT_TRUE(s == (Ufixed<3, -4>(BitArray<Range{3, Direction::DOWNTO, -4}>(s))));
+
+    Ufixed<100, -50> w_rt(5.0625);
+    BitArray<Range{100, Direction::DOWNTO, -50}> w_ba = w_rt;
+    EXPECT_EQ(w_rt, (Ufixed<100, -50>(w_ba)));
 }
 
 TEST(TestUfixed, InfinityWrapThrows) {
@@ -488,6 +567,11 @@ TEST(TestUfixed, InfinityWrapThrows) {
         (Ufixed<3, -4>(-std::numeric_limits<double>::infinity(), overflow_mode::wrap)),
         std::domain_error
     );
+
+    EXPECT_THROW(
+        (Ufixed<100, -50>(std::numeric_limits<double>::infinity(), overflow_mode::wrap)),
+        std::domain_error
+    );
 }
 
 TEST(TestUfixed, MinMax) {
@@ -496,6 +580,9 @@ TEST(TestUfixed, MinMax) {
 
     EXPECT_EQ(std::min(a, b), a);
     EXPECT_EQ(std::max(a, b), b);
+
+    Ufixed<100, -50> w_minmax_a(3.25), w_minmax_b(4.5);
+    EXPECT_EQ(std::min(w_minmax_a, w_minmax_b), w_minmax_a);
 }
 
 TEST(TestUfixed, StrictTODirectionRejection) {
@@ -508,6 +595,11 @@ TEST(TestUfixed, StrictTODirectionRejection) {
     static_assert(requires(ToType a) {
         static_cast<BitArray<Range{-2, Direction::TO, 6}>>(a);
     });
+
+    using WideToType = Ufixed<-50, Direction::TO, 100>;
+    static_assert(requires(WideToType a) {
+        static_cast<BitArray<Range{-50, Direction::TO, 100}>>(a);
+    });
 }
 
 TEST(TestUfixed, ImplicitCrossKindWidening) {
@@ -517,6 +609,10 @@ TEST(TestUfixed, ImplicitCrossKindWidening) {
     EXPECT_DOUBLE_EQ(static_cast<double>(s), 5.0625);
 
     static_assert(!std::is_convertible_v<Ufixed<3, -4>, Sfixed<3, -4>>);
+
+    Ufixed<100, -50> w_u(5.0625);
+    Sfixed<101, -50> w_s = w_u;
+    EXPECT_DOUBLE_EQ(static_cast<double>(w_s), 5.0625);
 }
 
 TEST(TestUfixed, UnaryOperators) {
@@ -533,6 +629,10 @@ TEST(TestUfixed, UnaryOperators) {
     auto u_pos = +u_val;
     EXPECT_TRUE((std::is_same_v<decltype(u_pos), Sfixed<4, -4>>));
     EXPECT_DOUBLE_EQ(static_cast<double>(u_pos), 5.25);
+
+    Ufixed<100, -50> w_un_val(5.25);
+    auto w_un_neg = -w_un_val;
+    EXPECT_TRUE((std::is_same_v<decltype(w_un_neg), Sfixed<101, -50>>));
 }
 
 TEST(TestUfixed, Arithmetic) {
@@ -566,6 +666,11 @@ TEST(TestUfixed, Arithmetic) {
     auto mod_res_r = b % a;
     EXPECT_NEAR(static_cast<double>(mod_res), 2.60058, 1e-4);
     EXPECT_NEAR(static_cast<double>(mod_res_r), 5.54980, 1e-4);
+
+    Ufixed<100, -50> w_arith_a(19.25), w_arith_b(5.5);
+    auto w_arith_c = w_arith_a + w_arith_b;
+    EXPECT_TRUE((std::is_same_v<decltype(w_arith_c), Ufixed<101, -50>>));
+    EXPECT_DOUBLE_EQ(static_cast<double>(w_arith_c), 24.75);
 }
 
 TEST(TestUfixed, CompoundArithmetic) {
@@ -602,6 +707,10 @@ TEST(TestUfixed, CompoundArithmetic) {
     Ufixed<10, -10> mod_res_r(b);
     mod_res_r %= a;
     EXPECT_NEAR(static_cast<double>(mod_res_r), 5.54980, 1e-4);
+
+    Ufixed<100, -50> w_comp_a(19.25), w_comp_b(5.5);
+    w_comp_a += w_comp_b;
+    EXPECT_DOUBLE_EQ(static_cast<double>(w_comp_a), 24.75);
 }
 
 TEST(TestUfixed, CompoundArithmeticNativeInt) {
@@ -623,6 +732,10 @@ TEST(TestUfixed, CompoundArithmeticNativeInt) {
     EXPECT_EQ(val, (Ufixed<11, -10>(1.375)));
 
     EXPECT_THROW((val -= 5), std::out_of_range);
+
+    Ufixed<100, -50> w_cni(5.25);
+    w_cni += 2;
+    EXPECT_DOUBLE_EQ(static_cast<double>(w_cni), 7.25);
 }
 
 TEST(TestUfixed, IncrementDecrement) {
@@ -647,6 +760,9 @@ TEST(TestUfixed, IncrementDecrement) {
     Ufixed<11, -10> small_val(0.75);
     EXPECT_THROW(--small_val, std::out_of_range);
     EXPECT_THROW(small_val--, std::out_of_range);
+
+    Ufixed<100, -50> w_inc(5.25);
+    EXPECT_DOUBLE_EQ(static_cast<double>(++w_inc), 6.25);
 }
 
 TEST(TestUfixed, ImplicitUnsignedArithmetic) {
@@ -682,4 +798,8 @@ TEST(TestUfixed, ImplicitUnsignedArithmetic) {
 
     EXPECT_NEAR(static_cast<double>(mod_res), 4.25, 1e-4);
     EXPECT_NEAR(static_cast<double>(mod_res_r), 15, 1e-4);
+
+    Ufixed<100, -50> w_is_a(19.25);
+    Unsigned<100> w_is_b(15);
+    EXPECT_DOUBLE_EQ(static_cast<double>(w_is_a + w_is_b), 34.25);
 }
