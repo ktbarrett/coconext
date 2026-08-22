@@ -1,3 +1,4 @@
+// Python bindings for coconext range types.
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>       // IWYU pragma: keep -- std::string caster
 #include <nanobind/stl/string_view.h>  // IWYU pragma: keep -- std::string_view caster

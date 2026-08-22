@@ -1,4 +1,4 @@
 Checks: >
   -*,
   misc-include-cleaner
-HeaderFilterRegex: '(cpp|nanobind)/include/'
+HeaderFilterRegex: '.*'

@@ -1,5 +1,5 @@
-#include <bind_vector.hpp>
 #include <coconext/types/vector.hpp>
+#include <coconext_nb/types/bind_vector.hpp>
 #include <nanobind/nanobind.h>
 #include <string>
 
@@ -12,8 +12,8 @@ void init_test_array_caster(nb::module_& m);
 NB_MODULE(nanobind_tests, m) {
     m.attr("Range") = nb::module_::import_("coconext.types").attr("Range");
 
-    coconext_nb::bind_array<Vector<int>>(m, "IntVector");
-    coconext_nb::bind_array<Vector<std::string>>(m, "StringVector");
+    coconext_nb::bind_vector<Vector<int>>(m, "IntVector");
+    coconext_nb::bind_vector<Vector<std::string>>(m, "StringVector");
 
     init_test_vector_caster(m);
     init_test_array_caster(m);

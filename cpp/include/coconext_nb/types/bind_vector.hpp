@@ -1,5 +1,5 @@
-#ifndef NB_BIND_VECTOR_HPP
-#define NB_BIND_VECTOR_HPP
+#ifndef COCONEXT_NB_TYPES_BIND_VECTOR_HPP
+#define COCONEXT_NB_TYPES_BIND_VECTOR_HPP
 
 #include <coconext/types/vector.hpp>
 
@@ -11,15 +11,15 @@
 #include <stdexcept>
 #include <vector>
 
-namespace nb = nanobind;
-
 namespace coconext_nb {
 
+namespace nb = nanobind;
+
 template <typename VectorType>
-void bind_array(nb::module_& m, char const* name) {
+nb::class_<VectorType> bind_vector(nb::handle scope, char const* name) {
     using ValueT = typename VectorType::value_type;
 
-    nb::class_<VectorType> cl(m, name);
+    nb::class_<VectorType> cl(scope, name);
     cl.def(
         "__init__",
         [](VectorType* a, std::vector<ValueT> const& vec) { new (a) VectorType(vec); },
@@ -85,8 +85,10 @@ void bind_array(nb::module_& m, char const* name) {
             throw nb::index_error("Array index out of range assignment");
         }
     });
+
+    return cl;
 }
 
 }  // namespace coconext_nb
 
-#endif  // NB_BIND_VECTOR_HPP
+#endif  // COCONEXT_NB_TYPES_BIND_VECTOR_HPP
