@@ -69,7 +69,9 @@ docstring-code-format = true
 [tool.mypy]
 files = [
     "python/",
-    "tests/python/",
+    "tests/python/pytest/test_logic.py",
+    "tests/python/pytest/test_range.py",
+    "tests/simulator/",
 ]
 mypy_path = "python/"
 disallow_untyped_defs = true
@@ -155,5 +157,5 @@ test-skip = "*"
 
 [tool.pytest]
 testpaths = [
-    "tests/python",
+    "tests/python/pytest",
 ]

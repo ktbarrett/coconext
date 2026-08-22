@@ -1,3 +1,5 @@
+"""Tests for the nanobind logic bindings."""
+
 from __future__ import annotations
 
 from coconext.types import Bit
@@ -8,6 +10,6 @@ def test_bit_str_conversions() -> None:
     assert str(Bit(1)) == "1"
 
 
-def test_bit_repr():
+def test_bit_repr() -> None:
     assert eval(repr(Bit("0"))) == Bit("0")
     assert eval(repr(Bit("1"))) == Bit("1")

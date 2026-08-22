@@ -1,3 +1,5 @@
+.DEFAULT_GOAL := dev_tests
+
 # explicitly specify cocotb directory location while testing locally
 # CI clones cocotb in this directory hence it defaults to point to ./cocotb/
 COCOTB_DIR_PATH ?= $(PWD)/cocotb
@@ -6,18 +8,46 @@ COCOTB_DIR_PATH ?= $(PWD)/cocotb
 # but set to "dev_tests" in CI to avoid installing unnecessary dependencies.
 DEV_BUILD_DEP_GROUP ?= dev
 
+SIM ?= nvc
+TOPLEVEL_LANG ?= vhdl
 CXX_STANDARD ?= 20
+GCOV_EXECUTABLE ?= gcov
+
+export SIM TOPLEVEL_LANG
+
+DEV_CXXFLAGS ?= --coverage -g -Og -Wall -Wextra -Wpedantic -Werror
+DEV_LDFLAGS ?= --coverage
+PYTEST_COVERAGE_ARGS ?= --cov --cov-append --cov-report=
+
+TESTS_BUILD_DIR ?= build/tests
+
+.PHONY: dev_tests
+dev_tests:
+	$(MAKE) dev_build
+	$(MAKE) coverage_reset
+	$(MAKE) cpp_tests
+	$(MAKE) python_tests
+	$(MAKE) integration_tests
+	$(MAKE) simulator_tests
+	$(MAKE) generate_report
+
+.PHONY: release_test
+release_test:
+	$(MAKE) release_install
+	$(MAKE) cpp_tests
+	$(MAKE) python_tests PYTEST_COVERAGE_ARGS=
+	$(MAKE) integration_tests PYTEST_COVERAGE_ARGS=
+	$(MAKE) simulator_tests PYTEST_COVERAGE_ARGS=
 
 .PHONY: dev_build
 dev_build:
 	uv sync --no-default-groups --group=$(DEV_BUILD_DEP_GROUP) --no-install-project
 
-	# Build the package with debugging and coverage flags.
+	# Build the package with the requested standard, strict warnings, and coverage.
 	CCACHE_DISABLE=1 \
-	CXXFLAGS="$$CXXFLAGS --coverage -g -Og" \
-	CFLAGS="$$CFLAGS --coverage -g -Og" \
-	LDFLAGS="$$LDFLAGS --coverage" \
-	CMAKE_CXX_STANDARD=$(CXX_STANDARD) \
+	CXXFLAGS="$$CXXFLAGS $(DEV_CXXFLAGS)" \
+	LDFLAGS="$$LDFLAGS $(DEV_LDFLAGS)" \
+	CMAKE_ARGS="$$CMAKE_ARGS -DCMAKE_CXX_STANDARD=$(CXX_STANDARD)" \
 	uv pip install --no-build-isolation --no-deps --force-reinstall -e .
 
 	# Generate stubs.
@@ -31,45 +61,47 @@ dev_build:
 	# Copy compile database to project root for clang-tidy and editor integration.
 	cp build/compile_commands.json compile_commands.json
 
-GCOV_EXECUTABLE ?= gcov
-CPP_TESTS_BUILD_DIR ?= build/tests
+.PHONY: release_install
+release_install:
+	uv sync --no-default-groups --group=dev_tests --no-install-project
+	uv pip install --no-build-isolation --no-deps --force-reinstall \
+		coconext --find-links dist --no-index
 
-.PHONY: dev_tests
-dev_tests: dev_build
-	pytest --cov --cov-report= tests/python/
-	cmake -S tests/cpp -B "$(CPP_TESTS_BUILD_DIR)" \
-	    -DCMAKE_PREFIX_PATH="$$(coconext-config --cmake-prefix)" \
-	    -DCMAKE_CXX_STANDARD=$(CXX_STANDARD) \
-	    -DCMAKE_EXE_LINKER_FLAGS=--coverage
-	cmake --build "$(CPP_TESTS_BUILD_DIR)"
-	ctest --output-on-failure --test-dir "$(CPP_TESTS_BUILD_DIR)"
-
-NB_TESTS_BUILD_DIR ?= build/nanobind_tests
-
-.PHONY: nanobind_tests
-nanobind_tests:
-	cmake -S tests/nanobind -B "$(NB_TESTS_BUILD_DIR)" \
-		-DCMAKE_CXX_STANDARD=$(CXX_STANDARD) \
-		-DCMAKE_PREFIX_PATH="$$(coconext-config --cmake-prefix)" \
-		-Dnanobind_DIR=$$(python3 -m nanobind --cmake_dir)
-	cmake --build "$(NB_TESTS_BUILD_DIR)"
-	NB_SO_DIR="$(NB_TESTS_BUILD_DIR)" \
-	pytest tests/nanobind/pytest
-
-release_test:
-	uv sync --no-default-groups --no-install-project
-	uv pip install coconext --find-links dist --no-index
-	pytest tests/python/
-	cmake -S tests/cpp -B "$(CPP_TESTS_BUILD_DIR)" \
+.PHONY: cpp_tests
+cpp_tests:
+	CXXFLAGS="$$CXXFLAGS $(DEV_CXXFLAGS)" \
+	LDFLAGS="$$LDFLAGS $(DEV_LDFLAGS)" \
+	cmake -S tests/cpp -B "$(TESTS_BUILD_DIR)/cpp" \
 		-DCMAKE_PREFIX_PATH="$$(coconext-config --cmake-prefix)" \
 		-DCMAKE_CXX_STANDARD=$(CXX_STANDARD)
-	cmake --build "$(CPP_TESTS_BUILD_DIR)"
-	ctest --output-on-failure --test-dir "$(CPP_TESTS_BUILD_DIR)"
+	cmake --build "$(TESTS_BUILD_DIR)/cpp"
+	ctest --output-on-failure --test-dir "$(TESTS_BUILD_DIR)/cpp"
+
+.PHONY: python_tests
+python_tests:
+	CXXFLAGS="$$CXXFLAGS $(DEV_CXXFLAGS)" \
+	LDFLAGS="$$LDFLAGS $(DEV_LDFLAGS)" \
+	cmake -S tests/python -B "$(TESTS_BUILD_DIR)/python" \
+		-DCMAKE_PREFIX_PATH="$$(coconext-config --cmake-prefix)" \
+		-DCMAKE_CXX_STANDARD=$(CXX_STANDARD) \
+		-Dnanobind_DIR="$$(python3 -m nanobind --cmake_dir)"
+	cmake --build "$(TESTS_BUILD_DIR)/python"
+	PYTHON_TESTS_MODULE_DIR="$(TESTS_BUILD_DIR)/python" \
+	pytest $(PYTEST_COVERAGE_ARGS) tests/python/pytest
+
+.PHONY: simulator_tests
+simulator_tests:
+	pytest $(PYTEST_COVERAGE_ARGS) tests/simulator
 
 .PHONY: integration_tests
-integration_tests: dev_build
+integration_tests:
 	COCOTB_DIR_PATH="$(COCOTB_DIR_PATH)" \
-	pytest --cov --cov-append --cov-report= tests/integration_tests/
+	pytest $(PYTEST_COVERAGE_ARGS) tests/integration_tests
+
+.PHONY: coverage_reset
+coverage_reset:
+	rm -f .coverage .coverage.* .python-coverage.xml .cpp-coverage.xml
+	@[ ! -d build ] || find build -type f -name '*.gcda' -delete
 
 .PHONY: generate_report
 generate_report:
@@ -83,7 +115,7 @@ clean_coverage_report:
 	rm -rf *.coverage .*.xml build/
 
 .PHONY: clean
-clean:
+clean: coverage_reset
 	rm -rf build/
 
 DOCS_OUTDIR ?= .docs_out

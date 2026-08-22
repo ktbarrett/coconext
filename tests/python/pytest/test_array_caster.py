@@ -1,3 +1,5 @@
+"""Tests for the fixed-size Array caster."""
+
 from __future__ import annotations
 
 import nanobind_tests

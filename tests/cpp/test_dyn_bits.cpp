@@ -127,7 +127,8 @@ TEST(DynBits, copy_and_move_on_both_arms) {
         EXPECT_EQ(e.to_decimal_string(), "6") << "width " << w;
 
         // Self-assignment is safe.
-        e = e;
+        auto const& self = e;
+        e = self;
         EXPECT_EQ(e.to_decimal_string(), "6") << "width " << w;
     }
 }

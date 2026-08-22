@@ -1,3 +1,5 @@
+"""Cocotb tests for simulator-aware time values."""
+
 from __future__ import annotations
 
 import cocotb

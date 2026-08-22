@@ -4,6 +4,23 @@ Build Issues?
 Since we set `build-dir` to a non-temp directory there can be issues with the build reusing existing outputs.
 If you run into issues just `rm -rf build/`.
 
+Running Tests
+=============
+
+Run ``make`` (or ``make dev_tests``) for the complete developer test suite. It
+builds with coverage, compiler warnings, and warnings-as-errors enabled, then
+runs the C++, Python, cocotb compatibility, and simulator-backed suites.
+Select a simulator environment with, for example::
+
+    make SIM=icarus TOPLEVEL_LANG=verilog CXX_STANDARD=23
+
+After ``make dev_build``, the simulator-free suites can be run independently
+with ``make cpp_tests``, ``make python_tests``, or ``make integration_tests``.
+The Python suite covers both the reusable C++ nanobind adapters and the Python
+extension's direct bindings. Run ``make simulator_tests`` for tests that
+launch an HDL simulator. The upstream cocotb regression portion of the
+compatibility suite runs when ``COCOTB_DIR_PATH`` points to a cocotb checkout.
+
 Release Builds
 ==============
 

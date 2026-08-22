@@ -1,3 +1,4 @@
+// Exercise the coconext Array caster from Python.
 #include <coconext/types/array.hpp>
 #include <coconext_nb/types/cast_array.hpp>
 #include <nanobind/nanobind.h>
