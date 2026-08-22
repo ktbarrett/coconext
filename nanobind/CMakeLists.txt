@@ -1,5 +1,8 @@
 add_library(coconext_nb INTERFACE)
-target_include_directories(coconext_nb INTERFACE include)
+add_library(coconext::coconext_nb ALIAS coconext_nb)
+target_include_directories(coconext_nb INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:coconext/include>)
 target_compile_features(coconext_nb INTERFACE cxx_std_20)
 target_link_libraries(coconext_nb INTERFACE coconext)
 
@@ -16,6 +19,8 @@ nanobind_add_module(
 target_link_libraries(_pycoconext PRIVATE coconext_nb)
 
 install(TARGETS _pycoconext DESTINATION .)
+install(TARGETS coconext_nb EXPORT coconextTargets)
+install(DIRECTORY include/ DESTINATION coconext/include)
 
 # Ship the checked-in type stub next to the extension.
 # The dev_build flow re-generates this file and there are check which fail if

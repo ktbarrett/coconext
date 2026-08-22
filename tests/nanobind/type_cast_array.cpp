@@ -1,6 +1,6 @@
-#include "../../nanobind/include/type_cast_array.hpp"
 #include <coconext/types/array.hpp>
 #include <nanobind/nanobind.h>
+#include <type_cast_array.hpp>
 
 namespace nb = nanobind;
 using namespace coconext::types;
