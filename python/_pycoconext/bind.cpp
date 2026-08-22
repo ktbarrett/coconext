@@ -1,3 +1,4 @@
+// Native implementation of the _pycoconext extension module.
 #include <nanobind/nanobind.h>
 
 namespace nb = nanobind;

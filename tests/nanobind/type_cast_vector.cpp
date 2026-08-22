@@ -1,6 +1,6 @@
 #include <coconext/types/vector.hpp>
+#include <coconext_nb/types/cast_vector.hpp>
 #include <nanobind/nanobind.h>
-#include <type_cast_vector.hpp>
 
 namespace nb = nanobind;
 using namespace coconext::types;

@@ -1,3 +1,4 @@
+// Python bindings for coconext logic types.
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>       // IWYU pragma: keep -- std::string caster
 #include <nanobind/stl/string_view.h>  // IWYU pragma: keep -- std::string_view caster

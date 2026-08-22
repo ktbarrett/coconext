@@ -1,2 +1,6 @@
-This is the C++ *only* interface for coconext.
-This library will not contain any nanobind code.
+This directory contains the C++ libraries:
+
+- `coconext` and `coconext_gpi` implement the native coconext API.
+- `coconext_nb` is the header-only nanobind adapter for that API.
+
+The `_pycoconext` Python extension is kept separately under `python/`.

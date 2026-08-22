@@ -14,12 +14,31 @@ set_target_properties(coconext PROPERTIES
     MACOSX_RPATH TRUE
     INSTALL_NAME_DIR "@rpath")
 
+# -- coconext_nb --------------------------------------------------------------
+#
+# Header-only helpers for exposing coconext C++ types through nanobind. A
+# consumer uses this target together with a module created by
+# nanobind_add_module().
+
+add_library(coconext_nb INTERFACE)
+add_library(coconext::coconext_nb ALIAS coconext_nb)
+target_sources(coconext_nb INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/coconext_nb/types/bind_vector.hpp>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/coconext_nb/types/cast_array.hpp>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/coconext_nb/types/cast_vector.hpp>)
+target_include_directories(coconext_nb INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:coconext/include>)
+target_compile_features(coconext_nb INTERFACE cxx_std_20)
+target_link_libraries(coconext_nb INTERFACE coconext)
+
 # -- libgpi --------------------------------------------------------------------
 #
 # This is some CMake to pull in libgpi since cocotb doesn't provide a CMake
 # package yet.
 
 # Use cocotb_tools.config to get libgpi binary dir and include dir
+find_package(Python 3.9 REQUIRED COMPONENTS Interpreter)
 execute_process(
     COMMAND ${Python_EXECUTABLE} -c
         "from cocotb_tools.config import libs_dir, share_dir; print(libs_dir); print(share_dir / 'include')"
@@ -73,9 +92,9 @@ set_target_properties(coconext_gpi PROPERTIES
 
 # -- install -------------------------------------------------------------------
 
-install(TARGETS coconext coconext_gpi
+install(TARGETS coconext coconext_gpi coconext_nb
     EXPORT coconextTargets
     LIBRARY DESTINATION coconext/lib
     RUNTIME DESTINATION coconext/lib
     ARCHIVE DESTINATION coconext/lib)
-install(DIRECTORY include/coconext DESTINATION coconext/include)
+install(DIRECTORY include/ DESTINATION coconext/include)

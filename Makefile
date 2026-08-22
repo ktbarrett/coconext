@@ -50,6 +50,7 @@ NB_TESTS_BUILD_DIR ?= build/nanobind_tests
 nanobind_tests:
 	cmake -S tests/nanobind -B "$(NB_TESTS_BUILD_DIR)" \
 		-DCMAKE_CXX_STANDARD=$(CXX_STANDARD) \
+		-DCMAKE_PREFIX_PATH="$$(coconext-config --cmake-prefix)" \
 		-Dnanobind_DIR=$$(python3 -m nanobind --cmake_dir)
 	cmake --build "$(NB_TESTS_BUILD_DIR)"
 	NB_SO_DIR="$(NB_TESTS_BUILD_DIR)" \
@@ -100,4 +101,4 @@ RUN_CLANG_TIDY_EXECUTABLE ?= run-clang-tidy
 
 .PHONY: clang_tidy
 clang_tidy: dev_build
-	$(RUN_CLANG_TIDY_EXECUTABLE) -p . -warnings-as-errors='*' -quiet 'coconext/(cpp|nanobind)/src/'
+	$(RUN_CLANG_TIDY_EXECUTABLE) -p . -warnings-as-errors='*' -quiet 'coconext/(cpp/src|python/_pycoconext)/'

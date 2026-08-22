@@ -202,12 +202,13 @@ static nb::object logic_array_to_signed(LogicVector const& self) {
 static LogicVector logic_array_from_bytes(
     nb::object value_obj, nb::object range_obj, std::string_view byteorder
 ) {
-    Py_ssize_t size = nb::len(value_obj);
-    int expected_width = size * 8;
+    auto const size = nb::len(value_obj);
+    auto const expected_width = static_cast<size_t>(size) * 8;
 
     auto range = parse_range_arg(range_obj);
     if (!range.has_value()) {
-        range = Range(expected_width - 1, Direction::DOWNTO, 0);
+        range =
+            Range(static_cast<Range::value_type>(expected_width) - 1, Direction::DOWNTO, 0);
     } else if (range->length() != expected_width) {
         throw nb::value_error("Range must be exactly equal to bytes width");
     }
