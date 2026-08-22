@@ -1429,9 +1429,8 @@ TEST(TestBitArray, FormatterBitStaticSlice) {
 
 TEST(TestBitArray, ZeroWidth) {
     BitArray<0> a{};
-    BitArray<0> b{};
 
-    // Two null vectors are equal.
+    // A null vector is empty.
     EXPECT_EQ(a.range().length(), 0u);
     EXPECT_EQ(a.begin(), a.end());
 

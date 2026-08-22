@@ -1,3 +1,5 @@
+"""Cocotb tests for coconext queues."""
+
 from __future__ import annotations
 
 import heapq

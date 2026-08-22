@@ -1,3 +1,5 @@
+"""Run the coconext Python API against an HDL simulator."""
+
 from __future__ import annotations
 
 import os

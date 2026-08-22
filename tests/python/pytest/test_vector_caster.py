@@ -1,3 +1,5 @@
+"""Tests for the dynamic Vector caster."""
+
 from __future__ import annotations
 
 import nanobind_tests

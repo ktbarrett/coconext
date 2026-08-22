@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(nanobind_tests LANGUAGES CXX)
-
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+project(coconext_python_tests LANGUAGES CXX)
 
 find_package(Python 3.9
     REQUIRED COMPONENTS Interpreter Development.Module
@@ -20,4 +17,5 @@ nanobind_add_module(
     type_cast_array.cpp
 )
 
+target_compile_features(nanobind_tests PRIVATE cxx_std_20)
 target_link_libraries(nanobind_tests PRIVATE coconext::coconext_nb)

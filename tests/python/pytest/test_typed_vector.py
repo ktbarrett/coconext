@@ -1,9 +1,12 @@
+"""Tests for explicitly bound Vector types."""
+
 from __future__ import annotations
 
 import nanobind_tests
 import pytest
 
-Range = nanobind_tests.Range
+from coconext.types import Range
+
 IntVector = nanobind_tests.IntVector
 StringVector = nanobind_tests.StringVector
 

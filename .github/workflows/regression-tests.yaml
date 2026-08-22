@@ -4,8 +4,9 @@ on:
   workflow_call:
     inputs:
       make_targets:
-        required: true
+        required: false
         type: string
+        default: ''
       collect_coverage:
         required: false
         type: boolean
@@ -76,12 +77,12 @@ jobs:
 
       - name: Setup NVC
         uses: nickg/setup-nvc@v1
-        if: matrix.simulator == 'nvc'
+        if: matrix.simulator == 'nvc' && (contains(inputs.make_targets, 'release_test') || contains(matrix.make-targets, 'simulator_tests'))
         with:
           version: ${{matrix.simulator-version}}
 
       - name: Setup Icarus (MacOS)
-        if: matrix.simulator == 'icarus' && startsWith(matrix.os, 'macos')
+        if: matrix.simulator == 'icarus' && startsWith(matrix.os, 'macos') && (contains(inputs.make_targets, 'release_test') || contains(matrix.make-targets, 'simulator_tests'))
         run: |
           brew install icarus-verilog
 
@@ -96,7 +97,7 @@ jobs:
           sudo apt install -y make libgtest-dev llvm
 
       - name: Checkout cocotb
-        if: contains(inputs.make_targets, 'integration_tests')
+        if: contains(inputs.make_targets, 'release_test') || contains(matrix.make-targets, 'integration_tests')
         uses: actions/checkout@v7
         with:
           repository: cocotb/cocotb
@@ -110,7 +111,7 @@ jobs:
           CXX_STANDARD: ${{ matrix.cxx-standard }}
           DEV_BUILD_DEP_GROUP: dev_tests
         run: |
-          make ${{ inputs.make_targets }}
+          make ${{ inputs.make_targets || matrix.make-targets }}
 
       - name: Check stubs haven't diverged
         run: |

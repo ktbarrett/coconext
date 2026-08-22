@@ -1,15 +1,9 @@
 #!/usr/bin/env python3
 
-"""Generate a list of test environments.
+"""Generate test environments and the suites relevant to each one.
 
-Each environment must contain the following fields:
-TODO
-
-Optional fields:
-TODO
-
-What tests belong in what groups:
-TODO
+The primary environment runs every suite. Other environments exercise only
+the dimensions they vary: OS/compiler, C++ standard, or Python version.
 """
 
 from __future__ import annotations
@@ -17,6 +11,15 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+
+ALL_TESTS = "dev_build coverage_reset cpp_tests python_tests integration_tests simulator_tests generate_report"
+OS_TESTS = (
+    "dev_build coverage_reset cpp_tests python_tests simulator_tests generate_report"
+)
+CXX_STANDARD_TESTS = "dev_build coverage_reset cpp_tests python_tests generate_report"
+PYTHON_VERSION_TESTS = (
+    "dev_build coverage_reset python_tests simulator_tests generate_report"
+)
 
 ENVS = [
     {
@@ -29,6 +32,7 @@ ENVS = [
         "cxx": "clang++",
         "gcov": "llvm-cov gcov",
         "cxx-standard": "20",
+        "make-targets": ALL_TESTS,
     },
     {
         "python-version": "3.13",
@@ -36,6 +40,7 @@ ENVS = [
         "toplevel_lang": "verilog",
         "os": "macos-26",
         "cxx-standard": "20",
+        "make-targets": OS_TESTS,
     },
     {
         "python-version": "3.13",
@@ -43,6 +48,7 @@ ENVS = [
         "toplevel_lang": "verilog",
         "os": "macos-15-intel",
         "cxx-standard": "20",
+        "make-targets": OS_TESTS,
     },
     {
         "python-version": "3.13",
@@ -51,6 +57,7 @@ ENVS = [
         "simulator": "nvc",
         "toplevel_lang": "vhdl",
         "cxx-standard": "23",
+        "make-targets": CXX_STANDARD_TESTS,
     },
 ]
 
@@ -64,6 +71,7 @@ for ver in python_versions:
             "simulator-version": "1.20.1",
             "toplevel_lang": "vhdl",
             "cxx-standard": "20",
+            "make-targets": PYTHON_VERSION_TESTS,
         }
     ]
 
@@ -83,7 +91,10 @@ def main() -> int:
 
     for env in selected_envs:
         # Assemble the human-readable name of the job.
-        name_parts = [f"Python {env['python-version']}", env["simulator"]]
+        name_parts = [f"Python {env['python-version']}"]
+
+        if "simulator_tests" in env["make-targets"]:
+            name_parts.append(env["simulator"])
 
         if int(env["cxx-standard"]) != 20:
             name_parts.append(f"C++{env['cxx-standard']}")

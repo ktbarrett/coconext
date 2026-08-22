@@ -1,3 +1,4 @@
+// Exercise the coconext Vector caster from Python.
 #include <coconext/types/vector.hpp>
 #include <coconext_nb/types/cast_vector.hpp>
 #include <nanobind/nanobind.h>
