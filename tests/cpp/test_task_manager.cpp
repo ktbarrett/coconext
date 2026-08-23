@@ -69,6 +69,16 @@ Coro<void> throw_cancelled() {
 
 Coro<void> await_gate(Future<void> gate) { co_await gate; }
 
+Coro<void> await_gate_and_increment(Future<void> gate, int* calls) {
+    co_await gate;
+    ++*calls;
+}
+
+Coro<void> release_gate(Future<void> gate) {
+    gate.set_void();
+    co_return;
+}
+
 Coro<void> increment(int* calls) {
     ++*calls;
     co_return;
@@ -259,6 +269,7 @@ TEST(TestTaskManager, StartSoonRejectsTaskAlreadyOwnedByManager) {
         co_await second.start();
 
         Task<int> task = first.start_soon(return_int());
+        EXPECT_THROW((void)first.start_soon(task), std::logic_error);
         EXPECT_THROW((void)second.start_soon(task), std::logic_error);
 
         second.close();
@@ -347,6 +358,21 @@ TEST(TestTaskManager, ChildCanAddSiblingWhileJoinWaits) {
         (void)manager.start_soon(add_sibling(&manager, &sibling_calls));
         co_await manager.join();
         EXPECT_EQ(sibling_calls, 1);
+    };
+
+    EXPECT_NO_THROW(run(body()));
+}
+
+TEST(TestTaskManager, DiscardedChildCanFinishAfterSuspension) {
+    auto body = []() -> Coro<void> {
+        TaskManager manager;
+        Future<void> gate;
+        int calls = 0;
+        co_await manager.start();
+        (void)manager.start_soon(await_gate_and_increment(gate, &calls));
+        (void)manager.start_soon(release_gate(gate));
+        co_await manager.join();
+        EXPECT_EQ(calls, 1);
     };
 
     EXPECT_NO_THROW(run(body()));
