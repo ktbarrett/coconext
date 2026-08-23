@@ -12,11 +12,10 @@ SIM ?= nvc
 TOPLEVEL_LANG ?= vhdl
 CXX_STANDARD ?= 20
 GCOV_EXECUTABLE ?= gcov
+COCONEXT_DEVELOPER_MODE ?= ON
 
 export SIM TOPLEVEL_LANG
 
-DEV_CXXFLAGS ?= --coverage -g -Og -Wall -Wextra -Wpedantic -Werror
-DEV_LDFLAGS ?= --coverage
 PYTEST_COVERAGE_ARGS ?= --cov --cov-append --cov-report=
 
 TESTS_BUILD_DIR ?= build/tests
@@ -34,8 +33,8 @@ dev_tests:
 .PHONY: release_test
 release_test:
 	$(MAKE) release_install
-	$(MAKE) cpp_tests
-	$(MAKE) python_tests PYTEST_COVERAGE_ARGS=
+	$(MAKE) cpp_tests COCONEXT_DEVELOPER_MODE=OFF
+	$(MAKE) python_tests COCONEXT_DEVELOPER_MODE=OFF PYTEST_COVERAGE_ARGS=
 	$(MAKE) integration_tests PYTEST_COVERAGE_ARGS=
 	$(MAKE) simulator_tests PYTEST_COVERAGE_ARGS=
 
@@ -45,9 +44,7 @@ dev_build:
 
 	# Build the package with the requested standard, strict warnings, and coverage.
 	CCACHE_DISABLE=1 \
-	CXXFLAGS="$$CXXFLAGS $(DEV_CXXFLAGS)" \
-	LDFLAGS="$$LDFLAGS $(DEV_LDFLAGS)" \
-	CMAKE_ARGS="$$CMAKE_ARGS -DCMAKE_CXX_STANDARD=$(CXX_STANDARD)" \
+	CMAKE_ARGS="$$CMAKE_ARGS -DCMAKE_CXX_STANDARD=$(CXX_STANDARD) -DCOCONEXT_DEVELOPER_MODE=$(COCONEXT_DEVELOPER_MODE)" \
 	uv pip install --no-build-isolation --no-deps --force-reinstall -e .
 
 	# Generate stubs.
@@ -69,21 +66,19 @@ release_install:
 
 .PHONY: cpp_tests
 cpp_tests:
-	CXXFLAGS="$$CXXFLAGS $(DEV_CXXFLAGS)" \
-	LDFLAGS="$$LDFLAGS $(DEV_LDFLAGS)" \
 	cmake -S tests/cpp -B "$(TESTS_BUILD_DIR)/cpp" \
 		-DCMAKE_PREFIX_PATH="$$(coconext-config --cmake-prefix)" \
-		-DCMAKE_CXX_STANDARD=$(CXX_STANDARD)
+		-DCMAKE_CXX_STANDARD=$(CXX_STANDARD) \
+		-DCOCONEXT_DEVELOPER_MODE=$(COCONEXT_DEVELOPER_MODE)
 	cmake --build "$(TESTS_BUILD_DIR)/cpp"
 	ctest --output-on-failure --test-dir "$(TESTS_BUILD_DIR)/cpp"
 
 .PHONY: python_tests
 python_tests:
-	CXXFLAGS="$$CXXFLAGS $(DEV_CXXFLAGS)" \
-	LDFLAGS="$$LDFLAGS $(DEV_LDFLAGS)" \
 	cmake -S tests/python -B "$(TESTS_BUILD_DIR)/python" \
 		-DCMAKE_PREFIX_PATH="$$(coconext-config --cmake-prefix)" \
 		-DCMAKE_CXX_STANDARD=$(CXX_STANDARD) \
+		-DCOCONEXT_DEVELOPER_MODE=$(COCONEXT_DEVELOPER_MODE) \
 		-Dnanobind_DIR="$$(python3 -m nanobind --cmake_dir)"
 	cmake --build "$(TESTS_BUILD_DIR)/python"
 	PYTHON_TESTS_MODULE_DIR="$(TESTS_BUILD_DIR)/python" \

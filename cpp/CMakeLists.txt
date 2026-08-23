@@ -8,6 +8,7 @@ target_include_directories(coconext PUBLIC
     $<INSTALL_INTERFACE:coconext/include>)
 target_compile_features(coconext PUBLIC cxx_std_20)
 set_target_properties(coconext PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+coconext_enable_developer_mode(coconext)
 
 # Needed for MacOS.
 set_target_properties(coconext PROPERTIES
@@ -74,6 +75,7 @@ target_link_libraries(coconext_gpi
         cocotb_gpi
     PUBLIC
         coconext)
+coconext_enable_developer_mode(coconext_gpi)
 
 # Needed for MacOS.
 set_target_properties(coconext_gpi PROPERTIES

@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.20)
 
 project(coconext_tests LANGUAGES CXX)
 
+include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/CoconextDeveloperMode.cmake)
+
 find_package(coconext CONFIG REQUIRED)
 
 include(FetchContent)
@@ -34,5 +36,6 @@ add_executable(coconext_tests
     test_scheduler_run.cpp
     test_task_manager.cpp)
 target_link_libraries(coconext_tests PRIVATE coconext::coconext GTest::gtest_main)
+coconext_enable_developer_mode(coconext_tests)
 
 gtest_discover_tests(coconext_tests)

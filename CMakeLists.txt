@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.15)
 
 project(coconext LANGUAGES CXX)
 
+include(cmake/CoconextDeveloperMode.cmake)
+
 # Add libraries
 add_subdirectory(cpp)
 add_subdirectory(python)
