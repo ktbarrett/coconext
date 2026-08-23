@@ -370,7 +370,9 @@ TEST(TestSfixed, Formatter) {
 
     Sfixed<8, -3> val_downto(-120);
     auto val_to = reverse(val_downto);
-    EXPECT_THROW((void)std::vformat("{:d}", std::make_format_args(val_to)), std::format_error);
+    EXPECT_THROW(
+        (void)std::vformat("{:d}", std::make_format_args(val_to)), std::format_error
+    );
 
     Sfixed<100, -50> w_fmt(-5.0625);
     EXPECT_EQ(

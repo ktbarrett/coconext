@@ -424,7 +424,9 @@ TEST(TestUfixed, Formatter) {
 
     Ufixed<8, -3> val_downto(120);
     auto val_to = reverse(val_downto);
-    EXPECT_THROW((void)std::vformat("{:d}", std::make_format_args(val_to)), std::format_error);
+    EXPECT_THROW(
+        (void)std::vformat("{:d}", std::make_format_args(val_to)), std::format_error
+    );
 
     EXPECT_THROW(
         auto s = std::vformat("{:x}", std::make_format_args(val)), std::format_error
@@ -493,7 +495,7 @@ TEST(TestUfixed, Hash) {
     EXPECT_EQ(hash_wide_a, hash_wide_b);
     EXPECT_NE(hash_wide_a, hash_wide_c);
 
-    Ufixed<100, -50> w_hash_a(10), w_hash_b(10), w_hash_c(11);
+    Ufixed<100, -50> w_hash_a(10), w_hash_b(10);
     EXPECT_EQ(
         (std::hash<Ufixed<100, -50>>{}(w_hash_a)), (std::hash<Ufixed<100, -50>>{}(w_hash_b))
     );
