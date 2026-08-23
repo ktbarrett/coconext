@@ -9,7 +9,6 @@ using namespace coconext::literals;
 TEST(TestSfixed, shape_and_typelevel) {
     Sfixed<6, -2> a(-37.25);
     Sfixed<-2, Direction::TO, 6> b;
-    BitArray<9> ba(-37);
 
     static_assert(a.size() == 9);
     static_assert(b.size() == 9);
@@ -72,8 +71,8 @@ TEST(TestSfixed, NumericEgress) {
 
     Sfixed<11, 0> large_val(-300);
     EXPECT_NO_THROW(static_cast<void>(static_cast<short>(large_val)));
-    EXPECT_THROW(static_cast<unsigned char>(large_val), std::out_of_range);
-    EXPECT_THROW(static_cast<signed char>(large_val), std::out_of_range);
+    EXPECT_THROW((void)static_cast<unsigned char>(large_val), std::out_of_range);
+    EXPECT_THROW((void)static_cast<signed char>(large_val), std::out_of_range);
 
     Sfixed<100, -50> wide_val(-5.9375);
     EXPECT_EQ(static_cast<int>(wide_val), -5);
@@ -371,7 +370,9 @@ TEST(TestSfixed, Formatter) {
 
     Sfixed<8, -3> val_downto(-120);
     auto val_to = reverse(val_downto);
-    EXPECT_THROW(std::vformat("{:d}", std::make_format_args(val_to)), std::format_error);
+    EXPECT_THROW(
+        (void)std::vformat("{:d}", std::make_format_args(val_to)), std::format_error
+    );
 
     Sfixed<100, -50> w_fmt(-5.0625);
     EXPECT_EQ(

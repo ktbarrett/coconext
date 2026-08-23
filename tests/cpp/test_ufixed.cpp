@@ -9,7 +9,6 @@ using namespace coconext::literals;
 TEST(TestUfixed, shape_and_typelevel) {
     Ufixed<6, -2> a(37);
     Ufixed<-2, Direction::TO, 6> b;
-    BitArray<9> ba(37);
 
     static_assert(a.size() == 9);
     static_assert(b.size() == 9);
@@ -74,14 +73,14 @@ TEST(TestUfixed, NumericEgress) {
 
     Ufixed<11, 0> large_val(300);
     EXPECT_NO_THROW(static_cast<void>(static_cast<short>(large_val)));
-    EXPECT_THROW(static_cast<unsigned char>(large_val), std::out_of_range);
-    EXPECT_THROW(static_cast<signed char>(large_val), std::out_of_range);
+    EXPECT_THROW((void)static_cast<unsigned char>(large_val), std::out_of_range);
+    EXPECT_THROW((void)static_cast<signed char>(large_val), std::out_of_range);
 
     Ufixed<100, -50> wide_val(5.9375);
     EXPECT_EQ(static_cast<int>(wide_val), 5);
     Ufixed<100, -50> wide_huge(1);
     wide_huge <<= 65;
-    EXPECT_THROW(static_cast<unsigned long long>(wide_huge), std::out_of_range);
+    EXPECT_THROW((void)static_cast<unsigned long long>(wide_huge), std::out_of_range);
 }
 
 TEST(TestUfixed, FloatEgress) {
@@ -425,7 +424,9 @@ TEST(TestUfixed, Formatter) {
 
     Ufixed<8, -3> val_downto(120);
     auto val_to = reverse(val_downto);
-    EXPECT_THROW(std::vformat("{:d}", std::make_format_args(val_to)), std::format_error);
+    EXPECT_THROW(
+        (void)std::vformat("{:d}", std::make_format_args(val_to)), std::format_error
+    );
 
     EXPECT_THROW(
         auto s = std::vformat("{:x}", std::make_format_args(val)), std::format_error
@@ -494,7 +495,7 @@ TEST(TestUfixed, Hash) {
     EXPECT_EQ(hash_wide_a, hash_wide_b);
     EXPECT_NE(hash_wide_a, hash_wide_c);
 
-    Ufixed<100, -50> w_hash_a(10), w_hash_b(10), w_hash_c(11);
+    Ufixed<100, -50> w_hash_a(10), w_hash_b(10);
     EXPECT_EQ(
         (std::hash<Ufixed<100, -50>>{}(w_hash_a)), (std::hash<Ufixed<100, -50>>{}(w_hash_b))
     );
