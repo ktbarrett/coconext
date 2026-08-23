@@ -70,7 +70,7 @@ cpp_tests:
 		-DCMAKE_PREFIX_PATH="$$(coconext-config --cmake-prefix)" \
 		-DCMAKE_CXX_STANDARD=$(CXX_STANDARD) \
 		-DCOCONEXT_DEVELOPER_MODE=$(COCONEXT_DEVELOPER_MODE)
-	cmake --build "$(TESTS_BUILD_DIR)/cpp"
+	cmake --build "$(TESTS_BUILD_DIR)/cpp" --parallel
 	ctest --output-on-failure --test-dir "$(TESTS_BUILD_DIR)/cpp"
 
 .PHONY: python_tests
@@ -80,7 +80,7 @@ python_tests:
 		-DCMAKE_CXX_STANDARD=$(CXX_STANDARD) \
 		-DCOCONEXT_DEVELOPER_MODE=$(COCONEXT_DEVELOPER_MODE) \
 		-Dnanobind_DIR="$$(python3 -m nanobind --cmake_dir)"
-	cmake --build "$(TESTS_BUILD_DIR)/python"
+	cmake --build "$(TESTS_BUILD_DIR)/python" --parallel
 	PYTHON_TESTS_MODULE_DIR="$(TESTS_BUILD_DIR)/python" \
 	pytest $(PYTEST_COVERAGE_ARGS) tests/python/pytest
 
