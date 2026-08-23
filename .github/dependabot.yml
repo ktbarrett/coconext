@@ -1,8 +1,5 @@
-# Copyright cocotb contributors
-# Licensed under the Revised BSD License, see LICENSE for details.
-# SPDX-License-Identifier: BSD-3-Clause
-
 version: 2
+
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -10,22 +7,3 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
-  - package-ecosystem: "uv"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    cooldown:
-      default-days: 7
-    versioning-strategy: lockfile-only
-    groups:
-      updates:
-        applies-to: version-updates
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-  - package-ecosystem: "devcontainers"
-    directory: "/"
-    schedule:
-      interval: weekly

@@ -32,7 +32,6 @@ develop-eggs
 .installed.cfg
 __pycache__
 .tox
-.nox
 .eggs
 
 # Vim tmp files
@@ -130,6 +129,16 @@ metrics.db
 compile_commands.json
 compile_commands.*.json
 .cache/
+
+# Project development files
+.mypy_cache/
+.ruff_cache/
+.docs_out/
+.htmlcov/
+.python-coverage.xml
+.cpp-coverage.xml
+.reviews/
+.claude/
 
 # CI artifacts
 .ccache/

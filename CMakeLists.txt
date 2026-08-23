@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.20)
 
 # Prevent CMake from picking up GCC-style environment flags when targeting
 # MSVC. These values are intentionally established before project() enables
@@ -16,7 +16,7 @@ if(WIN32)
 endif()
 
 file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" COCOTB_VERSION LIMIT_COUNT 1)
-project(cocotb VERSION "${COCOTB_VERSION}" LANGUAGES CXX)
+project(coconext VERSION "${COCOTB_VERSION}" LANGUAGES CXX)
 
 set(CMAKE_SKIP_RPATH TRUE)
 
@@ -40,6 +40,7 @@ else()
 endif()
 
 include(cmake/CocotbBuild.cmake)
+include(cmake/CoconextDeveloperMode.cmake)
 
 add_subdirectory(cpp)
 add_subdirectory(python)
@@ -93,3 +94,19 @@ if(COCOTB_INSTALL_ARTIFACTS)
         DESTINATION "${COCOTB_INSTALL_CMAKE_DIR}"
     )
 endif()
+
+install(
+    EXPORT coconextTargets
+    FILE coconextTargets.cmake
+    NAMESPACE coconext::
+    DESTINATION coconext/share/cmake/coconext
+)
+configure_package_config_file(
+    cmake/coconextConfig.cmake.in
+    "${CMAKE_CURRENT_BINARY_DIR}/coconextConfig.cmake"
+    INSTALL_DESTINATION coconext/share/cmake/coconext
+)
+install(
+    FILES "${CMAKE_CURRENT_BINARY_DIR}/coconextConfig.cmake"
+    DESTINATION coconext/share/cmake/coconext
+)

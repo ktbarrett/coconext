@@ -54,48 +54,37 @@ Running Tests Locally
 
 First, `set up your development environment <#setting-up-a-development-environment>`__.
 
-Our tests are managed by ``nox``, which runs both ``pytest`` tests and our system of makefiles.
-The regression does not end on the first failure, but continues until all tests in the ``/tests`` and ``/examples`` directories have been run.
+Development tests are managed by the top-level Makefile.
+The default suite builds the package and runs the C++, Python, compatibility,
+and simulator-backed coconext tests.
 
-To run the tests locally with ``nox``, issue the following command.
+To run the tests locally, issue the following command.
 
 .. code:: bash
 
-   nox -s dev_test
+   make dev_tests
 
-At the end of the regression, if there were any test failures, the tests that failed will be printed.
-If the tests succeed you will see the message ``Session tests was successful`` printed in green.
-
-By default the ``dev_test`` nox session runs all simulator-agnostic tests, as well as all tests which require a simulator and can be run against Icarus Verilog.
-Icarus Verilog must be installed.
+The retained cocotb regression is available separately through
+``make cocotb_tests`` and requires the relevant simulators to be installed.
 
 The simulator and the toplevel language can be changed by setting the environment variables :make:var:`SIM` and :make:var:`TOPLEVEL_LANG`.
-Alternatively, the simulator-specific nox sessions can be used, as described below.
 
 Selecting a Language and Simulator for Regression
 =================================================
 
-cocotb can be used with multiple simulators, and can run tests against all of them.
-Nox provides a session for each valid simulator/language/GPI interface combination, from which one or multiple sessions can be selected.
-
-The following examples are good starting points;
-refer to the `nox command-line usage documentation <https://nox.thea.codes/en/stable/usage.html>`__ for more information.
+cocotb can be used with multiple simulators and languages.
+Select them with Make variables.
 
 .. code:: bash
 
-   # List all available sessions.
-   nox -l
+   # Run the default development suite with Icarus Verilog.
+   make dev_tests SIM=icarus TOPLEVEL_LANG=verilog
 
-   # Run all simulator-agnostic tests.
-   nox -s dev_test_nosim
+   # Run only the simulator-backed coconext tests with NVC and VHDL.
+   make simulator_tests SIM=nvc TOPLEVEL_LANG=vhdl
 
-   # Run the simulator-specific tests against Xcelium, using a VHDL toplevel and
-   # the VHPI interface.
-   nox -s "dev_test_sim(sim='xcelium', toplevel_lang='vhdl', gpi_interface='vhpi')"
-
-   # Run all simulator-specific tests against Icarus Verilog and GHDL.
-   # Both simulators must be installed locally.
-   nox -k "dev_test_sim and (icarus or ghdl)"
+   # Run the retained cocotb regression with a selected interface.
+   make cocotb_tests SIM=questa TOPLEVEL_LANG=vhdl VHDL_GPI_INTERFACE=vhpi
 
 Running Individual Tests Locally
 ================================
@@ -116,7 +105,7 @@ Building Documentation Locally
 
 First, `set up your development environment <#setting-up-a-development-environment>`__.
 
-Documentation is built locally using ``nox``.
+Documentation is built locally using ``make``.
 The last message in the output will contain a URL to the documentation you just built.
 Simply copy and paste the link into your browser to view it.
 The documentation will be built in the same location on your hard drive on every run, so you only have to refresh the page to see new changes.
@@ -125,6 +114,6 @@ To build the documentation locally on Linux or Mac, issue the following command:
 
 .. code:: bash
 
-   nox -e docs
+   make docs
 
 Building the documentation is not currently supported on Windows.

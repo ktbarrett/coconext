@@ -1,14 +1,21 @@
-**cocotb** is a framework empowering users to write VHDL and Verilog testbenches in Python.
+[![CI](https://github.com/ktbarrett/coconext/actions/workflows/test-dev.yaml/badge.svg?branch=dev)](https://github.com/ktbarrett/coconext/actions/workflows/test-dev.yaml)
+[![codecov](https://codecov.io/gh/ktbarrett/coconext/graph/badge.svg?token=ZBFY9R7JEP)](https://codecov.io/gh/ktbarrett/coconext)
+[![docs](https://readthedocs.org/projects/coconext/badge/?version=latest)](https://coconext.readthedocs.io/en/latest/)
 
-[![Documentation Status](https://readthedocs.org/projects/cocotb/badge/?version=development)](https://docs.cocotb.org/en/stable/)
-[![CI](https://github.com/cocotb/cocotb/actions/workflows/build-test-dev.yml/badge.svg?branch=master)](https://github.com/cocotb/cocotb/actions/workflows/build-test-dev.yml)
-[![PyPI](https://img.shields.io/pypi/dm/cocotb.svg?label=PyPI%20downloads)](https://pypi.org/project/cocotb/)
-[![codecov](https://codecov.io/gh/cocotb/cocotb/branch/master/graph/badge.svg)](https://codecov.io/gh/cocotb/cocotb)
+# coconext
 
-* Check out the [tutorial](https://docs.cocotb.org/en/stable/quickstart.html)
-* Read the [docs](https://docs.cocotb.org/en/stable/)
-* Find more info in the [wiki](https://github.com/cocotb/cocotb/wiki)
-* Discover [useful extensions](https://github.com/cocotb/cocotb/wiki/Further-Resources#utility-libraries-and-frameworks)
-* Join the discussion in the [Gitter chat room](https://gitter.im/cocotb/Lobby)
-* [Ask a question](https://github.com/cocotb/cocotb/discussions)
-* [Raise a bug / request an enhancement](https://github.com/cocotb/cocotb/issues/new)
+A staging area for new [cocotb](https://github.com/cocotb/cocotb) features.
+This project will move faster and include more experimental features than may end up in the main repo.
+
+The `coconext` distribution provides the `cocotb` Python package and is not
+compatible with installing the `cocotb` distribution in the same environment.
+
+
+## Installation
+
+`coconext` is available on [PyPI](https://pypi.org/project/coconext/).
+Use your favorite Python package manager to install it.
+
+```sh
+pip install coconext
+```

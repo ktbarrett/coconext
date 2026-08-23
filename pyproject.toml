@@ -1,31 +1,25 @@
 [build-system]
 requires = [
-    "scikit-build-core>=0.3.3",
+    "scikit-build-core>=0.4.3",
     "find_libpython",
-    "setuptools>=77",
-    "wheel",
+    "nanobind>=1.3.2",
     "setuptools-git-versioning>=3.0,<4",
 ]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "cocotb"
-description = "Python-based chip (RTL) verification"
+name = "coconext"
+description = "Features for future versions of cocotb"
 readme = "README.md"
 license = "BSD-3-Clause"
 license-files = [
     "LICENSE"
 ]
 authors = [
-    {name = "Chris Higgs"},
-    {name = "Stuart Hodgson"},
+    {name = "Kaleb Barrett", email = "dev.ktbarrett@gmail.com"},
 ]
 maintainers = [
-    {name = "Kaleb Barrett"},
-    {name = "Tomasz Hemperek"},
-    {name = "Marlon James"},
-    {name = "Colin Marquardt"},
-    {name = "Philipp Wagner"},
+    {name = "Kaleb Barrett", email = "dev.ktbarrett@gmail.com"},
 ]
 dependencies = [
     # For finding the libpython on the system so the GPI can preload it before
@@ -40,7 +34,7 @@ dependencies = [
     # Assertion rewriting interface changed in version 6.
     "pytest >= 6",
 ]
-requires-python = ">= 3.9"
+requires-python = ">=3.9,<3.15"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
@@ -50,12 +44,11 @@ dynamic = ["version"]
 
 [project.scripts]
 cocotb-config = "cocotb_tools.config:main"
+coconext-config = "coconext_tools.config:main"
 
 [project.urls]
-Homepage = "https://www.cocotb.org"
-Documentation = "https://docs.cocotb.org"
-Repository = "https://github.com/cocotb/cocotb"
-Issues = "https://github.com/cocotb/cocotb/issues"
+Repository = "https://github.com/ktbarrett/coconext.git"
+Issues = "https://github.com/ktbarrett/coconext/issues"
 
 [tool.setuptools]
 # Rely solely on the package_data entries in setup.py to avoid discovering
@@ -72,15 +65,20 @@ dirty_template = "{tag}.dev{ccount}+r{sha}.dirty"
 [tool.scikit-build]
 experimental = true
 cmake.source-dir = "."
-cmake.version = ">=3.15"
-build-dir = "build/{wheel_tag}"
+cmake.version = ">=3.20"
+build-dir = "build"
 cmake.args = []
 build.verbose = false
 wheel.packages = [
     "python/cocotb",
     "python/cocotb_tools",
     "python/pygpi",
+    "python/coconext",
+    "python/coconext_tools",
 ]
+
+[tool.scikit-build.cmake.define]
+CMAKE_EXPORT_COMPILE_COMMANDS = true
 
 [tool.scikit-build.metadata.version]
 provider = "setuptools_git_versioning.scikit_metadata"
@@ -126,7 +124,7 @@ extend-exclude = [
     "makefiles",
     "venv",
     "_vendor",
-    ".nox/",
+    "python/_pycoconext.pyi",
 ]
 target-version = "py39"
 
@@ -196,16 +194,12 @@ ignore = [
     "PERF203", # try-except in loop (not an issue Python > 3.11)
 ]
 
-[tool.ruff.lint.per-file-ignores]
-# This file will be deleted soon, so who cares.
-"cocotb_build_libs.py" = [
-    "PTH",
-]
-
 [tool.ruff.lint.isort]
 known-first-party = [
     "cocotb",
     "cocotb_tools",
+    "coconext",
+    "coconext_tools",
     "pygpi",
 ]
 known-third-party = [
@@ -217,9 +211,8 @@ required-imports = ["from __future__ import annotations"]
 # Build for supported platforms only.
 #
 # - CPython on Linux x86_64 with glibc
-# - CPython on Windows x86_64
 # - CPython on macOS x86_64 and arm64
-build = "cp*-manylinux_x86_64 cp*-win_amd64 cp*-macosx_x86_64 cp*-macosx_arm64"
+build = "cp*-manylinux_x86_64 cp*-macosx_x86_64 cp*-macosx_arm64"
 
 # Build with optimizations and debugging
 # -O2   Enables reasonable optimizations. -O3 is unnecessary with the virtual-call-heavy code in the GPI and may bloat binary size.
@@ -227,24 +220,17 @@ build = "cp*-manylinux_x86_64 cp*-win_amd64 cp*-macosx_x86_64 cp*-macosx_arm64"
 # -flto Enable LTO which can reduce binary size and improve inlining.
 environment = {CFLAGS = "-O2 -g -flto", CPPFLAGS = "-O2 -g -flto", LDFLAGS = "-O2 -g -flto"}
 
-# By default, build on manylinux2014 for compatibility with CentOS/RHEL 8+
-# and Ubuntu 20.04+ (with system Python).
-manylinux-x86_64-image = "manylinux2014"
-
-# Build with optimizations and debugging (Windows)
-# /O2   Enables reasonable optimizations.
-# /Z7   Enables debugging and places info in the binary (/Zi puts debug info in a different file).
-# /Zo   Improves debugging when optimizations are also enabled.
-# /LTCG Enables LTO which can reduce binary size and improve inlining.
-[tool.cibuildwheel.windows]
-environment = {CL = "/O2 /Z7 /Zo /LTCG"}
+# Build on a recent manylinux image with the toolchain needed by coconext.
+manylinux-x86_64-image = "manylinux_2_28"
+build-frontend = "build[uv]"
+test-skip = "*"
 
 [tool.cibuildwheel.macos]
 repair-wheel-command = "delocate-wheel --no-sanitize-rpaths --require-archs {delocate_archs} -w {dest_dir} -v {wheel}"
 
 [tool.pytest.ini_options]
-# Note: Do *not* add files within the cocotb/ tree here. Add them to the
-# noxfile instead.
+# Simulator-backed and coconext-specific suites are invoked explicitly by the
+# Makefile so a plain pytest run remains simulator-independent.
 testpaths = [
     "tests/pytest",
 ]
@@ -263,16 +249,23 @@ markers = [
 # Patches all subprocesses to automatically append coverage together.
 # Used to collect coverage in pytest simulation runs.
 patch = ["subprocess"]
+branch = true
+source = ["cocotb", "coconext", "tests"]
 
 [tool.coverage.paths]
 source = [
     "python/cocotb/",
-    ".nox/**/cocotb/",
+    "*/site-packages/cocotb/",
+]
+coconext = [
+    "python/coconext/",
+    "*/site-packages/coconext/",
 ]
 
 [tool.coverage.report]
 omit = [
     "*/cocotb_tools/*",
+    "*/coconext_tools/*",
     "*/_vendor/*",
 ]
 exclude_lines = [
@@ -303,13 +296,19 @@ skip = ["*.svg"]
 
 [tool.mypy]
 python_version = "3.11"
-packages = ["cocotb", "pygpi", "cocotb_tools._pytest"]
-modules = ["noxfile"]
+files = [
+    "python/coconext/",
+    "python/coconext_tools/",
+    "tests/python/pytest/test_logic.py",
+    "tests/python/pytest/test_range.py",
+    "tests/simulator/",
+]
 disallow_untyped_defs = true
 disallow_any_unimported = true
 disallow_untyped_calls = true
 disallow_untyped_decorators = true
 no_implicit_optional = true
+check_untyped_defs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 implicit_reexport = false
@@ -318,20 +317,35 @@ pretty = true
 allow_redefinition = true
 mypy_path = "python/"
 
-# TODO add lower bounds and justifications
+[[tool.mypy.overrides]]
+module = "_pycoconext"
+disable_error_code = ["override"]
+
+[[tool.mypy.overrides]]
+module = "cocotb_tools.*"
+ignore_errors = true
+
 [dependency-groups]
 dev = [
-    # required for development
-    "nox",
-    "nox-uv",
+    "mypy>=1.18,!=1.20.*",
     "prek",
-    # allows linting the project manually
     "clang-format",
-    "mypy>=1.18,!=1.20.*",  # 1.18 needed for descriptor typing, 1.20 has type narrowing regressions
+    {include-group = "dev_tests"},
+]
+dev_tests = [
     "ruff",
-    # allows running tests and doing coverage reporting manually if desired
-    {include-group = "dev_test"},
-    {include-group = "coverage_report"},
+    "nanobind",
+    "cmake>=3.20",
+    "scikit-build-core",
+    "setuptools",
+    "setuptools-git-versioning>=3.0,<4",
+    "coverage[toml]>=7.10",
+    "pytest-cov",
+    "pytest>=8.4",
+    "gcovr>=8.4,!=8.5",
+    "IPython",
+    "pexpect",
+    "psutil",
 ]
 docs = [
     "Sphinx ~= 8.2.0",
@@ -358,45 +372,5 @@ docs_preview = [
     {include-group = "docs"},
     "sphinx-autobuild",
 ]
-release_build_wheel = [
-    "cibuildwheel==3.2.1",
-]
-release_build_sdist = [
-    "build",
-]
-test_common = [
-    # Needed for RaisesExc and RaisesGroup testing.
-    "pytest>=8.4",
-    # Needed for IPython shell interactive testing.
-    "IPython",
-    "pexpect",
-    # Needed for leak testing.
-    "psutil",
-]
-dev_test = [
-    {include-group = "test_common"},
-    # We only collect coverage on dev workflows.
-    "coverage[toml]>=7.2",
-    "pytest-cov",
-]
-coverage_report = [
-    "coverage[toml]>=7.2",
-    "gcovr==8.4",
-]
-release_test = [
-    {include-group = "test_common"},
-
-    # We have to disable the use of the PyPi index when installing cocotb to
-    # guarantee that the wheels in dist are being used. But without an index
-    # pip cannot find the dependencies, which need to be installed from PyPi.
-    # Work around that by explicitly installing the dependencies first from
-    # PyPi, and then installing cocotb itself from the local dist directory.
-    "exceptiongroup; python_version<'3.11'",
-    "find_libpython",
-    "pytest>=6",
-]
-
 [tool.uv.dependency-groups]
-# We need Python 3.11 to run Sphinx 8.2 and cibuildwheel 3.2
 docs = {requires-python = ">=3.11"}
-release_build_wheel = {requires-python = ">=3.11"}

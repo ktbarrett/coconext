@@ -1,4 +1,6 @@
-find_package(Python COMPONENTS Interpreter Development REQUIRED)
+find_package(Python 3.9
+    REQUIRED COMPONENTS Interpreter Development Development.Module
+    OPTIONAL_COMPONENTS Development.SABIModule)
 
 add_library(simulator SHARED
     _pygpi/bind.cpp
@@ -25,6 +27,24 @@ else()
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/cocotb"
     )
 endif()
+
+find_package(nanobind CONFIG REQUIRED)
+
+nanobind_add_module(
+    _pycoconext
+    STABLE_ABI
+    NB_STATIC
+    LTO
+    _pycoconext/bind.cpp
+    _pycoconext/types/bind_logic.cpp
+    _pycoconext/types/bind_logic_array.cpp
+    _pycoconext/types/bind_range.cpp
+)
+target_link_libraries(_pycoconext PRIVATE coconext::coconext_nb)
+coconext_enable_developer_mode(_pycoconext)
+
+install(TARGETS _pycoconext DESTINATION .)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/_pycoconext.pyi" DESTINATION .)
 
 if(WIN32)
     set(COCOTB_PYTHON_EXTENSION_SUFFIX ".${Python_SOABI}.pyd")
