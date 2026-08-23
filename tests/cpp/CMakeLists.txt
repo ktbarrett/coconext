@@ -24,8 +24,8 @@ add_executable(coconext_tests
     test_array.cpp
     test_static_array.cpp
     test_logic_array.cpp
-    test_int.cpp
     test_dyn_bits.cpp
+    test_bits.cpp
     test_reverse.cpp
     test_unsigned.cpp
     test_signed.cpp
@@ -34,7 +34,10 @@ add_executable(coconext_tests
     test_future.cpp
     test_scheduler_binding.cpp
     test_scheduler_run.cpp
-    test_task_manager.cpp)
+    test_task_manager.cpp
+    test_sfixed.cpp
+    test_ufixed.cpp)
+
 target_link_libraries(coconext_tests PRIVATE coconext::coconext GTest::gtest_main)
 coconext_enable_developer_mode(coconext_tests)
 

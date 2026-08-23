@@ -25,6 +25,27 @@ namespace coconext::types {
 
 namespace detail {
 
+constexpr uint64_t reverse_bits_64(uint64_t w) {
+    w = ((w & 0xaaaaaaaaaaaaaaaaULL) >> 1) | ((w & 0x5555555555555555ULL) << 1);
+    w = ((w & 0xccccccccccccccccULL) >> 2) | ((w & 0x3333333333333333ULL) << 2);
+    w = ((w & 0xf0f0f0f0f0f0f0f0ULL) >> 4) | ((w & 0x0f0f0f0f0f0f0f0fULL) << 4);
+    w = ((w & 0xff00ff00ff00ff00ULL) >> 8) | ((w & 0x00ff00ff00ff00ffULL) << 8);
+    w = ((w & 0xffff0000ffff0000ULL) >> 16) | ((w & 0x0000ffff0000ffffULL) << 16);
+    return (w >> 32) | (w << 32);
+}
+
+template <typename T>
+constexpr T reverse_bits_native(T x) {
+    if constexpr (sizeof(T) == 16) {
+        uint64_t lo = reverse_bits_native(static_cast<uint64_t>(x));
+        uint64_t hi = reverse_bits_native(static_cast<uint64_t>(x >> 64));
+        return (static_cast<T>(lo) << 64) | static_cast<T>(hi);
+    } else {
+        uint64_t rev64 = reverse_bits_64(static_cast<uint64_t>(x));
+        return static_cast<T>(rev64 >> (64 - sizeof(T) * 8));
+    }
+}
+
 struct EmptyStorage {};
 
 template <size_t W>
@@ -552,6 +573,20 @@ class Bits {
         }
     }
 
+    constexpr Bits reverse() const noexcept {
+        static_assert(W > 0, "Nothing to reverse for Null Vector");
+
+        if constexpr (!is_wide) {
+            constexpr size_t container_bits = sizeof(IntType) * 8;
+            IntType reversed = reverse_bits_native(static_cast<IntType>(raw()));
+            return Bits(static_cast<IntType>(reversed >> (container_bits - W)));
+        } else {
+            Bits<W> result{};
+            reverse_bits_bigint(result.mut(), cref());
+            return result;
+        }
+    }
+
     // On the wide tier this is a non-owning view, not a copy: callers only ever
     // read words out of it, and copying would mean duplicating the whole array.
     using RawType = std::conditional_t<is_wide, WordConstSpan, IntType>;
@@ -678,15 +713,39 @@ class Bits {
         }
     }
 
-    std::string to_binary_string() const {
+    constexpr size_t highest_set_index() const noexcept {
+        if constexpr (!is_wide) {
+            return std::bit_width(storage_) - 1;
+        } else {
+            return std::bit_width(storage_[0]) - 1;
+        }
+    }
+
+    std::string to_binary_string(size_t decimal_pos = 0) const {
         if constexpr (W == 0) {
             return "";
-        } else if constexpr (!is_wide) {
-            return std::format("{:0{}b}", static_cast<wide_uint>(raw()), W);
         } else {
-            return format_power_of_two(cref(), 1, W, [](uint8_t d) {
-                return static_cast<char>('0' + d);
-            });
+            if (decimal_pos) {
+                std::string res;
+                res.reserve(W + 1);
+
+                for (size_t i = W; i > 0; --i) {
+                    if (i == decimal_pos) {
+                        res.push_back('.');
+                    }
+                    size_t bit_idx = i - 1;
+                    res.push_back(get_bit(bit_idx) ? '1' : '0');
+                }
+                return res;
+            } else {
+                if constexpr (!is_wide) {
+                    return std::format("{:0{}b}", static_cast<wide_uint>(raw()), W);
+                } else {
+                    return format_power_of_two(cref(), 1, W, [](uint8_t d) {
+                        return static_cast<char>('0' + d);
+                    });
+                }
+            }
         }
     }
 
@@ -704,6 +763,48 @@ class Bits {
             return std::format("{}", static_cast<wide_uint>(raw()));
         } else {
             return format_decimal(cref(), is_signed);
+        }
+    }
+
+    template <size_t FracBits>
+    std::string to_fixed_decimal_string(bool is_signed = false) const {
+        if constexpr (FracBits == 0) {
+            return to_decimal_string(is_signed);
+        } else {
+            constexpr size_t PowerWidth = FracBits * 3;
+            constexpr size_t ResultWidth = W + PowerWidth;
+
+            Bits<PowerWidth> power_of_5(1);
+            Bits<PowerWidth> multiplier(5);
+            for (size_t i = 0; i < FracBits; ++i) {
+                power_of_5 = power_of_5 * multiplier;
+            }
+
+            Bits<ResultWidth> abs_val;
+            bool is_neg = false;
+            if (is_signed && W > 0 && this->get_bit(W - 1)) {
+                Bits<W> neg = (~(*this)) + Bits<W>(1);
+                abs_val = neg.template zero_extend<ResultWidth>();
+                is_neg = true;
+            } else {
+                abs_val = this->template zero_extend<ResultWidth>();
+            }
+
+            Bits<ResultWidth> exact_scaled =
+                abs_val * power_of_5.template zero_extend<ResultWidth>();
+            std::string raw_digits = exact_scaled.to_decimal_string(false);
+
+            if (raw_digits.length() <= FracBits) {
+                raw_digits.insert(0, FracBits - raw_digits.length() + 1, '0');
+            }
+
+            raw_digits.insert(raw_digits.length() - FracBits, ".");
+
+            if (is_neg) {
+                raw_digits.insert(0, "-");
+            }
+
+            return raw_digits;
         }
     }
 
@@ -1333,6 +1434,49 @@ constexpr Range make_int_range() {
     }
 }
 
+template <auto... Args>
+constexpr Range make_fixed_range() {
+    static_assert(
+        sizeof...(Args) >= 1 && sizeof...(Args) <= 3,
+        "Ufixed/Sfixed takes 1 to 3 range args"
+    );
+    constexpr auto t = std::tuple{Args...};
+    if constexpr (sizeof...(Args) == 1) {
+        using First = std::remove_cvref_t<decltype(std::get<0>(t))>;
+        static_assert(
+            std::is_same_v<First, Range>, "Ufixed/Sfixed only take Range as single argument"
+        );
+        return std::get<0>(t);
+    } else if constexpr (sizeof...(Args) == 2) {
+        constexpr Range r{
+            static_cast<Range::value_type>(std::get<0>(t)),
+            static_cast<Range::value_type>(std::get<1>(t))
+        };
+        static_assert(
+            r.left >= r.right,
+            "Ufixed/Sfixed do not allow direction.right as MSB, use Direction::TO "
+            "explicitly"
+        );
+        static_assert(r.length() >= 1, "Range cannot be negative or zero");
+        if constexpr (r.left == r.right) {
+            return Range{r.left, Direction::DOWNTO, r.right};
+        } else {
+            return r;
+        }
+    } else {  // 3
+        static_assert(
+            std::is_same_v<std::remove_cvref_t<decltype(std::get<1>(t))>, Direction>,
+            "three-arg form requires (left, Direction, right)"
+        );
+        Range r{
+            static_cast<Range::value_type>(std::get<0>(t)),
+            std::get<1>(t),
+            static_cast<Range::value_type>(std::get<2>(t))
+        };
+        return r;
+    }
+}
+
 template <typename T>
 class [[nodiscard]] auto_reinterpreted {
     T value_;
@@ -1386,9 +1530,7 @@ template <typename T>
 
 template <typename T>
 [[nodiscard]] constexpr auto_resized<T const&> resize(
-    T const& x,
-    overflow_mode ovf = overflow_mode::wrap,
-    round_mode rnd = round_mode::truncate
+    T const& x, overflow_mode ovf, round_mode rnd
 ) noexcept {
     return auto_resized<T const&>(x, ovf, rnd);
 }
@@ -1397,12 +1539,25 @@ template <typename T>
 template <typename T>
     requires(!std::is_lvalue_reference_v<T>)
 [[nodiscard]] constexpr auto_resized<T> resize(
-    T&& x, overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
+    T&& x, overflow_mode ovf, round_mode rnd
 ) noexcept {
     return auto_resized<T>(std::move(x), ovf, rnd);
 }
 
 }  // namespace detail
+
+// Deduced resize for Signed/Unsigned, Sfixed/Ufixed
+template <typename X>
+    requires(
+        detail::is_coconext_unsigned_v<std::remove_cvref_t<X>>
+        || detail::is_coconext_signed_v<std::remove_cvref_t<X>>
+        || is_fixed<std::remove_cvref_t<X>>
+    )
+[[nodiscard]] constexpr auto resize(
+    X&& x, overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
+) noexcept {
+    return detail::resize(std::forward<X>(x), ovf, rnd);
+}
 
 template <detail::HasBits Target, detail::HasBits Source>
 constexpr Target as(Source const& source) noexcept {

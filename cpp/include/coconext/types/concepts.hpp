@@ -62,6 +62,9 @@ template <>
 struct is_native_int<__uint128_t> : public std::true_type {};
 #endif
 
+template <typename T>
+inline constexpr bool is_fixed = false;
+
 namespace detail {
 
 template <typename T>

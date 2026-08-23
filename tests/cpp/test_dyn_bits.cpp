@@ -1,7 +1,7 @@
 // LCOV_EXCL_BR_START
 #include <gtest/gtest.h>
 
-#include <coconext/types/dyn_int_base.hpp>
+#include <coconext/types/dyn_bits.hpp>
 #include <stdexcept>
 #include <unordered_set>
 

@@ -2,9 +2,9 @@
 #define COCONEXT_SIGNED_HPP
 
 #include <algorithm>
+#include <coconext/types/bits.hpp>
 #include <coconext/types/concepts.hpp>
 #include <coconext/types/hash.hpp>
-#include <coconext/types/int_base.hpp>
 #include <coconext/types/logic_array.hpp>
 #include <coconext/types/range.hpp>
 #include <cstddef>
@@ -65,9 +65,6 @@ class Signed {
     static constexpr Range static_range = R;
     static constexpr Range range() noexcept { return R; }
     static constexpr size_t size() noexcept { return R.length(); }
-
-    template <Range R2>
-    friend class Signed;
 
     constexpr Signed() noexcept = default;
 
@@ -195,11 +192,11 @@ class Signed {
 
         if constexpr (TargetW >= SourceW) {
             // Widening (and the null cases) never lose information.
-            value_ = src.value_.template sign_extend<TargetW>();
+            value_ = bits(src).template sign_extend<TargetW>();
         } else if (ovf == overflow_mode::wrap) {
-            value_ = src.value_.template truncate<TargetW>();
+            value_ = bits(src).template truncate<TargetW>();
         } else {
-            value_ = src.value_.template saturate_signed<TargetW>();
+            value_ = bits(src).template saturate_signed<TargetW>();
         }
     }
 
@@ -383,20 +380,20 @@ class Signed {
     constexpr auto operator+(Signed<R2> const& rhs) const {
         constexpr Range R_res =
             detail::int_downto_range(std::max(R.length(), R2.length()) + 1);
-        return Signed<R_res>(detail::add_signed(value_, rhs.value_));
+        return Signed<R_res>(detail::add_signed(value_, bits(rhs)));
     }
 
     template <Range R2>
     constexpr auto operator-(Signed<R2> const& rhs) const {
         constexpr Range R_res =
             detail::int_downto_range(std::max(R.length(), R2.length()) + 1);
-        return Signed<R_res>(detail::sub_signed(value_, rhs.value_));
+        return Signed<R_res>(detail::sub_signed(value_, bits(rhs)));
     }
 
     template <Range R2>
     constexpr auto operator*(Signed<R2> const& rhs) const {
         constexpr Range R_res = detail::int_downto_range(R.length() + R2.length());
-        return Signed<R_res>(detail::mul_signed(value_, rhs.value_));
+        return Signed<R_res>(detail::mul_signed(value_, bits(rhs)));
     }
 
     template <Range R2>
@@ -405,7 +402,7 @@ class Signed {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        return Signed<R_res>(detail::div_signed(value_, rhs.value_));
+        return Signed<R_res>(detail::div_signed(value_, bits(rhs)));
     }
 
     template <Range R2>
@@ -413,7 +410,7 @@ class Signed {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        return Signed<R2>(detail::rem_signed(value_, rhs.value_));
+        return Signed<R2>(detail::rem_signed(value_, bits(rhs)));
     }
 
     template <Range R2>
@@ -582,11 +579,6 @@ class Signed {
         return value_[N];
     }
 
-    template <typename T, typename CharT>
-    friend struct std::formatter;
-    template <typename T>
-    friend struct std::hash;
-
   private:
     friend struct bits_fn;
 
@@ -655,7 +647,7 @@ template <auto... Args, typename X>
     requires(sizeof...(Args) > 0 && detail::is_coconext_signed_v<std::remove_cvref_t<X>>)
 constexpr auto resize(X&& x, overflow_mode ovf, round_mode rnd) {
     constexpr Range TargetRange = detail::make_int_range<Args...>();
-    return Signed<TargetRange>(resize(std::forward<X>(x), ovf, rnd));
+    return Signed<TargetRange>(detail::resize(std::forward<X>(x), ovf, rnd));
 }
 
 template <Range R>
@@ -699,16 +691,16 @@ struct std::formatter<coconext::types::detail::Signed<R>> {
         std::string str_r;
         switch (presentation) {
         case 'b':
-            str_r = v.value_.to_binary_string();
+            str_r = coconext::types::detail::bits(v).to_binary_string();
             break;
         case 'o':
-            str_r = v.value_.to_octal_string();
+            str_r = coconext::types::detail::bits(v).to_octal_string();
             break;
         case 'x':
-            str_r = v.value_.to_hexadecimal_string();
+            str_r = coconext::types::detail::bits(v).to_hexadecimal_string();
             break;
         default:
-            str_r = v.value_.to_decimal_string(true);
+            str_r = coconext::types::detail::bits(v).to_decimal_string(true);
         }
         return std::format_to(ctx.out(), "Signed{}{{{}}}", R, str_r);
     }
@@ -724,7 +716,7 @@ struct std::hash<coconext::types::detail::Signed<R>> {
 
         if constexpr (W > 0) {
             if constexpr (!coconext::types::detail::Bits<W>::is_wide) {
-                auto raw_val = v.value_.raw();
+                auto raw_val = coconext::types::detail::bits(v).raw();
                 if constexpr (sizeof(raw_val) > sizeof(size_t)) {
                     uint64_t low = static_cast<uint64_t>(raw_val);
                     uint64_t high = static_cast<uint64_t>(raw_val >> 64);
@@ -733,7 +725,7 @@ struct std::hash<coconext::types::detail::Signed<R>> {
                     value_hash = std::hash<decltype(raw_val)>{}(raw_val);
                 }
             } else {
-                auto val = v.value_.raw();
+                auto val = coconext::types::detail::bits(v).raw();
                 constexpr size_t num_words = (W + 63) / 64;
                 for (size_t i = 0; i < num_words; ++i) {
                     value_hash =

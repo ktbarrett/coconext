@@ -2,7 +2,7 @@
 #define COCONEXT_BIT_ARRAY_HPP
 
 #include <coconext/types/array.hpp>
-#include <coconext/types/int_base.hpp>
+#include <coconext/types/bits.hpp>
 #include <coconext/types/logic.hpp>
 #include <coconext/types/range.hpp>
 #include <coconext/types/string_literal.hpp>

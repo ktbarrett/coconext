@@ -4,12 +4,16 @@
 namespace coconext::types {
 
 enum class overflow_mode {
-    wrap,
-    saturate
+    wrap,     // drop MSBs
+    saturate  // cap to max
 };
+
 enum class round_mode {
-    truncate,
-    round
+    truncate,  // drop LSBs
+    round,     // away from zero
+    round_to_even,
+    round_to_zero,
+    round_to_pos
 };
 
 }  // namespace coconext::types
