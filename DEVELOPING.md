@@ -10,6 +10,8 @@ Running Tests
 Run ``make`` (or ``make dev_tests``) for the complete developer test suite. It
 builds with coverage, compiler warnings, and warnings-as-errors enabled, then
 runs the C++, Python, cocotb compatibility, and simulator-backed suites.
+The Makefile enables ``COCONEXT_DEVELOPER_MODE`` for developer builds; the
+option defaults to ``OFF`` for release tests and downstream CMake builds.
 Select a simulator environment with, for example::
 
     make SIM=icarus TOPLEVEL_LANG=verilog CXX_STANDARD=23
