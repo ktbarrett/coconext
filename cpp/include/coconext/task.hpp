@@ -103,12 +103,21 @@ class TaskState<detail::Erased> : public detail::IntrusiveDequeNode {
             // on_resume() re-emplaces state_, which destroys *this. Copy the fields
             // we need onto the stack before that happens.
             auto task = task_;
+            // If this resume() ends the task, return_void/return_value will be called, then
+            // on_done, which will deregister the Task from the TaskManager, which may be
+            // the final dec_ref and destroy the promise. That's fine and all until you
+            // realize that final_suspend is called after that: use-after-free. There is no
+            // reasonable time from within the coroutine to decide it's safe to release
+            // itself, so we just have to play the refcount dance so this routine is in
+            // charge of its destruction.
+            task->inc_ref();
             auto& current_task = detail::current_task;
             auto previous_task = current_task;
             current_task = task;
             task->on_resume();
             task->handle_.resume();
             current_task = previous_task;
+            task->dec_ref();
         }
 
         not_null<TaskState<>*> task_;
@@ -535,12 +544,14 @@ void detail::AwaitableAwaiter<S>::event_run() noexcept {
     assert(parent_ != nullptr);
     assert(task_ != nullptr);
     auto task = not_null{task_};
+    task->inc_ref();
     auto& current_task = detail::current_task;
     auto previous_task = current_task;
     current_task = task;
     task->on_resume();
     parent_.resume();
     current_task = previous_task;
+    task->dec_ref();
 }
 
 }  // namespace coconext
