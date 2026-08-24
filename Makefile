@@ -1,8 +1,5 @@
 .DEFAULT_GOAL := dev_tests
 
-# The cocotb sources and compatibility tests live in this repository.
-COCOTB_DIR_PATH ?= $(PWD)
-
 # Defaults to dev so environments are shifting back and forth locally,
 # but set to "dev_tests" in CI to avoid installing unnecessary dependencies.
 DEV_BUILD_DEP_GROUP ?= dev
@@ -89,8 +86,7 @@ simulator_tests:
 
 .PHONY: integration_tests
 integration_tests:
-	COCOTB_DIR_PATH="$(COCOTB_DIR_PATH)" \
-	pytest $(PYTEST_COVERAGE_ARGS) tests/integration_tests
+	pytest $(PYTEST_COVERAGE_ARGS) tests/integration_tests tests/pytest
 
 .PHONY: cocotb_tests
 cocotb_tests: dev_build

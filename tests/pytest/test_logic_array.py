@@ -7,7 +7,7 @@ import copy
 
 import pytest
 
-from cocotb.types import Logic, LogicArray, Range
+from coconext.types import Logic, LogicArray, Range
 
 
 def test_logic_array_str_construction():
