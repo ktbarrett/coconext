@@ -7,7 +7,7 @@ import copy
 
 import pytest
 
-from cocotb.types import Range
+from coconext.types import Range
 
 
 def test_to_range():

@@ -7,7 +7,7 @@ import copy
 
 import pytest
 
-from cocotb.types import Bit, Logic
+from coconext.types import Bit, Logic
 
 
 def test_logic_conversions():
