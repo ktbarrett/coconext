@@ -13,6 +13,7 @@ using namespace coconext::literals;
 
 TEST(TestUnsigned, Constructors) {
     static_assert(!std::is_convertible_v<int, Unsigned<6>>);
+    static_assert(!std::is_constructible_v<Unsigned<5>, BitArray<5>>);
 
     Unsigned<4> a(15);
     EXPECT_EQ(static_cast<uint8_t>(a), 15U);
@@ -30,10 +31,10 @@ TEST(TestUnsigned, Constructors) {
     EXPECT_THROW(Unsigned<4> narrow_fail(large_val), std::out_of_range);
 
     BitArray<5> arr_a({'0'_b, '1'_b, '0'_b, '0'_b, '1'_b});
-    Unsigned<5> u_arr_a(arr_a);
+    auto u_arr_a = as<Unsigned<5>>(arr_a);
     EXPECT_EQ(static_cast<uint32_t>(u_arr_a), 9U);
 
-    Unsigned<5> arr_a_exp("01001"_b);
+    auto arr_a_exp = as<Unsigned<5>>("01001"_b);
     EXPECT_EQ(u_arr_a, arr_a_exp);
 
     Signed<20> s(2000);
@@ -174,6 +175,12 @@ TEST(TestUnsigned, resize_overloads) {
     EXPECT_EQ(static_cast<uint8_t>(copy_init_deduced), 255U);
 }
 
+TEST(TestUnsigned, CrossRangeConversion) {
+    Unsigned<7, 0> source(42);
+    Unsigned<0, Direction::TO, 7> converted = source;
+    EXPECT_EQ(static_cast<unsigned char>(converted), 42);
+}
+
 TEST(TestUnsigned, Comparisons) {
     Unsigned<8> a(10);
     Unsigned<8> b(10);
@@ -304,6 +311,17 @@ TEST(TestUnsigned, Iterators) {
     auto it = a.begin();
     EXPECT_EQ(static_cast<bool>(*(it + 1)), false);
     EXPECT_EQ(static_cast<bool>(it[0]), true);
+
+    for (auto bit : a) {
+        bit = Bit::_0;
+    }
+    EXPECT_EQ(static_cast<uint8_t>(a), 0U);
+
+    *a.rbegin() = Bit::_1;
+    EXPECT_EQ(static_cast<uint8_t>(a), 1U);
+
+    auto const& const_a = a;
+    EXPECT_EQ(std::distance(const_a.begin(), const_a.end()), 4);
 }
 
 TEST(TestUnsigned, index_operator) {
@@ -315,6 +333,13 @@ TEST(TestUnsigned, index_operator) {
     EXPECT_FALSE(static_cast<bool>(a[0]));
 
     EXPECT_THROW(a[4], std::out_of_range);
+
+    a[3] = Bit::_1;
+    a[1] = Bit::_0;
+    EXPECT_EQ(static_cast<uint8_t>(a), 8U);
+
+    auto const& const_a = a;
+    EXPECT_TRUE(static_cast<bool>(const_a[3]));
 }
 
 TEST(TestUnsigned, index) {
