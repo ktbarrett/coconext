@@ -1,7 +1,13 @@
 #ifndef COCONEXT_RESIZE_MODE_HPP
 #define COCONEXT_RESIZE_MODE_HPP
 
+#include <cstddef>
+
 namespace coconext::types {
+
+// Match the IEEE fixed_pkg default. Division computes this many additional
+// quotient bits before applying its rounding mode.
+inline constexpr std::size_t fixed_guard_bits = 3;
 
 enum class overflow_mode {
     wrap,     // drop MSBs

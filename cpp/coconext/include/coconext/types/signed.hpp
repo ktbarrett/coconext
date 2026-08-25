@@ -146,34 +146,11 @@ class Signed {
     }
 
     template <Range R2>
-    explicit constexpr Signed(detail::Array<Bit, R2> const& other) {
-        static_assert(
-            R.length() == R2.length(), "BitArray reinterpret requires identical width"
-        );
-        detail::Bits<R.length()> temp_bit(0);
-        for (auto const& bit : other) {
-            temp_bit = bit ? 1 : 0;
-            value_ = (value_ << 1) | temp_bit;
-        }
-    }
-
-    template <Range R2>
     constexpr operator detail::Array<Bit, R2>() const noexcept {
         static_assert(
             R.length() == R2.length(), "BitArray reinterpret requires identical width"
         );
         return detail::Array<Bit, R2>(value_);
-    }
-
-    template <typename SourceT>
-    constexpr Signed(auto_reinterpreted<SourceT>&& wrapper) {
-        *this = as<Signed<R>>(std::move(wrapper).consume());
-    }
-
-    template <typename SourceT>
-    constexpr Signed& operator=(auto_reinterpreted<SourceT>&& wrapper) {
-        *this = as<Signed<R>>(std::move(wrapper).consume());
-        return *this;
     }
 
     template <typename SourceWrapper>
@@ -498,21 +475,21 @@ class Signed {
     template <Range R2>
     constexpr Signed& operator+=(Unsigned<R2> const& rhs) {
         auto res = coconext::types::resize<R.length()>(*this + (+rhs), overflow_mode::wrap);
-        *this = Signed<R>(static_cast<detail::Array<Bit, R>>(res));
+        *this = coconext::types::as<Signed<R>>(static_cast<detail::Array<Bit, R>>(res));
         return *this;
     }
 
     template <Range R2>
     constexpr Signed& operator-=(Unsigned<R2> const& rhs) {
         auto res = coconext::types::resize<R.length()>(*this - (+rhs), overflow_mode::wrap);
-        *this = Signed<R>(static_cast<detail::Array<Bit, R>>(res));
+        *this = coconext::types::as<Signed<R>>(static_cast<detail::Array<Bit, R>>(res));
         return *this;
     }
 
     template <Range R2>
     constexpr Signed& operator*=(Unsigned<R2> const& rhs) {
         auto res = coconext::types::resize<R.length()>(*this * (+rhs), overflow_mode::wrap);
-        *this = Signed<R>(static_cast<detail::Array<Bit, R>>(res));
+        *this = coconext::types::as<Signed<R>>(static_cast<detail::Array<Bit, R>>(res));
         return *this;
     }
 
@@ -522,7 +499,7 @@ class Signed {
             throw std::domain_error("Division by zero");
         }
         auto res = coconext::types::resize<R.length()>(*this / (+rhs), overflow_mode::wrap);
-        *this = Signed<R>(static_cast<detail::Array<Bit, R>>(res));
+        *this = coconext::types::as<Signed<R>>(static_cast<detail::Array<Bit, R>>(res));
         return *this;
     }
 
@@ -532,7 +509,7 @@ class Signed {
             throw std::domain_error("Division by zero");
         }
         auto res = coconext::types::resize<R.length()>(*this % (+rhs), overflow_mode::wrap);
-        *this = Signed<R>(static_cast<detail::Array<Bit, R>>(res));
+        *this = coconext::types::as<Signed<R>>(static_cast<detail::Array<Bit, R>>(res));
         return *this;
     }
 
@@ -558,11 +535,25 @@ class Signed {
         return tmp;
     }
 
+    constexpr auto begin() { return value_.begin(); }
+    constexpr auto rbegin() { return value_.rbegin(); }
     constexpr auto begin() const { return value_.begin(); }
     constexpr auto rbegin() const { return value_.rbegin(); }
 
+    constexpr auto end() { return value_.end(); }
+    constexpr auto rend() { return value_.rend(); }
     constexpr auto end() const { return value_.end(); }
     constexpr auto rend() const { return value_.rend(); }
+
+    constexpr auto operator[](Range::value_type idx) {
+        auto const offset = offset_of(R, idx);
+        if (!offset.has_value()) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        size_t bit_pos = R.length() - 1 - offset.value();
+
+        return value_[bit_pos];
+    }
 
     constexpr auto operator[](Range::value_type idx) const {
         auto const offset = offset_of(R, idx);
@@ -580,6 +571,8 @@ class Signed {
     }
 
   private:
+    template <Range>
+    friend class Signed;
     friend struct bits_fn;
 
     Bits<R.length()> value_{};

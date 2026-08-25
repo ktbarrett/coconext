@@ -1,10 +1,254 @@
 // LCOV_EXCL_BR_START -- gtest macros generate noisy uncovered branches
 #include <gtest/gtest.h>
 
+#include <cfenv>
 #include <coconext/types.hpp>
+#include <tuple>
+#include <type_traits>
+#include <utility>
 
 using namespace coconext::types;
 using namespace coconext::literals;
+
+template <typename T>
+concept HasFixedOrdering = requires(T a, T b) { a <=> b; };
+
+namespace {
+
+using AsUnsigned = Unsigned<8>;
+using AsSigned = Signed<8>;
+using AsUfixed = Ufixed<3, -4>;
+using AsSfixed = Sfixed<3, -4>;
+using AsBitArray = BitArray<8>;
+using AsTypes = std::tuple<AsUnsigned, AsSigned, AsUfixed, AsSfixed, AsBitArray>;
+
+template <typename Target, typename Source>
+constexpr bool check_as_pair() {
+    AsBitArray expected("10100101");
+    Source source = as<Source>(expected);
+    auto accept_reinterpreted = [](Target value) { return value; };
+
+    static_assert(std::same_as<decltype(as<Target>(source)), Target>);
+    static_assert(std::same_as<decltype(as<Target>(Source(source))), Target>);
+    static_assert(std::same_as<decltype(as<Target>(std::move(source))), Target>);
+
+    Target explicit_lvalue = as<Target>(source);
+    Target explicit_rvalue = as<Target>(Source(source));
+    Source explicit_moved_source(source);
+    Target explicit_moved = as<Target>(std::move(explicit_moved_source));
+
+    Target contextual_lvalue = accept_reinterpreted(as(source));
+    Target contextual_rvalue = accept_reinterpreted(as(Source(source)));
+    Source contextual_moved_source(source);
+    Target contextual_moved = accept_reinterpreted(as(std::move(contextual_moved_source)));
+
+    auto has_expected_bits = [&expected](auto const& value) {
+        return detail::bits(value) == detail::bits(expected);
+    };
+    return has_expected_bits(explicit_lvalue) && has_expected_bits(explicit_rvalue)
+        && has_expected_bits(explicit_moved) && has_expected_bits(contextual_lvalue)
+        && has_expected_bits(contextual_rvalue) && has_expected_bits(contextual_moved);
+}
+
+template <typename Target, typename... Sources>
+consteval bool check_as_sources(std::type_identity<std::tuple<Sources...>>) {
+    return (check_as_pair<Target, Sources>() && ...);
+}
+
+}  // namespace
+
+TEST(TestUfixed, AsReinterpretationMatrix) {
+    static_assert(check_as_sources<AsUnsigned>(std::type_identity<AsTypes>{}));
+    static_assert(check_as_sources<AsSigned>(std::type_identity<AsTypes>{}));
+    static_assert(check_as_sources<AsUfixed>(std::type_identity<AsTypes>{}));
+    static_assert(check_as_sources<AsSfixed>(std::type_identity<AsTypes>{}));
+    static_assert(check_as_sources<AsBitArray>(std::type_identity<AsTypes>{}));
+}
+
+TEST(TestUfixed, ReviewRegressions) {
+    Ufixed<3, 0> deduced_resize = resize(Ufixed<7, 0>(200));
+    EXPECT_EQ(static_cast<int>(deduced_resize), 15);
+
+    Ufixed<200, 0> high_word(1);
+    high_word <<= 150;
+    EXPECT_DOUBLE_EQ(static_cast<double>(high_word), std::ldexp(1.0, 150));
+
+    Ufixed<201, -1> widened = Ufixed<200, 0>(1);
+    EXPECT_DOUBLE_EQ(static_cast<double>(widened), 1.0);
+
+    Ufixed<7, 0> minuend(0);
+    EXPECT_THROW((minuend -= Ufixed<2, 0>(5)), std::out_of_range);
+
+    Ufixed<7, 0> positive_difference(20);
+    EXPECT_NO_THROW((positive_difference -= Ufixed<2, 0>(5)));
+    EXPECT_EQ(static_cast<int>(positive_difference), 15);
+
+    Ufixed<10, 3> positive_lsb(8);
+    static_assert(std::is_signed_v<decltype(Ufixed<10, 3>::frac_bits())>);
+    static_assert(std::is_signed_v<decltype(Ufixed<10, 3>::int_bits())>);
+    static_assert(Ufixed<10, 3>::frac_bits() == -3);
+    static_assert(Ufixed<10, 3>::int_bits() == 11);
+    EXPECT_DOUBLE_EQ(static_cast<double>(positive_lsb), 8.0);
+    EXPECT_EQ(static_cast<int>(positive_lsb), 8);
+    EXPECT_DOUBLE_EQ(static_cast<double>(Ufixed<10, 3>(2040)), 2040.0);
+    EXPECT_EQ(std::format("{:d}", Ufixed<10, 3>(96)), "Ufixed[10 downto 3]{96}");
+
+    using Subnormal = Ufixed<-5, -10>;
+    static_assert(Subnormal::frac_bits() == 10);
+    static_assert(Subnormal::int_bits() == -4);
+    static_assert(Subnormal::int_bits() + Subnormal::frac_bits() == Subnormal::size());
+    Subnormal subnormal(63.0 / 1024.0);
+    EXPECT_DOUBLE_EQ(static_cast<double>(subnormal), 63.0 / 1024.0);
+    EXPECT_EQ(std::format("{:d}", subnormal), "Ufixed[-5 downto -10]{0.0615234375}");
+
+    auto quotient = Ufixed<3, 0>(8) / Ufixed<3, 0>(4);
+    static_assert(std::is_same_v<decltype(quotient), Ufixed<3, -4>>);
+    EXPECT_DOUBLE_EQ(static_cast<double>(quotient), 2.0);
+
+    Ufixed<3, 0> shifted(1);
+    static_assert(std::is_same_v<decltype(shifted <<= 1), Ufixed<3, 0>&>);
+    (shifted <<= 1) <<= 1;
+    EXPECT_EQ(static_cast<int>(shifted), 4);
+
+    static_assert(!HasFixedOrdering<Ufixed<0, Direction::TO, 3>>);
+}
+
+TEST(TestUfixed, ZeroWidth) {
+    constexpr Range NullRange{-1, Direction::DOWNTO, 0};
+    using NullUfixed = Ufixed<NullRange>;
+
+    NullUfixed a{};
+    NullUfixed b{};
+    static_assert(NullUfixed::size() == 0);
+    EXPECT_EQ(a, b);
+    EXPECT_FALSE(static_cast<bool>(a));
+    EXPECT_EQ(a.begin(), a.end());
+    EXPECT_EQ(std::format("{:b}", a), "Ufixed[-1 downto 0]{}");
+    EXPECT_EQ(std::format("{:d}", a), "Ufixed[-1 downto 0]{}");
+
+    auto sum = a + b;
+    static_assert(std::is_same_v<decltype(sum), Ufixed<0, 0>>);
+    EXPECT_EQ(static_cast<unsigned>(sum), 0U);
+    EXPECT_FALSE(static_cast<bool>(a * b));
+
+    a += Ufixed<3, 0>(1);
+    a -= Ufixed<3, 0>(1);
+    a *= Ufixed<3, 0>(2);
+    a /= Ufixed<3, 0>(1);
+    a %= Ufixed<3, 0>(1);
+    EXPECT_EQ(a, NullUfixed{});
+
+    NullUfixed from_unsigned(Unsigned<0>{});
+    Ufixed<3, 0> widened = from_unsigned;
+    EXPECT_EQ(static_cast<unsigned>(widened), 0U);
+    EXPECT_FALSE(static_cast<bool>(resize<NullRange>(Ufixed<3, 0>(15))));
+
+    EXPECT_THROW((a /= Ufixed<3, 0>(0)), std::domain_error);
+    EXPECT_THROW((a %= Ufixed<3, 0>(0)), std::domain_error);
+
+    EXPECT_EQ(static_cast<unsigned>(Ufixed<3, 0>(1) + Unsigned<0>{}), 1U);
+    EXPECT_EQ(static_cast<unsigned>(Unsigned<0>{} + Ufixed<3, 0>(1)), 1U);
+    EXPECT_THROW((void)(Ufixed<3, 0>(1) / Unsigned<0>{}), std::domain_error);
+}
+
+TEST(TestUfixed, SubnormalSupernormalInterfaces) {
+    using Supernormal = Ufixed<10, 3>;
+    using WideSupernormal = Ufixed<15, 3>;
+    static_assert(
+        !noexcept(static_cast<unsigned char>(std::declval<Supernormal const&>()))
+    );
+    static_assert(!std::is_convertible_v<uint8_t, WideSupernormal>);
+    EXPECT_THROW((void)static_cast<unsigned char>(Supernormal(2040)), std::out_of_range);
+    EXPECT_EQ(WideSupernormal(uint8_t{248}), WideSupernormal(248));
+    EXPECT_THROW((WideSupernormal(uint8_t{255})), std::out_of_range);
+
+    auto tiny = as<Ufixed<-95, -100>>(BitArray<6>("000001"));
+    EXPECT_EQ(
+        (resize<10, 3>(tiny, overflow_mode::saturate, round_mode::round_to_pos)),
+        Supernormal(8)
+    );
+    EXPECT_EQ(
+        (resize<10, 3>(tiny, overflow_mode::saturate, round_mode::round_to_even)),
+        Supernormal(0)
+    );
+
+    auto min_double = Ufixed<-1074, -1075>(std::numeric_limits<double>::denorm_min());
+    EXPECT_EQ(as<BitArray<2>>(min_double), BitArray<2>("10"));
+
+    auto rounded_up =
+        Ufixed<1101, 1100>(1.0, overflow_mode::saturate, round_mode::round_to_pos);
+    EXPECT_EQ(as<BitArray<2>>(rounded_up), BitArray<2>("01"));
+
+    Ufixed<-5, -10> compound(1.0 / 1024.0);
+    auto const original = compound;
+    EXPECT_NO_THROW(compound += 1);
+    EXPECT_EQ(compound, original);
+    EXPECT_NO_THROW(++compound);
+    EXPECT_EQ(compound, original);
+    EXPECT_NO_THROW(compound *= 1);
+    EXPECT_EQ(compound, original);
+    EXPECT_NO_THROW(compound /= 1);
+    EXPECT_EQ(compound, original);
+    EXPECT_NO_THROW(compound %= 1);
+    EXPECT_EQ(compound, original);
+
+    Ufixed<3, 0> signed_native(5);
+    signed_native += -2;
+    EXPECT_EQ(signed_native, (Ufixed<3, 0>(3)));
+    signed_native -= -2;
+    EXPECT_EQ(signed_native, (Ufixed<3, 0>(5)));
+    EXPECT_THROW((signed_native *= -1), std::out_of_range);
+}
+
+TEST(TestUfixed, WideFloatInputAndRoundingModeIndependence) {
+    double const two_to_80 = std::ldexp(1.0, 80);
+    Ufixed<100, 0> wide(two_to_80);
+    EXPECT_DOUBLE_EQ(static_cast<double>(wide), two_to_80);
+
+    int const original_rounding_mode = std::fegetround();
+    ASSERT_EQ(std::fesetround(FE_DOWNWARD), 0);
+    Ufixed<3, -1> rounded(1.75, overflow_mode::saturate, round_mode::round_to_even);
+    ASSERT_EQ(std::fesetround(original_rounding_mode), 0);
+    EXPECT_DOUBLE_EQ(static_cast<double>(rounded), 2.0);
+}
+
+TEST(TestUfixed, IntegerConstructionMatrix) {
+    static_assert(std::is_convertible_v<uint8_t, Ufixed<7, 0>>);
+    static_assert(!std::is_convertible_v<uint16_t, Ufixed<7, 0>>);
+    static_assert(std::is_constructible_v<Ufixed<7, 0>, int8_t>);
+    static_assert(!std::is_convertible_v<int8_t, Ufixed<7, 0>>);
+
+    Ufixed<7, 0> from_native_unsigned = uint8_t{200};
+    EXPECT_EQ(static_cast<int>(from_native_unsigned), 200);
+    EXPECT_EQ(static_cast<int>(Ufixed<7, 0>(uint16_t{200})), 200);
+    EXPECT_THROW((Ufixed<7, 0>(uint16_t{256})), std::out_of_range);
+    EXPECT_EQ(static_cast<int>(Ufixed<7, 0>(int16_t{100})), 100);
+    EXPECT_THROW((Ufixed<7, 0>(int8_t{-1})), std::out_of_range);
+
+    Ufixed<7, 0> from_narrow_unsigned = Unsigned<4>(15);
+    EXPECT_EQ(static_cast<int>(from_narrow_unsigned), 15);
+    EXPECT_EQ(static_cast<int>(Ufixed<7, 0>(Unsigned<12>(200))), 200);
+    EXPECT_THROW((Ufixed<7, 0>(Unsigned<12>(256))), std::out_of_range);
+
+    EXPECT_EQ(static_cast<int>(Ufixed<7, 0>(Signed<4>(7))), 7);
+    EXPECT_EQ(static_cast<int>(Ufixed<7, 0>(Signed<12>(200))), 200);
+    EXPECT_THROW((Ufixed<7, 0>(Signed<12>(300))), std::out_of_range);
+    EXPECT_THROW((Ufixed<7, 0>(Signed<4>(-1))), std::out_of_range);
+
+    Ufixed<7, -4> from_ufixed = Ufixed<3, 0>(10);
+    EXPECT_DOUBLE_EQ(static_cast<double>(from_ufixed), 10.0);
+    EXPECT_EQ(static_cast<int>(Ufixed<7, 0>(Sfixed<4, 0>(5))), 5);
+    EXPECT_EQ(static_cast<int>(Ufixed<7, 0>(Sfixed<9, 0>(200))), 200);
+    EXPECT_THROW((Ufixed<7, 0>(Sfixed<9, 0>(300))), std::out_of_range);
+
+    Ufixed<3, -4> fractional_from_integer = Unsigned<4>(5);
+    EXPECT_DOUBLE_EQ(static_cast<double>(fractional_from_integer), 5.0);
+
+    EXPECT_DOUBLE_EQ(static_cast<double>(Ufixed<10, 3>(Unsigned<11>(8))), 8.0);
+    EXPECT_DOUBLE_EQ(static_cast<double>(Ufixed<10, 3>(Unsigned<12>(2040))), 2040.0);
+    EXPECT_THROW((Ufixed<10, 3>(Unsigned<12>(2041))), std::out_of_range);
+    EXPECT_THROW((Ufixed<10, 3>(Unsigned<12>(2048))), std::out_of_range);
+}
 
 TEST(TestUfixed, shape_and_typelevel) {
     Ufixed<6, -2> a(37);
@@ -154,7 +398,7 @@ TEST(TestUfixed, Constructors) {
 
     BitArray<7, 0> bits;
     bits[7] = Bit::_1;
-    Ufixed<3, -4> val_ba(bits);
+    auto val_ba = as<Ufixed<3, -4>>(bits);
     EXPECT_DOUBLE_EQ(static_cast<double>(val_ba), 8.0);
 
     Sfixed<3, -4> negative_val(-5.0);
@@ -165,11 +409,17 @@ TEST(TestUfixed, Constructors) {
     EXPECT_DOUBLE_EQ(static_cast<double>(pos_uf), 5.0);
 
     Ufixed<7, 0> wide(200);
-    Ufixed<3, 0> narrow_saturated(wide);
-    Ufixed<3, 0> narrow_wrapped(wide, overflow_mode::wrap, round_mode::round_to_even);
+    EXPECT_THROW((Ufixed<3, 0>(wide)), std::out_of_range);
+    Ufixed<3, 0> narrow_saturated = resize<3, 0>(wide);
+    Ufixed<3, 0> narrow_wrapped =
+        resize<3, 0>(wide, overflow_mode::wrap, round_mode::round_to_even);
 
     EXPECT_EQ(static_cast<int>(narrow_saturated), 15);
     EXPECT_EQ(static_cast<int>(narrow_wrapped), 8);
+
+    Ufixed<7, -4> fractional(5.5);
+    EXPECT_THROW((Ufixed<3, 0>(fractional)), std::out_of_range);
+    EXPECT_EQ(static_cast<int>(Ufixed<3, 0>(Ufixed<7, -4>(5.0))), 5);
 
     Ufixed<100, -50> wide_from_double(100.5);
     EXPECT_DOUBLE_EQ(static_cast<double>(wide_from_double), 100.5);
@@ -303,25 +553,9 @@ TEST(TestUfixed, ComparisonOperators) {
     EXPECT_TRUE(w_cmp_a < w_cmp_c);
 }
 
-TEST(TestUfixed, AtOrdinalIndexing) {
-    auto ba = "100110"_b;
-    Ufixed<4, -1> uf(ba);
-
-    EXPECT_TRUE(uf.at_ordinal(0) && uf.at_ordinal(3) && uf.at_ordinal(4));
-    EXPECT_FALSE(uf.at_ordinal(1) || uf.at_ordinal(5) || uf.at_ordinal(2));
-
-    EXPECT_THROW(uf.at_ordinal(6), std::out_of_range);
-    EXPECT_THROW(uf.at_ordinal(7), std::out_of_range);
-
-    Ufixed<100, -50> w_idx(1.0);
-    EXPECT_FALSE(w_idx.at_ordinal(0));
-    EXPECT_FALSE(w_idx.at_ordinal(150));
-    EXPECT_TRUE(w_idx.at_ordinal(100));
-}
-
 TEST(TestUfixed, Indexing) {
     auto ba = "100110"_b;
-    Ufixed<4, -1> uf(ba);
+    auto uf = as<Ufixed<4, -1>>(ba);
 
     EXPECT_TRUE(uf[4] && uf[1] && uf[0]);
     EXPECT_FALSE(uf[-1] || uf[3] || uf[2]);
@@ -333,6 +567,15 @@ TEST(TestUfixed, Indexing) {
     EXPECT_FALSE(w_idx[100]);
     EXPECT_FALSE(w_idx[-50]);
     EXPECT_TRUE(w_idx[0]);
+
+    uf[4] = Bit::_0;
+    uf[-1] = Bit::_1;
+    EXPECT_FALSE(static_cast<bool>(uf[4]));
+    EXPECT_TRUE(static_cast<bool>(uf[-1]));
+
+    auto const& const_uf = uf;
+    EXPECT_FALSE(static_cast<bool>(const_uf[4]));
+    EXPECT_TRUE(static_cast<bool>(const_uf[-1]));
 }
 
 TEST(TestUfixed, IterationSurface) {
@@ -365,44 +608,72 @@ TEST(TestUfixed, IterationSurface) {
     }
     EXPECT_EQ(range_based_count, 8);
 
+    for (auto bit : val) {
+        bit = Bit::_0;
+    }
+    EXPECT_TRUE(std::none_of(val.begin(), val.end(), [](auto bit) {
+        return static_cast<bool>(bit);
+    }));
+
+    *val.rbegin() = Bit::_1;
+    EXPECT_TRUE(static_cast<bool>(val[-4]));
+
+    auto const& const_val = val;
+    EXPECT_EQ(std::distance(const_val.begin(), const_val.end()), 8);
+
     Ufixed<100, -50> w_iter(0);
     EXPECT_EQ(std::distance(w_iter.begin(), w_iter.end()), 151);
 }
 
-TEST(TestUfixed, RoundFreeFunctions) {
-    EXPECT_EQ((floor(Ufixed<10, -10>(9.6))), (Ufixed<10, 0>(9)));
+TEST(TestUfixed, ResizeRoundingModes) {
+    Ufixed<10, -10> value(9.5);
 
-    EXPECT_EQ((floor(Ufixed<10, -10>(9.025))), (Ufixed<10, 0>(9)));
+    EXPECT_EQ(
+        (resize<10, 0>(value, overflow_mode::saturate, round_mode::truncate)),
+        (Ufixed<10, 0>(9))
+    );
+    EXPECT_EQ(
+        (resize<10, 0>(value, overflow_mode::saturate, round_mode::round_to_zero)),
+        (Ufixed<10, 0>(9))
+    );
+    EXPECT_EQ(
+        (resize<10, 0>(value, overflow_mode::saturate, round_mode::round_to_pos)),
+        (Ufixed<10, 0>(10))
+    );
+    EXPECT_EQ(
+        (resize<10, 0>(value, overflow_mode::saturate, round_mode::round)),
+        (Ufixed<10, 0>(10))
+    );
+    EXPECT_EQ(
+        (resize<10, 0>(value, overflow_mode::saturate, round_mode::round_to_even)),
+        (Ufixed<10, 0>(10))
+    );
 
-    EXPECT_EQ((ceil(Ufixed<10, -10>(9.6))), (Ufixed<10, 0>(10)));
+    Ufixed<-1, -4> subnormal(0.75);
+    EXPECT_EQ(
+        (resize<0, 0>(subnormal, overflow_mode::saturate, round_mode::round_to_pos)),
+        (Ufixed<0, 0>(1))
+    );
 
-    EXPECT_EQ((ceil(Ufixed<10, -10>(9.025))), (Ufixed<10, 0>(10)));
-
-    EXPECT_EQ((trunc(Ufixed<10, -10>(9.6))), (Ufixed<10, 0>(9)));
-
-    EXPECT_EQ((trunc(Ufixed<10, -10>(9.025))), (Ufixed<10, 0>(9)));
-
-    EXPECT_EQ((round(Ufixed<10, -10>(9.6))), (Ufixed<10, 0>(10)));
-
-    EXPECT_EQ((round(Ufixed<10, -10>(9.5))), (Ufixed<10, 0>(10)));
-
-    EXPECT_EQ((round(Ufixed<10, -10>(9.052))), (Ufixed<10, 0>(9)));
-
-    EXPECT_EQ((floor(Ufixed<100, -50>(9.6))), (Ufixed<100, 0>(9)));
+    Ufixed<10, 3> supernormal(16);
+    EXPECT_EQ(
+        (resize<10, 0>(supernormal, overflow_mode::saturate, round_mode::round)),
+        (Ufixed<10, 0>(16))
+    );
 }
 
 TEST(TestUfixed, Reverse) {
     auto ba = "10010110"_b;
     auto ba_r = "01101001"_b;
 
-    Ufixed<3, -4> uf_down(ba);
-    Ufixed<-4, Direction::TO, 3> uf_to(ba);
+    auto uf_down = as<Ufixed<3, -4>>(ba);
+    auto uf_to = as<Ufixed<-4, Direction::TO, 3>>(ba);
 
     auto r_to = reverse(uf_down);  // only direction changed
     auto r_down = reverse(uf_to);  // bits also reversed
 
     EXPECT_EQ(r_to, uf_to);
-    EXPECT_EQ(r_down, (Ufixed<3, -4>(ba_r)));
+    EXPECT_EQ(r_down, (as<Ufixed<3, -4>>(ba_r)));
 
     Ufixed<100, -50> w_rev_down(1);
     auto w_rev_to = reverse(w_rev_down);
@@ -463,10 +734,10 @@ TEST(TestUfixed, Hash) {
     raw_bits[1] = Bit::_0;
     raw_bits[0] = Bit::_1;
 
-    Ufixed<3, 0> u_downto(raw_bits);
-    Ufixed<2, -1> u_shifted(raw_bits);
-    Ufixed<Range{0, Direction::TO, 3}> u_to(raw_bits);
-    Sfixed<3, 0> s_downto(raw_bits);
+    auto u_downto = as<Ufixed<3, 0>>(raw_bits);
+    auto u_shifted = as<Ufixed<2, -1>>(raw_bits);
+    auto u_to = as<Ufixed<Range{0, Direction::TO, 3}>>(raw_bits);
+    auto s_downto = as<Sfixed<3, 0>>(raw_bits);
 
     auto hash_u_downto = std::hash<decltype(u_downto)>{}(u_downto);
     auto hash_u_shifted = std::hash<decltype(u_shifted)>{}(u_shifted);
@@ -549,17 +820,21 @@ TEST(TestUfixed, Concatenation) {
 }
 
 TEST(TestUfixed, SubtypeRoundTrip) {
+    static_assert(
+        !std::is_constructible_v<Ufixed<3, -4>, BitArray<Range{3, Direction::DOWNTO, -4}>>
+    );
+
     Ufixed<3, -4> s(5.0625);
 
     BitArray<Range{3, Direction::DOWNTO, -4}> ba = s;
-    Ufixed<3, -4> restored(ba);
+    auto restored = as<Ufixed<3, -4>>(ba);
 
     EXPECT_EQ(s, restored);
-    EXPECT_TRUE(s == (Ufixed<3, -4>(BitArray<Range{3, Direction::DOWNTO, -4}>(s))));
+    EXPECT_TRUE((s == as<Ufixed<3, -4>>(BitArray<Range{3, Direction::DOWNTO, -4}>(s))));
 
     Ufixed<100, -50> w_rt(5.0625);
     BitArray<Range{100, Direction::DOWNTO, -50}> w_ba = w_rt;
-    EXPECT_EQ(w_rt, (Ufixed<100, -50>(w_ba)));
+    EXPECT_EQ(w_rt, (as<Ufixed<100, -50>>(w_ba)));
 }
 
 TEST(TestUfixed, InfinityWrapThrows) {
@@ -675,6 +950,86 @@ TEST(TestUfixed, Arithmetic) {
     auto w_arith_c = w_arith_a + w_arith_b;
     EXPECT_TRUE((std::is_same_v<decltype(w_arith_c), Ufixed<101, -50>>));
     EXPECT_DOUBLE_EQ(static_cast<double>(w_arith_c), 24.75);
+}
+
+TEST(TestUfixed, DivisionFamily) {
+    static_assert(fixed_guard_bits == 3);
+
+    Ufixed<1, 0> two(2);
+    Ufixed<1, 0> three(3);
+
+    auto quotient = two / three;
+    static_assert(std::is_same_v<decltype(quotient), Ufixed<1, -2>>);
+    EXPECT_DOUBLE_EQ(static_cast<double>(quotient), 0.75);
+    EXPECT_EQ(quotient, divide(two, three));
+
+    // With one guard bit, 2/3 looks like an exact tie whose retained LSB is
+    // even. Three guard bits expose another nonzero bit and round upward.
+    EXPECT_DOUBLE_EQ(
+        static_cast<double>(divide(two, three, round_mode::round_to_even, 1)), 0.5
+    );
+    EXPECT_DOUBLE_EQ(
+        static_cast<double>(divide(two, three, round_mode::round_to_even, 3)), 0.75
+    );
+    EXPECT_DOUBLE_EQ(
+        static_cast<double>(divide(two, three, round_mode::round_to_zero, 3)), 0.5
+    );
+
+    Ufixed<2, 0> five(5);
+    auto remainder_result = remainder(five, three);
+    auto modulo_result = modulo(five, three);
+    static_assert(std::is_same_v<decltype(remainder_result), Ufixed<1, 0>>);
+    static_assert(std::is_same_v<decltype(modulo_result), Ufixed<1, 0>>);
+    EXPECT_EQ(static_cast<unsigned>(remainder_result), 2U);
+    EXPECT_EQ(rem(five, three), remainder_result);
+    EXPECT_EQ(modulo_result, remainder_result);
+    EXPECT_EQ(mod(five, three), modulo_result);
+
+    auto [divrem_quotient, divrem_remainder] = divrem(five, three);
+    EXPECT_EQ(divrem_quotient, divide(five, three));
+    EXPECT_EQ(divrem_remainder, remainder_result);
+    auto [divmod_quotient, divmod_modulo] = divmod(five, three);
+    EXPECT_EQ(divmod_quotient, divide(five, three));
+    EXPECT_EQ(divmod_modulo, modulo_result);
+
+    // The combined operation aligns unlike binary-point locations before its
+    // one magnitude division, so its remainder is expressed exactly at the
+    // finer operand resolution.
+    Ufixed<3, -2> fractional_dividend(5.25);
+    Ufixed<2, -1> fractional_divisor(2.5);
+    auto [fractional_quotient, fractional_remainder] =
+        divrem(fractional_dividend, fractional_divisor);
+    static_assert(std::is_same_v<decltype(fractional_quotient), Ufixed<4, -5>>);
+    static_assert(std::is_same_v<decltype(fractional_remainder), Ufixed<2, -2>>);
+    EXPECT_DOUBLE_EQ(static_cast<double>(fractional_quotient), 2.09375);
+    EXPECT_DOUBLE_EQ(static_cast<double>(fractional_remainder), 0.25);
+
+    // Guard positions can be integral when the quotient range ends above zero.
+    Ufixed<5, 4> coarse_dividend(32);
+    Ufixed<0, -1> one_and_a_half(1.5);
+    static_assert(std::is_same_v<decltype(coarse_dividend / one_and_a_half), Ufixed<6, 3>>);
+    EXPECT_DOUBLE_EQ(static_cast<double>(coarse_dividend / one_and_a_half), 24.0);
+    EXPECT_DOUBLE_EQ(
+        static_cast<double>(
+            divide(coarse_dividend, one_and_a_half, round_mode::round_to_even, 1)
+        ),
+        16.0
+    );
+    EXPECT_DOUBLE_EQ(static_cast<double>(remainder(coarse_dividend, one_and_a_half)), 0.5);
+
+    constexpr Range NullRange{-1, Direction::DOWNTO, 0};
+    auto [zero_quotient, zero_remainder] = divrem(Ufixed<NullRange>{}, three);
+    EXPECT_FALSE(static_cast<bool>(zero_quotient));
+    EXPECT_FALSE(static_cast<bool>(zero_remainder));
+    EXPECT_THROW((void)divide(three, Ufixed<NullRange>{}), std::domain_error);
+
+    auto reciprocal_result = reciprocal(three);
+    static_assert(std::is_same_v<decltype(reciprocal_result), Ufixed<0, -2>>);
+    EXPECT_DOUBLE_EQ(static_cast<double>(reciprocal_result), 0.25);
+
+    EXPECT_THROW((void)divide(two, Ufixed<1, 0>(0)), std::domain_error);
+    EXPECT_THROW((void)remainder(two, Ufixed<1, 0>(0)), std::domain_error);
+    EXPECT_THROW((void)modulo(two, Ufixed<1, 0>(0)), std::domain_error);
 }
 
 TEST(TestUfixed, CompoundArithmetic) {
@@ -795,7 +1150,7 @@ TEST(TestUfixed, ImplicitUnsignedArithmetic) {
     auto div_res_r = b / a;
 
     EXPECT_NEAR(static_cast<double>(div_res), 1.2833, 1e-4);
-    EXPECT_NEAR(static_cast<double>(div_res_r), 0.765625, 1e-6);
+    EXPECT_NEAR(static_cast<double>(div_res_r), 0.78125, 1e-6);
 
     auto mod_res = a % b;
     auto mod_res_r = b % a;
