@@ -1,4 +1,6 @@
 // Python bindings for coconext unsigned dynamic type.
+#include <cstddef>
+#include <cstdint>
 #include <nanobind/nanobind.h>
 
 #include <coconext/types/dyn_signed.hpp>
