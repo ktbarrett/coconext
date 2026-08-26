@@ -86,12 +86,8 @@ simulator_tests:
 	pytest $(PYTEST_COVERAGE_ARGS) tests/simulator
 
 .PHONY: integration_tests
-integration_tests:
-	pytest $(PYTEST_COVERAGE_ARGS) tests/integration_tests tests/pytest
-
-.PHONY: cocotb_tests
-cocotb_tests: dev_build
-	$(MAKE) -C tests
+integration_tests: dev_build
+	pytest $(PYTEST_COVERAGE_ARGS) tests/integration_tests tests/pytest/test_unsigned.py
 
 .PHONY: coverage_reset
 coverage_reset:

@@ -1,5 +1,5 @@
-#ifndef COCONEXT_DYN_INT_BASE_HPP
-#define COCONEXT_DYN_INT_BASE_HPP
+#ifndef COCONEXT_DYN_BITS_HPP
+#define COCONEXT_DYN_BITS_HPP
 
 #include <algorithm>
 #include <coconext/types/bigint.hpp>
@@ -295,6 +295,8 @@ class DynBits {
         });
     }
 
+    size_t get_width() const noexcept { return width_; }
+
   private:
     size_t width_;
     union Storage {
@@ -524,4 +526,4 @@ inline DynBits abs_signed(DynBits const& a) {
 
 }  // namespace coconext::types::detail
 
-#endif  // COCONEXT_DYN_INT_BASE_HPP
+#endif  // COCONEXT_DYN_BITS_HPP

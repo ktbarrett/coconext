@@ -1,5 +1,5 @@
-#ifndef COCONEXT_INT_BASE_HPP
-#define COCONEXT_INT_BASE_HPP
+#ifndef COCONEXT_BITS_HPP
+#define COCONEXT_BITS_HPP
 
 #include <algorithm>
 #include <array>
@@ -1601,4 +1601,4 @@ constexpr Target as(Source const& source) noexcept {
 
 }  // namespace coconext::types
 
-#endif  // COCONEXT_INT_BASE_HPP
+#endif  // COCONEXT_BITS_HPP

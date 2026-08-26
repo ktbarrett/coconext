@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
-from _pycoconext import Bit, BitArray, Direction, Logic, LogicArray, Range
+from _pycoconext import (
+    Bit,
+    BitArray,
+    Direction,
+    Logic,
+    LogicArray,
+    Range,
+    Signed,
+    Unsigned,
+)
 
 __all__ = (
     "Bit",
@@ -11,6 +20,8 @@ __all__ = (
     "Logic",
     "LogicArray",
     "Range",
+    "Signed",
+    "Unsigned",
 )
 
 # fixup __module__
