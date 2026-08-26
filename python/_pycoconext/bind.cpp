@@ -6,6 +6,8 @@ namespace nb = nanobind;
 void register_logic(nb::module_& m);
 void register_logic_array(nb::module_& m);
 void register_range(nb::module_& m);
+void register_unsigned(nb::module_& m);
+void register_signed(nb::module_& m);
 
 NB_MODULE(_pycoconext, m) {
     register_logic(m);
@@ -13,4 +15,6 @@ NB_MODULE(_pycoconext, m) {
     // LogicArray bindings reference `Logic` and `Bit` via m.attr() at binding
     // time, so must run after register_logic.
     register_logic_array(m);
+    register_unsigned(m);
+    register_signed(m);
 }
