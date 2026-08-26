@@ -32,7 +32,7 @@ class DynUnsigned {
     // static_assert(R.length() >= 0, "Unsigned width must not be negative");
 
     template <typename T>
-    constexpr T to_native_int() const {
+    T to_native_int() const {
         auto val = value_;
         if (val.ugt(DynBits(val.get_width(), std::numeric_limits<T>::max()))) {
             throw std::out_of_range("Value too large for destination native type");
@@ -183,7 +183,7 @@ class DynUnsigned {
         return value_ != DynBits{value_.get_width(), 0};
     }
 
-    explicit constexpr operator long long() const { return to_native_int<long long>(); }
+    explicit operator long long() const { return to_native_int<long long>(); }
 
     //     template <typename ShiftType>
     //     constexpr Unsigned<R> operator<<(ShiftType const& shift_amount) const {

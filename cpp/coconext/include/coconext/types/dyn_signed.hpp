@@ -18,7 +18,7 @@ class DynSigned {
     // static_assert(R.length() >= 0, "Unsigned width must not be negative");
 
     template <typename T>
-    constexpr T to_native_int() const {
+    T to_native_int() const {
         constexpr size_t target_width = sizeof(T) * 8;
 
         if (!fits_signed(value_.cref(), target_width)) {
@@ -213,7 +213,7 @@ class DynSigned {
         return value_ != DynBits{value_.get_width(), 0};
     }
 
-    explicit constexpr operator long long() const { return to_native_int<long long>(); }
+    explicit operator long long() const { return to_native_int<long long>(); }
 
     //     template <typename ShiftType>
     //     constexpr Unsigned<R> operator<<(ShiftType const& shift_amount) const {
