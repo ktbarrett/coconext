@@ -6,17 +6,9 @@
 
 namespace coconext::types::detail {
 
-// template <auto... Args, typename X>
-//     requires(sizeof...(Args) > 0 && is_coconext_unsigned_v<std::remove_cvref_t<X>>)
-// constexpr auto resize(
-//     X&& x, overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
-// );
-
 class DynUnsigned;
 
 class DynSigned {
-    // static_assert(R.length() >= 0, "Unsigned width must not be negative");
-
     template <typename T>
     T to_native_int() const {
         constexpr size_t target_width = sizeof(T) * 8;
@@ -35,10 +27,6 @@ class DynSigned {
     }
 
   public:
-    // static constexpr Range static_range = R;
-    // static constexpr Range range() noexcept { return R; }
-    // static constexpr size_t size() noexcept { return R.length(); }
-
     DynSigned(DynBits const& val) : value_(val) {}
 
     size_t get_width() const { return value_.get_width(); }
@@ -46,48 +34,23 @@ class DynSigned {
     // Construct from a native integer.
     template <NativeInteger T>
     DynSigned(size_t width, T v) : value_(width, v) {
-        if constexpr (std::is_signed_v<T>) {
-            if (v < 0) {
-                throw std::overflow_error("negative value in Signed construction");
-            }
+        if (width >= std::numeric_limits<T>::digits) {
+            return;
         }
 
-        if (std::numeric_limits<T>::digits > width) {
-            using unsigned_T = std::make_unsigned_t<T>;
-            unsigned_T max_unsigned = (width >= sizeof(unsigned_T) * 8)
-                                        ? static_cast<unsigned_T>(-1)
-                                        : (static_cast<unsigned_T>(1) << width) - 1;
+        if constexpr (std::is_unsigned_v<T>) {
+            T max_val = (static_cast<T>(1) << (width - 1)) - 1;
+            if (v > max_val) {
+                throw std::overflow_error("Unsigned value too large for Signed width");
+            }
+        } else {
+            T max_val = (static_cast<T>(1) << (width - 1)) - 1;
+            T min_val = -(static_cast<T>(1) << (width - 1));
 
-            if (static_cast<unsigned_T>(v) > max_unsigned) {
-                throw std::overflow_error("value does not fit in Unsigned width");
+            if (v > max_val || v < min_val) {
+                throw std::overflow_error("Signed value does not fit in provided width");
             }
         }
-
-        // if constexpr (std::is_unsigned_v<T>) {
-        //     if (v > std::numeric_limits<T>::max()) {
-        //         throw std::out_of_range("Unsigned value does not fit in Signed width");
-        //     }
-        // } else {
-        //     if constexpr (std::numeric_limits<T>::digits >= R.length()) {
-        //         long long max_val = (1ULL << (R.length() - 1)) - 1;
-        //         long long min_val = -(1LL << (R.length() - 1));
-        //         if (v < min_val || v > max_val) {
-        //             throw std::out_of_range("Signed value does not fit in Signed width");
-        //         }
-        //     }
-        // }
-
-        // value_ = detail::Bits<R.length()>(static_cast<uint64_t>(v));
-        // if constexpr (R.length() > 64) {
-        //     if constexpr (std::is_signed_v<T>) {
-        //         if (v < 0) {
-        //             Signed<R> temp(value_);
-        //             temp = temp << (R.length() - 64);
-        //             temp = temp >> (R.length() - 64);
-        //             value_ = temp.value_;
-        //         }
-        //     }
-        // }
     }
 
     //     // Cross-width conversion. Throws if the source value doesn't fit in N bits.
@@ -184,30 +147,17 @@ class DynSigned {
     //         return *this;
     //     }
 
-    //     friend constexpr bool operator==(Unsigned const& lhs, Unsigned const& rhs)
-    //     noexcept {
-    //         return lhs.value_ == rhs.value_;
-    //     }
+    bool operator==(DynSigned const& rhs) const noexcept {
+        return value_ == rhs.value_ && get_width() == rhs.get_width();
+    }
 
-    //     friend constexpr auto operator<(Unsigned const& lhs, Unsigned const& rhs)
-    //     noexcept {
-    //         return lhs.value_.ult(rhs.value_);
-    //     }
+    auto operator<(DynSigned const& rhs) const noexcept { return value_.slt(rhs.value_); }
 
-    //     friend constexpr auto operator<=(Unsigned const& lhs, Unsigned const& rhs)
-    //     noexcept {
-    //         return lhs.value_.ule(rhs.value_);
-    //     }
+    auto operator<=(DynSigned const& rhs) const noexcept { return value_.sle(rhs.value_); }
 
-    //     friend constexpr auto operator>(Unsigned const& lhs, Unsigned const& rhs)
-    //     noexcept {
-    //         return lhs.value_.ugt(rhs.value_);
-    //     }
+    auto operator>(DynSigned const& rhs) const noexcept { return value_.sgt(rhs.value_); }
 
-    //     friend constexpr auto operator>=(Unsigned const& lhs, Unsigned const& rhs)
-    //     noexcept {
-    //         return lhs.value_.uge(rhs.value_);
-    //     }
+    auto operator>=(DynSigned const& rhs) const noexcept { return value_.sge(rhs.value_); }
 
     explicit operator bool() const noexcept {
         return value_ != DynBits{value_.get_width(), 0};
@@ -324,68 +274,85 @@ class DynSigned {
     //         );
     //     }
 
-    // auto operator+(DynUnsigned const& rhs) const {
-    //     return DynUnsigned(add_unsigned(value_, rhs.value_));
-    // }
+    auto operator+() const { return *this; }
 
-    // auto operator-(DynUnsigned const& rhs) const {
-    //     return DynSigned(add_unsigned(value_, rhs.value_));
-    // }
+    auto operator-() const {
+        return DynSigned(sub_signed(DynBits(get_width(), 0), value_));
+    }
 
-    // auto operator*(DynUnsigned const& rhs) const {
-    //     return DynUnsigned(mul_unsigned(value_, rhs.value_));
-    // }
+    auto operator+(DynSigned const& rhs) const {
+        return DynSigned(add_signed(value_, rhs.value_));
+    }
 
-    // auto operator/(DynUnsigned const& rhs) const {
-    //     if (!static_cast<bool>(rhs)) {
-    //         throw std::domain_error("Division by zero");
-    //     }
-    //     return DynUnsigned(div_unsigned(value_, rhs.value_));
-    // }
+    auto operator-(DynSigned const& rhs) const {
+        return DynSigned(sub_signed(value_, rhs.value_));
+    }
 
-    // auto operator%(DynUnsigned const& rhs) const {
-    //     if (!static_cast<bool>(rhs)) {
-    //         throw std::domain_error("Division by zero");
-    //     }
-    //     return DynUnsigned(rem_unsigned(value_, rhs.value_));
-    // }
+    auto operator*(DynSigned const& rhs) const {
+        return DynSigned(mul_signed(value_, rhs.value_));
+    }
 
-    //     template <Range R2>
-    //     constexpr Unsigned& operator+=(Unsigned<R2> const& rhs) {
-    //         *this = coconext::types::resize<R.length()>(*this + rhs);
-    //         return *this;
-    //     }
+    auto operator/(DynSigned const& rhs) const {
+        if (!static_cast<bool>(rhs)) {
+            throw std::domain_error("Division by zero");
+        }
+        return DynSigned(div_signed(value_, rhs.value_));
+    }
 
-    //     template <Range R2>
-    //     constexpr Unsigned& operator-=(Unsigned<R2> const& rhs) {
-    //         auto res = coconext::types::resize<R.length()>(*this - rhs);
-    //         *this = Unsigned<R>(static_cast<Array<Bit, R>>(res));
-    //         return *this;
-    //     }
+    auto operator%(DynSigned const& rhs) const {
+        if (!static_cast<bool>(rhs)) {
+            throw std::domain_error("Division by zero");
+        }
+        return DynSigned(rem_signed(value_, rhs.value_));
+    }
 
-    //     template <Range R2>
-    //     constexpr Unsigned& operator*=(Unsigned<R2> const& rhs) {
-    //         *this = coconext::types::resize<R.length()>(*this * rhs);
-    //         return *this;
-    //     }
+    auto operator+=(DynSigned const& rhs) {
+        if (get_width() >= rhs.get_width()) {
+            value_ = add_signed(value_, rhs.value_).truncate(get_width());
+            return *this;
+        } else {
+            value_ = DynBits::exact_add(value_, rhs.value_.truncate(get_width()));
+            return *this;
+        }
+    }
 
-    //     template <Range R2>
-    //     constexpr Unsigned& operator/=(Unsigned<R2> const& rhs) {
-    //         if (!static_cast<bool>(rhs)) {
-    //             throw std::domain_error("Division by zero");
-    //         }
-    //         *this = coconext::types::resize<R.length()>(*this / rhs);
-    //         return *this;
-    //     }
+    auto operator-=(DynSigned const& rhs) {
+        if (get_width() >= rhs.get_width()) {
+            value_ = sub_signed(value_, rhs.value_).truncate(get_width());
+            return *this;
+        } else {
+            value_ = DynBits::exact_sub(value_, rhs.value_.truncate(get_width()));
+            return *this;
+        }
+    }
 
-    //     template <Range R2>
-    //     constexpr Unsigned& operator%=(Unsigned<R2> const& rhs) {
-    //         if (!static_cast<bool>(rhs)) {
-    //             throw std::domain_error("Division by zero");
-    //         }
-    //         *this = coconext::types::resize<R.length()>(*this % rhs);
-    //         return *this;
-    //     }
+    auto operator*=(DynSigned const& rhs) {
+        if (get_width() >= rhs.get_width()) {
+            value_ = mul_signed(value_, rhs.value_).truncate(get_width());
+            return *this;
+        } else {
+            value_ = DynBits::exact_mul(value_, rhs.value_.truncate(get_width()));
+            return *this;
+        }
+    }
+
+    auto operator/=(DynSigned const& rhs) {
+        if (!static_cast<bool>(rhs)) {
+            throw std::domain_error("Division by zero");
+        }
+
+        value_ = detail::div_signed(value_, rhs.value_).truncate(get_width());
+        return *this;
+    }
+
+    auto operator%=(DynSigned const& rhs) {
+        if (!static_cast<bool>(rhs)) {
+            throw std::domain_error("Division by zero");
+        }
+
+        value_ = detail::rem_signed(value_, rhs.value_).truncate(get_width());
+        return *this;
+    }
 
     //     template <NativeInteger T>
     //     constexpr Unsigned& operator+=(T const& rhs) {
@@ -479,150 +446,76 @@ class DynSigned {
     //         return *this;
     //     }
 
-    //     constexpr Unsigned& operator++() {
-    //         *this += 1;
-    //         return *this;
-    //     }
-
-    //     constexpr Unsigned operator++(int) {
-    //         Unsigned tmp = *this;
-    //         *this += 1;
-    //         return tmp;
-    //     }
-
-    //     constexpr Unsigned& operator--() {
-    //         *this -= 1;
-    //         return *this;
-    //     }
-
-    //     constexpr Unsigned operator--(int) {
-    //         Unsigned tmp = *this;
-    //         *this -= 1;
-    //         return tmp;
-    //     }
-
-    //     constexpr auto begin() const { return value_.begin(); }
-    //     constexpr auto rbegin() const { return value_.rbegin(); }
-
-    //     constexpr auto end() const { return value_.end(); }
-    //     constexpr auto rend() const { return value_.rend(); }
-
-    //     constexpr auto operator[](Range::value_type idx) const {
-    //         auto const offset = offset_of(R, idx);
-    //         if (!offset.has_value()) {
-    //             throw std::out_of_range("Index out of bounds");
-    //         }
-    //         size_t bit_pos = R.length() - 1 - offset.value();
-
-    //         return value_[bit_pos];
-    //     }
-
-    //     template <size_t N>
-    //     constexpr auto index() const {
-    //         return value_[N];
-    //     }
+    auto index(Range::value_type index) const {
+        if (index >= static_cast<Range::value_type>(get_width()) || index < 0) {
+            throw std::out_of_range("Out of bounds access in DynSigned.index()");
+        }
+        return value_.get_bit(index);
+    }
 
   private:
     friend struct bits_fn;
     DynBits value_;
 };
 
-// inline constexpr bool is_coconext_unsigned_v<DynUnsigned> = true;
+DynSigned operator+(DynUnsigned const& lhs) {
+    return DynSigned(bits(lhs).zero_extend(lhs.get_width() + 1));
+}
 
-// User-facing alias: accepts the same NTTP forms as Array<T, ...>, with HDL
-// DOWNTO defaulting (see make_int_range for the rules).
-// template <auto... Args>
-// using Unsigned = Unsigned<make_int_range<Args...>()>;
-
-// template <auto... Args, typename X>
-//     requires(sizeof...(Args) > 0 && is_coconext_unsigned_v<std::remove_cvref_t<X>>)
-// constexpr auto resize(X&& x, overflow_mode ovf, round_mode rnd) {
-//     constexpr Range TargetRange = make_int_range<Args...>();
-//     return Unsigned<TargetRange>(resize(std::forward<X>(x), ovf, rnd));
-// }
-
-// consteval Unsigned<8> u8(unsigned long long v) { return Unsigned<8>(v); }
-// consteval Unsigned<16> u16(unsigned long long v) { return Unsigned<16>(v); }
-// consteval Unsigned<32> u32(unsigned long long v) { return Unsigned<32>(v); }
-// consteval Unsigned<64> u64(unsigned long long v) { return Unsigned<64>(v); }
+DynSigned operator-(DynUnsigned const& lhs) {
+    return DynSigned(sub_unsigned(DynBits(lhs.get_width(), 0), bits(lhs)));
+}
 
 DynSigned operator-(DynUnsigned const& lhs, DynUnsigned const& rhs) {
     return DynSigned(sub_unsigned(bits(lhs), bits(rhs)));
 }
 
+DynUnsigned operator+=(DynUnsigned& lhs, DynSigned const& rhs) {
+    auto temp = DynSigned(bits(lhs));
+    lhs.value_ = std::move(bits(temp += rhs));
+    return lhs;
+}
+
+DynUnsigned operator-=(DynUnsigned& lhs, DynSigned const& rhs) {
+    auto temp = DynSigned(bits(lhs));
+    lhs.value_ = std::move(bits(temp -= rhs));
+    return lhs;
+}
+
+DynUnsigned operator*=(DynUnsigned& lhs, DynSigned const& rhs) {
+    auto temp = DynSigned(bits(lhs));
+    lhs.value_ = std::move(bits(temp *= rhs));
+    return lhs;
+}
+
+DynUnsigned operator/=(DynUnsigned& lhs, DynSigned const& rhs) {
+    if (!static_cast<bool>(rhs)) {
+        throw std::domain_error("Division by zero");
+    }
+
+    size_t safe_width = std::max(lhs.get_width() + 1, rhs.get_width());
+    auto lhs_positive = bits(lhs).zero_extend(safe_width);
+
+    auto quotient = div_signed(lhs_positive, bits(rhs));
+    lhs.value_ = quotient.truncate(lhs.get_width());
+
+    return lhs;
+}
+
+DynUnsigned operator%=(DynUnsigned& lhs, DynSigned const& rhs) {
+    if (!static_cast<bool>(rhs)) {
+        throw std::domain_error("Division by zero");
+    }
+
+    size_t safe_width = std::max(lhs.get_width() + 1, rhs.get_width());
+    auto lhs_positive = detail::bits(lhs).zero_extend(safe_width);
+
+    auto remainder = detail::rem_signed(lhs_positive, detail::bits(rhs));
+    lhs.value_ = remainder.truncate(lhs.get_width());
+
+    return lhs;
+}
+
 }  // namespace coconext::types::detail
-
-// template <coconext::types::Range R>
-// struct std::formatter<coconext::types::detail::Unsigned<R>> {
-//     char presentation = 'd';
-
-//     constexpr auto parse(std::format_parse_context& ctx) {
-//         auto it = ctx.begin(), end = ctx.end();
-//         if (it != end && *it != '}') {
-//             presentation = *it++;
-//             if (presentation != 'd' && presentation != 'b' && presentation != 'o'
-//                 && presentation != 'x')
-//             {
-//                 throw std::format_error("Invalid format specifier for Unsigned");
-//             }
-//         }
-//         if (it != end && *it != '}') {
-//             throw std::format_error("Invalid format string");
-//         }
-//         return it;
-//     }
-
-//     auto format(
-//         coconext::types::detail::Unsigned<R> const& v, std::format_context& ctx
-//     ) const {
-//         std::string str_r;
-//         switch (presentation) {
-//         case 'b':
-//             str_r = coconext::types::detail::bits(v).to_binary_string();
-//             break;
-//         case 'o':
-//             str_r = coconext::types::detail::bits(v).to_octal_string();
-//             break;
-//         case 'x':
-//             str_r = coconext::types::detail::bits(v).to_hexadecimal_string();
-//             break;
-//         default:
-//             str_r = coconext::types::detail::bits(v).to_decimal_string();
-//         }
-//         return std::format_to(ctx.out(), "Unsigned{}{{{}}}", R, str_r);
-//     }
-// };
-
-// template <coconext::types::Range R>
-// struct std::hash<coconext::types::detail::Unsigned<R>> {
-//     size_t operator()(coconext::types::detail::Unsigned<R> const& v) const noexcept {
-//         std::string_view type_name = typeid(coconext::types::detail::Unsigned<R>).name();
-//         size_t unsigned_seed = std::hash<std::string_view>{}(type_name);
-//         constexpr size_t W = R.length();
-//         size_t value_hash = 0;
-
-//         if constexpr (W > 0) {
-//             if constexpr (!coconext::types::detail::Bits<W>::is_wide) {
-//                 auto raw_val = coconext::types::detail::bits(v).raw();
-//                 if constexpr (sizeof(raw_val) > sizeof(size_t)) {
-//                     uint64_t low = static_cast<uint64_t>(raw_val);
-//                     uint64_t high = static_cast<uint64_t>(raw_val >> 64);
-//                     value_hash = coconext::types::detail::hash_combine(low, high);
-//                 } else {
-//                     value_hash = std::hash<decltype(raw_val)>{}(raw_val);
-//                 }
-//             } else {
-//                 auto val = coconext::types::detail::bits(v).raw();
-//                 constexpr size_t num_words = (W + 63) / 64;
-//                 for (size_t i = 0; i < num_words; ++i) {
-//                     value_hash =
-//                         coconext::types::detail::hash_combine(value_hash, val.word(i));
-//                 }
-//             }
-//         }
-
-//         return coconext::types::detail::hash_combine(unsigned_seed, R, value_hash);
-//     }
-// };
 
 #endif  // COCONEXT_DYN_SIGNED_HPP
