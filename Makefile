@@ -86,7 +86,7 @@ simulator_tests:
 
 .PHONY: integration_tests
 integration_tests: dev_build
-	pytest $(PYTEST_COVERAGE_ARGS) tests/integration_tests tests/pytest/test_unsigned.py
+	pytest $(PYTEST_COVERAGE_ARGS) tests/integration_tests tests/pytest/test_signed.py
 
 .PHONY: coverage_reset
 coverage_reset:

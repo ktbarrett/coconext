@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from coconext.types import Unsigned
+from coconext.types import Signed, Unsigned
 
 
 def test_constructors():
@@ -19,7 +19,7 @@ def test_constructors():
     large_val = Unsigned(8, 200)
     small_val = Unsigned(8, 10)
 
-    narrow_fit = Unsigned(4, int(small_val))  # Emulating narrow_fit(small_val)
+    narrow_fit = Unsigned(4, int(small_val))
     assert int(narrow_fit) == 10
 
     with pytest.raises(OverflowError):
@@ -37,9 +37,10 @@ def test_explicit_native_casts():
 
 def test_arithmetic_operators():
     a = Unsigned(8, 150)
-    b = Unsigned(8, 50)
 
+    b = Unsigned(8, 50)
     sum_res = a + b
+
     assert type(sum_res) is Unsigned
     assert len(sum_res) == 9
     assert int(sum_res) == 200
@@ -63,72 +64,60 @@ def test_arithmetic_operators():
 
     sub_pos = a - b
     sub_neg = b - a
+
     assert len(sub_pos) == 9
     assert len(sub_neg) == 9
     assert int(sub_pos) == 100
     assert int(sub_neg) == -100
 
 
-# def test_compound_assignment_operators_mixed_signedness():
-#     u1 = Unsigned(8, 15)
-#     u1 += Signed(8, -5)
-#     assert u1 == Unsigned(8, 10)
+def test_arithmetic_operators_edge_cases():
+    u_narrow = Unsigned(4, 15)  # Max 4-bit (1111)
+    u_wide = Unsigned(32, 1000000)  # 32-bit
 
-#     u2 = Unsigned(8, 250)
-#     u2 += Signed(8, 10)
-#     assert u2 == Unsigned(8, 4)
+    sum_nw = u_narrow + u_wide
+    assert len(sum_nw) == 33  # max(4, 32) + 1
+    assert int(sum_nw) == 1000015
 
-#     u3 = Unsigned(8, 5)
-#     u3 -= Signed(8, 10)
-#     assert u3 == Unsigned(8, 251)
+    sum_wn = u_wide + u_narrow
+    assert len(sum_wn) == 33
+    assert int(sum_wn) == 1000015
 
-#     u4 = Unsigned(8, 10)
-#     u4 *= Signed(8, -3)
-#     assert u4 == Unsigned(8, 226)
+    sub_zero = u_narrow - Unsigned(8, 15)
+    assert len(sub_zero) == 9  # max(4, 8) + 1
+    assert int(sub_zero) == 0
 
-#     u5 = Unsigned(8, 20)
-#     u5 //= Signed(8, -4)
-#     assert u5 == Unsigned(8, 251)
+    sub_wn = u_wide - u_narrow
+    assert len(sub_wn) == 33
+    assert int(sub_wn) == 999985
 
-#     u6 = Unsigned(8, 23)
-#     u6 %= Signed(8, -7)
-#     assert u6 == Unsigned(8, 2)
+    sub_nw = u_narrow - u_wide
+    assert len(sub_nw) == 33
+    assert int(sub_nw) == 15 - 1000000
 
-#     u7 = Unsigned(8, 50)
-#     with pytest.raises(ValueError):
-#         u7 //= Signed(8, 0)
-#     with pytest.raises(ValueError):
-#         u7 %= Signed(8, 0)
+    u_zero = Unsigned(8, 0)
+    u_one = Unsigned(1, 1)
 
+    prod_zero = u_narrow * u_zero
+    assert len(prod_zero) == 12  # 4 + 8
+    assert int(prod_zero) == 0
 
-# def test_as_overloads():
-#     arr_a = BitArray("01001")
-#     a = Unsigned(5, arr_a)
-#     arr_exp = BitArray(a)
+    prod_one = u_wide * u_one
+    assert len(prod_one) == 33  # 32 + 1
+    assert int(prod_one) == 1000000
 
-#     assert type(a) is Unsigned
-#     assert int(a) == 9
-#     assert str(arr_a) == str(arr_exp)
+    prod_max = u_narrow * u_narrow
+    assert len(prod_max) == 8  # 4 + 4
+    assert int(prod_max) == 225  # 15 * 15
 
+    div_large = u_narrow / u_wide
+    assert int(div_large) == 0
 
-# def test_resize_overloads():
-#     small = Unsigned(8, 200)
+    mod_large = u_narrow % u_wide
+    assert int(mod_large) == 15
 
-#     wide = small.resize(16)
-#     assert type(wide) is Unsigned
-#     assert len(wide) == 16
-#     assert int(wide) == 200
-
-#     wide_val = Unsigned(16, 1000)
-
-#     narrow_wrap = wide_val.resize(8)
-#     assert type(narrow_wrap) is Unsigned
-#     assert len(narrow_wrap) == 8
-#     assert int(narrow_wrap) == 232
-
-#     # Assuming overflow_mode="saturate" is valid in your Python bindings
-#     narrow_sat = wide_val.resize(8, overflow_mode=OverflowMode.Saturate)
-#     assert int(narrow_sat) == 255
+    mod_one = u_wide % u_one
+    assert int(mod_one) == 0
 
 
 def test_comparisons():
@@ -162,265 +151,296 @@ def test_comparisons():
 
 def test_compound_assignment():
     a = Unsigned(8, 10)
-    b = Unsigned(4, 5)
 
-    a += b
+    a += Unsigned(4, 5)
     assert int(a) == 15
 
-    # a -= Unsigned(8, 3)
-    # assert int(a) == 12
+    a -= Unsigned(5, 3)
+    assert int(a) == 12
 
-    # a *= Unsigned(2, 2)
-    # assert int(a) == 24
+    a *= Unsigned(2, 2)
+    assert int(a) == 24
 
-    # a //= Unsigned(4, 4)
-    # assert int(a) == 6
+    a -= Unsigned(9, 32)
+    assert int(a) == 248
 
-    # a %= Unsigned(4, 4)
-    # assert int(a) == 2
+    a /= Unsigned(4, 4)
+    assert int(a) == 62
 
-    # a += 10
-    # assert int(a) == 12
+    a //= Unsigned(4, 2)
+    assert int(a) == 31
 
-    # with pytest.raises(ZeroDivisionError):
-    #     a //= 0
+    a %= Unsigned(4, 4)
+    assert int(a) == 3
 
 
-# def test_increment_decrement():
-#     # Python has no ++a or a++, translating to += 1 and -= 1
-#     a = Unsigned(8, 10)
+def test_compound_assignment_harsh():
+    a = Unsigned(4, 15)
+    a += Unsigned(8, 2)  # 15 + 2 = 17 % 16 = 1
+    assert int(a) == 1
+    assert len(a) == 4
 
-#     a += 1
-#     assert int(a) == 11
+    b = Unsigned(8, 5)
+    b -= Unsigned(16, 10)  # 5 - 10 = -5
+    assert int(b) == 251  # -5 in 8-bit unsigned = 251
+    assert len(b) == 8
 
-#     a -= 1
-#     assert int(a) == 10
+    c = Unsigned(4, 5)
+    c *= Unsigned(16, 1000)  # 5 * 1000 = 5000
+    assert int(c) == 8  # 5000 % 16 = 8
+    assert len(c) == 4
 
-#     max_val = Unsigned(4, 15)
-#     max_val += 1
-#     assert int(max_val) == 0
+    d = Unsigned(32, 100)
+    d += Unsigned(4, 15)
+    assert int(d) == 115
+    assert len(d) == 32
 
-#     min_val = Unsigned(4, 0)
-#     min_val -= 1
-#     assert int(min_val) == 15
+    e = Unsigned(8, 128)
+    e *= Unsigned(4, 0)
+    assert int(e) == 0
 
+    e += Unsigned(8, 255)  # 0 + 255
+    assert int(e) == 255
 
-# def test_shift_operators():
-#     a = Unsigned(8, 5)
+    e /= Unsigned(2, 1)
+    assert int(e) == 255
 
-#     sl = a << 2
-#     assert int(sl) == 20
+    e %= Unsigned(8, 255)
+    assert int(e) == 0
 
-#     sr = a >> 1
-#     assert int(sr) == 2
+    f = Unsigned(8, 250)
+    f += 10  # 260
+    assert int(f) == 4  # 260 % 256 = 4
 
-#     assert int(a << 8) == 0
-#     assert int(a >> 10) == 0
+    f -= 10  # 4 - 10 = -6. -6 in 8-bit unsigned = 250
+    assert int(f) == 250
 
-#     a <<= 3
-#     assert int(a) == 40
-#     a >>= 2
-#     assert int(a) == 10
+    f *= 2  # 250 * 2 = 500. 500 % 256 = 244
+    assert int(f) == 244
 
-#     with pytest.raises(ValueError):
-#         _ = a << -1
-#     with pytest.raises(ValueError):
-#         _ = a >> -2
+    with pytest.raises(ValueError):
+        f /= 0
 
-#     shift_amt = Unsigned(4, 2)
-#     assert int(a << shift_amt) == 40
+    with pytest.raises(ValueError):
+        f %= 0
 
+    with pytest.raises(OverflowError):
+        f += -5
 
-# def test_iterators():
-#     a = Unsigned(4, 8)  # 1000
+    f += 10
+    assert int(f) == 254
 
-#     bit_vals = [1 if bool(bit) else 0 for bit in a]
-#     assert len(bit_vals) == 4
-#     assert bit_vals == [1, 0, 0, 0]
+    with pytest.raises(ValueError):
+        f //= 0
 
-#     rbit_vals = [1 if bool(bit) else 0 for bit in reversed(a)]
-#     expected_rvals = [0, 0, 0, 1]
-#     assert rbit_vals == expected_rvals
 
-#     # Ensure reversing rbit_vals brings it back to bit_vals
-#     assert list(reversed(rbit_vals)) == bit_vals
+def test_compound_assignment_operators_mixed_signedness():
+    u1 = Unsigned(8, 15)
+    u1 += Signed(8, -5)
+    assert u1 == Unsigned(8, 10)
 
+    u2 = Unsigned(8, 250)
+    u2 += Signed(8, 10)
+    assert u2 == Unsigned(8, 4)
 
-# def test_index_operator():
-#     a = Unsigned(4, 2)  # 0010
+    u3 = Unsigned(8, 5)
+    u3 -= Signed(8, 10)
+    assert u3 == Unsigned(8, 251)
 
-#     assert not bool(a[3])
-#     assert not bool(a[2])
-#     assert bool(a[1])
-#     assert not bool(a[0])
+    u4 = Unsigned(8, 10)
+    u4 *= Signed(8, -3)
+    assert u4 == Unsigned(8, 226)
 
-#     with pytest.raises(IndexError):
-#         _ = a[4]
+    u5 = Unsigned(8, 20)
+    u5 //= Signed(8, -4)
+    assert u5 == Unsigned(8, 251)
 
+    u6 = Unsigned(8, 23)
+    u6 %= Signed(8, -7)
+    assert u6 == Unsigned(8, 2)
 
-# def test_bitwise_ops():
-#     a = Unsigned(8, 10)
-#     b = Unsigned(8, 10)
+    u7 = Unsigned(8, 50)
+    with pytest.raises(ValueError):
+        u7 //= Signed(8, 0)
+    with pytest.raises(ValueError):
+        u7 %= Signed(8, 0)
 
-#     and_result = a & b
-#     # Depending on your binding, returning BitArray or Unsigned
-#     assert str(and_result) == str(BitArray("00001010"))
 
+def test_compound_assignment_mixed_signedness_harsh():
+    u_narrow = Unsigned(4, 5)
+    u_narrow += Signed(32, -20)  # 5 + (-20) = -15
+    assert int(u_narrow) == 1  # 4-bit unsigned wrap: 16 - 15 = 1
+    assert len(u_narrow) == 4
 
-# def test_const_udl_equivalents():
-#     # Validating standard widths and boundaries dynamically
-#     assert int(Unsigned(8, 0)) == 0
-#     assert int(Unsigned(8, 5)) == 5
-#     assert int(Unsigned(8, 255)) == 255
+    u_wide = Unsigned(32, 10)
+    u_wide -= Signed(4, -8)  # 10 - (-8) = 18
+    assert int(u_wide) == 18
+    assert len(u_wide) == 32
+
+    u_mult = Unsigned(8, 10)
+    # 10 * -500 = -5000. In 8-bit unsigned: -5000 % 256 = 120
+    u_mult *= Signed(32, -500)
+    assert int(u_mult) == 120
 
-#     assert int(Unsigned(16, 0)) == 0
-#     assert int(Unsigned(16, 65535)) == 65535
+    u_div = Unsigned(8, 250)
+    # 250 / -60 = -4. Wrap to 8-bit unsigned: 256 - 4 = 252
+    u_div //= Signed(16, -60)
+    assert int(u_div) == 252
 
-#     assert int(Unsigned(32, 0)) == 0
-#     assert int(Unsigned(32, 4294967295)) == 4294967295
+    u_mod = Unsigned(8, 250)
+    # Dividend is positive -> Remainder is positive (250 = -4 * -60 + 10)
+    u_mod %= Signed(16, -60)
+    assert int(u_mod) == 10
 
-#     assert int(Unsigned(64, 0)) == 0
-#     assert int(Unsigned(64, 18446744073709551615)) == 18446744073709551615
+    u_zero = Unsigned(8, 100)
+    with pytest.raises(ValueError):
+        u_zero //= Signed(32, 0)
+    with pytest.raises(ValueError):
+        u_zero %= Signed(32, 0)
 
-#     assert Unsigned(8, 42) == Unsigned(8, 42)
-#     assert Unsigned(16, 1024) == Unsigned(16, 1024)
 
+def test_shift_operators():
+    a = Unsigned(8, 5)
 
-# def test_formatter():
-#     small = Unsigned(10, 102)
-#     mid = Unsigned(39, 0x0AFFFE9001)
+    sl = a << 2
+    assert int(sl) == 20
 
-#     chunk1 = Unsigned(139, 0x0AFFFE9001)
-#     chunk2 = Unsigned(139, 0x0AFFFE9001)
-#     chunk3 = Unsigned(139, 0x0AFFFE9001)
-#     chunk4 = Unsigned(139, 0xFFFFF)
+    sr = a >> 1
+    assert int(sr) == 2
 
-#     very_large = (((chunk1 << 100) | (chunk2 << 60)) | (chunk3 << 20)) | chunk4
+    assert int(a << 8) == 0
+    assert int(a >> 10) == 0
 
-#     assert format(small, "b") == "Unsigned[9 downto 0]{0001100110}"
-#     assert format(mid, "b") == "Unsigned[38 downto 0]{000101011111111111111101001000000000001}"
-#     assert format(very_large, "b") == "Unsigned[138 downto 0]{0001010111111111111111010010000000000010000101011111111111111101001000000000001000010101111111111111101001000000000011111111111111111111}"
+    a <<= 3
+    assert int(a) == 40
+    a >>= 2
+    assert int(a) == 10
 
-#     assert format(small) == "Unsigned[9 downto 0]{102}"
-#     assert format(mid) == "Unsigned[38 downto 0]{47244546049}"
-#     assert format(very_large) == "Unsigned[138 downto 0]{59889577156579543121862034195167783682047}"
+    with pytest.raises(TypeError):
+        _ = a << -1
+    with pytest.raises(TypeError):
+        _ = a >> -2
 
-#     assert format(small, "o") == "Unsigned[9 downto 0]{0146}"
-#     assert format(mid, "o") == "Unsigned[38 downto 0]{0537777510001}"
-#     assert format(very_large, "o") == "Unsigned[138 downto 0]{01277777220002053777751000102577776440007777777}"
+    shift_amt = Unsigned(4, 2)
+    assert int(a << shift_amt) == 40
 
-#     assert format(small, "x") == "Unsigned[9 downto 0]{066}"
-#     assert format(mid, "x") == "Unsigned[38 downto 0]{0afffe9001}"
-#     assert format(very_large, "x") == "Unsigned[138 downto 0]{0afffe90010afffe90010afffe9001fffff}"
 
+def test_shift_operators_harsh_edge_cases():
+    u_8 = Unsigned(8, 0b10101010)  # 170 in decimal
 
-# def test_hash_determinism_and_collisions():
-#     a = Unsigned(10, 102)
-#     b = Unsigned(10, 102)
-#     val2 = Unsigned(10, 103)
-#     val3 = Unsigned(20, 102)
+    assert int(u_8 << 7) == 0  # LSB was 0 -> shifted to MSB -> 0
+    u_8_b = Unsigned(8, 1)
+    assert int(u_8_b << 7) == 128  # LSB was 1 -> shifted to MSB -> 128
 
-#     assert hash(a) == hash(a)
-#     assert hash(a) == hash(b)
+    assert int(u_8 << 8) == 0
+    assert int(u_8 >> 8) == 0
 
-#     assert hash(a) != hash(val2)
-#     assert hash(a) != hash(val3)
+    assert int(u_8 << 1000) == 0
+    assert int(u_8 >> 1000) == 0
 
+    shift_s_pos = Signed(8, 3)
+    assert int(u_8 << shift_s_pos) == 80
+    assert int(u_8 >> shift_s_pos) == 21  # 170 >> 3 = 21
 
-# def test_hash_unordered_set_integration():
-#     a = Unsigned(10, 10)
-#     b = Unsigned(10, 20)
-#     a_copy = Unsigned(10, 10)
+    shift_s_huge = Signed(32, 50000)
+    assert int(u_8 << shift_s_huge) == 0
 
-#     hash_set = {a, b, a_copy}
+    shift_s_neg = Signed(8, -2)
+    with pytest.raises(ValueError, match="Negative shift amount"):
+        _ = u_8 << shift_s_neg
+    with pytest.raises(ValueError, match="Negative shift amount"):
+        _ = u_8 >> shift_s_neg
 
-#     assert len(hash_set) == 2
-#     assert a in hash_set
-#     assert b in hash_set
+    with pytest.raises(ValueError, match="Negative shift amount"):
+        _ = u_8 << Signed(32, -100)
 
-#     c = Unsigned(10, 30)
-#     assert c not in hash_set
+    shift_u_huge = Unsigned(64, 9999999)
+    assert int(u_8 << shift_u_huge) == 0
+    assert int(u_8 >> shift_u_huge) == 0
 
+    shift_u_zero = Unsigned(4, 0)
+    shift_s_zero = Signed(4, 0)
+    assert int(u_8 << shift_u_zero) == 170
+    assert int(u_8 >> shift_s_zero) == 170
+    assert int(u_8 << 0) == 170
 
-# def test_unary_ops():
-#     a = Unsigned(8, 150)
-#     neg_a = -a
+    u_comp = Unsigned(4, 15)  # 1111 (binary)
+    u_comp <<= 2  # 111100 -> truncated to 4 bits -> 1100 (12)
+    assert int(u_comp) == 12
+    assert len(u_comp) == 4  # Width MUST NOT grow
 
-#     assert type(neg_a) is Signed
-#     assert len(neg_a) == 9
-#     assert int(neg_a) == -150
+    u_comp <<= Signed(16, 2)  # 110000 -> truncated to 4 bits -> 0000 (0)
+    assert int(u_comp) == 0
+    assert len(u_comp) == 4
 
-#     b = Unsigned(4, 5)
-#     neg_b = -b
-#     assert type(neg_b) is Signed
-#     assert len(neg_b) == 5
-#     assert int(neg_b) == -5
+    u_comp2 = Unsigned(8, 255)
+    u_comp2 >>= Unsigned(8, 4)  # 00001111 (15)
+    assert int(u_comp2) == 15
+    assert len(u_comp2) == 8
 
-#     pos_a = +a
-#     assert type(pos_a) is Signed
-#     assert len(pos_a) == 9
-#     assert int(pos_a) == 150
+    u_128 = Unsigned(128, 550059)
 
+    u_128 >>= Unsigned(40, 500)
+    assert int(u_128) == 0
 
-# def test_zero_width():
-#     a = Unsigned(0, 0)
-#     b = Unsigned(0, 0)
+    with pytest.raises(TypeError):
+        _ = u_8 << -1
+    with pytest.raises(TypeError):
+        u_8 >>= -10
 
-#     assert a == b
-#     assert not (a != b)
 
-#     assert bool(a) is False
+def test_index_operator():
+    a = Unsigned(4, 2)  # 0010
 
-#     c = Unsigned(0, 0)
-#     c += 1
-#     assert c == Unsigned(0, 0)
-#     c -= 1
-#     assert c == Unsigned(0, 0)
-#     c += 5
-#     assert c == Unsigned(0, 0)
+    assert not bool(a[3])
+    assert not bool(a[2])
+    assert bool(a[1])
+    assert not bool(a[0])
 
-#     sum_res = a + b
-#     assert type(sum_res) is Unsigned
-#     assert len(sum_res) == 1
-#     assert int(sum_res) == 0
+    with pytest.raises(IndexError):
+        _ = a[4]
 
-#     assert len(list(a)) == 0
-#     assert len(a) == 0
 
-#     assert format(a, "b") == "Unsigned[-1 downto 0]{}"
-#     assert format(a, "d") == "Unsigned[-1 downto 0]{}"
+def test_formatter():
+    small = Unsigned(10, 102)
+    mid = Unsigned(39, 0x0AFFFE9001)
 
+    assert format(small, "b") == "Unsigned[9 downto 0]{0001100110}"
+    assert (
+        format(mid, "b")
+        == "Unsigned[38 downto 0]{000101011111111111111101001000000000001}"
+    )
 
-# def test_resize_across_the_tier_boundary():
-#     wide = Unsigned(200, 12345)
+    assert format(small) == "Unsigned[9 downto 0]{102}"
+    assert format(mid) == "Unsigned[38 downto 0]{47244546049}"
 
-#     assert int(wide.resize(32)) == 12345
-#     assert int(wide.resize(16, overflow_mode=OverflowMode.Wrap)) == 12345
+    assert format(small, "o") == "Unsigned[9 downto 0]{0146}"
+    assert format(mid, "o") == "Unsigned[38 downto 0]{0537777510001}"
 
-#     narrow = Unsigned(8, 200)
-#     grown = narrow.resize(200)
-#     assert format(grown, "d") == "Unsigned[199 downto 0]{200}"
+    assert format(small, "x") == "Unsigned[9 downto 0]{066}"
+    assert format(mid, "x") == "Unsigned[38 downto 0]{0afffe9001}"
 
-#     assert int(narrow.resize(200).resize(8)) == 200
 
+def test_unary_ops():
+    a = Unsigned(8, 150)
+    neg_a = -a
 
-# def test_saturation_clamps_from_the_wide_tier():
-#     big = Unsigned(200, int("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFF", 16))
-#     assert int(big.resize(8, overflow_mode=OverflowMode.Saturate)) == 255
-#     assert int(big.resize(16, overflow_mode=OverflowMode.Saturate)) == 65535
+    assert type(neg_a) is Signed
+    assert len(neg_a) == 9
+    assert int(neg_a) == -150
 
-#     small = Unsigned(200, 42)
-#     assert int(small.resize(8, overflow_mode=OverflowMode.Saturate)) == 42
+    b = Unsigned(4, 5)
+    neg_b = -b
+    assert type(neg_b) is Signed
+    assert len(neg_b) == 5
+    assert int(neg_b) == -5
 
-#     v = Unsigned(200, int("0x123456789ABCDEF0123456789", 16))
-#     assert int(v.resize(16, overflow_mode=OverflowMode.Wrap)) == 26505
+    pos_a = +a
+    assert type(pos_a) is Signed
+    assert len(pos_a) == 9
+    assert int(pos_a) == 150
 
 
-# def test_wide_arithmetic_still_grows():
-#     a = Unsigned(104, int("0xFEDCBA98765432100123456789", 16))
-#     b = Unsigned(104, 1000)
-
-#     sum_res = a + b
-#     assert type(sum_res) is Unsigned
-#     assert len(sum_res) == 105
-#     assert format(sum_res, "d") == "Unsigned[104 downto 0]{20192265560968774111035004382065}"
+def test_zero_width():
+    with pytest.raises(ValueError):
+        _ = Unsigned(0, 0)

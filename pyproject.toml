@@ -319,7 +319,7 @@ mypy_path = "python/"
 
 [[tool.mypy.overrides]]
 module = "_pycoconext"
-disable_error_code = ["override"]
+disable_error_code = ["override","misc"]
 
 [[tool.mypy.overrides]]
 module = "cocotb_tools.*"
