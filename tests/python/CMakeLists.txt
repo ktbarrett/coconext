@@ -13,6 +13,7 @@ find_package(coconext CONFIG REQUIRED)
 nanobind_add_module(
     nanobind_tests
     STABLE_ABI
+    FREE_THREADED
     NB_STATIC
     bind.cpp
     type_cast_vector.cpp
