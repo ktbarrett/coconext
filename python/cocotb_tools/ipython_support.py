@@ -18,6 +18,17 @@ from cocotb.utils import get_sim_time
 T = TypeVar("T")
 
 
+def _check_ipython_version() -> None:
+    if IPython.version_info[:2] >= (9, 17):
+        raise ImportError(
+            "cocotb_tools.ipython_support requires IPython<9.17; "
+            f"found IPython {IPython.__version__}"
+        )
+
+
+_check_ipython_version()
+
+
 class SimTimePrompt(Prompts):
     """custom prompt that shows the sim time after a trigger fires"""
 
