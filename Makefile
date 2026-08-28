@@ -75,6 +75,7 @@ python_tests:
 		-DCMAKE_PREFIX_PATH="$$(coconext-config --cmake-prefix)" \
 		-DCMAKE_CXX_STANDARD=$(CXX_STANDARD) \
 		-DCOCONEXT_DEVELOPER_MODE=$(COCONEXT_DEVELOPER_MODE) \
+		-DPython_EXECUTABLE="$$(python3 -c 'import sys; print(sys.executable)')" \
 		-Dnanobind_DIR="$$(python3 -m nanobind --cmake_dir)"
 	cmake --build "$(TESTS_BUILD_DIR)/python" --parallel
 	PYTHON_TESTS_MODULE_DIR="$(TESTS_BUILD_DIR)/python" \
