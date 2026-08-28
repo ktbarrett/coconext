@@ -23,6 +23,7 @@ PYTHON_VERSION_TESTS = (
 
 ENVS = [
     {
+        # Test Linux with clang
         "python-version": "3.13",
         "simulator-version": "1.20.1",
         "os": "ubuntu-24.04",
@@ -35,6 +36,7 @@ ENVS = [
         "make-targets": ALL_TESTS,
     },
     {
+        # Test macOS 26 (Apple Silicon)
         "python-version": "3.13",
         "simulator": "icarus",
         "toplevel_lang": "verilog",
@@ -43,6 +45,7 @@ ENVS = [
         "make-targets": OS_TESTS,
     },
     {
+        # Test macOS 15 (Intel)
         "python-version": "3.13",
         "simulator": "icarus",
         "toplevel_lang": "verilog",
@@ -51,6 +54,7 @@ ENVS = [
         "make-targets": OS_TESTS,
     },
     {
+        # Test C++23
         "python-version": "3.13",
         "simulator-version": "1.20.1",
         "os": "ubuntu-24.04",
@@ -61,7 +65,7 @@ ENVS = [
     },
 ]
 
-python_versions = ["3.9", "3.10", "3.11", "3.12", "3.14"]
+python_versions = ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
 for ver in python_versions:
     ENVS += [
         {
@@ -72,6 +76,8 @@ for ver in python_versions:
             "toplevel_lang": "vhdl",
             "cxx-standard": "20",
             "make-targets": PYTHON_VERSION_TESTS,
+            # Only check stubs on one version
+            "check_stubs": "true" if ver != "3.9" else "false",
         }
     ]
 
