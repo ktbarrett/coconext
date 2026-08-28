@@ -153,24 +153,31 @@ def test_compound_assignment():
     a = Unsigned(8, 10)
 
     a += Unsigned(4, 5)
+    assert len(a) == 8
     assert int(a) == 15
 
     a -= Unsigned(5, 3)
+    assert len(a) == 8
     assert int(a) == 12
 
     a *= Unsigned(2, 2)
+    assert len(a) == 8
     assert int(a) == 24
 
     a -= Unsigned(9, 32)
+    assert len(a) == 8
     assert int(a) == 248
 
     a /= Unsigned(4, 4)
+    assert len(a) == 8
     assert int(a) == 62
 
     a //= Unsigned(4, 2)
+    assert len(a) == 8
     assert int(a) == 31
 
     a %= Unsigned(4, 4)
+    assert len(a) == 8
     assert int(a) == 3
 
 

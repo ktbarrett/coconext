@@ -81,7 +81,7 @@ class DynUnsigned {
     explicit operator unsigned long long() const { return to_native_int<long long>(); }
 
     template <typename ShiftType>
-    constexpr DynUnsigned operator<<(ShiftType const& shift_amount) const {
+    DynUnsigned operator<<(ShiftType const& shift_amount) const {
         using CleanType = std::remove_cvref_t<ShiftType>;
 
         static_assert(
@@ -123,7 +123,7 @@ class DynUnsigned {
     }
 
     template <typename ShiftType>
-    constexpr DynUnsigned operator>>(ShiftType const& shift_amount) const {
+    DynUnsigned operator>>(ShiftType const& shift_amount) const {
         using CleanType = std::remove_cvref_t<ShiftType>;
         static_assert(
             std::is_integral_v<CleanType> || std::is_same_v<CleanType, DynUnsigned>
@@ -198,53 +198,33 @@ class DynUnsigned {
     }
 
     auto operator+=(DynUnsigned const& rhs) {
-        if (get_width() >= rhs.get_width()) {
-            value_ = add_unsigned(value_, rhs.value_).truncate(get_width());
-            return *this;
-        } else {
-            value_ = DynBits::exact_add(value_, rhs.value_.truncate(get_width()));
-            return *this;
-        }
+        value_ = add_unsigned(value_, rhs.value_).truncate(get_width());
+        return *this;
     }
 
     auto operator-=(DynUnsigned const& rhs) {
-        if (get_width() >= rhs.get_width()) {
-            value_ = sub_unsigned(value_, rhs.value_).truncate(get_width());
-            return *this;
-        } else {
-            value_ = DynBits::exact_sub(value_, rhs.value_.truncate(get_width()));
-            return *this;
-        }
+        value_ = sub_unsigned(value_, rhs.value_).truncate(get_width());
+        return *this;
     }
 
     auto operator*=(DynUnsigned const& rhs) {
-        if (get_width() >= rhs.get_width()) {
-            value_ = mul_unsigned(value_, rhs.value_).truncate(get_width());
-            return *this;
-        } else {
-            value_ = DynBits::exact_mul(value_, rhs.value_.truncate(get_width()));
-            return *this;
-        }
+        value_ = mul_unsigned(value_, rhs.value_).truncate(get_width());
+        return *this;
     }
 
     auto operator/=(DynUnsigned const& rhs) {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        if (get_width() >= rhs.get_width()) {
-            value_ = div_unsigned(value_, rhs.value_).truncate(get_width());
-            return *this;
-        } else {
-            value_ = div_unsigned(value_, rhs.value_.truncate(get_width()));
-            return *this;
-        }
+        value_ = div_unsigned(value_, rhs.value_).truncate(get_width());
+        return *this;
     }
 
     auto operator%=(DynUnsigned const& rhs) {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        value_ = rem_unsigned(value_, rhs.value_);
+        value_ = rem_unsigned(value_, rhs.value_).zero_extend(get_width());
         return *this;
     }
 
@@ -278,11 +258,11 @@ class DynUnsigned {
         return *this;
     }
 
-    friend DynUnsigned operator+=(DynUnsigned& lhs, DynSigned const& rhs);
-    friend DynUnsigned operator-=(DynUnsigned& lhs, DynSigned const& rhs);
-    friend DynUnsigned operator*=(DynUnsigned& lhs, DynSigned const& rhs);
-    friend DynUnsigned operator/=(DynUnsigned& lhs, DynSigned const& rhs);
-    friend DynUnsigned operator%=(DynUnsigned& lhs, DynSigned const& rhs);
+    friend DynUnsigned& operator+=(DynUnsigned& lhs, DynSigned const& rhs);
+    friend DynUnsigned& operator-=(DynUnsigned& lhs, DynSigned const& rhs);
+    friend DynUnsigned& operator*=(DynUnsigned& lhs, DynSigned const& rhs);
+    friend DynUnsigned& operator/=(DynUnsigned& lhs, DynSigned const& rhs);
+    friend DynUnsigned& operator%=(DynUnsigned& lhs, DynSigned const& rhs);
 
     auto index(Range::value_type index) const {
         if (index >= static_cast<Range::value_type>(get_width()) || index < 0) {
