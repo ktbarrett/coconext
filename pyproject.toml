@@ -18,6 +18,7 @@ license-files = [
 ]
 authors = [
     {name = "Kaleb Barrett", email = "dev.ktbarrett@gmail.com"},
+    {name = "Zia ur Rehman", email = "ziaurrehman1145@gmail.com"},
 ]
 maintainers = [
     {name = "Kaleb Barrett", email = "dev.ktbarrett@gmail.com"},
