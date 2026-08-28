@@ -344,7 +344,7 @@ dev_tests = [
     "pytest-cov",
     "pytest>=8.4",
     "gcovr>=8.4,!=8.5",
-    "IPython",
+    "IPython<9.17",
     "pexpect",
     "psutil",
 ]
