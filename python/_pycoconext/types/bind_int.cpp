@@ -1,18 +1,40 @@
 // Python bindings for coconext unsigned dynamic type.
+#include <coconext/types/concepts.hpp>
+#include <coconext/types/dyn_signed.hpp>
+#include <coconext/types/range.hpp>
+
+#include <nanobind/nanobind.h>
+#include <nanobind/stl/string.h>  // IWYU pragma: keep
+
 #include <cstddef>
 #include <cstdint>
 #include <format>
-#include <nanobind/nanobind.h>
-#include <nanobind/stl/string.h>
-
-#include <coconext/types/dyn_signed.hpp>
-#include <coconext/types/range.hpp>
+#include <stdexcept>
+#include <string>
 
 namespace nb = nanobind;
 using namespace nb::literals;
 
 using namespace coconext::types;
 using namespace coconext::types::detail;
+
+auto python_div = [](DynSigned const& a, DynSigned const& b) {
+    if (!static_cast<bool>(b)) {
+        throw std::domain_error("Division by zero");
+    }
+
+    DynSigned q = a / b;
+    DynSigned r = a - (q * b);
+
+    if (static_cast<bool>(r)) {
+        if ((a < DynSigned(DynBits{a.get_width(), 0}))
+            != (b < DynSigned(DynBits{a.get_width(), 0})))
+        {
+            q -= DynSigned(DynBits{a.get_width(), 1});
+        }
+    }
+    return q;
+};
 
 void register_unsigned(nb::module_& m) {
     nb::class_<DynUnsigned>(m, "Unsigned")
@@ -36,7 +58,7 @@ void register_unsigned(nb::module_& m) {
         .def(
             "__format__",
             [](DynUnsigned const& self, std::string spec) {
-                auto const& val = detail::bits(self);
+                auto const& val = bits(self);
                 std::string str_r;
 
                 if (spec.empty() || spec.back() == 'd') {
@@ -273,7 +295,7 @@ void register_signed(nb::module_& m) {
         .def(
             "__format__",
             [](DynSigned const& self, std::string spec) {
-                auto const& val = detail::bits(self);
+                auto const& val = bits(self);
                 std::string str_r;
 
                 if (spec.empty() || spec.back() == 'd') {
@@ -317,77 +339,73 @@ void register_signed(nb::module_& m) {
             [](DynSigned const& self, DynSigned const& other) { return self >= other; }
         )
 
-        // .def(
-        //     "__lshift__",
-        //     [](DynSigned const& self, size_t const& shift_amount) {
-        //         return self << shift_amount;
-        //     }
-        // )
-        // .def(
-        //     "__lshift__",
-        //     [](DynSigned const& self, DynUnsigned const& shift_amount) {
-        //         return self << shift_amount;
-        //     }
-        // )
-        // .def(
-        //     "__lshift__",
-        //     [](DynSigned const& self, DynSigned const& shift_amount) {
-        //         return self << shift_amount;
-        //     }
-        // )
+        .def(
+            "__lshift__",
+            [](DynSigned const& self, size_t const& shift_amount) {
+                return self << shift_amount;
+            }
+        )
+        .def(
+            "__lshift__",
+            [](DynSigned const& self, DynUnsigned const& shift_amount) {
+                return self << shift_amount;
+            }
+        )
+        .def(
+            "__lshift__",
+            [](DynSigned const& self, DynSigned const& shift_amount) {
+                return self << shift_amount;
+            }
+        )
 
-        // .def(
-        //     "__ilshift__",
-        //     [](DynSigned& self, size_t const& shift_amount) {
-        //         return self <<= shift_amount;
-        //     }
-        // )
-        // .def(
-        //     "__ilshift__",
-        //     [](DynSigned& self, DynUnsigned const& shift_amount) {
-        //         return self <<= shift_amount;
-        //     }
-        // )
-        // .def(
-        //     "__ilshift__",
-        //     [](DynSigned& self, DynSigned const& shift_amount) {
-        //         return self <<= shift_amount;
-        //     }
-        // )
+        .def(
+            "__ilshift__",
+            [](DynSigned& self, size_t const& shift_amount) {
+                return self <<= shift_amount;
+            }
+        )
+        .def(
+            "__ilshift__",
+            [](DynSigned& self, DynUnsigned const& shift_amount) {
+                return self <<= shift_amount;
+            }
+        )
+        .def(
+            "__ilshift__",
+            [](DynSigned& self, DynSigned const& shift_amount) {
+                return self <<= shift_amount;
+            }
+        )
 
-        // .def(
-        //     "__rshift__",
-        //     [](DynSigned const& self, size_t shift_amount) {
-        //         return self >> shift_amount;
-        //     }
-        // )
-        // .def(
-        //     "__rshift__",
-        //     [](DynSigned const& self, DynUnsigned shift_amount) {
-        //         return self >> shift_amount;
-        //     }
-        // )
-        // .def(
-        //     "__rshift__",
-        //     [](DynSigned const& self, DynSigned shift_amount) {
-        //         return self >> shift_amount;
-        //     }
-        // )
+        .def(
+            "__rshift__",
+            [](DynSigned const& self, size_t shift_amount) { return self >> shift_amount; }
+        )
+        .def(
+            "__rshift__",
+            [](DynSigned const& self, DynUnsigned shift_amount) {
+                return self >> shift_amount;
+            }
+        )
+        .def(
+            "__rshift__",
+            [](DynSigned const& self, DynSigned shift_amount) {
+                return self >> shift_amount;
+            }
+        )
 
-        // .def(
-        //     "__irshift__",
-        //     [](DynSigned& self, size_t shift_amount) { return self >>= shift_amount; }
-        // )
-        // .def(
-        //     "__irshift__",
-        //     [](DynSigned& self, DynUnsigned shift_amount) {
-        //         return self >>= shift_amount;
-        //     }
-        // )
-        // .def(
-        //     "__irshift__",
-        //     [](DynSigned& self, DynSigned shift_amount) { return self >>= shift_amount; }
-        // )
+        .def(
+            "__irshift__",
+            [](DynSigned& self, size_t shift_amount) { return self >>= shift_amount; }
+        )
+        .def(
+            "__irshift__",
+            [](DynSigned& self, DynUnsigned shift_amount) { return self >>= shift_amount; }
+        )
+        .def(
+            "__irshift__",
+            [](DynSigned& self, DynSigned shift_amount) { return self >>= shift_amount; }
+        )
 
         .def("__int__", [](DynSigned const& self) { return static_cast<long long>(self); })
         .def("__len__", [](DynSigned const& self) { return self.get_width(); })
@@ -397,96 +415,84 @@ void register_signed(nb::module_& m) {
             "__add__",
             [](DynSigned const& self, DynSigned const& other) { return self + other; }
         )
-        // .def(
-        //     "__iadd__",
-        //     [](DynSigned& self, DynUnsigned const& other) { return self += other; }
-        // )
-        // .def(
-        //     "__iadd__",
-        //     [](DynSigned& self, int64_t const& other) { return self += other; }
-        // )
-        // .def(
-        //     "__iadd__",
-        //     [](DynSigned& self, DynSigned const& other) { return self += other; }
-        // )
+        .def(
+            "__iadd__",
+            [](DynSigned& self, DynUnsigned const& other) { return self += other; }
+        )
+        .def(
+            "__iadd__", [](DynSigned& self, int64_t const& other) { return self += other; }
+        )
+        .def(
+            "__iadd__",
+            [](DynSigned& self, DynSigned const& other) { return self += other; }
+        )
         .def(
             "__mul__",
             [](DynSigned const& self, DynSigned const& other) { return self * other; }
         )
-        // .def(
-        //     "__imul__",
-        //     [](DynSigned& self, DynUnsigned const& other) { return self *= other; }
-        // )
-        // .def(
-        //     "__imul__",
-        //     [](DynSigned& self, int64_t const& other) { return self *= other; }
-        // )
-        // .def(
-        //     "__imul__",
-        //     [](DynSigned& self, DynSigned const& other) { return self *= other; }
-        // )
         .def(
-            "__truediv__",
-            [](DynSigned const& self, DynSigned const& other) { return self / other; }
+            "__imul__",
+            [](DynSigned& self, DynUnsigned const& other) { return self *= other; }
         )
-        // .def(
-        //     "__itruediv__",
-        //     [](DynSigned& self, DynUnsigned const& other) { return self /= other; }
-        // )
-        // .def(
-        //     "__itruediv__",
-        //     [](DynSigned& self, int64_t const& other) { return self /= other; }
-        // )
-        // .def(
-        //     "__itruediv__",
-        //     [](DynSigned& self, DynSigned const& other) { return self /= other; }
-        // )
         .def(
-            "__floordiv__",
-            [](DynSigned const& self, DynSigned const& other) { return self / other; }
+            "__imul__", [](DynSigned& self, int64_t const& other) { return self *= other; }
         )
-        // .def(
-        //     "__ifloordiv__",
-        //     [](DynSigned& self, DynUnsigned const& other) { return self /= other; }
-        // )
-        // .def(
-        //     "__ifloordiv__",
-        //     [](DynSigned& self, int64_t const& other) { return self /= other; }
-        // )
-        // .def(
-        //     "__ifloordiv__",
-        //     [](DynSigned& self, DynSigned const& other) { return self /= other; }
-        // )
         .def(
-            "__mod__",
-            [](DynSigned const& self, DynSigned const& other) { return self % other; }
+            "__imul__",
+            [](DynSigned& self, DynSigned const& other) { return self *= other; }
         )
-        // .def(
-        //     "__imod__",
-        //     [](DynSigned& self, DynUnsigned const& other) { return self %= other; }
-        // )
-        // .def(
-        //     "__imod__",
-        //     [](DynSigned& self, int64_t const& other) { return self %= other; }
-        // )
-        // .def(
-        //     "__imod__",
-        //     [](DynSigned& self, DynSigned const& other) { return self %= other; }
-        // )
+        .def("__truediv__", python_div, nb::is_operator())
+        .def(
+            "__itruediv__",
+            [](DynSigned& self, DynUnsigned const& other) { return self /= other; }
+        )
+        .def(
+            "__itruediv__",
+            [](DynSigned& self, int64_t const& other) { return self /= other; }
+        )
+        .def(
+            "__itruediv__",
+            [](DynSigned& self, DynSigned const& other) { return self /= other; }
+        )
+        .def("__floordiv__", python_div, nb::is_operator())
+        .def(
+            "__ifloordiv__",
+            [](DynSigned& self, DynUnsigned const& other) { return self /= other; }
+        )
+        .def(
+            "__ifloordiv__",
+            [](DynSigned& self, int64_t const& other) { return self /= other; }
+        )
+        .def(
+            "__ifloordiv__",
+            [](DynSigned& self, DynSigned const& other) { return self /= other; }
+        )
+        .def(
+            "__mod__", [](DynSigned& self, DynSigned const& other) { return self % other; }
+        )
+        .def(
+            "__imod__",
+            [](DynSigned& self, DynSigned const& other) { return self %= other; }
+        )
+        .def(
+            "__imod__",
+            [](DynSigned& self, DynUnsigned const& other) { return self %= other; }
+        )
+        .def(
+            "__imod__", [](DynSigned& self, int64_t const& other) { return self %= other; }
+        )
         .def(
             "__sub__",
             [](DynSigned const& self, DynSigned const& other) { return self - other; }
         )
-        // .def(
-        //     "__isub__",
-        //     [](DynSigned& self, DynUnsigned const& other) { return self -= other; }
-        // )
-        // .def(
-        //     "__isub__",
-        //     [](DynSigned& self, int64_t const& other) { return self -= other; }
-        // )
-        // .def("__isub__", [](DynSigned& self, DynSigned const& other) {
-        //     return self -= other;
-        // })
-        ;
+        .def(
+            "__isub__",
+            [](DynSigned& self, DynUnsigned const& other) { return self -= other; }
+        )
+        .def(
+            "__isub__", [](DynSigned& self, int64_t const& other) { return self -= other; }
+        )
+        .def("__isub__", [](DynSigned& self, DynSigned const& other) {
+            return self -= other;
+        });
 }
