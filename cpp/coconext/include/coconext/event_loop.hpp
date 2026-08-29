@@ -71,6 +71,10 @@ class EventLoop {
             loop_.queue_.push_back(event);
         }
 
+        void schedule_next(not_null<Event*> event) noexcept {
+            loop_.queue_.push_front(event);
+        }
+
         template <typename DequeT>
         void schedule_all_back(DequeT&& deque) noexcept {
             loop_.queue_.extend_back(std::forward<DequeT>(deque));
