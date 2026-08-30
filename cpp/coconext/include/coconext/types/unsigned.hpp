@@ -110,16 +110,6 @@ class Unsigned {
         *this = Unsigned<R>(Unsigned<R2>(src_bits));
     }
 
-    // Construct from a BitArray. Throws if the source value is not exactly N bits.
-    template <Range R2>
-    explicit constexpr Unsigned(detail::Array<Bit, R2> const& other) {
-        static_assert(
-            R.length() == R2.length(), "BitArray reinterpret requires identical width"
-        );
-
-        value_ = UInt<R.length()>(bits(other));
-    }
-
     // Implicit conversion to supertype BitArray
     template <Range R2>
     constexpr operator detail::Array<Bit, R2>() const noexcept {
@@ -127,18 +117,6 @@ class Unsigned {
             R.length() == R2.length(), "BitArray reinterpret requires identical width"
         );
         return detail::Array<Bit, R2>(value_);
-    }
-
-    // Consume deduced-target reinterpret wrapper
-    template <typename SourceT>
-    constexpr Unsigned(auto_reinterpreted<SourceT>&& wrapper) {
-        *this = as<Unsigned<R>>(std::move(wrapper).consume());
-    }
-
-    template <typename SourceT>
-    constexpr Unsigned& operator=(auto_reinterpreted<SourceT>&& wrapper) {
-        *this = as<Unsigned<R>>(std::move(wrapper).consume());
-        return *this;
     }
 
     template <typename SourceWrapper>
@@ -392,7 +370,7 @@ class Unsigned {
     template <Range R2>
     constexpr Unsigned& operator-=(Unsigned<R2> const& rhs) {
         auto res = coconext::types::resize<R.length()>(*this - rhs);
-        *this = Unsigned<R>(static_cast<detail::Array<Bit, R>>(res));
+        *this = coconext::types::as<Unsigned<R>>(static_cast<detail::Array<Bit, R>>(res));
         return *this;
     }
 
@@ -436,7 +414,8 @@ class Unsigned {
             auto res = coconext::types::resize<R.length()>(
                 *this - Unsigned<make_int_range<R.length()>()>(rhs)
             );
-            *this = Unsigned<R>(static_cast<detail::Array<Bit, R>>(res));
+            *this =
+                coconext::types::as<Unsigned<R>>(static_cast<detail::Array<Bit, R>>(res));
         }
         return *this;
     }
@@ -474,21 +453,21 @@ class Unsigned {
     template <Range R2>
     constexpr Unsigned& operator+=(Signed<R2> const& rhs) {
         auto res = coconext::types::resize<R.length()>(+(*this) + rhs, overflow_mode::wrap);
-        *this = Unsigned<R>(static_cast<detail::Array<Bit, R>>(res));
+        *this = coconext::types::as<Unsigned<R>>(static_cast<detail::Array<Bit, R>>(res));
         return *this;
     }
 
     template <Range R2>
     constexpr Unsigned& operator-=(Signed<R2> const& rhs) {
         auto res = coconext::types::resize<R.length()>(+(*this) - rhs, overflow_mode::wrap);
-        *this = Unsigned<R>(static_cast<detail::Array<Bit, R>>(res));
+        *this = coconext::types::as<Unsigned<R>>(static_cast<detail::Array<Bit, R>>(res));
         return *this;
     }
 
     template <Range R2>
     constexpr Unsigned& operator*=(Signed<R2> const& rhs) {
         auto res = coconext::types::resize<R.length()>(+(*this) * rhs, overflow_mode::wrap);
-        *this = Unsigned<R>(static_cast<detail::Array<Bit, R>>(res));
+        *this = coconext::types::as<Unsigned<R>>(static_cast<detail::Array<Bit, R>>(res));
         return *this;
     }
 
@@ -498,7 +477,7 @@ class Unsigned {
             throw std::domain_error("Division by zero");
         }
         auto res = coconext::types::resize<R.length()>(+(*this) / rhs, overflow_mode::wrap);
-        *this = Unsigned<R>(static_cast<detail::Array<Bit, R>>(res));
+        *this = coconext::types::as<Unsigned<R>>(static_cast<detail::Array<Bit, R>>(res));
         return *this;
     }
 
@@ -508,7 +487,7 @@ class Unsigned {
             throw std::domain_error("Division by zero");
         }
         auto res = coconext::types::resize<R.length()>(+(*this) % rhs, overflow_mode::wrap);
-        *this = Unsigned<R>(static_cast<detail::Array<Bit, R>>(res));
+        *this = coconext::types::as<Unsigned<R>>(static_cast<detail::Array<Bit, R>>(res));
         return *this;
     }
 
@@ -534,11 +513,25 @@ class Unsigned {
         return tmp;
     }
 
+    constexpr auto begin() { return value_.begin(); }
+    constexpr auto rbegin() { return value_.rbegin(); }
     constexpr auto begin() const { return value_.begin(); }
     constexpr auto rbegin() const { return value_.rbegin(); }
 
+    constexpr auto end() { return value_.end(); }
+    constexpr auto rend() { return value_.rend(); }
     constexpr auto end() const { return value_.end(); }
     constexpr auto rend() const { return value_.rend(); }
+
+    constexpr auto operator[](Range::value_type idx) {
+        auto const offset = offset_of(R, idx);
+        if (!offset.has_value()) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        size_t bit_pos = R.length() - 1 - offset.value();
+
+        return value_[bit_pos];
+    }
 
     constexpr auto operator[](Range::value_type idx) const {
         auto const offset = offset_of(R, idx);
@@ -590,7 +583,7 @@ template <auto... Args, typename X>
     requires(sizeof...(Args) > 0 && detail::is_coconext_unsigned_v<std::remove_cvref_t<X>>)
 constexpr auto resize(X&& x, overflow_mode ovf, round_mode rnd) {
     constexpr Range TargetRange = detail::make_int_range<Args...>();
-    return Unsigned<TargetRange>(resize(std::forward<X>(x), ovf, rnd));
+    return Unsigned<TargetRange>(detail::resize(std::forward<X>(x), ovf, rnd));
 }
 
 consteval Unsigned<8> u8(unsigned long long v) { return Unsigned<8>(v); }
