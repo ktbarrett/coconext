@@ -27,12 +27,17 @@ inline constexpr bool is_coconext_ufixed_v<detail::Ufixed<R>> = true;
 
 template <size_t W>
 struct aligned_magnitude {
-    Bits<W> bits{};
+    UInt<W> bits{};
     bool overflow = false;
     bool discarded = false;
     bool half_bit = false;
     bool lower_bits = false;
 };
+
+template <size_t W>
+constexpr UInt<W> wrapped_negate(UInt<W> const& value) {
+    return UInt<W>::exact_sub(UInt<W>{}, value);
+}
 
 // Both endpoints are int64_t, while Range requires size_t to be at least as wide.
 // Once their ordering is known, unsigned subtraction therefore gives the full
@@ -43,7 +48,7 @@ constexpr size_t index_distance(Range::value_type high, Range::value_type low) n
 
 template <size_t ResultW, size_t SourceW>
 constexpr aligned_magnitude<ResultW> align_magnitude(
-    Bits<SourceW> const& source,
+    UInt<SourceW> const& source,
     Range::value_type source_right,
     Range::value_type target_right
 ) {
@@ -129,10 +134,10 @@ constexpr void round_magnitude(
     }
 
     if (round_up) {
-        if (value.bits == ~Bits<W>{}) {
+        if (value.bits == ~UInt<W>{}) {
             value.overflow = true;
         }
-        value.bits = value.bits + Bits<W>{1};
+        value.bits = UInt<W>::exact_add(value.bits, UInt<W>{1});
     }
 }
 
@@ -145,9 +150,9 @@ template <
     Range::value_type QuotientRight,
     size_t DividendW,
     size_t DivisorW>
-constexpr std::pair<Bits<ResultW>, Bits<DivisorW>> divide_fixed_magnitudes(
-    Bits<DividendW> const& dividend,
-    Bits<DivisorW> const& divisor,
+constexpr std::pair<UInt<ResultW>, UInt<DivisorW>> divide_fixed_magnitudes(
+    UInt<DividendW> const& dividend,
+    UInt<DivisorW> const& divisor,
     bool negative,
     round_mode rounding,
     size_t guard_bits
@@ -155,12 +160,12 @@ constexpr std::pair<Bits<ResultW>, Bits<DivisorW>> divide_fixed_magnitudes(
     if constexpr (DivisorW == 0) {
         throw std::domain_error("Division by zero");
     } else {
-        if (divisor == Bits<DivisorW>{}) {
+        if (divisor == UInt<DivisorW>{}) {
             throw std::domain_error("Division by zero");
         }
 
-        auto [integer_quotient, remainder] = divrem_unsigned(dividend, divisor);
-        Bits<DivisorW> const exact_remainder = remainder;
+        auto [integer_quotient, remainder] = divrem(dividend, divisor);
+        UInt<DivisorW> const exact_remainder = remainder;
         aligned_magnitude<ResultW + 1> rounded;
 
         auto integer_bit = [&](size_t index) {
@@ -182,12 +187,12 @@ constexpr std::pair<Bits<ResultW>, Bits<DivisorW>> divide_fixed_magnitudes(
             }
         }
 
-        auto const extended_divisor = divisor.template zero_extend<DivisorW + 1>();
+        auto const extended_divisor = UInt<DivisorW + 1>(divisor);
         auto next_quotient_bit = [&] {
-            auto doubled = remainder.template zero_extend<DivisorW + 1>() << 1;
-            bool const quotient_bit = doubled.uge(extended_divisor);
+            auto doubled = UInt<DivisorW + 1>(remainder) << 1;
+            bool const quotient_bit = doubled >= extended_divisor;
             if (quotient_bit) {
-                doubled = doubled - extended_divisor;
+                doubled = UInt<DivisorW + 1>::exact_sub(doubled, extended_divisor);
             }
             remainder = doubled.template truncate<DivisorW>();
             return quotient_bit;
@@ -235,55 +240,59 @@ template <
     Range::value_type QuotientRight,
     size_t DividendW,
     size_t DivisorW>
-constexpr std::pair<Bits<ResultW>, Bits<DivisorW>> divrem_signed_fixed(
-    Bits<DividendW> const& dividend,
-    Bits<DivisorW> const& divisor,
+constexpr std::pair<SInt<ResultW>, SInt<DivisorW>> divrem_signed_fixed(
+    SInt<DividendW> const& dividend,
+    SInt<DivisorW> const& divisor,
     round_mode rounding,
     size_t guard_bits
 ) {
     if constexpr (DivisorW == 0) {
         throw std::domain_error("Division by zero");
     } else {
-        if (divisor == Bits<DivisorW>{}) {
+        if (divisor == SInt<DivisorW>{}) {
             throw std::domain_error("Division by zero");
         }
 
         bool lhs_negative = false;
-        Bits<DividendW> lhs_magnitude{};
+        UInt<DividendW> lhs_magnitude{};
         if constexpr (DividendW > 0) {
             lhs_negative = dividend.get_bit(DividendW - 1);
-            lhs_magnitude = lhs_negative ? (~dividend) + Bits<DividendW>{1} : dividend;
+            auto const dividend_bits = dividend.logical_bits();
+            lhs_magnitude = lhs_negative ? wrapped_negate(dividend_bits) : dividend_bits;
         }
 
         bool const rhs_negative = divisor.get_bit(DivisorW - 1);
-        Bits<DivisorW> const rhs_magnitude =
-            rhs_negative ? (~divisor) + Bits<DivisorW>{1} : divisor;
+        auto const divisor_bits = divisor.logical_bits();
+        UInt<DivisorW> const rhs_magnitude =
+            rhs_negative ? wrapped_negate(divisor_bits) : divisor_bits;
         bool const quotient_negative = lhs_negative != rhs_negative;
 
         auto [quotient_magnitude, remainder_magnitude] =
             divide_fixed_magnitudes<ResultW, QuotientRight>(
                 lhs_magnitude, rhs_magnitude, quotient_negative, rounding, guard_bits
             );
-        Bits<ResultW> const quotient =
-            quotient_negative ? Bits<ResultW>{} - quotient_magnitude : quotient_magnitude;
+        SInt<ResultW> const quotient(
+            quotient_negative ? wrapped_negate(quotient_magnitude) : quotient_magnitude
+        );
 
         bool remainder_negative = lhs_negative;
         if constexpr (Modulo) {
-            if (remainder_magnitude != Bits<DivisorW>{} && lhs_negative != rhs_negative) {
-                remainder_magnitude = rhs_magnitude - remainder_magnitude;
+            if (remainder_magnitude != UInt<DivisorW>{} && lhs_negative != rhs_negative) {
+                remainder_magnitude =
+                    UInt<DivisorW>::exact_sub(rhs_magnitude, remainder_magnitude);
                 remainder_negative = rhs_negative;
             }
         }
-        Bits<DivisorW> const remainder = remainder_negative
-                                           ? Bits<DivisorW>{} - remainder_magnitude
-                                           : remainder_magnitude;
+        SInt<DivisorW> const remainder(
+            remainder_negative ? wrapped_negate(remainder_magnitude) : remainder_magnitude
+        );
         return {quotient, remainder};
     }
 }
 
 template <size_t TargetW, size_t SourceW>
-constexpr Bits<TargetW> convert_unsigned_magnitude(
-    Bits<SourceW> const& source,
+constexpr UInt<TargetW> convert_unsigned_magnitude(
+    UInt<SourceW> const& source,
     Range::value_type source_right,
     Range::value_type target_right
 ) {
@@ -298,8 +307,8 @@ constexpr Bits<TargetW> convert_unsigned_magnitude(
 }
 
 template <size_t TargetW, size_t SourceW>
-constexpr Bits<TargetW> convert_signed_magnitude(
-    Bits<SourceW> const& source,
+constexpr SInt<TargetW> convert_signed_magnitude(
+    UInt<SourceW> const& source,
     bool negative,
     Range::value_type source_right,
     Range::value_type target_right
@@ -307,25 +316,25 @@ constexpr Bits<TargetW> convert_signed_magnitude(
     auto const aligned = align_magnitude<TargetW + 1>(source, source_right, target_right);
 
     if constexpr (TargetW == 0) {
-        if (aligned.discarded || aligned.overflow || aligned.bits != Bits<1>{}) {
+        if (aligned.discarded || aligned.overflow || aligned.bits != UInt<1>{}) {
             throw std::out_of_range(
                 "value cannot be represented exactly in destination Sfixed"
             );
         }
         return {};
     } else {
-        Bits<TargetW + 1> const negative_limit = Bits<TargetW + 1>{1} << (TargetW - 1);
-        bool const out_of_range = aligned.overflow
-                               || (negative ? aligned.bits.ugt(negative_limit)
-                                            : aligned.bits.uge(negative_limit));
+        UInt<TargetW + 1> const negative_limit = UInt<TargetW + 1>{1} << (TargetW - 1);
+        bool const out_of_range =
+            aligned.overflow
+            || (negative ? aligned.bits > negative_limit : aligned.bits >= negative_limit);
         if (aligned.discarded || out_of_range) {
             throw std::out_of_range(
                 "value cannot be represented exactly in destination Sfixed"
             );
         }
 
-        Bits<TargetW> const magnitude = aligned.bits.template truncate<TargetW>();
-        return negative ? Bits<TargetW>{} - magnitude : magnitude;
+        UInt<TargetW> const magnitude = aligned.bits.template truncate<TargetW>();
+        return SInt<TargetW>(negative ? wrapped_negate(magnitude) : magnitude);
     }
 }
 
@@ -337,7 +346,7 @@ constexpr aligned_magnitude<ResultW> align_floating_magnitude(
     int exponent = 0;
     FloatType const fraction = std::frexp(magnitude, &exponent);
     FloatType significand = std::ldexp(fraction, static_cast<int>(SignificandW));
-    Bits<SignificandW> significand_bits{};
+    UInt<SignificandW> significand_bits{};
     for (size_t bit = 0; bit < SignificandW && significand >= FloatType{1}; ++bit) {
         FloatType const half = std::floor(significand / FloatType{2});
         if (significand - half * FloatType{2} >= FloatType{1}) {
@@ -352,25 +361,25 @@ constexpr aligned_magnitude<ResultW> align_floating_magnitude(
 
 template <size_t TargetW, size_t SourceW>
     requires(TargetW >= SourceW)
-constexpr Bits<TargetW> shift_left_zero_extended(
-    Bits<SourceW> const& source, size_t amount
+constexpr UInt<TargetW> shift_left_zero_extended(
+    UInt<SourceW> const& source, size_t amount
 ) {
     if constexpr (TargetW == 0) {
         return {};
     } else {
-        return source.template zero_extend<TargetW>() << amount;
+        return UInt<TargetW>(source) << amount;
     }
 }
 
 template <size_t TargetW, size_t SourceW>
     requires(TargetW >= SourceW)
-constexpr Bits<TargetW> shift_left_sign_extended(
-    Bits<SourceW> const& source, size_t amount
+constexpr SInt<TargetW> shift_left_sign_extended(
+    SInt<SourceW> const& source, size_t amount
 ) {
     if constexpr (TargetW == 0) {
         return {};
     } else {
-        return source.template sign_extend<TargetW>() << amount;
+        return SInt<TargetW>(source) << amount;
     }
 }
 
@@ -407,9 +416,15 @@ class Ufixed {
     static constexpr auto integer_magnitude_operand(T value) {
         constexpr size_t SourceW =
             std::numeric_limits<T>::digits + (std::is_signed_v<T> ? 1 : 0);
-        Bits<SourceW> const source(value);
-        Bits<SourceW> const magnitude =
-            integer_is_negative(value) ? (~source) + Bits<SourceW>{1} : source;
+        UInt<SourceW> const source = [&] {
+            if constexpr (std::is_signed_v<T>) {
+                return SInt<SourceW>(value).logical_bits();
+            } else {
+                return UInt<SourceW>(value);
+            }
+        }();
+        UInt<SourceW> const magnitude =
+            integer_is_negative(value) ? wrapped_negate(source) : source;
         constexpr Range IntegerRange{
             static_cast<Range::value_type>(SourceW) - 1, Direction::DOWNTO, 0
         };
@@ -417,18 +432,18 @@ class Ufixed {
     }
 
     template <size_t SourceW>
-    constexpr void assign_unsigned_integer(Bits<SourceW> const& source) {
+    constexpr void assign_unsigned_integer(UInt<SourceW> const& source) {
         value_ = detail::convert_unsigned_magnitude<R.length()>(source, 0, R.right);
     }
 
     template <size_t SourceW>
-    constexpr void assign_signed_integer(Bits<SourceW> const& source) {
+    constexpr void assign_signed_integer(SInt<SourceW> const& source) {
         if constexpr (SourceW > 0) {
             if (source.get_bit(SourceW - 1)) {
                 throw std::out_of_range("negative value in Ufixed construction");
             }
         }
-        assign_unsigned_integer(source);
+        assign_unsigned_integer(source.logical_bits());
     }
 
     template <typename T>
@@ -440,19 +455,19 @@ class Ufixed {
         if constexpr (R.right > 0) {
             constexpr Range IntegerRange{R.left, Direction::DOWNTO, 0};
             // TODO inefficient
-            auto scaled = value_.template zero_extend<IntegerRange.length()>();
+            auto scaled = UInt<IntegerRange.length()>(value_);
             scaled = scaled << R.right;
             return static_cast<T>(Ufixed<IntegerRange>(scaled));
         }
 
-        auto val = value_.srl(frac_bits());
+        auto val = value_ >> frac_bits();
         if constexpr (int_bits() > std::numeric_limits<T>::digits) {
-            if (val.ugt(Bits<R.length()>(std::numeric_limits<T>::max()))) {
+            if (val > UInt<R.length()>(std::numeric_limits<T>::max())) {
                 throw std::out_of_range("Value too large for destination native type");
             }
         }
 
-        if constexpr (!Bits<R.length()>::is_wide) {
+        if constexpr (!UInt<R.length()>::is_wide) {
             return static_cast<T>(val.raw());
         } else {
             return static_cast<T>(val.raw().word(0));
@@ -465,11 +480,11 @@ class Ufixed {
             R.length() > 0, "Ufixed<0> has no value, cannot convert to native float"
         );
 
-        if constexpr (!Bits<R.length()>::is_wide) {
+        if constexpr (!UInt<R.length()>::is_wide) {
             T base_val = static_cast<T>(value_.raw());
             return std::ldexp(base_val, R.right);  // base_val * 2^(R.right)
         } else {
-            if (value_ == Bits<R.length()>{0}) {
+            if (value_ == UInt<R.length()>{0}) {
                 return T{0.0};
             }
 
@@ -481,7 +496,7 @@ class Ufixed {
                 shift_amount = msb_index - mantissa_bits + 1;
             }
 
-            auto aligned = value_.srl(shift_amount);
+            auto aligned = value_ >> shift_amount;
             uint64_t raw_mantissa = static_cast<uint64_t>(aligned.raw().word(0));
 
             if (shift_amount > 0) {
@@ -512,10 +527,9 @@ class Ufixed {
 
     constexpr Ufixed() noexcept = default;
 
-    template <size_t W>
-    constexpr Ufixed(Bits<W> const& val) {
-        static_assert(W == R.length(), "Construction from Bits requires identical width");
-        value_ = val;
+    template <size_t W, bool SignedRepresentation>
+    constexpr Ufixed(Int<W, SignedRepresentation> const& val) : value_(val) {
+        static_assert(W == R.length(), "Construction from Int requires identical width");
     }
 
     // Construct from a native integer
@@ -535,10 +549,10 @@ class Ufixed {
         );
         if constexpr (std::is_signed_v<T>) {
             constexpr size_t SourceW = std::numeric_limits<T>::digits + 1;
-            assign_signed_integer(Bits<SourceW>(v));
+            assign_signed_integer(SInt<SourceW>(v));
         } else {
             constexpr size_t SourceW = std::numeric_limits<T>::digits;
-            assign_unsigned_integer(Bits<SourceW>(v));
+            assign_unsigned_integer(UInt<SourceW>(v));
         }
     }
 
@@ -573,8 +587,9 @@ class Ufixed {
         if (is_negative) {
             throw std::out_of_range("negative value in Ufixed construction");
         }
-        value_ =
-            detail::convert_unsigned_magnitude<R.length()>(other_bits, R2.right, R.right);
+        value_ = detail::convert_unsigned_magnitude<R.length()>(
+            other_bits.logical_bits(), R2.right, R.right
+        );
     }
 
     // Construct from float
@@ -601,9 +616,9 @@ class Ufixed {
                 throw std::domain_error("Cannot wrap Infinity.");
             }
             if (v > 0) {
-                value_ = ~Bits<R.length()>(0);
+                value_ = ~UInt<R.length()>(0);
             } else {
-                value_ = Bits<R.length()>(0);
+                value_ = UInt<R.length()>(0);
             }
             return;
         }
@@ -617,7 +632,7 @@ class Ufixed {
 
         bool const out_of_range = aligned.overflow || aligned.bits.get_bit(R.length());
         if (out_of_range && om == overflow_mode::saturate) {
-            value_ = ~Bits<R.length()>{};
+            value_ = ~UInt<R.length()>{};
         } else {
             value_ = aligned.bits.template truncate<R.length()>();
         }
@@ -664,7 +679,7 @@ class Ufixed {
 
         bool const out_of_range = aligned.overflow || aligned.bits.get_bit(R.length());
         if (out_of_range && ovf == overflow_mode::saturate) {
-            value_ = ~Bits<R.length()>{};
+            value_ = ~UInt<R.length()>{};
         } else {
             value_ = aligned.bits.template truncate<R.length()>();
         }
@@ -687,7 +702,7 @@ class Ufixed {
     explicit constexpr operator bool() const noexcept
         requires(R.direction == Direction::DOWNTO)
     {
-        return value_ != Bits<R.length()>{};
+        return value_ != UInt<R.length()>{};
     }
 
     explicit constexpr operator signed char() const noexcept(
@@ -862,7 +877,7 @@ class Ufixed {
             throw std::invalid_argument("Shift amount cannot be negative");
         }
 
-        return Ufixed<R>(value_.srl(v));
+        return Ufixed<R>(value_ >> v);
     }
 
     template <typename T>
@@ -886,7 +901,7 @@ class Ufixed {
             throw std::invalid_argument("Shift amount cannot be negative");
         }
 
-        value_ = value_.srl(v);
+        value_ = value_ >> v;
         return *this;
     }
 
@@ -900,7 +915,7 @@ class Ufixed {
         if (value_ == other.value_) {
             return std::strong_ordering::equal;
         }
-        if (value_.ugt(other.value_)) {
+        if (value_ > other.value_) {
             return std::strong_ordering::greater;
         }
         return std::strong_ordering::less;
@@ -936,8 +951,9 @@ class Ufixed {
         constexpr auto TR = Range{R.left + 1, R.direction, R.right};
         constexpr size_t TargetW = TR.length();
 
-        auto extended_bits = value_.template zero_extend<TargetW>();
-        return Sfixed<TR>(Bits<TargetW>{} - extended_bits);
+        auto extended_bits = UInt<TargetW>(value_);
+        auto const signed_bits = SInt<TargetW>(extended_bits);
+        return Sfixed<TR>(SInt<TargetW>::exact_sub(SInt<TargetW>{}, signed_bits));
     }
 
     template <Range R2>
@@ -957,7 +973,7 @@ class Ufixed {
         auto rhs_aligned =
             detail::shift_left_zero_extended<R2.length() + ShiftR>(bits(rhs), ShiftR);
 
-        return Ufixed<R_res>(detail::add_unsigned(lhs_aligned, rhs_aligned));
+        return Ufixed<R_res>(lhs_aligned + rhs_aligned);
     }
 
     template <Range R2>
@@ -977,7 +993,7 @@ class Ufixed {
         auto rhs_aligned =
             detail::shift_left_zero_extended<R2.length() + ShiftR>(bits(rhs), ShiftR);
 
-        return Sfixed<R_res>(detail::sub_unsigned(lhs_aligned, rhs_aligned));
+        return Sfixed<R_res>(lhs_aligned - rhs_aligned);
     }
 
     template <Range R2>
@@ -987,7 +1003,7 @@ class Ufixed {
             "Operations require DOWNTO"
         );
         constexpr Range R_res{R.left + R2.left + 1, Direction::DOWNTO, R.right + R2.right};
-        return Ufixed<R_res>(detail::mul_unsigned(value_, bits(rhs)));
+        return Ufixed<R_res>(value_ * bits(rhs));
     }
 
     template <Range R2>
@@ -1047,7 +1063,7 @@ class Ufixed {
         } else {
             return std::pair{
                 Ufixed<QuotientRange>(quotient_bits),
-                Ufixed<RemainderRange>(remainder_bits.template zero_extend<RemainderW>())
+                Ufixed<RemainderRange>(UInt<RemainderW>(remainder_bits))
             };
         }
     }
@@ -1270,7 +1286,7 @@ class Ufixed {
   private:
     friend struct bits_fn;
 
-    Bits<R.length()> value_{};
+    UInt<R.length()> value_{};
 };
 
 template <Range R1, Range R2>
@@ -1500,7 +1516,7 @@ struct std::hash<coconext::types::detail::Ufixed<R>> {
         size_t value_hash = 0;
 
         if constexpr (W > 0) {
-            if constexpr (!coconext::types::detail::Bits<W>::is_wide) {
+            if constexpr (!coconext::types::detail::UInt<W>::is_wide) {
                 auto raw_val = coconext::types::detail::bits(v).raw();
                 if constexpr (sizeof(raw_val) > sizeof(size_t)) {
                     uint64_t low = static_cast<uint64_t>(raw_val);

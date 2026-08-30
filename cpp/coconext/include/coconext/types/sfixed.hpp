@@ -35,14 +35,16 @@ namespace detail {
 template <Range R>
 class Sfixed {
     template <size_t SourceW>
-    constexpr void assign_signed_integer(Bits<SourceW> const& source) {
+    constexpr void assign_signed_integer(SInt<SourceW> const& source) {
         if constexpr (SourceW == 0) {
-            value_ =
-                detail::convert_signed_magnitude<R.length()>(source, false, 0, R.right);
+            value_ = detail::convert_signed_magnitude<R.length()>(
+                UInt<SourceW>{}, false, 0, R.right
+            );
         } else {
             bool const negative = source.get_bit(SourceW - 1);
-            Bits<SourceW> const magnitude =
-                negative ? (~source) + Bits<SourceW>{1} : source;
+            auto const source_bits = source.logical_bits();
+            UInt<SourceW> const magnitude =
+                negative ? detail::wrapped_negate(source_bits) : source_bits;
             value_ = detail::convert_signed_magnitude<R.length()>(
                 magnitude, negative, 0, R.right
             );
@@ -50,7 +52,7 @@ class Sfixed {
     }
 
     template <size_t SourceW>
-    constexpr void assign_unsigned_integer(Bits<SourceW> const& source) {
+    constexpr void assign_unsigned_integer(UInt<SourceW> const& source) {
         value_ = detail::convert_signed_magnitude<R.length()>(source, false, 0, R.right);
     }
 
@@ -68,22 +70,13 @@ class Sfixed {
 
         if constexpr (R.right > 0) {
             constexpr Range IntegerRange{R.left, Direction::DOWNTO, 0};
-            auto scaled = value_.template sign_extend<IntegerRange.length()>();
+            auto scaled = SInt<IntegerRange.length()>(value_);
             scaled = scaled << R.right;
             return static_cast<T>(Sfixed<IntegerRange>(scaled));
-        } else if constexpr (!Bits<R.length()>::is_wide) {
+        } else if constexpr (!UInt<R.length()>::is_wide) {
             using RawType = decltype(value_.raw());
             using SignedRawType = std::make_signed_t<RawType>;
-            constexpr size_t W = R.length();
-            constexpr size_t StorageW = sizeof(RawType) * 8;
-
-            SignedRawType signed_raw;
-            if constexpr (W < StorageW) {
-                RawType const m = RawType{1} << (W - 1);
-                signed_raw = static_cast<SignedRawType>((value_.raw() ^ m) - m);
-            } else {
-                signed_raw = static_cast<SignedRawType>(value_.raw());
-            }
+            SignedRawType const signed_raw = static_cast<SignedRawType>(value_.raw());
 
             SignedRawType int_val = 0;
             if constexpr (frac_bits() < std::numeric_limits<SignedRawType>::digits) {
@@ -132,13 +125,14 @@ class Sfixed {
 
         } else {
             bool is_negative = value_.get_bit(R.length() - 1);
-            Bits<R.length()> abs_value =
-                is_negative ? (~value_) + Bits<R.length()>(1) : value_;
+            auto const raw_value = value_.logical_bits();
+            UInt<R.length()> abs_value =
+                is_negative ? detail::wrapped_negate(raw_value) : raw_value;
 
             // Truncate fractional bits (logical shift on absolute value == round_to_zero)
-            Bits<R.length()> int_magnitude = abs_value.srl(frac_bits());
+            UInt<R.length()> int_magnitude = abs_value >> frac_bits();
 
-            if (int_magnitude == Bits<R.length()>{}) {
+            if (int_magnitude == UInt<R.length()>{}) {
                 return T{0};
             }
 
@@ -152,9 +146,9 @@ class Sfixed {
                     out_of_bounds = true;
                 } else if (msb_index == max_bits) {
                     if (is_negative && std::is_signed_v<T>) {
-                        Bits<R.length()> remainder = int_magnitude;
+                        UInt<R.length()> remainder = int_magnitude;
                         remainder.set_bit(max_bits, false);
-                        if (remainder != Bits<R.length()>{0}) {
+                        if (remainder != UInt<R.length()>{0}) {
                             out_of_bounds = true;
                         }
                     } else {
@@ -194,28 +188,20 @@ class Sfixed {
             R.length() > 0, "Sfixed<0> has no value, cannot convert to native float"
         );
 
-        if constexpr (!Bits<R.length()>::is_wide) {
+        if constexpr (!UInt<R.length()>::is_wide) {
             using RawType = decltype(value_.raw());
             using SignedRawType = std::make_signed_t<RawType>;
-            constexpr size_t W = R.length();
-            constexpr size_t StorageW = sizeof(RawType) * 8;
-
-            SignedRawType signed_raw;
-            if constexpr (W < StorageW) {
-                RawType const m = RawType{1} << (W - 1);
-                signed_raw = static_cast<SignedRawType>((value_.raw() ^ m) - m);
-            } else {
-                signed_raw = static_cast<SignedRawType>(value_.raw());
-            }
+            SignedRawType const signed_raw = static_cast<SignedRawType>(value_.raw());
             return std::ldexp(static_cast<T>(signed_raw), R.right);
         } else {
-            if (value_ == Bits<R.length()>{0}) {
+            if (value_ == SInt<R.length()>{0}) {
                 return T{0.0};
             }
 
             bool is_negative = value_.get_bit(R.length() - 1);
-            Bits<R.length()> abs_value =
-                is_negative ? (~value_) + Bits<R.length()>(1) : value_;
+            auto const raw_value = value_.logical_bits();
+            UInt<R.length()> abs_value =
+                is_negative ? detail::wrapped_negate(raw_value) : raw_value;
 
             int msb_index = abs_value.highest_set_index();
             constexpr int mantissa_bits = std::numeric_limits<T>::digits;
@@ -225,7 +211,7 @@ class Sfixed {
                 shift_amount = msb_index - mantissa_bits + 1;
             }
 
-            auto aligned = abs_value.srl(shift_amount);
+            auto aligned = abs_value >> shift_amount;
             uint64_t raw_mantissa = static_cast<uint64_t>(aligned.raw().word(0));
 
             if (shift_amount > 0) {
@@ -257,10 +243,9 @@ class Sfixed {
 
     constexpr Sfixed() noexcept = default;
 
-    template <size_t W>
-    constexpr Sfixed(Bits<W> const& val) {
-        static_assert(W == R.length(), "Construction from Bits requires identical width");
-        value_ = val;
+    template <size_t W, bool SignedRepresentation>
+    constexpr Sfixed(Int<W, SignedRepresentation> const& val) : value_(val) {
+        static_assert(W == R.length(), "Construction from Int requires identical width");
     }
 
     // Construct from a native integer
@@ -278,9 +263,9 @@ class Sfixed {
         constexpr size_t SourceW =
             std::numeric_limits<T>::digits + (std::is_signed_v<T> ? 1 : 0);
         if constexpr (std::is_signed_v<T>) {
-            assign_signed_integer(Bits<SourceW>(v));
+            assign_signed_integer(SInt<SourceW>(v));
         } else {
-            assign_unsigned_integer(Bits<SourceW>(v));
+            assign_unsigned_integer(UInt<SourceW>(v));
         }
     }
 
@@ -296,12 +281,14 @@ class Sfixed {
         );
         if constexpr (R2.length() == 0) {
             value_ = detail::convert_signed_magnitude<R.length()>(
-                bits(other), false, R2.right, R.right
+                bits(other).logical_bits(), false, R2.right, R.right
             );
         } else {
-            bool const negative = bits(other).get_bit(R2.length() - 1);
-            Bits<R2.length()> const magnitude =
-                negative ? (~bits(other)) + Bits<R2.length()>{1} : bits(other);
+            auto const other_bits = bits(other);
+            bool const negative = other_bits.get_bit(R2.length() - 1);
+            auto const raw_bits = other_bits.logical_bits();
+            UInt<R2.length()> const magnitude =
+                negative ? detail::wrapped_negate(raw_bits) : raw_bits;
             value_ = detail::convert_signed_magnitude<R.length()>(
                 magnitude, negative, R2.right, R.right
             );
@@ -344,17 +331,17 @@ class Sfixed {
         }
 
         constexpr size_t W = R.length();
-        Bits<W> const max_signed_bits = ~(Bits<W>(1) << (W - 1));
-        Bits<W> const min_signed_bits = Bits<W>(1) << (W - 1);
+        UInt<W> const max_signed_bits = ~(UInt<W>(1) << (W - 1));
+        UInt<W> const min_signed_bits = UInt<W>(1) << (W - 1);
 
         if (std::isinf(v)) {
             if (om == overflow_mode::wrap) {
                 throw std::domain_error("Cannot wrap Infinity.");
             }
             if (v > 0) {
-                value_ = max_signed_bits;
+                value_ = SInt<W>(max_signed_bits);
             } else {
-                value_ = min_signed_bits;
+                value_ = SInt<W>(min_signed_bits);
             }
             return;
         }
@@ -364,17 +351,18 @@ class Sfixed {
         auto aligned = detail::align_floating_magnitude<W + 1>(magnitude, R.right);
         detail::round_magnitude(aligned, rm, negative);
 
-        Bits<W + 1> const negative_limit = Bits<W + 1>{1} << (W - 1);
-        bool const out_of_range = aligned.overflow
-                               || (negative ? aligned.bits.ugt(negative_limit)
-                                            : aligned.bits.uge(negative_limit));
+        UInt<W + 1> const negative_limit = UInt<W + 1>{1} << (W - 1);
+        bool const out_of_range =
+            aligned.overflow
+            || (negative ? aligned.bits > negative_limit : aligned.bits >= negative_limit);
 
         if (out_of_range && om == overflow_mode::saturate) {
-            Bits<W> const sign_bit = Bits<W>{1} << (W - 1);
-            value_ = negative ? sign_bit : ~sign_bit;
+            UInt<W> const sign_bit = UInt<W>{1} << (W - 1);
+            value_ = SInt<W>(negative ? sign_bit : ~sign_bit);
         } else {
-            Bits<W> const magnitude_bits = aligned.bits.template truncate<W>();
-            value_ = negative ? Bits<W>{} - magnitude_bits : magnitude_bits;
+            UInt<W> const magnitude_bits = aligned.bits.template truncate<W>();
+            value_ =
+                SInt<W>(negative ? detail::wrapped_negate(magnitude_bits) : magnitude_bits);
         }
     }
 
@@ -418,10 +406,11 @@ class Sfixed {
         constexpr size_t TargetW = R.length();
         constexpr size_t SourceW = R2.length();
         bool negative = false;
-        Bits<SourceW> magnitude{};
+        UInt<SourceW> magnitude{};
         if constexpr (SourceW > 0) {
             negative = bits(src).get_bit(SourceW - 1);
-            magnitude = negative ? (~bits(src)) + Bits<SourceW>{1} : bits(src);
+            auto const raw_bits = bits(src).logical_bits();
+            magnitude = negative ? detail::wrapped_negate(raw_bits) : raw_bits;
         }
         if constexpr (TargetW == 0) {
             value_ = {};
@@ -430,19 +419,21 @@ class Sfixed {
                 detail::align_magnitude<TargetW + 1>(magnitude, R2.right, R.right);
             detail::round_magnitude(aligned, rnd, negative);
 
-            Bits<TargetW + 1> const negative_limit = Bits<TargetW + 1>{1} << (TargetW - 1);
+            UInt<TargetW + 1> const negative_limit = UInt<TargetW + 1>{1} << (TargetW - 1);
             bool const out_of_range = aligned.overflow
-                                   || (negative ? aligned.bits.ugt(negative_limit)
-                                                : aligned.bits.uge(negative_limit));
+                                   || (negative ? aligned.bits > negative_limit
+                                                : aligned.bits >= negative_limit);
 
             if (out_of_range && ovf == overflow_mode::saturate) {
-                Bits<TargetW> const sign_bit = Bits<TargetW>{1} << (TargetW - 1);
-                value_ = negative ? sign_bit : ~sign_bit;
+                UInt<TargetW> const sign_bit = UInt<TargetW>{1} << (TargetW - 1);
+                value_ = SInt<TargetW>(negative ? sign_bit : ~sign_bit);
             } else {
-                Bits<TargetW> const quantized_magnitude =
+                UInt<TargetW> const quantized_magnitude =
                     aligned.bits.template truncate<TargetW>();
-                value_ =
-                    negative ? Bits<TargetW>{} - quantized_magnitude : quantized_magnitude;
+                value_ = SInt<TargetW>(
+                    negative ? detail::wrapped_negate(quantized_magnitude)
+                             : quantized_magnitude
+                );
             }
         }
     }
@@ -464,7 +455,7 @@ class Sfixed {
     explicit constexpr operator bool() const noexcept
         requires(R.direction == Direction::DOWNTO)
     {
-        return value_ != Bits<R.length()>{};
+        return value_ != SInt<R.length()>{};
     }
 
     explicit constexpr operator signed char() const noexcept(
@@ -644,7 +635,7 @@ class Sfixed {
             throw std::invalid_argument("Shift amount cannot be negative");
         }
 
-        return Sfixed<R>(value_.sra(v));
+        return Sfixed<R>(value_ >> v);
     }
 
     template <typename T>
@@ -669,7 +660,7 @@ class Sfixed {
             throw std::invalid_argument("Shift amount cannot be negative");
         }
 
-        value_ = value_.sra(v);
+        value_ = value_ >> v;
         return *this;
     }
 
@@ -683,7 +674,7 @@ class Sfixed {
         if (value_ == other.value_) {
             return std::strong_ordering::equal;
         }
-        if (value_.sgt(other.value_)) {
+        if (value_ > other.value_) {
             return std::strong_ordering::greater;
         }
         return std::strong_ordering::less;
@@ -717,8 +708,8 @@ class Sfixed {
         constexpr auto TR = Range{R.left + 1, R.direction, R.right};
         constexpr size_t TargetW = TR.length();
 
-        auto extended_bits = value_.template sign_extend<TargetW>();
-        return Sfixed<TR>(Bits<TargetW>{} - extended_bits);
+        auto extended_bits = SInt<TargetW>(value_);
+        return Sfixed<TR>(SInt<TargetW>::exact_sub(SInt<TargetW>{}, extended_bits));
     }
 
     template <Range R2>
@@ -738,7 +729,7 @@ class Sfixed {
         auto rhs_aligned =
             detail::shift_left_sign_extended<R2.length() + ShiftR>(bits(rhs), ShiftR);
 
-        return Sfixed<R_res>(detail::add_signed(lhs_aligned, rhs_aligned));
+        return Sfixed<R_res>(lhs_aligned + rhs_aligned);
     }
 
     template <Range R2>
@@ -758,7 +749,7 @@ class Sfixed {
         auto rhs_aligned =
             detail::shift_left_sign_extended<R2.length() + ShiftR>(bits(rhs), ShiftR);
 
-        return Sfixed<R_res>(detail::sub_signed(lhs_aligned, rhs_aligned));
+        return Sfixed<R_res>(lhs_aligned - rhs_aligned);
     }
 
     template <Range R2>
@@ -768,7 +759,7 @@ class Sfixed {
             "Operations require DOWNTO"
         );
         constexpr Range R_res{R.left + R2.left + 1, Direction::DOWNTO, R.right + R2.right};
-        return Sfixed<R_res>(detail::mul_signed(value_, bits(rhs)));
+        return Sfixed<R_res>(value_ * bits(rhs));
     }
 
     template <Range R2>
@@ -828,7 +819,7 @@ class Sfixed {
         } else {
             return std::pair{
                 Sfixed<QuotientRange>(quotient_bits),
-                Sfixed<RemainderRange>(remainder_bits.template sign_extend<RemainderW>())
+                Sfixed<RemainderRange>(SInt<RemainderW>(remainder_bits))
             };
         }
     }
@@ -871,7 +862,7 @@ class Sfixed {
         } else {
             return std::pair{
                 Sfixed<QuotientRange>(quotient_bits),
-                Sfixed<ModuloRange>(modulo_bits.template sign_extend<ModuloW>())
+                Sfixed<ModuloRange>(SInt<ModuloW>(modulo_bits))
             };
         }
     }
@@ -1065,7 +1056,7 @@ class Sfixed {
   private:
     friend struct bits_fn;
 
-    Bits<R.length()> value_{};
+    SInt<R.length()> value_{};
 };
 
 template <Range R1, Range R2>
@@ -1576,7 +1567,7 @@ struct std::hash<coconext::types::detail::Sfixed<R>> {
         size_t value_hash = 0;
 
         if constexpr (W > 0) {
-            if constexpr (!coconext::types::detail::Bits<W>::is_wide) {
+            if constexpr (!coconext::types::detail::SInt<W>::is_wide) {
                 auto raw_val = coconext::types::detail::bits(v).raw();
                 if constexpr (sizeof(raw_val) > sizeof(size_t)) {
                     uint64_t low = static_cast<uint64_t>(raw_val);
