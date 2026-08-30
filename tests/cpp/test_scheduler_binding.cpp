@@ -45,6 +45,21 @@ Coro<void> throw_runtime() {
 
 Task<int> make_unstarted_task() { co_return 42; }
 
+Coro<int> await_task_reference(Task<int>* task, Future<void> started) {
+    started.set_void();
+    co_return co_await *task;
+}
+
+Coro<int> destroy_last_task_wrapper_while_awaited() {
+    std::optional<Task<int>> task{make_unstarted_task()};
+    Future<void> started;
+    Task<int> awaiter = start_soon(await_task_reference(&*task, started));
+    co_await started;
+
+    task.reset();
+    co_return co_await awaiter;
+}
+
 Coro<void> self_cancel() {
     lookup_task()->cancel();
     co_return;
@@ -190,6 +205,10 @@ TEST(TestSchedulerBinding, AwaitingUnstartedTaskStartsIt) {
     };
 
     EXPECT_EQ(run(body()), 42);
+}
+
+TEST(TestSchedulerBinding, AwaiterOwnsStateAfterLastTaskWrapperIsDestroyed) {
+    EXPECT_EQ(run(destroy_last_task_wrapper_while_awaited()), 42);
 }
 
 TEST(TestSchedulerBinding, FreeStartSoonSpawnsAndReturnsTask) {

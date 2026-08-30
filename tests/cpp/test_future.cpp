@@ -8,6 +8,7 @@
 
 #include <exception>
 #include <functional>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -159,6 +160,25 @@ Coro<int> resolve_trigger(TriggerFuture future, ManualTrigger* trigger, int valu
     co_return co_await awaiter;
 }
 
+Coro<int> await_trigger_reference(TriggerFuture* future, Future<void> started) {
+    started.set_void();
+    co_return co_await *future;
+}
+
+Coro<int> destroy_last_future_wrapper_while_awaited() {
+    ManualTrigger trigger;
+    std::optional<TriggerFuture> future;
+    future.emplace(trigger);
+    Future<void> started;
+    Task<int> awaiter = start_soon(await_trigger_reference(&*future, started));
+    co_await started;
+
+    future.reset();
+    EXPECT_TRUE(trigger.primed());
+    trigger.fire(19);
+    co_return co_await awaiter;
+}
+
 Coro<int> concrete_awaiter(Future<int> future) { co_return co_await future; }
 
 Coro<void> concrete_setter(Future<int> future, int value) {
@@ -284,6 +304,10 @@ TEST(TestFuture, TriggerCallbackResolvesAbstractFuture) {
     EXPECT_EQ(run(resolve_trigger(future, &trigger, 17)), 17);
     EXPECT_FALSE(trigger.primed());
     EXPECT_EQ(trigger.unprime_calls(), 0);
+}
+
+TEST(TestFuture, AwaiterOwnsStateAfterLastWrapperIsDestroyed) {
+    EXPECT_EQ(run(destroy_last_future_wrapper_while_awaited()), 19);
 }
 
 TEST(TestFuture, ConcreteFutureProvidesPublicCompletionAPI) {

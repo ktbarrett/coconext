@@ -56,9 +56,17 @@ class AwaitableAwaiter : private Event {
     using coconext_awaiter = void;
 
     [[nodiscard]] explicit AwaitableAwaiter(not_null<AwaitableStateT*> awaitable)
-        : awaitable_(awaitable) {}
+        : awaitable_(awaitable) {
+        awaitable_->inc_ref();
+    }
 
-    ~AwaitableAwaiter() { event_unschedule(); }
+    AwaitableAwaiter(AwaitableAwaiter const&) = delete;
+    AwaitableAwaiter& operator=(AwaitableAwaiter const&) = delete;
+
+    ~AwaitableAwaiter() {
+        event_unschedule();
+        awaitable_->dec_ref();
+    }
 
     [[nodiscard]] bool await_ready() const noexcept { return awaitable_->done(); }
     template <typename PromiseType>
