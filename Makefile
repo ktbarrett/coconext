@@ -87,7 +87,7 @@ simulator_tests:
 
 .PHONY: integration_tests
 integration_tests:
-	pytest $(PYTEST_COVERAGE_ARGS) tests/integration_tests tests/pytest
+	pytest $(PYTEST_COVERAGE_ARGS) tests/integration_tests tests/pytest/
 
 .PHONY: cocotb_tests
 cocotb_tests: dev_build

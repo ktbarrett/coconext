@@ -451,3 +451,251 @@ def test_unary_ops():
 def test_zero_width():
     with pytest.raises(ValueError):
         _ = Unsigned(0, 0)
+
+
+def test_constructors_big():
+    # 150-bit Unsigned range: 0 to 2**150 - 1
+    max_val = (1 << 150) - 1
+
+    a = Unsigned(150, max_val)
+    assert int(a) == max_val
+    assert len(a) == 150
+
+    b = Unsigned(150, 0)
+    assert int(b) == 0
+    assert len(b) == 150
+
+    with pytest.raises(IndexError):
+        Unsigned(150, max_val + 1)
+    with pytest.raises(OverflowError):
+        Unsigned(150, -1)
+
+
+def test_explicit_native_casts_big():
+    big_val = (1 << 200) + 500
+    a = Unsigned(250, big_val)
+    assert bool(a) is True
+    assert int(a) == big_val
+
+    assert bool(Unsigned(250, 0)) is False
+    assert bool(Unsigned(250, 1 << 240)) is True
+
+
+def test_arithmetic_operators_edge_cases_big():
+    u_narrow = Unsigned(4, 15)
+    u_wide = Unsigned(200, (1 << 190))
+
+    sum_nw = u_narrow + u_wide
+    assert len(sum_nw) == 201
+    assert int(sum_nw) == (1 << 190) + 15
+
+    sum_wn = u_wide + u_narrow
+    assert len(sum_wn) == 201
+    assert int(sum_wn) == (1 << 190) + 15
+
+    sub_wn = u_wide - u_narrow
+    assert len(sub_wn) == 201
+    assert int(sub_wn) == (1 << 190) - 15
+
+    sub_nw = u_narrow - u_wide
+    assert len(sub_nw) == 201
+    assert int(sub_nw) == 15 - (1 << 190)
+
+    prod_one = u_wide * Unsigned(1, 1)
+    assert len(prod_one) == 201
+    assert int(prod_one) == (1 << 190)
+
+    div_large = u_narrow / u_wide
+    assert int(div_large) == 0
+
+    mod_large = u_narrow % u_wide
+    assert int(mod_large) == 15
+
+
+def test_compound_assignment_big():
+    val = 1 << 180
+    a = Unsigned(200, val)
+
+    a += Unsigned(100, (1 << 90))
+    assert len(a) == 200
+    assert int(a) == val + (1 << 90)
+
+    a -= Unsigned(10, 500)
+    assert len(a) == 200
+    assert int(a) == val + (1 << 90) - 500
+
+    a *= Unsigned(2, 2)
+    assert len(a) == 200
+    assert int(a) == (val + (1 << 90) - 500) * 2
+
+
+def test_compound_assignment_harsh_big():
+    max_val = (1 << 150) - 1
+
+    a = Unsigned(150, max_val)
+    a += Unsigned(10, 2)
+    assert len(a) == 150
+    assert int(a) == 1  # Unsigned wrap around
+
+    b = Unsigned(150, 2)
+    b -= Unsigned(10, 5)
+    assert len(b) == 150
+    assert int(b) == max_val - 2  # Unsigned underflow wrap
+
+    c = Unsigned(100, 500)
+    c *= Unsigned(150, (1 << 95) + 7)
+    assert len(c) == 100
+    # Calculate exact wrap around for 100-bit unsigned integer
+    expected = 500 * ((1 << 95) + 7)
+    expected_wrapped = expected % (1 << 100)
+    assert int(c) == expected_wrapped
+
+
+def test_compound_assignment_operators_mixed_signedness_big():
+    u1 = Unsigned(200, 1 << 180)
+    u1 += Signed(150, -(1 << 140))
+    assert u1 == Unsigned(200, (1 << 180) - (1 << 140))
+
+    u2 = Unsigned(200, 1 << 190)
+    u2 -= Signed(200, (1 << 195))
+    assert len(u2) == 200
+    expected = (1 << 190) - (1 << 195)
+    expected_wrapped = expected % (1 << 200)
+    assert int(u2) == expected_wrapped
+
+
+def test_compound_assignment_mixed_signedness_harsh_big():
+    u_narrow = Unsigned(4, 5)
+    u_narrow += Signed(200, -(1 << 190) + 20)
+    assert len(u_narrow) == 4
+    # Check width truncation down to 4 bits
+    expected_wrapped = (5 - (1 << 190) + 20) % 16
+    assert int(u_narrow) == expected_wrapped
+
+    u_div = Unsigned(150, (1 << 140))
+    u_div //= Signed(100, -(1 << 90))
+    expected_wrapped = (-(1 << 50)) % (1 << 150)
+    assert int(u_div) == expected_wrapped
+
+
+def test_comparisons_big():
+    v1 = 1 << 200
+    v2 = (1 << 200) - 100
+
+    a = Unsigned(250, v1)
+    b = Unsigned(250, v1)
+    c = Unsigned(250, v2)
+    d = Unsigned(250, v2)
+
+    assert a == b
+    assert c == d
+    assert a != c
+
+    assert c < a
+    assert not (a < c)
+    assert c <= a
+    assert a >= c
+    assert a > c
+
+
+def test_shift_operators_big():
+    val = (1 << 150) + 999
+    a = Unsigned(200, val)
+
+    sl = a << 10
+    assert int(sl) == val * (1 << 10)
+
+    sr = a >> 5
+    assert int(sr) == val // (1 << 5)
+
+    a <<= 20
+    assert int(a) == val * (1 << 20)
+
+    a >>= 25
+    assert int(a) == (val * (1 << 20)) // (1 << 25)
+
+
+def test_shift_operators_harsh_edge_cases_big():
+    u_big = Unsigned(200, (1 << 190) + 12345)
+
+    assert int(u_big << 200) == 0
+    assert int(u_big >> 200) == 0
+    assert int(u_big >> 10000) == 0
+
+    shift_s_pos = Signed(100, 50)
+    expected = (((1 << 190) + 12345) << 50) % (1 << 200)
+    assert int(u_big << shift_s_pos) == expected
+
+    u_comp = Unsigned(150, (1 << 140))
+    u_comp <<= 20
+    assert len(u_comp) == 150
+    expected_comp = (1 << 140) << 20
+    expected_wrapped = expected_comp % (1 << 150)
+    assert int(u_comp) == expected_wrapped
+
+
+def test_index_operator_big():
+    val = (1 << 150) | (1 << 75) | 1
+    a = Unsigned(200, val)
+
+    assert not bool(a[199])
+    assert bool(a[150])
+    assert not bool(a[149])
+    assert bool(a[75])
+    assert not bool(a[74])
+    assert bool(a[0])
+
+    with pytest.raises(IndexError):
+        _ = a[200]
+
+
+def test_formatter_big():
+    val = (1 << 140) + 0xABCDEF
+    u = Unsigned(150, val)
+
+    assert format(u, "b") == f"Unsigned[149 downto 0]{{{val:0150b}}}"
+    assert format(u) == f"Unsigned[149 downto 0]{{{val}}}"
+    assert format(u, "o") == f"Unsigned[149 downto 0]{{{val:050o}}}"
+    assert format(u, "x") == f"Unsigned[149 downto 0]{{{val:038x}}}"
+
+
+def test_unary_ops_big():
+    val = (1 << 190) + 123456789
+    a = Unsigned(200, val)
+
+    neg_a = -a
+    assert type(neg_a) is Signed
+    assert len(neg_a) == 201
+    assert int(neg_a) == -val
+
+    pos_a = +a
+    assert type(pos_a) is Signed
+    assert len(pos_a) == 201
+    assert int(pos_a) == val
+
+
+def test_bitwise_operators():
+    a = Unsigned(8, 12)  # 00001100
+    b = Unsigned(8, 10)  # 00001010
+
+    assert int(a & b) == 8
+    assert int(a | b) == 14
+    assert int(a ^ b) == 6
+
+    assert int(~a) == 243
+
+
+def test_bitwise_operators_big():
+    val_a = 0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+    val_b = 0x55555555555555555555555555555555
+
+    a = Unsigned(150, val_a)
+    b = Unsigned(150, val_b)
+
+    assert int(a & b) == 0
+    assert int(a | b) == val_a | val_b
+    assert int(a ^ b) == val_a ^ val_b
+
+    # For Unsigned, bitwise NOT must wrap around the 150-bit boundary
+    mask = (1 << 150) - 1
+    assert int(~a) == (~val_a) & mask
