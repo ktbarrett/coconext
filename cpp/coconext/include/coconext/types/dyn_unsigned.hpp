@@ -35,6 +35,7 @@ class DynUnsigned {
 
   public:
     explicit DynUnsigned(DynBits const& val) : value_(val) {}
+    explicit DynUnsigned(size_t width, std::string_view str) : value_(width, str) {}
 
     size_t width() const { return value_.width(); }
 
@@ -105,12 +106,16 @@ class DynUnsigned {
             }
             safe_shift = static_cast<size_t>(shift_amount);
         } else if constexpr (std::is_same_v<CleanType, DynUnsigned>) {
-            if (shift_amount.width() > 64) {
+            if (static_cast<unsigned long long>(shift_amount)
+                > std::numeric_limits<unsigned long long>::max())
+            {
                 throw std::out_of_range("Bit Width cap 2**64");
             }
             safe_shift = static_cast<size_t>(static_cast<unsigned long long>(shift_amount));
         } else if constexpr (std::is_same_v<CleanType, DynSigned>) {
-            if (shift_amount.width() > 64) {
+            if (static_cast<long long>(shift_amount)
+                > std::numeric_limits<long long>::max())
+            {
                 throw std::out_of_range("Bit Width cap 2**64");
             }
             long long signed_val = static_cast<long long>(shift_amount);
@@ -146,12 +151,16 @@ class DynUnsigned {
             }
             safe_shift = static_cast<size_t>(shift_amount);
         } else if constexpr (std::is_same_v<CleanType, DynUnsigned>) {
-            if (shift_amount.width() > 64) {
+            if (static_cast<unsigned long long>(shift_amount)
+                > std::numeric_limits<unsigned long long>::max())
+            {
                 throw std::out_of_range("Bit Width cap 2**64");
             }
             safe_shift = static_cast<size_t>(static_cast<unsigned long long>(shift_amount));
         } else if constexpr (std::is_same_v<CleanType, DynSigned>) {
-            if (shift_amount.width() > 64) {
+            if (static_cast<long long>(shift_amount)
+                > std::numeric_limits<long long>::max())
+            {
                 throw std::out_of_range("Bit Width cap 2**64");
             }
             long long signed_val = static_cast<long long>(shift_amount);
@@ -167,6 +176,20 @@ class DynUnsigned {
 
         return DynUnsigned(value_.srl(safe_shift));
     }
+
+    auto operator|(DynUnsigned const& other) const {
+        return DynUnsigned(value_ | bits(other));
+    }
+
+    auto operator&(DynUnsigned const& other) const {
+        return DynUnsigned(value_ & bits(other));
+    }
+
+    auto operator^(DynUnsigned const& other) const {
+        return DynUnsigned(value_ ^ bits(other));
+    }
+
+    auto operator~() const { return DynUnsigned(~value_); }
 
     template <typename ShiftType>
     constexpr DynUnsigned& operator<<=(ShiftType const& shift_amount) {

@@ -6,11 +6,13 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>  // IWYU pragma: keep
 
+// #include <Python.h>
 #include <cstddef>
 #include <cstdint>
 #include <format>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -44,6 +46,29 @@ void register_unsigned(nb::module_& m) {
                 new (self) DynUnsigned(width, v);
             }
         )
+        // python int has infinite precision
+        .def(
+            "__init__",
+            [](DynUnsigned* self, size_t width, nb::int_ value_obj) {
+                nb::str py_str = nb::str(value_obj);
+                std::string dec_str = nb::cast<std::string>(py_str);
+                new (self) DynUnsigned(width, dec_str);
+            }
+        )
+
+        .def(
+            "__or__",
+            [](DynUnsigned const& self, DynUnsigned const& other) { return self | other; }
+        )
+        .def(
+            "__and__",
+            [](DynUnsigned const& self, DynUnsigned const& other) { return self & other; }
+        )
+        .def(
+            "__xor__",
+            [](DynUnsigned const& self, DynUnsigned const& other) { return self ^ other; }
+        )
+        .def("__invert__", [](DynUnsigned const& self) { return ~self; })
 
         .def(
             "__getitem__",
@@ -187,8 +212,21 @@ void register_unsigned(nb::module_& m) {
         )
 
         .def(
-            "__int__", [](DynUnsigned const& self) { return static_cast<long long>(self); }
+            "__int__",
+            [](DynUnsigned const& self) {
+                std::string dec_str = bits(self).to_decimal_string();
+                PyObject* py_long = PyLong_FromString(  // NOLINT(misc-include-cleaner)
+                    dec_str.c_str(), nullptr, 10
+                );
+
+                if (!py_long) {
+                    throw nb::python_error();
+                }
+
+                return nb::steal<nb::int_>(py_long);
+            }
         )
+
         .def("__len__", [](DynUnsigned const& self) { return self.width(); })
         .def("__bool__", [](DynUnsigned const& self) { return static_cast<bool>(self); })
 
@@ -295,6 +333,41 @@ void register_signed(nb::module_& m) {
             "__init__",
             [](DynSigned* self, size_t width, int64_t v) { new (self) DynSigned(width, v); }
         )
+        .def(
+            "__init__",
+            [](DynSigned* self, size_t width, nb::int_ value_obj) {
+                nb::str py_str = nb::str(value_obj);
+                std::string dec_str = nb::cast<std::string>(py_str);
+
+                DynSigned temp(width, dec_str);
+
+                if (width > 0) {
+                    bool str_is_negative = (!dec_str.empty() && dec_str[0] == '-');
+                    bool val_is_negative = bits(temp).get_bit(width - 1);
+                    if (str_is_negative != val_is_negative) {
+                        throw std::invalid_argument(
+                            "Signed value does not fit in provided width"
+                        );
+                    }
+                }
+
+                new (self) DynSigned(std::move(temp));
+            }
+        )
+
+        .def(
+            "__or__",
+            [](DynSigned const& self, DynSigned const& other) { return self | other; }
+        )
+        .def(
+            "__and__",
+            [](DynSigned const& self, DynSigned const& other) { return self & other; }
+        )
+        .def(
+            "__xor__",
+            [](DynSigned const& self, DynSigned const& other) { return self ^ other; }
+        )
+        .def("__invert__", [](DynSigned const& self) { return ~self; })
 
         .def(
             "__getitem__",
@@ -431,7 +504,20 @@ void register_signed(nb::module_& m) {
             [](DynSigned& self, DynSigned shift_amount) { return self >>= shift_amount; }
         )
 
-        .def("__int__", [](DynSigned const& self) { return static_cast<long long>(self); })
+        .def(
+            "__int__",
+            [](DynSigned const& self) {
+                std::string dec_str = bits(self).to_decimal_string(true);
+                PyObject* py_long = PyLong_FromString(dec_str.c_str(), nullptr, 10);
+
+                if (!py_long) {
+                    throw nb::python_error();
+                }
+
+                return nb::steal<nb::int_>(py_long);
+            }
+        )
+
         .def("__len__", [](DynSigned const& self) { return self.width(); })
         .def("__bool__", [](DynSigned const& self) { return static_cast<bool>(self); })
 

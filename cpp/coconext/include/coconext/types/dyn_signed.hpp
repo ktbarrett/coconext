@@ -28,6 +28,7 @@ class DynSigned {
 
   public:
     explicit DynSigned(DynBits const& val) : value_(val) {}
+    explicit DynSigned(size_t width, std::string_view str) : value_(width, str) {}
 
     size_t width() const { return value_.width(); }
 
@@ -182,6 +183,14 @@ class DynSigned {
         *this = *this >> shift_amount;
         return *this;
     }
+
+    auto operator|(DynSigned const& other) const { return DynSigned(value_ | bits(other)); }
+
+    auto operator&(DynSigned const& other) const { return DynSigned(value_ & bits(other)); }
+
+    auto operator^(DynSigned const& other) const { return DynSigned(value_ ^ bits(other)); }
+
+    auto operator~() const { return DynSigned(~value_); }
 
     auto operator+() const { return *this; }
 
