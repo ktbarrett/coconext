@@ -17,7 +17,7 @@ class DynSigned {
             throw std::out_of_range("Value does not fit in destination native signed type");
         }
 
-        if (value_.get_width() < target_width) {
+        if (value_.width() < target_width) {
             auto extended = value_.sign_extend(target_width);
             return static_cast<T>(extended.raw().word(0));
         } else {
@@ -27,9 +27,16 @@ class DynSigned {
     }
 
   public:
-    DynSigned(DynBits const& val) : value_(val) {}
+    explicit DynSigned(DynBits const& val) : value_(val) {}
 
-    size_t get_width() const { return value_.get_width(); }
+    size_t width() const { return value_.width(); }
+
+    DynSigned(Vector<Bit> const& v) : value_(v.size()) {
+        size_t bit_idx = 0;
+        for (auto it = v.rbegin(); it != v.rend(); ++it) {
+            value_.set_bit(bit_idx++, char(*it) == '1');
+        }
+    }
 
     // Construct from a native integer.
     template <NativeInteger T>
@@ -54,7 +61,7 @@ class DynSigned {
     }
 
     bool operator==(DynSigned const& rhs) const noexcept {
-        return value_ == rhs.value_ && get_width() == rhs.get_width();
+        return value_ == rhs.value_ && width() == rhs.width();
     }
 
     auto operator<(DynSigned const& rhs) const noexcept { return value_.slt(rhs.value_); }
@@ -65,9 +72,7 @@ class DynSigned {
 
     auto operator>=(DynSigned const& rhs) const noexcept { return value_.sge(rhs.value_); }
 
-    explicit operator bool() const noexcept {
-        return value_ != DynBits{value_.get_width(), 0};
-    }
+    explicit operator bool() const noexcept { return value_ != DynBits{value_.width(), 0}; }
 
     explicit operator long long() const { return to_native_int<long long>(); }
 
@@ -91,12 +96,16 @@ class DynSigned {
             }
             safe_shift = static_cast<size_t>(shift_amount);
         } else if constexpr (std::is_same_v<CleanType, DynUnsigned>) {
-            if (shift_amount.get_width() > 64) {
+            if (static_cast<unsigned long long>(shift_amount)
+                > std::numeric_limits<unsigned long long>::max())
+            {
                 throw std::out_of_range("Bit Width cap 2**64");
             }
             safe_shift = static_cast<size_t>(static_cast<unsigned long long>(shift_amount));
         } else if constexpr (std::is_same_v<CleanType, DynSigned>) {
-            if (shift_amount.get_width() > 64) {
+            if (static_cast<long long>(shift_amount)
+                > std::numeric_limits<long long>::max())
+            {
                 throw std::out_of_range("Bit Width cap 2**64");
             }
             long long signed_val = static_cast<long long>(shift_amount);
@@ -106,8 +115,8 @@ class DynSigned {
             safe_shift = static_cast<size_t>(signed_val);
         }
 
-        if (safe_shift >= get_width()) {
-            return DynSigned(get_width(), 0);
+        if (safe_shift >= width()) {
+            return DynSigned(width(), 0);
         }
 
         return DynSigned(value_ << safe_shift);
@@ -132,12 +141,16 @@ class DynSigned {
             }
             safe_shift = static_cast<size_t>(shift_amount);
         } else if constexpr (std::is_same_v<CleanType, DynUnsigned>) {
-            if (shift_amount.get_width() > 64) {
+            if (static_cast<unsigned long long>(shift_amount)
+                > std::numeric_limits<unsigned long long>::max())
+            {
                 throw std::out_of_range("Bit Width cap 2**64");
             }
             safe_shift = static_cast<size_t>(static_cast<unsigned long long>(shift_amount));
         } else if constexpr (std::is_same_v<CleanType, DynSigned>) {
-            if (shift_amount.get_width() > 64) {
+            if (static_cast<long long>(shift_amount)
+                > std::numeric_limits<long long>::max())
+            {
                 throw std::out_of_range("Bit Width cap 2**64");
             }
             long long signed_val = static_cast<long long>(shift_amount);
@@ -147,11 +160,11 @@ class DynSigned {
             safe_shift = static_cast<size_t>(signed_val);
         }
 
-        if (safe_shift >= get_width()) {
+        if (safe_shift >= width()) {
             if (safe_shift > 0) {
-                return DynSigned(get_width(), -1);
+                return DynSigned(width(), -1);
             } else {
-                return DynSigned(get_width(), 0);
+                return DynSigned(width(), 0);
             }
         }
 
@@ -172,9 +185,7 @@ class DynSigned {
 
     auto operator+() const { return *this; }
 
-    auto operator-() const {
-        return DynSigned(sub_signed(DynBits(get_width(), 0), value_));
-    }
+    auto operator-() const { return DynSigned(sub_signed(DynBits(width(), 0), value_)); }
 
     auto operator+(DynSigned const& rhs) const {
         return DynSigned(add_signed(value_, rhs.value_));
@@ -203,17 +214,17 @@ class DynSigned {
     }
 
     auto operator+=(DynSigned const& rhs) {
-        value_ = add_signed(value_, rhs.value_).truncate(get_width());
+        value_ = add_signed(value_, rhs.value_).truncate(width());
         return *this;
     }
 
     auto operator-=(DynSigned const& rhs) {
-        value_ = sub_signed(value_, rhs.value_).truncate(get_width());
+        value_ = sub_signed(value_, rhs.value_).truncate(width());
         return *this;
     }
 
     auto operator*=(DynSigned const& rhs) {
-        value_ = mul_signed(value_, rhs.value_).truncate(get_width());
+        value_ = mul_signed(value_, rhs.value_).truncate(width());
         return *this;
     }
 
@@ -222,7 +233,7 @@ class DynSigned {
             throw std::domain_error("Division by zero");
         }
 
-        value_ = div_signed(value_, rhs.value_).truncate(get_width());
+        value_ = div_signed(value_, rhs.value_).truncate(width());
         return *this;
     }
 
@@ -231,7 +242,7 @@ class DynSigned {
             throw std::domain_error("Division by zero");
         }
 
-        value_ = mod_signed(value_, rhs.value_).sign_extend(get_width());
+        value_ = mod_signed(value_, rhs.value_).sign_extend(width());
         return *this;
     }
 
@@ -266,7 +277,7 @@ class DynSigned {
     }
 
     auto index(Range::value_type index) const {
-        if (index >= static_cast<Range::value_type>(get_width()) || index < 0) {
+        if (index >= static_cast<Range::value_type>(width()) || index < 0) {
             throw std::out_of_range("Out of bounds access in DynSigned.index()");
         }
         return value_.get_bit(index);
@@ -284,114 +295,114 @@ class DynSigned {
 };
 
 // DynUnsigned Unary operators
-DynSigned operator+(DynUnsigned const& lhs) {
-    return DynSigned(bits(lhs).zero_extend(lhs.get_width() + 1));
+inline DynSigned operator+(DynUnsigned const& lhs) {
+    return DynSigned(bits(lhs).zero_extend(lhs.width() + 1));
 }
 
-DynSigned operator-(DynUnsigned const& lhs) {
-    return DynSigned(sub_unsigned(DynBits(lhs.get_width(), 0), bits(lhs)));
+inline DynSigned operator-(DynUnsigned const& lhs) {
+    return DynSigned(sub_unsigned(DynBits(lhs.width(), 0), bits(lhs)));
 }
 
 // DynUnsigned operator-
-DynSigned operator-(DynUnsigned const& lhs, DynUnsigned const& rhs) {
+inline DynSigned operator-(DynUnsigned const& lhs, DynUnsigned const& rhs) {
     return DynSigned(sub_unsigned(bits(lhs), bits(rhs)));
 }
 
 // DynUnsigned X DynSigned compound operators
-DynUnsigned& operator+=(DynUnsigned& lhs, DynSigned const& rhs) {
+inline DynUnsigned& operator+=(DynUnsigned& lhs, DynSigned const& rhs) {
     auto temp = DynSigned(bits(lhs));
     lhs.value_ = std::move(bits(temp += rhs));
     return lhs;
 }
 
-DynUnsigned& operator-=(DynUnsigned& lhs, DynSigned const& rhs) {
+inline DynUnsigned& operator-=(DynUnsigned& lhs, DynSigned const& rhs) {
     auto temp = DynSigned(bits(lhs));
     lhs.value_ = std::move(bits(temp -= rhs));
     return lhs;
 }
 
-DynUnsigned& operator*=(DynUnsigned& lhs, DynSigned const& rhs) {
+inline DynUnsigned& operator*=(DynUnsigned& lhs, DynSigned const& rhs) {
     auto temp = DynSigned(bits(lhs));
     lhs.value_ = std::move(bits(temp *= rhs));
     return lhs;
 }
 
-DynUnsigned& operator/=(DynUnsigned& lhs, DynSigned const& rhs) {
+inline DynUnsigned& operator/=(DynUnsigned& lhs, DynSigned const& rhs) {
     if (!static_cast<bool>(rhs)) {
         throw std::domain_error("Division by zero");
     }
 
-    size_t safe_width = std::max(lhs.get_width() + 1, rhs.get_width());
+    size_t safe_width = std::max(lhs.width() + 1, rhs.width());
     auto lhs_positive = bits(lhs).zero_extend(safe_width);
 
     auto quotient = div_signed(lhs_positive, bits(rhs));
-    lhs.value_ = quotient.truncate(lhs.get_width());
+    lhs.value_ = quotient.truncate(lhs.width());
 
     return lhs;
 }
 
-DynUnsigned& operator%=(DynUnsigned& lhs, DynSigned const& rhs) {
+inline DynUnsigned& operator%=(DynUnsigned& lhs, DynSigned const& rhs) {
     if (!static_cast<bool>(rhs)) {
         throw std::domain_error("Division by zero");
     }
 
-    size_t safe_width = std::max(lhs.get_width() + 1, rhs.get_width());
+    size_t safe_width = std::max(lhs.width() + 1, rhs.width());
     auto lhs_positive = bits(lhs).zero_extend(safe_width);
 
     auto remainder = rem_signed(lhs_positive, bits(rhs));
-    lhs.value_ = remainder.truncate(lhs.get_width());
+    lhs.value_ = remainder.truncate(lhs.width());
 
     return lhs;
 }
 
 // DynSigned X DynUnsigned compound operators
-DynSigned& operator+=(DynSigned& lhs, DynUnsigned const& rhs) {
-    auto rhs_positive = detail::bits(rhs).zero_extend(rhs.get_width() + 1);
+inline DynSigned& operator+=(DynSigned& lhs, DynUnsigned const& rhs) {
+    auto rhs_positive = detail::bits(rhs).zero_extend(rhs.width() + 1);
     auto result = detail::add_signed(detail::bits(lhs), rhs_positive);
-    lhs.value_ = result.truncate(lhs.get_width());
+    lhs.value_ = result.truncate(lhs.width());
     return lhs;
 }
 
-DynSigned& operator-=(DynSigned& lhs, DynUnsigned const& rhs) {
-    auto rhs_positive = detail::bits(rhs).zero_extend(rhs.get_width() + 1);
+inline DynSigned& operator-=(DynSigned& lhs, DynUnsigned const& rhs) {
+    auto rhs_positive = detail::bits(rhs).zero_extend(rhs.width() + 1);
     auto result = detail::sub_signed(detail::bits(lhs), rhs_positive);
-    lhs.value_ = result.truncate(lhs.get_width());
+    lhs.value_ = result.truncate(lhs.width());
     return lhs;
 }
 
-DynSigned& operator*=(DynSigned& lhs, DynUnsigned const& rhs) {
-    auto rhs_positive = detail::bits(rhs).zero_extend(rhs.get_width() + 1);
+inline DynSigned& operator*=(DynSigned& lhs, DynUnsigned const& rhs) {
+    auto rhs_positive = detail::bits(rhs).zero_extend(rhs.width() + 1);
     auto result = detail::mul_signed(detail::bits(lhs), rhs_positive);
-    lhs.value_ = result.truncate(lhs.get_width());
+    lhs.value_ = result.truncate(lhs.width());
     return lhs;
 }
 
-DynSigned& operator/=(DynSigned& lhs, DynUnsigned const& rhs) {
+inline DynSigned& operator/=(DynSigned& lhs, DynUnsigned const& rhs) {
     if (!static_cast<bool>(rhs)) {
         throw std::domain_error("Division by zero");
     }
 
-    size_t safe_width = std::max(lhs.get_width() + 1, rhs.get_width());
+    size_t safe_width = std::max(lhs.width() + 1, rhs.width());
     auto lhs_ext = bits(lhs).sign_extend(safe_width);
 
     auto quotient = div_signed(lhs_ext, bits(rhs));
-    lhs.value_ = quotient.truncate(lhs.get_width());
+    lhs.value_ = quotient.truncate(lhs.width());
 
     return lhs;
 }
 
-DynSigned& operator%=(DynSigned& lhs, DynUnsigned const& rhs) {
+inline DynSigned& operator%=(DynSigned& lhs, DynUnsigned const& rhs) {
     if (!static_cast<bool>(rhs)) {
         throw std::domain_error("Division by zero");
     }
 
-    size_t safe_width = std::max(lhs.get_width(), rhs.get_width()) + 1;
+    size_t safe_width = std::max(lhs.width(), rhs.width()) + 1;
 
     auto lhs_ext = bits(lhs).sign_extend(safe_width);
     auto rhs_positive = bits(rhs).zero_extend(safe_width);
 
     auto remainder = mod_signed(lhs_ext, rhs_positive);
-    lhs.value_ = remainder.truncate(lhs.get_width());
+    lhs.value_ = remainder.truncate(lhs.width());
 
     return lhs;
 }

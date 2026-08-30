@@ -33,6 +33,7 @@ find_package(nanobind CONFIG REQUIRED)
 nanobind_add_module(
     _pycoconext
     STABLE_ABI
+    FREE_THREADED
     NB_STATIC
     LTO
     _pycoconext/bind.cpp

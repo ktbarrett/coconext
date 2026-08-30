@@ -295,8 +295,6 @@ class DynBits {
         });
     }
 
-    size_t get_width() const noexcept { return width_; }
-
   private:
     size_t width_;
     union Storage {

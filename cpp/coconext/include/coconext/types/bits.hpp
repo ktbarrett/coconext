@@ -715,9 +715,14 @@ class Bits {
 
     constexpr size_t highest_set_index() const noexcept {
         if constexpr (!is_wide) {
-            return std::bit_width(storage_) - 1;
+            return storage_ == 0 ? 0 : std::bit_width(storage_) - 1;
         } else {
-            return std::bit_width(storage_[0]) - 1;
+            for (size_t i = storage_.size(); i > 0; --i) {
+                if (storage_[i - 1] != 0) {
+                    return (i - 1) * word_bits + std::bit_width(storage_[i - 1]) - 1;
+                }
+            }
+            return 0;
         }
     }
 
@@ -766,17 +771,27 @@ class Bits {
         }
     }
 
-    template <size_t FracBits>
+    template <int64_t FracBits>
     std::string to_fixed_decimal_string(bool is_signed = false) const {
-        if constexpr (FracBits == 0) {
+        if constexpr (FracBits < 0) {
+            constexpr size_t Shift = static_cast<size_t>(-FracBits);
+            constexpr size_t ResultWidth = W + Shift;
+            if (is_signed) {
+                auto scaled = this->template sign_extend<ResultWidth>() << Shift;
+                return scaled.to_decimal_string(true);
+            }
+            auto scaled = this->template zero_extend<ResultWidth>() << Shift;
+            return scaled.to_decimal_string(false);
+        } else if constexpr (FracBits == 0) {
             return to_decimal_string(is_signed);
         } else {
-            constexpr size_t PowerWidth = FracBits * 3;
+            constexpr size_t FractionalDigits = static_cast<size_t>(FracBits);
+            constexpr size_t PowerWidth = FractionalDigits * 3;
             constexpr size_t ResultWidth = W + PowerWidth;
 
             Bits<PowerWidth> power_of_5(1);
             Bits<PowerWidth> multiplier(5);
-            for (size_t i = 0; i < FracBits; ++i) {
+            for (size_t i = 0; i < FractionalDigits; ++i) {
                 power_of_5 = power_of_5 * multiplier;
             }
 
@@ -794,11 +809,11 @@ class Bits {
                 abs_val * power_of_5.template zero_extend<ResultWidth>();
             std::string raw_digits = exact_scaled.to_decimal_string(false);
 
-            if (raw_digits.length() <= FracBits) {
-                raw_digits.insert(0, FracBits - raw_digits.length() + 1, '0');
+            if (raw_digits.length() <= FractionalDigits) {
+                raw_digits.insert(0, FractionalDigits - raw_digits.length() + 1, '0');
             }
 
-            raw_digits.insert(raw_digits.length() - FracBits, ".");
+            raw_digits.insert(raw_digits.length() - FractionalDigits, ".");
 
             if (is_neg) {
                 raw_digits.insert(0, "-");
@@ -1492,7 +1507,15 @@ class [[nodiscard]] auto_reinterpreted {
 
     constexpr auto_reinterpreted& operator=(auto_reinterpreted&&) = delete;
 
-    constexpr T consume() && { return std::forward<T>(value_); }
+    template <HasBits Target>
+    constexpr operator Target() && noexcept {
+        using Source = std::remove_cvref_t<T>;
+        static_assert(
+            Target::static_range.length() == Source::static_range.length(),
+            "as() requires equal widths."
+        );
+        return Target(bits(value_));
+    }
 };
 
 template <typename T>
@@ -1517,13 +1540,17 @@ class [[nodiscard]] auto_resized {
     }
 };
 
-template <typename T>
+template <typename ExplicitTarget = void, typename T>
+    requires(std::same_as<ExplicitTarget, void> && HasBits<std::remove_cvref_t<T>>)
 [[nodiscard]] constexpr auto_reinterpreted<T const&> as(T const& x) noexcept {
     return auto_reinterpreted<T const&>(x);
 }
 
-template <typename T>
-    requires(!std::is_lvalue_reference_v<T>)
+template <typename ExplicitTarget = void, typename T>
+    requires(
+        std::same_as<ExplicitTarget, void> && HasBits<std::remove_cvref_t<T>>
+        && !std::is_lvalue_reference_v<T>
+    )
 [[nodiscard]] constexpr auto_reinterpreted<T> as(T&& x) noexcept {
     return auto_reinterpreted<T>(std::move(x));
 }
@@ -1554,7 +1581,11 @@ template <typename X>
         || is_fixed<std::remove_cvref_t<X>>
     )
 [[nodiscard]] constexpr auto resize(
-    X&& x, overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
+    X&& x,
+    overflow_mode ovf = is_fixed<std::remove_cvref_t<X>> ? overflow_mode::saturate
+                                                         : overflow_mode::wrap,
+    round_mode rnd = is_fixed<std::remove_cvref_t<X>> ? round_mode::round_to_even
+                                                      : round_mode::truncate
 ) noexcept {
     return detail::resize(std::forward<X>(x), ovf, rnd);
 }

@@ -4,6 +4,8 @@ import pytest
 
 from coconext.types import Signed, Unsigned
 
+# TODO integrate bigints in all tests
+
 
 def test_constructors():
     # 4-bit Signed range: -8 to 7

@@ -7,7 +7,7 @@ import copy
 
 import pytest
 
-from coconext.types import Logic, LogicArray, Range
+from coconext.types import Logic, LogicArray, Range, Signed, Unsigned
 
 
 def test_logic_array_str_construction():
@@ -556,3 +556,15 @@ def test_from_unsigned_wrap():
     assert LogicArray.from_unsigned(20, 4, on_overflow="wrap") == LogicArray("0100")
     with pytest.raises(ValueError):
         LogicArray.from_unsigned(10, 4, on_overflow="6789")
+
+
+def test_logic_array_int_conversions():
+    a = Unsigned(4, 8)
+    assert LogicArray.from_unsigned(a, 4) == LogicArray("1000")
+    assert LogicArray.from_unsigned(a, 4).to_unsigned() == a
+    assert LogicArray.from_unsigned(a, 4).to_unsigned() == 8
+
+    b = Signed(4, -5)
+    assert LogicArray.from_signed(b, 4) == LogicArray("1011")
+    assert LogicArray.from_signed(b, 4).to_signed() == b
+    assert LogicArray.from_signed(b, 4).to_signed() == -5
