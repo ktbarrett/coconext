@@ -27,10 +27,10 @@ auto python_div = [](DynSigned const& a, DynSigned const& b) {
     DynSigned r = a - (q * b);
 
     if (static_cast<bool>(r)) {
-        if ((a < DynSigned(DynBits{a.get_width(), 0}))
-            != (b < DynSigned(DynBits{a.get_width(), 0})))
+        if ((a < DynSigned(DynBits{a.width(), 0}))
+            != (b < DynSigned(DynBits{a.width(), 0})))
         {
-            q -= DynSigned(DynBits{a.get_width(), 1});
+            q -= DynSigned(DynBits{a.width(), 1});
         }
     }
     return q;
@@ -73,7 +73,7 @@ void register_unsigned(nb::module_& m) {
                     throw std::invalid_argument("Invalid format specifier for Unsigned");
                 }
 
-                size_t width = self.get_width();
+                size_t width = self.width();
                 size_t left_index = width > 0 ? width - 1 : 0;
 
                 return std::format("Unsigned[{} downto 0]{{{}}}", left_index, str_r);
@@ -85,6 +85,18 @@ void register_unsigned(nb::module_& m) {
             "__eq__",
             [](DynUnsigned const& self, DynUnsigned const& other) { return self == other; }
         )
+        .def(
+            "__eq__",
+            [](DynUnsigned const& self, nb::int_ other) {
+                try {
+                    return self == DynUnsigned(self.width(), nb::cast<uint64_t>(other));
+                } catch (...) {
+                    return false;
+                }
+            },
+            nb::is_operator()
+        )
+
         .def(
             "__lt__",
             [](DynUnsigned const& self, DynUnsigned const& other) { return self < other; }
@@ -177,7 +189,7 @@ void register_unsigned(nb::module_& m) {
         .def(
             "__int__", [](DynUnsigned const& self) { return static_cast<long long>(self); }
         )
-        .def("__len__", [](DynUnsigned const& self) { return self.get_width(); })
+        .def("__len__", [](DynUnsigned const& self) { return self.width(); })
         .def("__bool__", [](DynUnsigned const& self) { return static_cast<bool>(self); })
 
         .def(
@@ -310,7 +322,7 @@ void register_signed(nb::module_& m) {
                     throw std::invalid_argument("Invalid format specifier for Unsigned");
                 }
 
-                size_t width = self.get_width();
+                size_t width = self.width();
                 size_t left_index = width > 0 ? width - 1 : 0;
 
                 return std::format("Signed[{} downto 0]{{{}}}", left_index, str_r);
@@ -322,6 +334,18 @@ void register_signed(nb::module_& m) {
             "__eq__",
             [](DynSigned const& self, DynSigned const& other) { return self == other; }
         )
+        .def(
+            "__eq__",
+            [](DynSigned const& self, nb::int_ other) {
+                try {
+                    return self == DynSigned(self.width(), nb::cast<int64_t>(other));
+                } catch (...) {
+                    return false;
+                }
+            },
+            nb::is_operator()
+        )
+
         .def(
             "__lt__",
             [](DynSigned const& self, DynSigned const& other) { return self < other; }
@@ -408,7 +432,7 @@ void register_signed(nb::module_& m) {
         )
 
         .def("__int__", [](DynSigned const& self) { return static_cast<long long>(self); })
-        .def("__len__", [](DynSigned const& self) { return self.get_width(); })
+        .def("__len__", [](DynSigned const& self) { return self.width(); })
         .def("__bool__", [](DynSigned const& self) { return static_cast<bool>(self); })
 
         .def(

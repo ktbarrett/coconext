@@ -26,7 +26,7 @@ class DynUnsigned {
     template <typename T>
     T to_native_int() const {
         auto val = value_;
-        if (val.ugt(DynBits(val.get_width(), std::numeric_limits<T>::max()))) {
+        if (val.ugt(DynBits(val.width(), std::numeric_limits<T>::max()))) {
             throw std::out_of_range("Value too large for destination native type");
         }
 
@@ -34,9 +34,16 @@ class DynUnsigned {
     }
 
   public:
-    DynUnsigned(DynBits const& val) : value_(val) {}
+    explicit DynUnsigned(DynBits const& val) : value_(val) {}
 
-    size_t get_width() const { return value_.get_width(); }
+    size_t width() const { return value_.width(); }
+
+    DynUnsigned(Vector<Bit> const& v) : value_(v.size()) {
+        size_t bit_idx = 0;
+        for (auto it = v.rbegin(); it != v.rend(); ++it) {
+            value_.set_bit(bit_idx++, char(*it) == '1');
+        }
+    }
 
     // Construct from a native integer.
     template <NativeInteger T>
@@ -73,9 +80,7 @@ class DynUnsigned {
         return value_.uge(rhs.value_);
     }
 
-    explicit operator bool() const noexcept {
-        return value_ != DynBits{value_.get_width(), 0};
-    }
+    explicit operator bool() const noexcept { return value_ != DynBits{value_.width(), 0}; }
 
     explicit operator long long() const { return to_native_int<long long>(); }
     explicit operator unsigned long long() const { return to_native_int<long long>(); }
@@ -100,12 +105,12 @@ class DynUnsigned {
             }
             safe_shift = static_cast<size_t>(shift_amount);
         } else if constexpr (std::is_same_v<CleanType, DynUnsigned>) {
-            if (shift_amount.get_width() > 64) {
+            if (shift_amount.width() > 64) {
                 throw std::out_of_range("Bit Width cap 2**64");
             }
             safe_shift = static_cast<size_t>(static_cast<unsigned long long>(shift_amount));
         } else if constexpr (std::is_same_v<CleanType, DynSigned>) {
-            if (shift_amount.get_width() > 64) {
+            if (shift_amount.width() > 64) {
                 throw std::out_of_range("Bit Width cap 2**64");
             }
             long long signed_val = static_cast<long long>(shift_amount);
@@ -115,8 +120,8 @@ class DynUnsigned {
             safe_shift = static_cast<size_t>(signed_val);
         }
 
-        if (safe_shift >= get_width()) {
-            return DynUnsigned(get_width(), 0);
+        if (safe_shift >= width()) {
+            return DynUnsigned(width(), 0);
         }
 
         return DynUnsigned(value_ << safe_shift);
@@ -141,12 +146,12 @@ class DynUnsigned {
             }
             safe_shift = static_cast<size_t>(shift_amount);
         } else if constexpr (std::is_same_v<CleanType, DynUnsigned>) {
-            if (shift_amount.get_width() > 64) {
+            if (shift_amount.width() > 64) {
                 throw std::out_of_range("Bit Width cap 2**64");
             }
             safe_shift = static_cast<size_t>(static_cast<unsigned long long>(shift_amount));
         } else if constexpr (std::is_same_v<CleanType, DynSigned>) {
-            if (shift_amount.get_width() > 64) {
+            if (shift_amount.width() > 64) {
                 throw std::out_of_range("Bit Width cap 2**64");
             }
             long long signed_val = static_cast<long long>(shift_amount);
@@ -156,8 +161,8 @@ class DynUnsigned {
             safe_shift = static_cast<size_t>(signed_val);
         }
 
-        if (safe_shift >= get_width()) {
-            return DynUnsigned(get_width(), 0);
+        if (safe_shift >= width()) {
+            return DynUnsigned(width(), 0);
         }
 
         return DynUnsigned(value_.srl(safe_shift));
@@ -198,17 +203,17 @@ class DynUnsigned {
     }
 
     auto operator+=(DynUnsigned const& rhs) {
-        value_ = add_unsigned(value_, rhs.value_).truncate(get_width());
+        value_ = add_unsigned(value_, rhs.value_).truncate(width());
         return *this;
     }
 
     auto operator-=(DynUnsigned const& rhs) {
-        value_ = sub_unsigned(value_, rhs.value_).truncate(get_width());
+        value_ = sub_unsigned(value_, rhs.value_).truncate(width());
         return *this;
     }
 
     auto operator*=(DynUnsigned const& rhs) {
-        value_ = mul_unsigned(value_, rhs.value_).truncate(get_width());
+        value_ = mul_unsigned(value_, rhs.value_).truncate(width());
         return *this;
     }
 
@@ -216,7 +221,7 @@ class DynUnsigned {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        value_ = div_unsigned(value_, rhs.value_).truncate(get_width());
+        value_ = div_unsigned(value_, rhs.value_).truncate(width());
         return *this;
     }
 
@@ -224,7 +229,7 @@ class DynUnsigned {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        value_ = rem_unsigned(value_, rhs.value_).zero_extend(get_width());
+        value_ = rem_unsigned(value_, rhs.value_).zero_extend(width());
         return *this;
     }
 
@@ -265,7 +270,7 @@ class DynUnsigned {
     friend DynUnsigned& operator%=(DynUnsigned& lhs, DynSigned const& rhs);
 
     auto index(Range::value_type index) const {
-        if (index >= static_cast<Range::value_type>(get_width()) || index < 0) {
+        if (index >= static_cast<Range::value_type>(width()) || index < 0) {
             throw std::out_of_range("Out of bounds access in DynSigned.index()");
         }
         return value_.get_bit(index);
