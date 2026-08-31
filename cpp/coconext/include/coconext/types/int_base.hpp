@@ -268,6 +268,12 @@ class Int {
         if (negative) {
             value = static_cast<IntType>(IntType{0} - value) & maximum;
         }
+        if constexpr (SignedRepresentation && W < physical_width) {
+            IntType const extension =
+                static_cast<IntType>(IntType{0} - ((value >> (W - 1)) & IntType{1}));
+            value =
+                static_cast<IntType>((value & logical_mask) | (extension & ~logical_mask));
+        }
         return value;
     }
 
@@ -390,24 +396,9 @@ class Int {
     constexpr Int(std::string_view val) {
         static_assert(W > 0, "zero-width Int has no integer representation");
         if constexpr (is_wide) {
-            parse_into(WordSpan{std::span<Word>{storage_}, W}, val);
+            parse_into<SignedRepresentation>(WordSpan{std::span<Word>{storage_}, W}, val);
         } else {
             storage_ = parse_native(val);
-        }
-        if constexpr (SignedRepresentation && W < physical_width) {
-            if constexpr (!is_wide) {
-                IntType const extension =
-                    static_cast<IntType>(IntType{0} - ((storage_ >> (W - 1)) & IntType{1}));
-                storage_ = static_cast<IntType>(
-                    (storage_ & logical_mask) | (extension & ~logical_mask)
-                );
-            } else {
-                constexpr unsigned valid_bits = W % word_bits;
-                constexpr Word mask = (Word{1} << valid_bits) - 1;
-                Word& top = storage_.back();
-                Word const extension = Word{0} - ((top >> (valid_bits - 1)) & Word{1});
-                top = (top & mask) | (extension & ~mask);
-            }
         }
     }
 
