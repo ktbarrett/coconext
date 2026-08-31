@@ -724,10 +724,8 @@ class Sfixed {
         constexpr size_t ShiftL = R.right - R_res.right;
         constexpr size_t ShiftR = R2.right - R_res.right;
 
-        auto lhs_aligned =
-            detail::shift_left_sign_extended<R.length() + ShiftL>(value_, ShiftL);
-        auto rhs_aligned =
-            detail::shift_left_sign_extended<R2.length() + ShiftR>(bits(rhs), ShiftR);
+        auto lhs_aligned = detail::shift_left_sign_extended<ShiftL>(value_);
+        auto rhs_aligned = detail::shift_left_sign_extended<ShiftR>(bits(rhs));
 
         return Sfixed<R_res>(lhs_aligned + rhs_aligned);
     }
@@ -744,10 +742,8 @@ class Sfixed {
         constexpr size_t ShiftL = R.right - R_res.right;
         constexpr size_t ShiftR = R2.right - R_res.right;
 
-        auto lhs_aligned =
-            detail::shift_left_sign_extended<R.length() + ShiftL>(value_, ShiftL);
-        auto rhs_aligned =
-            detail::shift_left_sign_extended<R2.length() + ShiftR>(bits(rhs), ShiftR);
+        auto lhs_aligned = detail::shift_left_sign_extended<ShiftL>(value_);
+        auto rhs_aligned = detail::shift_left_sign_extended<ShiftR>(bits(rhs));
 
         return Sfixed<R_res>(lhs_aligned - rhs_aligned);
     }
@@ -800,10 +796,8 @@ class Sfixed {
         constexpr size_t ShiftL = detail::index_distance(R.right, result_right);
         constexpr size_t ShiftR = detail::index_distance(R2.right, result_right);
 
-        auto lhs_aligned =
-            detail::shift_left_sign_extended<R.length() + ShiftL>(value_, ShiftL);
-        auto rhs_aligned =
-            detail::shift_left_sign_extended<R2.length() + ShiftR>(bits(rhs), ShiftR);
+        auto lhs_aligned = detail::shift_left_sign_extended<ShiftL>(value_);
+        auto rhs_aligned = detail::shift_left_sign_extended<ShiftR>(bits(rhs));
         auto [quotient_bits, remainder_bits] =
             detail::divrem_signed_fixed<false, QuotientRange.length(), QuotientRange.right>(
                 lhs_aligned, rhs_aligned, rounding, guard_bits
@@ -843,10 +837,8 @@ class Sfixed {
         constexpr size_t ShiftL = detail::index_distance(R.right, result_right);
         constexpr size_t ShiftR = detail::index_distance(R2.right, result_right);
 
-        auto lhs_aligned =
-            detail::shift_left_sign_extended<R.length() + ShiftL>(value_, ShiftL);
-        auto rhs_aligned =
-            detail::shift_left_sign_extended<R2.length() + ShiftR>(bits(rhs), ShiftR);
+        auto lhs_aligned = detail::shift_left_sign_extended<ShiftL>(value_);
+        auto rhs_aligned = detail::shift_left_sign_extended<ShiftR>(bits(rhs));
         auto [quotient_bits, modulo_bits] =
             detail::divrem_signed_fixed<true, QuotientRange.length(), QuotientRange.right>(
                 lhs_aligned, rhs_aligned, rounding, guard_bits

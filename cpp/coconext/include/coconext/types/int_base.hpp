@@ -793,6 +793,23 @@ class Int {
         }
     }
 
+    template <size_t Amount>
+    constexpr Int<W + Amount, SignedRepresentation> widening_shift_left() const {
+        using Result = Int<W + Amount, SignedRepresentation>;
+        Result result(*this);
+        if constexpr (W == 0 || Amount == 0) {
+            return result;
+        } else if constexpr (!Result::is_wide) {
+            result.storage_ =
+                static_cast<typename Result::IntType>(result.storage_ << Amount);
+        } else {
+            shift_left(
+                WordSpan{std::span<Word>{result.storage_}, Result::physical_width}, Amount
+            );
+        }
+        return result;
+    }
+
     constexpr Int operator<<(size_t amount) const {
         if constexpr (W == 0) {
             return Int{};

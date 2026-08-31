@@ -359,28 +359,14 @@ constexpr aligned_magnitude<ResultW> align_floating_magnitude(
     return align_magnitude<ResultW>(significand_bits, source_right, target_right);
 }
 
-template <size_t TargetW, size_t SourceW>
-    requires(TargetW >= SourceW)
-constexpr UInt<TargetW> shift_left_zero_extended(
-    UInt<SourceW> const& source, size_t amount
-) {
-    if constexpr (TargetW == 0) {
-        return {};
-    } else {
-        return UInt<TargetW>(source) << amount;
-    }
+template <size_t Amount, size_t SourceW>
+constexpr UInt<SourceW + Amount> shift_left_zero_extended(UInt<SourceW> const& source) {
+    return source.template widening_shift_left<Amount>();
 }
 
-template <size_t TargetW, size_t SourceW>
-    requires(TargetW >= SourceW)
-constexpr SInt<TargetW> shift_left_sign_extended(
-    SInt<SourceW> const& source, size_t amount
-) {
-    if constexpr (TargetW == 0) {
-        return {};
-    } else {
-        return SInt<TargetW>(source) << amount;
-    }
+template <size_t Amount, size_t SourceW>
+constexpr SInt<SourceW + Amount> shift_left_sign_extended(SInt<SourceW> const& source) {
+    return source.template widening_shift_left<Amount>();
 }
 
 }  // namespace detail
@@ -968,10 +954,8 @@ class Ufixed {
         constexpr size_t ShiftL = R.right - R_res.right;
         constexpr size_t ShiftR = R2.right - R_res.right;
 
-        auto lhs_aligned =
-            detail::shift_left_zero_extended<R.length() + ShiftL>(value_, ShiftL);
-        auto rhs_aligned =
-            detail::shift_left_zero_extended<R2.length() + ShiftR>(bits(rhs), ShiftR);
+        auto lhs_aligned = detail::shift_left_zero_extended<ShiftL>(value_);
+        auto rhs_aligned = detail::shift_left_zero_extended<ShiftR>(bits(rhs));
 
         return Ufixed<R_res>(lhs_aligned + rhs_aligned);
     }
@@ -988,10 +972,8 @@ class Ufixed {
         constexpr size_t ShiftL = R.right - R_res.right;
         constexpr size_t ShiftR = R2.right - R_res.right;
 
-        auto lhs_aligned =
-            detail::shift_left_zero_extended<R.length() + ShiftL>(value_, ShiftL);
-        auto rhs_aligned =
-            detail::shift_left_zero_extended<R2.length() + ShiftR>(bits(rhs), ShiftR);
+        auto lhs_aligned = detail::shift_left_zero_extended<ShiftL>(value_);
+        auto rhs_aligned = detail::shift_left_zero_extended<ShiftR>(bits(rhs));
 
         return Sfixed<R_res>(lhs_aligned - rhs_aligned);
     }
@@ -1044,10 +1026,8 @@ class Ufixed {
         constexpr size_t ShiftL = detail::index_distance(R.right, result_right);
         constexpr size_t ShiftR = detail::index_distance(R2.right, result_right);
 
-        auto lhs_aligned =
-            detail::shift_left_zero_extended<R.length() + ShiftL>(value_, ShiftL);
-        auto rhs_aligned =
-            detail::shift_left_zero_extended<R2.length() + ShiftR>(bits(rhs), ShiftR);
+        auto lhs_aligned = detail::shift_left_zero_extended<ShiftL>(value_);
+        auto rhs_aligned = detail::shift_left_zero_extended<ShiftR>(bits(rhs));
         auto [quotient_bits, remainder_bits] =
             detail::divide_fixed_magnitudes<QuotientRange.length(), QuotientRange.right>(
                 lhs_aligned, rhs_aligned, false, rounding, guard_bits
