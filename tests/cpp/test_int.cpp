@@ -17,9 +17,6 @@ TEST(Int, storage_tiers_and_formatting) {
     static_assert(sizeof(detail::UInt<16>) == 2);
     static_assert(sizeof(detail::UInt<32>) == 4);
     static_assert(sizeof(detail::UInt<64>) == 8);
-    static_assert(std::is_same_v<detail::UInt<8>::RawType, uint8_t>);
-    static_assert(std::is_same_v<detail::UInt<64>::RawType, uint64_t>);
-    static_assert(std::is_same_v<detail::UInt<200>::RawType, detail::WordConstSpan>);
 
     detail::UInt<200> wide("0x1234567890ABCDEF1122334455667788AABBCCDD");
     EXPECT_EQ(
@@ -51,6 +48,26 @@ TEST(Int, native_value_fit_predicate) {
     static_assert(detail::native_value_fits<100, true>(-(__int128_t{1} << 99)));
     static_assert(!detail::native_value_fits<100, true>(__int128_t{1} << 99));
 #endif
+}
+
+TEST(Int, checked_native_integer_conversion) {
+    static_assert(detail::UInt<9>(511).to_native_integer<uint16_t>() == 511);
+    static_assert(detail::SInt<9>(-256).to_native_integer<int16_t>() == -256);
+    static_assert(detail::UInt<200>(255).to_native_integer<uint8_t>() == 255);
+    static_assert(detail::SInt<200>(-128).to_native_integer<int8_t>() == -128);
+
+    EXPECT_THROW(
+        (void)detail::UInt<200>(256).to_native_integer<uint8_t>(), std::out_of_range
+    );
+    EXPECT_THROW(
+        (void)detail::UInt<200>(128).to_native_integer<int8_t>(), std::out_of_range
+    );
+    EXPECT_THROW(
+        (void)detail::SInt<200>(-129).to_native_integer<int8_t>(), std::out_of_range
+    );
+    EXPECT_THROW(
+        (void)detail::SInt<200>(-1).to_native_integer<uint8_t>(), std::out_of_range
+    );
 }
 
 TEST(Int, packed_bit_operations) {
@@ -100,22 +117,21 @@ TEST(Int, shifts_and_comparisons_follow_the_representation) {
     static_assert(!std::three_way_comparable_with<detail::SInt<8>, detail::SInt<200>>);
 }
 
-TEST(Int, widening_shift_preserves_canonical_representation) {
+TEST(Int, widening_shift_preserves_value) {
     constexpr auto signed_native = detail::SInt<9>(-3).widening_shift_left<7>();
     static_assert(
         std::is_same_v<std::remove_cv_t<decltype(signed_native)>, detail::SInt<16>>
     );
-    static_assert(signed_native.raw() == uint16_t{0xFE80});
+    static_assert(signed_native.to_native_integer<int16_t>() == -384);
 
     constexpr auto unsigned_native = detail::UInt<9>(3).widening_shift_left<7>();
     static_assert(
         std::is_same_v<std::remove_cv_t<decltype(unsigned_native)>, detail::UInt<16>>
     );
-    static_assert(unsigned_native.raw() == uint16_t{0x0180});
+    static_assert(unsigned_native.to_native_integer<uint16_t>() == 384);
 
     auto signed_wide = detail::SInt<129>(-3).widening_shift_left<7>();
     EXPECT_EQ(signed_wide, detail::SInt<136>(-384));
-    EXPECT_EQ(signed_wide.raw().word(2), ~detail::Word{0});
 }
 
 TEST(Int, exact_width_arithmetic_is_explicit) {
@@ -128,17 +144,16 @@ TEST(Int, exact_width_arithmetic_is_explicit) {
     constexpr detail::SInt<9> maximum(255);
     constexpr detail::SInt<9> minimum(-256);
     constexpr detail::SInt<9> one(1);
-    static_assert(detail::SInt<9>::exact_add(maximum, one).raw() == uint16_t{0xFF00});
-    static_assert(detail::SInt<9>::exact_sub(minimum, one).raw() == uint16_t{0x00FF});
+    static_assert(detail::SInt<9>::exact_add(maximum, one) == minimum);
+    static_assert(detail::SInt<9>::exact_sub(minimum, one) == maximum);
     static_assert(
-        detail::SInt<9>::exact_mul(detail::SInt<9>(-2), detail::SInt<9>(3)).raw()
-        == uint16_t{0xFFFA}
+        detail::SInt<9>::exact_mul(detail::SInt<9>(-2), detail::SInt<9>(3))
+        == detail::SInt<9>(-6)
     );
 
     detail::SInt<129> wide_negative(-2);
     auto wide_product = detail::SInt<129>::exact_mul(wide_negative, detail::SInt<129>(3));
     EXPECT_EQ(wide_product, detail::SInt<129>(-6));
-    EXPECT_EQ(wide_product.raw().word(2), ~detail::Word{0});
 }
 
 TEST(IntKernel, multiply_overwrites_the_complete_destination) {
@@ -173,7 +188,7 @@ TEST(IntNative, scalar_tiers_cover_the_complete_native_operation) {
     constexpr detail::SInt<32> minimum(std::numeric_limits<int32_t>::min());
     constexpr auto quotient = minimum / detail::SInt<32>(-1);
     static_assert(std::is_same_v<std::remove_cv_t<decltype(quotient)>, detail::SInt<33>>);
-    static_assert(quotient.raw() == uint64_t{0x80000000});
+    static_assert(quotient == detail::SInt<33>(uint64_t{0x80000000}));
 
     static_assert(detail::SInt<65>(detail::SInt<8>(-1)) < detail::SInt<65>(1));
     static_assert(detail::UInt<9>("0x1ff") == detail::UInt<9>(511));
@@ -181,7 +196,9 @@ TEST(IntNative, scalar_tiers_cover_the_complete_native_operation) {
 #if defined(__SIZEOF_INT128__)
     constexpr auto product = detail::UInt<64>(~uint64_t{0}) * detail::UInt<64>(uint64_t{2});
     static_assert(!decltype(product)::is_wide);
-    static_assert(product.raw() == __uint128_t{~uint64_t{0}} * 2);
+    static_assert(
+        product.to_native_integer<__uint128_t>() == __uint128_t{~uint64_t{0}} * 2
+    );
 #endif
 }
 
@@ -362,62 +379,62 @@ TEST(IntGrowing, usable_in_constant_expressions) {
     SUCCEED();
 }
 
-TEST(Int, signed_and_unsigned_are_distinct_canonical_representations) {
+TEST(Int, signed_and_unsigned_have_distinct_values) {
     static_assert(!std::is_same_v<detail::UInt<9>, detail::SInt<9>>);
     static_assert(sizeof(detail::UInt<9>) == sizeof(detail::SInt<9>));
     static_assert(sizeof(detail::UInt<129>) == sizeof(detail::SInt<129>));
 
     constexpr detail::UInt<9> unsigned_negative_pattern(0x1FF);
     constexpr detail::SInt<9> signed_negative_pattern(-1);
-    static_assert(unsigned_negative_pattern.raw() == uint16_t{0x01FF});
-    static_assert(signed_negative_pattern.raw() == uint16_t{0xFFFF});
+    static_assert(unsigned_negative_pattern.to_native_integer<uint16_t>() == 0x01FF);
+    static_assert(signed_negative_pattern.to_native_integer<int16_t>() == -1);
 
     constexpr detail::UInt<9> widened_unsigned(detail::UInt<8>(0xFF));
     constexpr detail::SInt<9> widened_signed(detail::SInt<8>(-1));
-    static_assert(widened_unsigned.raw() == uint16_t{0x00FF});
-    static_assert(widened_signed.raw() == uint16_t{0xFFFF});
+    static_assert(widened_unsigned.to_native_integer<uint16_t>() == 0x00FF);
+    static_assert(widened_signed.to_native_integer<int16_t>() == -1);
 
     detail::UInt<129> wide_unsigned(detail::SInt<129>(-1));
     detail::SInt<129> wide_signed(-1);
-    EXPECT_EQ(wide_unsigned.raw().word(2), 1);
-    EXPECT_EQ(wide_signed.raw().word(2), ~detail::Word{0});
+    EXPECT_EQ(wide_unsigned, ~detail::UInt<129>{});
+    EXPECT_EQ(wide_signed, detail::SInt<129>(-1));
 
     detail::UInt<129> converted_wide_unsigned(detail::UInt<8>(0xFF));
     detail::SInt<129> converted_wide_signed(detail::SInt<8>(-1));
-    EXPECT_EQ(converted_wide_unsigned.raw().word(2), 0);
-    EXPECT_EQ(converted_wide_signed.raw().word(2), ~detail::Word{0});
+    EXPECT_EQ(converted_wide_unsigned, detail::UInt<129>(255));
+    EXPECT_EQ(converted_wide_signed, detail::SInt<129>(-1));
 
     detail::SInt<9> sign_bit(0);
     sign_bit.set_bit(8, true);
-    EXPECT_EQ(sign_bit.raw(), uint16_t{0xFF00});
+    EXPECT_EQ(sign_bit, detail::SInt<9>(-256));
     sign_bit.set_bit(8, false);
-    EXPECT_EQ(sign_bit.raw(), uint16_t{0});
+    EXPECT_EQ(sign_bit, detail::SInt<9>(0));
     EXPECT_THROW(sign_bit.set_bit(9, true), std::out_of_range);
 }
 
-TEST(Int, conversion_and_parsing_preserve_physical_extension) {
+TEST(Int, conversion_and_parsing_preserve_values) {
     constexpr detail::UInt<9> narrowed_unsigned(detail::UInt<16>(0xFFFF));
     constexpr detail::UInt<9> narrowed_signed(detail::SInt<16>(-1));
     constexpr detail::SInt<9> reinterpreted_unsigned(detail::UInt<9>(0x1FF));
-    static_assert(narrowed_unsigned.raw() == uint16_t{0x01FF});
-    static_assert(narrowed_signed.raw() == uint16_t{0x01FF});
-    static_assert(reinterpreted_unsigned.raw() == uint16_t{0xFFFF});
+    static_assert(narrowed_unsigned.to_native_integer<uint16_t>() == 0x01FF);
+    static_assert(narrowed_signed.to_native_integer<uint16_t>() == 0x01FF);
+    static_assert(reinterpreted_unsigned.to_native_integer<int16_t>() == -1);
 
     constexpr detail::UInt<9> parsed_unsigned("511");
     constexpr detail::SInt<9> parsed_signed("-1");
-    static_assert(parsed_unsigned.raw() == uint16_t{0x01FF});
-    static_assert(parsed_signed.raw() == uint16_t{0xFFFF});
+    static_assert(parsed_unsigned.to_native_integer<uint16_t>() == 0x01FF);
+    static_assert(parsed_signed.to_native_integer<int16_t>() == -1);
 }
 
-TEST(Int, native_division_results_are_canonical) {
+TEST(Int, native_division_results_have_expected_values) {
     constexpr auto unsigned_result =
         detail::divrem(detail::UInt<8>(200), detail::UInt<8>(7));
-    static_assert(unsigned_result.first.raw() == uint16_t{28});
-    static_assert(unsigned_result.second.raw() == uint8_t{4});
+    static_assert(unsigned_result.first == detail::UInt<9>(28));
+    static_assert(unsigned_result.second == detail::UInt<8>(4));
 
     constexpr auto signed_result = detail::divrem(detail::SInt<8>(-17), detail::SInt<8>(5));
-    static_assert(signed_result.first.raw() == uint16_t{0xFFFD});
-    static_assert(signed_result.second.raw() == uint8_t{0xFE});
+    static_assert(signed_result.first == detail::SInt<9>(-3));
+    static_assert(signed_result.second == detail::SInt<8>(-2));
 
     constexpr auto wide_result =
         detail::divrem(detail::SInt<129>(-17), detail::SInt<8>(-5));
@@ -442,10 +459,10 @@ TEST(Int, growing_arithmetic_preserves_the_result_invariant) {
         std::is_same_v<std::remove_cv_t<decltype(signed_product)>, detail::SInt<16>>
     );
 
-    static_assert(unsigned_sum.raw() == uint16_t{300});
-    static_assert(unsigned_difference.raw() == uint16_t{0xFFFE});
-    static_assert(signed_sum.raw() == uint16_t{44});
-    static_assert(signed_product.raw() == uint16_t{0xFFEB});
+    static_assert(unsigned_sum == detail::UInt<9>(300));
+    static_assert(unsigned_difference == detail::SInt<9>(-2));
+    static_assert(signed_sum == detail::SInt<9>(44));
+    static_assert(signed_product == detail::SInt<16>(-21));
 
     auto [quotient, remainder] = detail::divrem(detail::SInt<8>(-17), detail::SInt<8>(5));
     EXPECT_EQ(quotient.to_decimal_string(), "-3");

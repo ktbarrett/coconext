@@ -5,8 +5,10 @@
 #include <array>
 #include <bit>
 #include <cassert>
+#include <climits>
 #include <coconext/types/bigint.hpp>
 #include <coconext/types/direction.hpp>
+#include <coconext/types/hash.hpp>
 #include <coconext/types/logic.hpp>
 #include <coconext/types/range.hpp>
 #include <coconext/types/resize_mode.hpp>
@@ -125,10 +127,15 @@ constexpr bool native_value_fits(IntT value) {
     return native_value_fits<SignedRepresentation>(W, value);
 }
 
+template <bool SignedRepresentation>
+class DynInt;
+
 template <size_t W, bool SignedRepresentation>
 class Int {
     template <size_t, bool>
     friend class Int;
+    template <bool>
+    friend class DynInt;
 
   public:
     static constexpr size_t width = W;
@@ -136,7 +143,6 @@ class Int {
     static constexpr bool is_signed = SignedRepresentation;
     static constexpr bool is_wide = physical_width > (supports_128B ? 128 : 64);
     using IntType = IntTypePicker<physical_width>::type;
-    using RawType = std::conditional_t<is_wide, WordConstSpan, IntType>;
 
   private:
     // These buffers are used only to bridge a native scalar into an operation
@@ -431,12 +437,100 @@ class Int {
 
     constexpr Int<W, false> logical_bits() const { return Int<W, false>(*this); }
 
-    constexpr RawType raw() const {
-        static_assert(W > 0, "raw() on a zero-width Int is undefined");
-        if constexpr (is_wide) {
-            return WordConstSpan{std::span<Word const>{storage_}, physical_width};
+    template <NativeInteger T>
+    constexpr T to_native_integer() const {
+        static_assert(W > 0, "zero-width Int has no native integer value");
+
+        constexpr size_t native_bits = sizeof(T) * CHAR_BIT;
+        constexpr bool target_signed = std::numeric_limits<T>::is_signed;
+        bool negative = false;
+        if constexpr (SignedRepresentation) {
+            negative = is_negative();
+        }
+
+        bool fits = true;
+        if constexpr (target_signed) {
+            if constexpr (SignedRepresentation) {
+                if constexpr (W > native_bits) {
+                    for (size_t i = native_bits - 1; i < W; ++i) {
+                        fits &= get_bit(i) == negative;
+                    }
+                }
+            } else if constexpr (W >= native_bits) {
+                for (size_t i = native_bits - 1; i < W; ++i) {
+                    fits &= !get_bit(i);
+                }
+            }
         } else {
-            return storage_;
+            if constexpr (SignedRepresentation) {
+                fits &= !negative;
+            }
+            if constexpr (W > native_bits) {
+                for (size_t i = native_bits; i < W; ++i) {
+                    fits &= !get_bit(i);
+                }
+            }
+        }
+        if (!fits) {
+            throw std::out_of_range("Value outside destination native type range");
+        }
+
+        wide_uint bits = 0;
+        if constexpr (!is_wide) {
+            bits = static_cast<wide_uint>(logical_native_value());
+        } else {
+            bits = static_cast<wide_uint>(storage_[0]);
+#if defined(__SIZEOF_INT128__)
+            if constexpr (native_bits > word_bits) {
+                bits |= static_cast<wide_uint>(storage_[1]) << word_bits;
+            }
+#endif
+        }
+
+        if constexpr (target_signed) {
+            if (negative) {
+                if constexpr (W < native_bits) {
+                    bits |= ~wide_uint{0} << W;
+                }
+                constexpr wide_uint target_mask = [] {
+                    if constexpr (native_bits == sizeof(wide_uint) * CHAR_BIT) {
+                        return ~wide_uint{0};
+                    } else {
+                        return (wide_uint{1} << native_bits) - 1;
+                    }
+                }();
+                wide_uint const magnitude = (~bits + 1) & target_mask;
+                if (magnitude == (wide_uint{1} << std::numeric_limits<T>::digits)) {
+                    return std::numeric_limits<T>::min();
+                }
+                return static_cast<T>(-static_cast<wide_int>(magnitude));
+            }
+        }
+        return static_cast<T>(bits);
+    }
+
+    size_t hash_value() const noexcept {
+        if constexpr (W == 0) {
+            return 0;
+        } else if constexpr (!is_wide) {
+            if constexpr (sizeof(IntType) > sizeof(size_t)) {
+                constexpr size_t chunk_bits = sizeof(size_t) * CHAR_BIT;
+                constexpr size_t chunks = sizeof(IntType) / sizeof(size_t);
+                size_t result = 0;
+                for (size_t i = 0; i < chunks; ++i) {
+                    size_t const chunk = static_cast<size_t>(storage_ >> (i * chunk_bits));
+                    result = hash_mix(result, std::hash<size_t>{}(chunk));
+                }
+                return result;
+            } else {
+                return std::hash<IntType>{}(storage_);
+            }
+        } else {
+            size_t result = 0;
+            for (Word const word : storage_) {
+                result = hash_combine(result, word);
+            }
+            return result;
         }
     }
 

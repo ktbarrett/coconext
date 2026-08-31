@@ -39,27 +39,6 @@ class DynInt {
     static_assert(sizeof(NativeUInt) == sizeof(Word));
     static_assert(sizeof(NativeSInt) == sizeof(NativeUInt));
 
-    class RawView {
-      public:
-        RawView(Word native_word, size_t bit_width)
-            : native_word_(native_word), bit_width_(bit_width), native_(true) {}
-        RawView(std::span<Word const> words, size_t bit_width)
-            : words_(words), bit_width_(bit_width), native_(false) {}
-
-        size_t bit_width() const { return bit_width_; }
-        size_t num_words() const { return native_ ? 1 : words_.size(); }
-        Word word(size_t index) const { return native_ ? native_word_ : words_[index]; }
-        std::span<Word const> data() const {
-            return native_ ? std::span<Word const>{&native_word_, 1} : words_;
-        }
-
-      private:
-        Word native_word_ = 0;
-        std::span<Word const> words_{};
-        size_t bit_width_ = 0;
-        bool native_ = true;
-    };
-
     explicit DynInt(size_t width) : width_(width) { initialize_storage(); }
 
     template <NativeInteger IntT>
@@ -109,18 +88,11 @@ class DynInt {
     explicit DynInt(Int<W, OtherSigned> const& src) : DynInt(W) {
         if constexpr (W > 0) {
             if constexpr (W <= sbo_bits) {
-                if constexpr (OtherSigned) {
-                    using SourceSigned =
-                        typename as_signed<typename Int<W, OtherSigned>::IntType>::type;
-                    storage_.native_ = native_from_logical_bits(
-                        static_cast<NativeUInt>(static_cast<SourceSigned>(src.raw()))
-                    );
-                } else {
-                    storage_.native_ =
-                        native_from_logical_bits(static_cast<NativeUInt>(src.raw()));
-                }
+                storage_.native_ = native_from_logical_bits(
+                    src.logical_bits().template to_native_integer<NativeUInt>()
+                );
             } else if constexpr (Int<W, OtherSigned>::is_wide) {
-                auto source = src.raw().data();
+                auto const& source = src.storage_;
                 auto destination = heap_words();
                 for (size_t i = 0; i < destination.size(); ++i) {
                     destination[i] = source[i];
@@ -130,13 +102,9 @@ class DynInt {
                 if constexpr (sizeof(typename Int<W, OtherSigned>::IntType) > sizeof(Word))
                 {
                     if constexpr (OtherSigned) {
-                        using SourceSigned =
-                            typename as_signed<typename Int<W, OtherSigned>::IntType>::type;
-                        assign_int128(
-                            static_cast<__int128_t>(static_cast<SourceSigned>(src.raw()))
-                        );
+                        assign_int128(src.template to_native_integer<__int128_t>());
                     } else {
-                        assign_uint128(static_cast<__uint128_t>(src.raw()));
+                        assign_uint128(src.template to_native_integer<__uint128_t>());
                     }
                 } else
 #endif
@@ -144,9 +112,10 @@ class DynInt {
                     if constexpr (OtherSigned) {
                         using SourceSigned =
                             typename as_signed<typename Int<W, OtherSigned>::IntType>::type;
-                        assign_native(static_cast<SourceSigned>(src.raw()));
+                        assign_native(src.template to_native_integer<SourceSigned>());
                     } else {
-                        assign_native(src.raw());
+                        assign_native(src.template to_native_integer<
+                                      typename Int<W, OtherSigned>::IntType>());
                     }
                 }
             }
@@ -276,16 +245,6 @@ class DynInt {
                 }
             }
         }
-    }
-
-    RawView raw() const {
-        if (width_ == 0) {
-            throw std::domain_error("raw() on a zero-width DynInt is undefined");
-        }
-        if (is_native()) {
-            return RawView(native_physical_word(), physical_width());
-        }
-        return RawView(heap_words(), physical_width());
     }
 
     DynInt<false> logical_bits() const { return DynInt<false>(width_, *this); }

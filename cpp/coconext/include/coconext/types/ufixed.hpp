@@ -453,11 +453,7 @@ class Ufixed {
             }
         }
 
-        if constexpr (!UInt<R.length()>::is_wide) {
-            return static_cast<T>(val.raw());
-        } else {
-            return static_cast<T>(val.raw().word(0));
-        }
+        return val.template to_native_integer<T>();
     }
 
     template <typename T>
@@ -467,7 +463,7 @@ class Ufixed {
         );
 
         if constexpr (!UInt<R.length()>::is_wide) {
-            T base_val = static_cast<T>(value_.raw());
+            T base_val = static_cast<T>(value_.template to_native_integer<wide_uint>());
             return std::ldexp(base_val, R.right);  // base_val * 2^(R.right)
         } else {
             if (value_ == UInt<R.length()>{0}) {
@@ -483,7 +479,8 @@ class Ufixed {
             }
 
             auto aligned = value_ >> shift_amount;
-            uint64_t raw_mantissa = static_cast<uint64_t>(aligned.raw().word(0));
+            uint64_t raw_mantissa =
+                aligned.template truncate<64>().template to_native_integer<uint64_t>();
 
             if (shift_amount > 0) {
                 bool round_bit = value_.get_bit(shift_amount - 1);
@@ -1492,30 +1489,9 @@ struct std::hash<coconext::types::detail::Ufixed<R>> {
     size_t operator()(coconext::types::detail::Ufixed<R> const& v) const noexcept {
         std::string_view type_name = typeid(coconext::types::detail::Ufixed<R>).name();
         size_t ufixed_seed = std::hash<std::string_view>{}(type_name);
-        constexpr size_t W = R.length();
-        size_t value_hash = 0;
-
-        if constexpr (W > 0) {
-            if constexpr (!coconext::types::detail::UInt<W>::is_wide) {
-                auto raw_val = coconext::types::detail::bits(v).raw();
-                if constexpr (sizeof(raw_val) > sizeof(size_t)) {
-                    uint64_t low = static_cast<uint64_t>(raw_val);
-                    uint64_t high = static_cast<uint64_t>(raw_val >> 64);
-                    value_hash = coconext::types::detail::hash_combine(low, high);
-                } else {
-                    value_hash = std::hash<decltype(raw_val)>{}(raw_val);
-                }
-            } else {
-                auto val = coconext::types::detail::bits(v).raw();
-                constexpr size_t num_words = (W + 63) / 64;
-                for (size_t i = 0; i < num_words; ++i) {
-                    value_hash =
-                        coconext::types::detail::hash_combine(value_hash, val.word(i));
-                }
-            }
-        }
-
-        return coconext::types::detail::hash_combine(ufixed_seed, R, value_hash);
+        return coconext::types::detail::hash_combine(
+            ufixed_seed, R, coconext::types::detail::bits(v).hash_value()
+        );
     }
 };
 

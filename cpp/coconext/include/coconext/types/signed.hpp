@@ -35,30 +35,7 @@ class Signed {
 
     template <typename T>
     constexpr T to_native_int() const {
-        static_assert(
-            R.length() > 0, "Signed<0> has no integer value; cannot convert to native int"
-        );
-        static_assert(
-            !detail::SInt<R.length()>::is_wide, "Conversion from wide SInt to native int"
-        );
-
-        auto ext = value_.raw();
-        using SType = std::make_signed_t<decltype(ext)>;
-        SType signed_val = static_cast<SType>(ext << (sizeof(ext) * 8 - R.length()))
-                        >> (sizeof(ext) * 8 - R.length());
-
-        if constexpr (
-            R.length() - 1 > std::numeric_limits<T>::digits || std::is_unsigned_v<T>
-        )
-        {
-            if (signed_val < std::numeric_limits<T>::min()
-                || signed_val > std::numeric_limits<T>::max())
-            {
-                throw std::out_of_range("Value outside destination native type range");
-            }
-        }
-
-        return static_cast<T>(signed_val);
+        return value_.template to_native_integer<T>();
     }
 
   public:
@@ -672,30 +649,7 @@ struct std::hash<coconext::types::detail::Signed<R>> {
     size_t operator()(coconext::types::detail::Signed<R> const& v) const noexcept {
         std::string_view type_name = typeid(coconext::types::detail::Signed<R>).name();
         size_t signed_seed = std::hash<std::string_view>{}(type_name);
-        constexpr size_t W = R.length();
-        size_t value_hash = 0;
-
-        if constexpr (W > 0) {
-            if constexpr (!coconext::types::detail::SInt<W>::is_wide) {
-                auto raw_val = v.value_.raw();
-                if constexpr (sizeof(raw_val) > sizeof(size_t)) {
-                    uint64_t low = static_cast<uint64_t>(raw_val);
-                    uint64_t high = static_cast<uint64_t>(raw_val >> 64);
-                    value_hash = coconext::types::detail::hash_combine(low, high);
-                } else {
-                    value_hash = std::hash<decltype(raw_val)>{}(raw_val);
-                }
-            } else {
-                auto val = v.value_.raw();
-                constexpr size_t num_words = (W + 63) / 64;
-                for (size_t i = 0; i < num_words; ++i) {
-                    value_hash =
-                        coconext::types::detail::hash_combine(value_hash, val.word(i));
-                }
-            }
-        }
-
-        return coconext::types::detail::hash_combine(signed_seed, R, value_hash);
+        return coconext::types::detail::hash_combine(signed_seed, R, v.value_.hash_value());
     }
 };
 
