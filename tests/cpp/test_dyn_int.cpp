@@ -54,7 +54,6 @@ TEST(DynInt, native_tier_handles_full_64_bit_values) {
     constexpr NativeSInt signed_min = std::numeric_limits<NativeSInt>::min();
 
     DynUInt u(DynUInt::sbo_bits, unsigned_max);
-    EXPECT_EQ(u.raw().word(0), static_cast<detail::Word>(unsigned_max));
     EXPECT_EQ(u.to_decimal_string(), std::to_string(unsigned_max));
     EXPECT_EQ(u.to_hexadecimal_string(), std::string(DynUInt::sbo_bits / 4, 'f'));
     EXPECT_EQ((u >> (DynUInt::sbo_bits - 1)).to_decimal_string(), "1");
@@ -65,7 +64,6 @@ TEST(DynInt, native_tier_handles_full_64_bit_values) {
     );
 
     DynSInt s(DynSInt::sbo_bits, signed_min);
-    EXPECT_EQ(s.raw().word(0), static_cast<detail::Word>(signed_min));
     EXPECT_EQ(s.to_decimal_string(), std::to_string(signed_min));
     EXPECT_EQ((s >> (DynSInt::sbo_bits - 1)).to_decimal_string(), "-1");
     EXPECT_LT(s, DynSInt(DynSInt::sbo_bits, NativeSInt{-1}));
@@ -114,7 +112,7 @@ TEST(DynInt, copy_move_and_conversion_cross_native_boundary) {
 
     DynUInt native(native_width, unsigned_max);
     DynUInt wide(wide_width, native);
-    EXPECT_EQ(wide.raw().word(0), static_cast<detail::Word>(unsigned_max));
+    EXPECT_EQ(wide.to_decimal_string(), std::to_string(unsigned_max));
     EXPECT_FALSE(wide.get_bit(native_width));
 
     DynUInt wide_copy(wide);
@@ -140,10 +138,7 @@ TEST(DynInt, copy_move_and_conversion_cross_native_boundary) {
 
     DynSInt signed_native(native_width, DynSInt::NativeSInt{-1});
     DynSInt signed_wide(wide_width, signed_native);
-    EXPECT_EQ(
-        signed_wide.raw().word(signed_wide.raw().num_words() - 1),
-        std::numeric_limits<detail::Word>::max()
-    );
+    EXPECT_EQ(signed_wide.to_decimal_string(), "-1");
     EXPECT_EQ(DynSInt(native_width, signed_wide).to_decimal_string(), "-1");
 }
 
@@ -199,7 +194,6 @@ TEST(DynInt, native_operations_preserve_extension_without_signed_overflow) {
     auto wrapped =
         DynSInt::exact_add(DynSInt(width, signed_max), DynSInt(width, NativeSInt{1}));
     EXPECT_EQ(wrapped.to_decimal_string(), std::to_string(signed_min));
-    EXPECT_EQ(wrapped.raw().word(0), ~detail::Word{0} << (width - 1));
 
     NativeUInt const unsigned_max = (NativeUInt{1} << width) - 1;
     auto unsigned_wrapped =
@@ -208,7 +202,6 @@ TEST(DynInt, native_operations_preserve_extension_without_signed_overflow) {
 
     auto shifted_sign = DynSInt(width, magnitude >> 1) << 1;
     EXPECT_EQ(shifted_sign.to_decimal_string(), std::to_string(signed_min));
-    EXPECT_EQ(shifted_sign.raw().word(0), ~detail::Word{0} << (width - 1));
 }
 
 TEST(DynInt, exact_width_heap_operations_restore_only_extension_bits) {
@@ -225,7 +218,6 @@ TEST(DynInt, exact_width_heap_operations_restore_only_extension_bits) {
     auto unsigned_wrapped =
         DynUInt::exact_add(unsigned_max, DynUInt(width, DynUInt::NativeUInt{1}));
     EXPECT_EQ(unsigned_wrapped.to_decimal_string(), "0");
-    EXPECT_EQ(unsigned_wrapped.raw().word(unsigned_wrapped.raw().num_words() - 1), 0u);
 }
 
 TEST(DynInt, saturation_compares_across_the_storage_boundary) {
@@ -328,57 +320,57 @@ TEST(DynInt, signed_growing_arithmetic) {
     EXPECT_EQ((min_val / minus_one).to_decimal_string(true), "128");
 }
 
-TEST(DynInt, signed_and_unsigned_are_distinct_canonical_representations) {
+TEST(DynInt, signed_and_unsigned_have_distinct_values) {
     static_assert(!std::is_same_v<DynUInt, DynSInt>);
     static_assert(sizeof(DynUInt) == sizeof(DynSInt));
 
     DynUInt unsigned_negative_pattern(9, 0x1FF);
     DynSInt signed_negative_pattern(9, -1);
-    EXPECT_EQ(unsigned_negative_pattern.raw().word(0), 0x1FF);
-    EXPECT_EQ(signed_negative_pattern.raw().word(0), ~detail::Word{0});
+    EXPECT_EQ(unsigned_negative_pattern.to_decimal_string(), "511");
+    EXPECT_EQ(signed_negative_pattern.to_decimal_string(), "-1");
 
     DynUInt wide_unsigned(129, DynSInt(129, -1));
     DynSInt wide_signed(129, -1);
-    EXPECT_EQ(wide_unsigned.raw().word(2), 1);
-    EXPECT_EQ(wide_signed.raw().word(2), ~detail::Word{0});
+    EXPECT_EQ(wide_unsigned, ~DynUInt(129));
+    EXPECT_EQ(wide_signed.to_decimal_string(), "-1");
 
     DynUInt converted_wide_unsigned(129, DynUInt(8, 0xFF));
     DynSInt converted_wide_signed(129, DynSInt(8, -1));
-    EXPECT_EQ(converted_wide_unsigned.raw().word(2), 0);
-    EXPECT_EQ(converted_wide_signed.raw().word(2), ~detail::Word{0});
+    EXPECT_EQ(converted_wide_unsigned.to_decimal_string(), "255");
+    EXPECT_EQ(converted_wide_signed.to_decimal_string(), "-1");
 
     DynSInt sign_bit(9, 0);
     sign_bit.set_bit(8, true);
-    EXPECT_EQ(sign_bit.raw().word(0), ~detail::Word{0} << 8);
+    EXPECT_EQ(sign_bit.to_decimal_string(), "-256");
     sign_bit.set_bit(8, false);
-    EXPECT_EQ(sign_bit.raw().word(0), 0);
+    EXPECT_EQ(sign_bit.to_decimal_string(), "0");
     EXPECT_THROW(sign_bit.set_bit(9, true), std::out_of_range);
 }
 
-TEST(DynInt, native_static_and_parsed_construction_preserve_extension) {
+TEST(DynInt, native_static_and_parsed_construction_preserve_values) {
     DynUInt native_unsigned(9, 0x1FF);
     DynSInt native_signed(9, -1);
-    EXPECT_EQ(native_unsigned.raw().word(0), 0x1FF);
-    EXPECT_EQ(native_signed.raw().word(0), ~detail::Word{0});
+    EXPECT_EQ(native_unsigned.to_decimal_string(), "511");
+    EXPECT_EQ(native_signed.to_decimal_string(), "-1");
 
     DynUInt two_word_unsigned(65, ~uint64_t{0});
     DynSInt two_word_signed(65, -1);
-    EXPECT_EQ(two_word_unsigned.raw().word(1), 0);
-    EXPECT_EQ(two_word_signed.raw().word(1), ~detail::Word{0});
+    EXPECT_EQ(two_word_unsigned.to_decimal_string(), std::to_string(~uint64_t{0}));
+    EXPECT_EQ(two_word_signed.to_decimal_string(), "-1");
 
     DynUInt from_native_static(detail::UInt<9>(0x1FF));
     DynSInt from_native_static_signed(detail::SInt<9>(-1));
     DynUInt from_wide_static(detail::UInt<129>(detail::SInt<129>(-1)));
     DynSInt from_wide_static_signed(detail::SInt<129>(-1));
-    EXPECT_EQ(from_native_static.raw().word(0), 0x1FF);
-    EXPECT_EQ(from_native_static_signed.raw().word(0), ~detail::Word{0});
-    EXPECT_EQ(from_wide_static.raw().word(2), 1);
-    EXPECT_EQ(from_wide_static_signed.raw().word(2), ~detail::Word{0});
+    EXPECT_EQ(from_native_static.to_decimal_string(), "511");
+    EXPECT_EQ(from_native_static_signed.to_decimal_string(), "-1");
+    EXPECT_EQ(from_wide_static, ~DynUInt(129));
+    EXPECT_EQ(from_wide_static_signed.to_decimal_string(), "-1");
 
     DynUInt parsed_unsigned(9, "511");
     DynSInt parsed_signed(9, "-1");
-    EXPECT_EQ(parsed_unsigned.raw().word(0), 0x1FF);
-    EXPECT_EQ(parsed_signed.raw().word(0), ~detail::Word{0});
+    EXPECT_EQ(parsed_unsigned.to_decimal_string(), "511");
+    EXPECT_EQ(parsed_signed.to_decimal_string(), "-1");
 }
 
 TEST(DynInt, growing_arithmetic_preserves_the_result_invariant) {

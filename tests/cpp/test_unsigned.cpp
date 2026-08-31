@@ -76,6 +76,9 @@ TEST(TestUnsigned, ExplicitNativeCasts) {
     Unsigned<4> b(10);
     EXPECT_EQ(static_cast<unsigned char>(b), 10);
     EXPECT_EQ(static_cast<signed char>(b), 10);
+
+    EXPECT_EQ(static_cast<unsigned char>(Unsigned<200>(42)), 42);
+    EXPECT_THROW((void)static_cast<unsigned char>(Unsigned<200>(256)), std::out_of_range);
 }
 
 TEST(TestUnsigned, ArithmeticOperators) {

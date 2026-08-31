@@ -70,6 +70,10 @@ TEST(TestSigned, ExplicitNativeCasts) {
 
     Signed<4> b(-2);
     EXPECT_EQ(static_cast<signed char>(b), -2);
+
+    EXPECT_EQ(static_cast<signed char>(Signed<200>(-128)), -128);
+    EXPECT_THROW((void)static_cast<signed char>(Signed<200>(128)), std::out_of_range);
+    EXPECT_THROW((void)static_cast<unsigned char>(Signed<200>(-1)), std::out_of_range);
 }
 
 TEST(TestSigned, ArithmeticOperators) {

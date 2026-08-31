@@ -74,30 +74,23 @@ class Sfixed {
             scaled = scaled << R.right;
             return static_cast<T>(Sfixed<IntegerRange>(scaled));
         } else if constexpr (!UInt<R.length()>::is_wide) {
-            using RawType = decltype(value_.raw());
-            using SignedRawType = std::make_signed_t<RawType>;
-            SignedRawType const signed_raw = static_cast<SignedRawType>(value_.raw());
+            wide_int const signed_raw = value_.template to_native_integer<wide_int>();
 
-            SignedRawType int_val = 0;
-            if constexpr (frac_bits() < std::numeric_limits<SignedRawType>::digits) {
-                int_val = static_cast<SignedRawType>(
-                    signed_raw / static_cast<SignedRawType>(RawType{1} << frac_bits())
-                );
-            } else if constexpr (frac_bits() == std::numeric_limits<SignedRawType>::digits)
-            {
-                int_val = signed_raw == std::numeric_limits<SignedRawType>::min() ? -1 : 0;
+            wide_int int_val = 0;
+            if constexpr (frac_bits() < std::numeric_limits<wide_int>::digits) {
+                int_val = signed_raw / static_cast<wide_int>(wide_uint{1} << frac_bits());
+            } else if constexpr (frac_bits() == std::numeric_limits<wide_int>::digits) {
+                int_val = signed_raw == std::numeric_limits<wide_int>::min() ? -1 : 0;
             }
 
             bool out_of_bounds = false;
-            if constexpr (std::is_signed_v<T>) {
+            if constexpr (std::numeric_limits<T>::is_signed) {
                 if constexpr (
-                    std::numeric_limits<T>::digits
-                    < std::numeric_limits<SignedRawType>::digits
+                    std::numeric_limits<T>::digits < std::numeric_limits<wide_int>::digits
                 )
                 {
-                    if (int_val < static_cast<SignedRawType>(std::numeric_limits<T>::min())
-                        || int_val
-                               > static_cast<SignedRawType>(std::numeric_limits<T>::max()))
+                    if (int_val < static_cast<wide_int>(std::numeric_limits<T>::min())
+                        || int_val > static_cast<wide_int>(std::numeric_limits<T>::max()))
                     {
                         out_of_bounds = true;
                     }
@@ -106,11 +99,11 @@ class Sfixed {
                 if (int_val < 0) {
                     out_of_bounds = true;
                 } else if constexpr (
-                    std::numeric_limits<T>::digits < std::numeric_limits<RawType>::digits
+                    std::numeric_limits<T>::digits < std::numeric_limits<wide_uint>::digits
                 )
                 {
-                    if (static_cast<RawType>(int_val)
-                        > static_cast<RawType>(std::numeric_limits<T>::max()))
+                    if (static_cast<wide_uint>(int_val)
+                        > static_cast<wide_uint>(std::numeric_limits<T>::max()))
                     {
                         out_of_bounds = true;
                     }
@@ -156,7 +149,7 @@ class Sfixed {
                     }
                 }
 
-                if (is_negative && !std::is_signed_v<T>) {
+                if (is_negative && !std::numeric_limits<T>::is_signed) {
                     out_of_bounds = true;
                 }
             }
@@ -165,18 +158,13 @@ class Sfixed {
                 throw std::out_of_range("Value too large for destination native type");
             }
 
-            if (is_negative
-                && std::is_signed_v<T> && msb_index == std::numeric_limits<T>::digits)
+            if (is_negative && std::numeric_limits<T>::is_signed
+                && msb_index == std::numeric_limits<T>::digits)
             {
                 return std::numeric_limits<T>::min();
             }
 
-            auto raw_struct = int_magnitude.raw();
-            T native_mag = static_cast<T>(raw_struct.word(0));
-
-            if constexpr (sizeof(T) > 8) {
-                native_mag |= (static_cast<T>(raw_struct.word(1)) << 64);
-            }
+            T native_mag = int_magnitude.template to_native_integer<T>();
 
             return is_negative ? -native_mag : native_mag;
         }
@@ -189,9 +177,7 @@ class Sfixed {
         );
 
         if constexpr (!UInt<R.length()>::is_wide) {
-            using RawType = decltype(value_.raw());
-            using SignedRawType = std::make_signed_t<RawType>;
-            SignedRawType const signed_raw = static_cast<SignedRawType>(value_.raw());
+            wide_int const signed_raw = value_.template to_native_integer<wide_int>();
             return std::ldexp(static_cast<T>(signed_raw), R.right);
         } else {
             if (value_ == SInt<R.length()>{0}) {
@@ -212,7 +198,8 @@ class Sfixed {
             }
 
             auto aligned = abs_value >> shift_amount;
-            uint64_t raw_mantissa = static_cast<uint64_t>(aligned.raw().word(0));
+            uint64_t raw_mantissa =
+                aligned.template truncate<64>().template to_native_integer<uint64_t>();
 
             if (shift_amount > 0) {
                 bool round_bit = abs_value.get_bit(shift_amount - 1);
@@ -1555,30 +1542,9 @@ struct std::hash<coconext::types::detail::Sfixed<R>> {
     size_t operator()(coconext::types::detail::Sfixed<R> const& v) const noexcept {
         std::string_view type_name = typeid(coconext::types::detail::Sfixed<R>).name();
         size_t sfixed_seed = std::hash<std::string_view>{}(type_name);
-        constexpr size_t W = R.length();
-        size_t value_hash = 0;
-
-        if constexpr (W > 0) {
-            if constexpr (!coconext::types::detail::SInt<W>::is_wide) {
-                auto raw_val = coconext::types::detail::bits(v).raw();
-                if constexpr (sizeof(raw_val) > sizeof(size_t)) {
-                    uint64_t low = static_cast<uint64_t>(raw_val);
-                    uint64_t high = static_cast<uint64_t>(raw_val >> 64);
-                    value_hash = coconext::types::detail::hash_combine(low, high);
-                } else {
-                    value_hash = std::hash<decltype(raw_val)>{}(raw_val);
-                }
-            } else {
-                auto val = coconext::types::detail::bits(v).raw();
-                constexpr size_t num_words = (W + 63) / 64;
-                for (size_t i = 0; i < num_words; ++i) {
-                    value_hash =
-                        coconext::types::detail::hash_combine(value_hash, val.word(i));
-                }
-            }
-        }
-
-        return coconext::types::detail::hash_combine(sfixed_seed, R, value_hash);
+        return coconext::types::detail::hash_combine(
+            sfixed_seed, R, coconext::types::detail::bits(v).hash_value()
+        );
     }
 };
 
