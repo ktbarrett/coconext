@@ -100,6 +100,24 @@ TEST(Int, shifts_and_comparisons_follow_the_representation) {
     static_assert(!std::three_way_comparable_with<detail::SInt<8>, detail::SInt<200>>);
 }
 
+TEST(Int, widening_shift_preserves_canonical_representation) {
+    constexpr auto signed_native = detail::SInt<9>(-3).widening_shift_left<7>();
+    static_assert(
+        std::is_same_v<std::remove_cv_t<decltype(signed_native)>, detail::SInt<16>>
+    );
+    static_assert(signed_native.raw() == uint16_t{0xFE80});
+
+    constexpr auto unsigned_native = detail::UInt<9>(3).widening_shift_left<7>();
+    static_assert(
+        std::is_same_v<std::remove_cv_t<decltype(unsigned_native)>, detail::UInt<16>>
+    );
+    static_assert(unsigned_native.raw() == uint16_t{0x0180});
+
+    auto signed_wide = detail::SInt<129>(-3).widening_shift_left<7>();
+    EXPECT_EQ(signed_wide, detail::SInt<136>(-384));
+    EXPECT_EQ(signed_wide.raw().word(2), ~detail::Word{0});
+}
+
 TEST(Int, exact_width_arithmetic_is_explicit) {
     constexpr detail::UInt<8> a(200);
     constexpr detail::UInt<8> b(100);
