@@ -256,12 +256,12 @@ constexpr std::pair<SInt<ResultW>, SInt<DivisorW>> divrem_signed_fixed(
         bool lhs_negative = false;
         UInt<DividendW> lhs_magnitude{};
         if constexpr (DividendW > 0) {
-            lhs_negative = dividend.get_bit(DividendW - 1);
+            lhs_negative = dividend.is_negative();
             auto const dividend_bits = dividend.logical_bits();
             lhs_magnitude = lhs_negative ? wrapped_negate(dividend_bits) : dividend_bits;
         }
 
-        bool const rhs_negative = divisor.get_bit(DivisorW - 1);
+        bool const rhs_negative = divisor.is_negative();
         auto const divisor_bits = divisor.logical_bits();
         UInt<DivisorW> const rhs_magnitude =
             rhs_negative ? wrapped_negate(divisor_bits) : divisor_bits;
@@ -439,7 +439,7 @@ class Ufixed {
     template <size_t SourceW>
     constexpr void assign_signed_integer(SInt<SourceW> const& source) {
         if constexpr (SourceW > 0) {
-            if (source.get_bit(SourceW - 1)) {
+            if (source.is_negative()) {
                 throw std::out_of_range("negative value in Ufixed construction");
             }
         }

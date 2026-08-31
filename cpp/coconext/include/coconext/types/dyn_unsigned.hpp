@@ -1,9 +1,9 @@
 #ifndef COCONEXT_DYN_UNSIGNED_HPP
 #define COCONEXT_DYN_UNSIGNED_HPP
 
-#include <coconext/types/bits.hpp>
+#include <algorithm>
 #include <coconext/types/concepts.hpp>
-#include <coconext/types/dyn_bits.hpp>
+#include <coconext/types/dyn_int_base.hpp>
 #include <coconext/types/hash.hpp>
 #include <coconext/types/logic_array.hpp>
 #include <coconext/types/range.hpp>
@@ -17,6 +17,7 @@
 #include <string_view>
 #include <type_traits>
 #include <typeinfo>
+#include <utility>
 
 namespace coconext::types::detail {
 
@@ -25,16 +26,11 @@ class DynSigned;
 class DynUnsigned {
     template <typename T>
     T to_native_int() const {
-        auto val = value_;
-        if (val.ugt(DynBits(val.width(), std::numeric_limits<T>::max()))) {
-            throw std::out_of_range("Value too large for destination native type");
-        }
-
-        return static_cast<T>(val.raw().word(0));
+        return value_.template to_native_integer<T>();
     }
 
   public:
-    explicit DynUnsigned(DynBits const& val) : value_(val) {}
+    explicit DynUnsigned(DynUInt val) : value_(std::move(val)) {}
     explicit DynUnsigned(size_t width, std::string_view str) : value_(width, str) {}
 
     size_t width() const { return value_.width(); }
@@ -48,43 +44,32 @@ class DynUnsigned {
 
     // Construct from a native integer.
     template <NativeInteger T>
-    DynUnsigned(size_t width, T v) : value_(width, v) {
-        if constexpr (std::is_signed_v<T>) {
-            if (v < 0) {
-                throw std::overflow_error("negative value in Unsigned construction");
-            }
+    DynUnsigned(size_t width, T v) : value_(width) {
+        if (width == 0) {
+            throw std::invalid_argument("DynUnsigned(0) has no integer representation");
         }
-
-        if (std::numeric_limits<T>::digits > width) {
-            using unsigned_T = std::make_unsigned_t<T>;
-            unsigned_T max_unsigned = (width >= sizeof(unsigned_T) * 8)
-                                        ? static_cast<unsigned_T>(-1)
-                                        : (static_cast<unsigned_T>(1) << width) - 1;
-
-            if (static_cast<unsigned_T>(v) > max_unsigned) {
-                throw std::overflow_error("value does not fit in Unsigned width");
-            }
+        if (!native_value_fits<false>(width, v)) {
+            throw std::overflow_error("value does not fit in Unsigned width");
         }
+        value_ = DynUInt(width, v);
     }
 
     bool operator==(DynUnsigned const& rhs) const noexcept { return value_ == rhs.value_; }
 
-    bool operator<(DynUnsigned const& rhs) const noexcept { return value_.ult(rhs.value_); }
+    bool operator<(DynUnsigned const& rhs) const { return compare_value(rhs) < 0; }
 
-    bool operator<=(DynUnsigned const& rhs) const noexcept {
-        return value_.ule(rhs.value_);
-    }
+    bool operator<=(DynUnsigned const& rhs) const { return compare_value(rhs) <= 0; }
 
-    bool operator>(DynUnsigned const& rhs) const noexcept { return value_.ugt(rhs.value_); }
+    bool operator>(DynUnsigned const& rhs) const { return compare_value(rhs) > 0; }
 
-    bool operator>=(DynUnsigned const& rhs) const noexcept {
-        return value_.uge(rhs.value_);
-    }
+    bool operator>=(DynUnsigned const& rhs) const { return compare_value(rhs) >= 0; }
 
-    explicit operator bool() const noexcept { return value_ != DynBits{value_.width(), 0}; }
+    explicit operator bool() const noexcept { return value_.popcount() != 0; }
 
     explicit operator long long() const { return to_native_int<long long>(); }
-    explicit operator unsigned long long() const { return to_native_int<long long>(); }
+    explicit operator unsigned long long() const {
+        return to_native_int<unsigned long long>();
+    }
 
     template <typename ShiftType>
     DynUnsigned operator<<(ShiftType const& shift_amount) const {
@@ -174,7 +159,7 @@ class DynUnsigned {
             return DynUnsigned(width(), 0);
         }
 
-        return DynUnsigned(value_.srl(safe_shift));
+        return DynUnsigned(value_ >> safe_shift);
     }
 
     auto operator|(DynUnsigned const& other) const {
@@ -204,39 +189,39 @@ class DynUnsigned {
     }
 
     auto operator+(DynUnsigned const& rhs) const {
-        return DynUnsigned(add_unsigned(value_, rhs.value_));
+        return DynUnsigned(value_ + rhs.value_);
     }
 
     auto operator*(DynUnsigned const& rhs) const {
-        return DynUnsigned(mul_unsigned(value_, rhs.value_));
+        return DynUnsigned(value_ * rhs.value_);
     }
 
     auto operator/(DynUnsigned const& rhs) const {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        return DynUnsigned(div_unsigned(value_, rhs.value_));
+        return DynUnsigned(value_ / rhs.value_);
     }
 
     auto operator%(DynUnsigned const& rhs) const {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        return DynUnsigned(rem_unsigned(value_, rhs.value_));
+        return DynUnsigned(value_ % rhs.value_);
     }
 
     auto operator+=(DynUnsigned const& rhs) {
-        value_ = add_unsigned(value_, rhs.value_).truncate(width());
+        value_ = DynUInt(width(), value_ + rhs.value_);
         return *this;
     }
 
     auto operator-=(DynUnsigned const& rhs) {
-        value_ = sub_unsigned(value_, rhs.value_).truncate(width());
+        value_ = DynUInt(width(), value_ - rhs.value_);
         return *this;
     }
 
     auto operator*=(DynUnsigned const& rhs) {
-        value_ = mul_unsigned(value_, rhs.value_).truncate(width());
+        value_ = DynUInt(width(), value_ * rhs.value_);
         return *this;
     }
 
@@ -244,7 +229,7 @@ class DynUnsigned {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        value_ = div_unsigned(value_, rhs.value_).truncate(width());
+        value_ = DynUInt(width(), value_ / rhs.value_);
         return *this;
     }
 
@@ -252,7 +237,7 @@ class DynUnsigned {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        value_ = rem_unsigned(value_, rhs.value_).zero_extend(width());
+        value_ = DynUInt(width(), value_ % rhs.value_);
         return *this;
     }
 
@@ -300,8 +285,15 @@ class DynUnsigned {
     }
 
   private:
+    int compare_value(DynUnsigned const& rhs) const {
+        size_t const compare_width = std::max(width(), rhs.width());
+        auto lhs_value = DynUInt(compare_width, value_);
+        auto rhs_value = DynUInt(compare_width, rhs.value_);
+        return lhs_value < rhs_value ? -1 : rhs_value < lhs_value ? 1 : 0;
+    }
+
     friend struct bits_fn;
-    DynBits value_;
+    DynUInt value_;
 };
 
 }  // namespace coconext::types::detail

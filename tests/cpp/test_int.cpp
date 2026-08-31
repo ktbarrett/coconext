@@ -77,6 +77,12 @@ TEST(Int, packed_bit_operations) {
     EXPECT_EQ(detail::SInt<12>(-1).popcount(), 12u);
     EXPECT_EQ(detail::SInt<12>(-1).count_leading_zeros(), 0u);
     EXPECT_EQ(detail::UInt<65>(1).count_leading_zeros(), 64u);
+
+    static_assert(!detail::SInt<0>{}.is_negative());
+    static_assert(!detail::SInt<12>(0).is_negative());
+    static_assert(detail::SInt<12>(-1).is_negative());
+    static_assert(!detail::SInt<200>(1).is_negative());
+    static_assert(detail::SInt<200>(-1).is_negative());
 }
 
 TEST(Int, shifts_and_comparisons_follow_the_representation) {
@@ -100,6 +106,21 @@ TEST(Int, exact_width_arithmetic_is_explicit) {
     static_assert(detail::UInt<8>::exact_add(a, b) == detail::UInt<8>(44));
     static_assert(detail::UInt<8>::exact_sub(b, a) == detail::UInt<8>(156));
     static_assert(detail::UInt<8>::exact_mul(a, b) == detail::UInt<8>(32));
+
+    constexpr detail::SInt<9> maximum(255);
+    constexpr detail::SInt<9> minimum(-256);
+    constexpr detail::SInt<9> one(1);
+    static_assert(detail::SInt<9>::exact_add(maximum, one).raw() == uint16_t{0xFF00});
+    static_assert(detail::SInt<9>::exact_sub(minimum, one).raw() == uint16_t{0x00FF});
+    static_assert(
+        detail::SInt<9>::exact_mul(detail::SInt<9>(-2), detail::SInt<9>(3)).raw()
+        == uint16_t{0xFFFA}
+    );
+
+    detail::SInt<129> wide_negative(-2);
+    auto wide_product = detail::SInt<129>::exact_mul(wide_negative, detail::SInt<129>(3));
+    EXPECT_EQ(wide_product, detail::SInt<129>(-6));
+    EXPECT_EQ(wide_product.raw().word(2), ~detail::Word{0});
 }
 
 TEST(IntKernel, multiply_overwrites_the_complete_destination) {
