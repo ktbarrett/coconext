@@ -41,7 +41,7 @@ class Sfixed {
                 UInt<SourceW>{}, false, 0, R.right
             );
         } else {
-            bool const negative = source.get_bit(SourceW - 1);
+            bool const negative = source.is_negative();
             auto const source_bits = source.logical_bits();
             UInt<SourceW> const magnitude =
                 negative ? detail::wrapped_negate(source_bits) : source_bits;
@@ -124,7 +124,7 @@ class Sfixed {
             return static_cast<T>(int_val);
 
         } else {
-            bool is_negative = value_.get_bit(R.length() - 1);
+            bool is_negative = value_.is_negative();
             auto const raw_value = value_.logical_bits();
             UInt<R.length()> abs_value =
                 is_negative ? detail::wrapped_negate(raw_value) : raw_value;
@@ -198,7 +198,7 @@ class Sfixed {
                 return T{0.0};
             }
 
-            bool is_negative = value_.get_bit(R.length() - 1);
+            bool is_negative = value_.is_negative();
             auto const raw_value = value_.logical_bits();
             UInt<R.length()> abs_value =
                 is_negative ? detail::wrapped_negate(raw_value) : raw_value;

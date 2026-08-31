@@ -29,13 +29,17 @@ auto python_div = [](DynSigned const& a, DynSigned const& b) {
     DynSigned r = a - (q * b);
 
     if (static_cast<bool>(r)) {
-        if ((a < DynSigned(DynBits{a.width(), 0}))
-            != (b < DynSigned(DynBits{a.width(), 0})))
-        {
-            q -= DynSigned(DynBits{a.width(), 1});
+        if ((a < DynSigned(a.width(), 0)) != (b < DynSigned(b.width(), 0))) {
+            q -= DynSigned(q.width(), 1);
         }
     }
     return q;
+};
+
+auto python_imod = [](DynSigned& lhs, DynSigned const& rhs) -> DynSigned& {
+    auto result = mod(lhs, rhs);
+    lhs = DynSigned(DynSInt(lhs.width(), bits(result)));
+    return lhs;
 };
 
 void register_unsigned(nb::module_& m) {
@@ -578,18 +582,21 @@ void register_signed(nb::module_& m) {
             [](DynSigned& self, DynSigned const& other) { return self /= other; }
         )
         .def(
-            "__mod__", [](DynSigned& self, DynSigned const& other) { return self % other; }
+            "__mod__",
+            [](DynSigned const& self, DynSigned const& other) { return mod(self, other); }
+        )
+        .def("__imod__", python_imod)
+        .def(
+            "__imod__",
+            [](DynSigned& self, DynUnsigned const& other) {
+                return python_imod(self, +other);
+            }
         )
         .def(
             "__imod__",
-            [](DynSigned& self, DynSigned const& other) { return self %= other; }
-        )
-        .def(
-            "__imod__",
-            [](DynSigned& self, DynUnsigned const& other) { return self %= other; }
-        )
-        .def(
-            "__imod__", [](DynSigned& self, int64_t const& other) { return self %= other; }
+            [](DynSigned& self, int64_t const& other) {
+                return python_imod(self, DynSigned(64, other));
+            }
         )
         .def(
             "__sub__",

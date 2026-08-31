@@ -186,6 +186,32 @@ def test_arithmetic_operators_edge_cases():
     assert int(mod_one) == 0
 
 
+@pytest.mark.parametrize(
+    ("lhs", "rhs"),
+    [
+        (-17, 5),
+        (17, -5),
+        (-17, -5),
+    ],
+)
+def test_modulo_uses_python_semantics(lhs: int, rhs: int):
+    value = Signed(8, lhs)
+    divisor = Signed(4, rhs)
+
+    result = value % divisor
+    assert int(result) == lhs % rhs
+    assert len(result) == len(divisor)
+
+    value %= divisor
+    assert int(value) == lhs % rhs
+    assert len(value) == 8
+
+    value = Signed(8, lhs)
+    value %= rhs
+    assert int(value) == lhs % rhs
+    assert len(value) == 8
+
+
 def test_compound_assignment():
     a = Signed(8, 10)
 

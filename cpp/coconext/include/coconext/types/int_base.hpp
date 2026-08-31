@@ -5,7 +5,6 @@
 #include <array>
 #include <bit>
 #include <cassert>
-#include <climits>
 #include <coconext/types/bigint.hpp>
 #include <coconext/types/direction.hpp>
 #include <coconext/types/logic.hpp>
@@ -272,34 +271,6 @@ class Int {
         return value;
     }
 
-    // Storage is zero- or sign-extended from W through physical_width. Only
-    // operations that can disturb those extension bits call canonicalize().
-    constexpr void canonicalize() {
-        if constexpr (W == 0 || W == physical_width) {
-            return;
-        } else if constexpr (!is_wide) {
-            if constexpr (SignedRepresentation) {
-                IntType extension =
-                    static_cast<IntType>(IntType{0} - ((storage_ >> (W - 1)) & IntType{1}));
-                storage_ = static_cast<IntType>(
-                    (storage_ & logical_mask) | (extension & ~logical_mask)
-                );
-            } else {
-                storage_ = static_cast<IntType>(storage_ & logical_mask);
-            }
-        } else {
-            constexpr unsigned valid_bits = W % word_bits;
-            constexpr Word logical_mask = (Word{1} << valid_bits) - 1;
-            Word& top = storage_.back();
-            if constexpr (SignedRepresentation) {
-                Word extension = Word{0} - ((top >> (valid_bits - 1)) & Word{1});
-                top = (top & logical_mask) | (extension & ~logical_mask);
-            } else {
-                top &= logical_mask;
-            }
-        }
-    }
-
     template <size_t OtherW, bool OtherSigned>
     constexpr void copy_from(Int<OtherW, OtherSigned> const& other) {
         if constexpr (W == 0) {
@@ -325,8 +296,32 @@ class Int {
             }
             finish_output(dst_buffer);
         }
-        if constexpr (W < OtherW || SignedRepresentation != OtherSigned) {
-            canonicalize();
+        if constexpr (
+            W < physical_width && (W < OtherW || SignedRepresentation != OtherSigned)
+        )
+        {
+            if constexpr (!is_wide) {
+                if constexpr (SignedRepresentation) {
+                    IntType const extension = static_cast<IntType>(
+                        IntType{0} - ((storage_ >> (W - 1)) & IntType{1})
+                    );
+                    storage_ = static_cast<IntType>(
+                        (storage_ & logical_mask) | (extension & ~logical_mask)
+                    );
+                } else {
+                    storage_ = static_cast<IntType>(storage_ & logical_mask);
+                }
+            } else {
+                constexpr unsigned valid_bits = W % word_bits;
+                constexpr Word mask = (Word{1} << valid_bits) - 1;
+                Word& top = storage_.back();
+                if constexpr (SignedRepresentation) {
+                    Word const extension = Word{0} - ((top >> (valid_bits - 1)) & Word{1});
+                    top = (top & mask) | (extension & ~mask);
+                } else {
+                    top &= mask;
+                }
+            }
         }
     }
 
@@ -390,12 +385,6 @@ class Int {
                 load_native(dst, val);
             }
         }
-        if constexpr (
-            W < sizeof(IntT) * CHAR_BIT || (!SignedRepresentation && std::is_signed_v<IntT>)
-        )
-        {
-            canonicalize();
-        }
     }
 
     constexpr Int(std::string_view val) {
@@ -405,8 +394,20 @@ class Int {
         } else {
             storage_ = parse_native(val);
         }
-        if constexpr (SignedRepresentation) {
-            canonicalize();
+        if constexpr (SignedRepresentation && W < physical_width) {
+            if constexpr (!is_wide) {
+                IntType const extension =
+                    static_cast<IntType>(IntType{0} - ((storage_ >> (W - 1)) & IntType{1}));
+                storage_ = static_cast<IntType>(
+                    (storage_ & logical_mask) | (extension & ~logical_mask)
+                );
+            } else {
+                constexpr unsigned valid_bits = W % word_bits;
+                constexpr Word mask = (Word{1} << valid_bits) - 1;
+                Word& top = storage_.back();
+                Word const extension = Word{0} - ((top >> (valid_bits - 1)) & Word{1});
+                top = (top & mask) | (extension & ~mask);
+            }
         }
     }
 
@@ -461,6 +462,16 @@ class Int {
         }
     }
 
+    constexpr bool is_negative() const noexcept
+        requires SignedRepresentation
+    {
+        if constexpr (W == 0) {
+            return false;
+        } else {
+            return get_bit(W - 1);
+        }
+    }
+
     constexpr void set_bit(size_t index, bool val) {
         if (index >= W) {
             throw std::out_of_range("Bit index out of bounds");
@@ -476,7 +487,20 @@ class Int {
         }
         if constexpr (SignedRepresentation && W < physical_width) {
             if (index == W - 1) {
-                canonicalize();
+                if constexpr (!is_wide) {
+                    IntType const extension = static_cast<IntType>(
+                        IntType{0} - ((storage_ >> (W - 1)) & IntType{1})
+                    );
+                    storage_ = static_cast<IntType>(
+                        (storage_ & logical_mask) | (extension & ~logical_mask)
+                    );
+                } else {
+                    constexpr unsigned valid_bits = W % word_bits;
+                    constexpr Word mask = (Word{1} << valid_bits) - 1;
+                    Word& top = storage_.back();
+                    Word const extension = Word{0} - ((top >> (valid_bits - 1)) & Word{1});
+                    top = (top & mask) | (extension & ~mask);
+                }
             }
         }
     }
@@ -762,19 +786,22 @@ class Int {
         } else if constexpr (!is_wide) {
             Int result;
             result.storage_ = static_cast<IntType>(~storage_);
-            if constexpr (!SignedRepresentation) {
-                result.canonicalize();
+            if constexpr (!SignedRepresentation && W < physical_width) {
+                result.storage_ = static_cast<IntType>(result.storage_ & logical_mask);
             }
             return result;
         } else {
             Int result(*this);
             bitnot(WordSpan{std::span<Word>{result.storage_}, physical_width});
-            if constexpr (!SignedRepresentation) {
-                result.canonicalize();
+            if constexpr (!SignedRepresentation && W < physical_width) {
+                constexpr unsigned valid_bits = W % word_bits;
+                constexpr Word mask = (Word{1} << valid_bits) - 1;
+                result.storage_.back() &= mask;
             }
             return result;
         }
     }
+
     constexpr Int operator<<(size_t amount) const {
         if constexpr (W == 0) {
             return Int{};
@@ -785,14 +812,37 @@ class Int {
             if constexpr (!is_wide) {
                 Int result;
                 result.storage_ = static_cast<IntType>(storage_ << amount);
-                result.canonicalize();
+                if constexpr (W < physical_width) {
+                    if constexpr (SignedRepresentation) {
+                        IntType const extension = static_cast<IntType>(
+                            IntType{0} - ((result.storage_ >> (W - 1)) & IntType{1})
+                        );
+                        result.storage_ = static_cast<IntType>(
+                            (result.storage_ & logical_mask) | (extension & ~logical_mask)
+                        );
+                    } else {
+                        result.storage_ =
+                            static_cast<IntType>(result.storage_ & logical_mask);
+                    }
+                }
                 return result;
             } else {
                 Int result(*this);
                 shift_left(
                     WordSpan{std::span<Word>{result.storage_}, physical_width}, amount
                 );
-                result.canonicalize();
+                if constexpr (W < physical_width) {
+                    constexpr unsigned valid_bits = W % word_bits;
+                    constexpr Word mask = (Word{1} << valid_bits) - 1;
+                    Word& top = result.storage_.back();
+                    if constexpr (SignedRepresentation) {
+                        Word const extension =
+                            Word{0} - ((top >> (valid_bits - 1)) & Word{1});
+                        top = (top & mask) | (extension & ~mask);
+                    } else {
+                        top &= mask;
+                    }
+                }
                 return result;
             }
         }
@@ -803,7 +853,7 @@ class Int {
         } else {
             if (amount >= W) {
                 if constexpr (SignedRepresentation) {
-                    return get_bit(W - 1) ? ~Int{} : Int{};
+                    return is_negative() ? ~Int{} : Int{};
                 } else {
                     return Int{};
                 }
@@ -850,7 +900,22 @@ class Int {
                 }
             }
         }
-        result.canonicalize();
+        if constexpr (SignedRepresentation && W < physical_width) {
+            if constexpr (!is_wide) {
+                IntType const extension = static_cast<IntType>(
+                    IntType{0} - ((result.storage_ >> (W - 1)) & IntType{1})
+                );
+                result.storage_ = static_cast<IntType>(
+                    (result.storage_ & logical_mask) | (extension & ~logical_mask)
+                );
+            } else {
+                constexpr unsigned valid_bits = W % word_bits;
+                constexpr Word mask = (Word{1} << valid_bits) - 1;
+                Word& top = result.storage_.back();
+                Word const extension = Word{0} - ((top >> (valid_bits - 1)) & Word{1});
+                top = (top & mask) | (extension & ~mask);
+            }
+        }
         return result;
     }
 
@@ -1031,7 +1096,30 @@ class Int {
         } else {
             result = arithmetic(a, b, '+');
         }
-        result.canonicalize();
+        if constexpr (W < physical_width) {
+            if constexpr (!is_wide) {
+                if constexpr (SignedRepresentation) {
+                    IntType const extension = static_cast<IntType>(
+                        IntType{0} - ((result.storage_ >> (W - 1)) & IntType{1})
+                    );
+                    result.storage_ = static_cast<IntType>(
+                        (result.storage_ & logical_mask) | (extension & ~logical_mask)
+                    );
+                } else {
+                    result.storage_ = static_cast<IntType>(result.storage_ & logical_mask);
+                }
+            } else {
+                constexpr unsigned valid_bits = W % word_bits;
+                constexpr Word mask = (Word{1} << valid_bits) - 1;
+                Word& top = result.storage_.back();
+                if constexpr (SignedRepresentation) {
+                    Word const extension = Word{0} - ((top >> (valid_bits - 1)) & Word{1});
+                    top = (top & mask) | (extension & ~mask);
+                } else {
+                    top &= mask;
+                }
+            }
+        }
         return result;
     }
     static constexpr Int exact_sub(Int const& a, Int const& b) {
@@ -1047,7 +1135,30 @@ class Int {
         } else {
             result = arithmetic(a, b, '-');
         }
-        result.canonicalize();
+        if constexpr (W < physical_width) {
+            if constexpr (!is_wide) {
+                if constexpr (SignedRepresentation) {
+                    IntType const extension = static_cast<IntType>(
+                        IntType{0} - ((result.storage_ >> (W - 1)) & IntType{1})
+                    );
+                    result.storage_ = static_cast<IntType>(
+                        (result.storage_ & logical_mask) | (extension & ~logical_mask)
+                    );
+                } else {
+                    result.storage_ = static_cast<IntType>(result.storage_ & logical_mask);
+                }
+            } else {
+                constexpr unsigned valid_bits = W % word_bits;
+                constexpr Word mask = (Word{1} << valid_bits) - 1;
+                Word& top = result.storage_.back();
+                if constexpr (SignedRepresentation) {
+                    Word const extension = Word{0} - ((top >> (valid_bits - 1)) & Word{1});
+                    top = (top & mask) | (extension & ~mask);
+                } else {
+                    top &= mask;
+                }
+            }
+        }
         return result;
     }
     static constexpr Int exact_mul(Int const& a, Int const& b) {
@@ -1063,7 +1174,30 @@ class Int {
         } else {
             result = arithmetic(a, b, '*');
         }
-        result.canonicalize();
+        if constexpr (W < physical_width) {
+            if constexpr (!is_wide) {
+                if constexpr (SignedRepresentation) {
+                    IntType const extension = static_cast<IntType>(
+                        IntType{0} - ((result.storage_ >> (W - 1)) & IntType{1})
+                    );
+                    result.storage_ = static_cast<IntType>(
+                        (result.storage_ & logical_mask) | (extension & ~logical_mask)
+                    );
+                } else {
+                    result.storage_ = static_cast<IntType>(result.storage_ & logical_mask);
+                }
+            } else {
+                constexpr unsigned valid_bits = W % word_bits;
+                constexpr Word mask = (Word{1} << valid_bits) - 1;
+                Word& top = result.storage_.back();
+                if constexpr (SignedRepresentation) {
+                    Word const extension = Word{0} - ((top >> (valid_bits - 1)) & Word{1});
+                    top = (top & mask) | (extension & ~mask);
+                } else {
+                    top &= mask;
+                }
+            }
+        }
         return result;
     }
 
@@ -1315,7 +1449,7 @@ constexpr SInt<W + 1> abs(SInt<W> const& a) {
     if constexpr (W == 0) {
         return extended;
     } else {
-        return a.get_bit(W - 1) ? -a : extended;
+        return a.is_negative() ? -a : extended;
     }
 }
 
