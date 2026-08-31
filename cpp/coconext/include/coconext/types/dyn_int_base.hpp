@@ -99,12 +99,9 @@ class DynInt {
 
     DynInt(size_t width, std::string_view str) : DynInt(width) {
         if (is_native()) {
-            storage_.native_ = native_from_logical_bits(parse_native(str));
+            storage_.native_ = parse_native(str);
         } else {
-            parse_into(heap_logical_mut(), str);
-            if constexpr (SignedRepresentation) {
-                restore_heap_extension();
-            }
+            parse_into<SignedRepresentation>(heap_logical_mut(), str);
         }
     }
 
@@ -1019,6 +1016,12 @@ class DynInt {
         }
         if (negative) {
             value = (NativeUInt{0} - value) & maximum;
+        }
+        if constexpr (SignedRepresentation) {
+            if (width_ != 0 && width_ != sbo_bits) {
+                NativeUInt const sign = NativeUInt{1} << (width_ - 1);
+                value = (value ^ sign) - sign;
+            }
         }
         return value;
     }

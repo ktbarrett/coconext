@@ -1124,6 +1124,7 @@ constexpr void divide_modulo(
 // dst to be zero-valued on entry. Accepts ' and _ as digit separators.
 // Throws std::invalid_argument on malformed input and std::out_of_range if
 // the value doesn't fit in dst.bit_width() bits.
+template <bool SignedRepresentation = false>
 constexpr void parse_into(WordSpan dst, std::string_view str) {
     if (str.empty()) {
         return;
@@ -1208,6 +1209,14 @@ constexpr void parse_into(WordSpan dst, std::string_view str) {
         negate(dst);
     }
     clear_unused_bits(dst);
+    if constexpr (SignedRepresentation) {
+        if (!d.empty() && bw % word_bits != 0) {
+            unsigned const valid_bits = bw % word_bits;
+            Word const mask = (Word{1} << valid_bits) - 1;
+            Word const extension = Word{0} - ((d.back() >> (valid_bits - 1)) & Word{1});
+            d.back() = (d.back() & mask) | (extension & ~mask);
+        }
+    }
 }
 
 // Load a signed/unsigned 128-bit native value into `dst`, sign- or
