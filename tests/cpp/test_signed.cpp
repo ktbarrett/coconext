@@ -76,6 +76,26 @@ TEST(TestSigned, ExplicitNativeCasts) {
     EXPECT_THROW((void)static_cast<unsigned char>(Signed<200>(-1)), std::out_of_range);
 }
 
+TEST(TestSigned, FixedPointConstruction) {
+    static_assert(std::is_constructible_v<Signed<8>, Ufixed<8, -4>>);
+    static_assert(std::is_constructible_v<Signed<8>, Sfixed<8, -4>>);
+    static_assert(!std::is_convertible_v<Ufixed<8, -4>, Signed<8>>);
+    static_assert(!std::is_convertible_v<Sfixed<8, -4>, Signed<8>>);
+
+    Signed<8> from_unsigned_fixed(Ufixed<7, -4>(127.9375));
+    EXPECT_EQ(static_cast<int>(from_unsigned_fixed), 127);
+
+    Signed<8> from_signed_fixed(Sfixed<8, -4>(-128.9375));
+    EXPECT_EQ(static_cast<int>(from_signed_fixed), -128);
+
+    EXPECT_THROW((Signed<8>(Ufixed<8, 0>(128))), std::out_of_range);
+    EXPECT_THROW((Signed<8>(Sfixed<8, 0>(-129))), std::out_of_range);
+
+    Sfixed<200, 0> wide_fixed(-1);
+    wide_fixed <<= 150;
+    EXPECT_EQ(Signed<202>(wide_fixed), Signed<202>(-1) << 150);
+}
+
 TEST(TestSigned, ArithmeticOperators) {
     Signed<8> a(-50);
     Signed<8> b(20);

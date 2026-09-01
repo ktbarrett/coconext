@@ -30,6 +30,12 @@ template <Range R>
 class Signed;
 
 template <Range R>
+class Ufixed;
+
+template <Range R>
+class Sfixed;
+
+template <Range R>
 class Unsigned {
     static_assert(R.length() >= 0, "Unsigned width must not be negative");
 
@@ -94,6 +100,14 @@ class Unsigned {
         }
         *this = Unsigned<R>(Unsigned<R2>(src_bits));
     }
+
+    template <Range R2>
+    explicit constexpr Unsigned(Ufixed<R2> const& other)
+        requires(R2.direction == Direction::DOWNTO);
+
+    template <Range R2>
+    explicit constexpr Unsigned(Sfixed<R2> const& other)
+        requires(R2.direction == Direction::DOWNTO);
 
     // Implicit conversion to supertype BitArray
     template <Range R2>
