@@ -1038,6 +1038,39 @@ class Sfixed {
     SInt<R.length()> value_{};
 };
 
+template <Range R>
+template <Range R2>
+constexpr Unsigned<R>::Unsigned(Sfixed<R2> const& other)
+    requires(R2.direction == Direction::DOWNTO)
+{
+    auto const& source_bits = bits(other);
+    bool negative = false;
+    UInt<R2.length()> magnitude{};
+    if constexpr (R2.length() > 0) {
+        negative = source_bits.get_bit(R2.length() - 1);
+        auto const raw_bits = source_bits.logical_bits();
+        magnitude = negative ? wrapped_negate(raw_bits) : raw_bits;
+    }
+    value_ =
+        truncate_fixed_magnitude_to_unsigned<R.length()>(magnitude, negative, R2.right);
+}
+
+template <Range R>
+template <Range R2>
+constexpr Signed<R>::Signed(Sfixed<R2> const& other)
+    requires(R2.direction == Direction::DOWNTO)
+{
+    auto const& source_bits = bits(other);
+    bool negative = false;
+    UInt<R2.length()> magnitude{};
+    if constexpr (R2.length() > 0) {
+        negative = source_bits.get_bit(R2.length() - 1);
+        auto const raw_bits = source_bits.logical_bits();
+        magnitude = negative ? wrapped_negate(raw_bits) : raw_bits;
+    }
+    value_ = truncate_fixed_magnitude_to_signed<R.length()>(magnitude, negative, R2.right);
+}
+
 template <Range R1, Range R2>
 constexpr auto operator+(Ufixed<R1> const& lhs, Sfixed<R2> const& rhs) {
     return (+lhs) + rhs;

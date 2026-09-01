@@ -338,6 +338,46 @@ constexpr SInt<TargetW> convert_signed_magnitude(
     }
 }
 
+// Convert a fixed-point magnitude to an integer by truncating fractional bits
+// toward zero, then checking that the result fits the destination width.
+template <size_t TargetW, size_t SourceW>
+constexpr UInt<TargetW> truncate_fixed_magnitude_to_unsigned(
+    UInt<SourceW> const& source, bool negative, Range::value_type source_right
+) {
+    auto const aligned = align_magnitude<TargetW + 1>(source, source_right, 0);
+    bool const out_of_range = aligned.overflow || aligned.bits.get_bit(TargetW)
+                           || (negative && aligned.bits != UInt<TargetW + 1>{});
+    if (out_of_range) {
+        throw std::out_of_range("fixed-point value does not fit in Unsigned width");
+    }
+    return aligned.bits.template truncate<TargetW>();
+}
+
+template <size_t TargetW, size_t SourceW>
+constexpr SInt<TargetW> truncate_fixed_magnitude_to_signed(
+    UInt<SourceW> const& source, bool negative, Range::value_type source_right
+) {
+    auto const aligned = align_magnitude<TargetW + 1>(source, source_right, 0);
+
+    if constexpr (TargetW == 0) {
+        if (aligned.overflow || aligned.bits != UInt<1>{}) {
+            throw std::out_of_range("fixed-point value does not fit in Signed width");
+        }
+        return {};
+    } else {
+        UInt<TargetW + 1> const negative_limit = UInt<TargetW + 1>{1} << (TargetW - 1);
+        bool const out_of_range =
+            aligned.overflow
+            || (negative ? aligned.bits > negative_limit : aligned.bits >= negative_limit);
+        if (out_of_range) {
+            throw std::out_of_range("fixed-point value does not fit in Signed width");
+        }
+
+        UInt<TargetW> const magnitude = aligned.bits.template truncate<TargetW>();
+        return SInt<TargetW>(negative ? wrapped_negate(magnitude) : magnitude);
+    }
+}
+
 template <size_t ResultW, std::floating_point FloatType>
 constexpr aligned_magnitude<ResultW> align_floating_magnitude(
     FloatType magnitude, Range::value_type target_right
@@ -1265,6 +1305,22 @@ class Ufixed {
 
     UInt<R.length()> value_{};
 };
+
+template <Range R>
+template <Range R2>
+constexpr Unsigned<R>::Unsigned(Ufixed<R2> const& other)
+    requires(R2.direction == Direction::DOWNTO)
+{
+    value_ = truncate_fixed_magnitude_to_unsigned<R.length()>(bits(other), false, R2.right);
+}
+
+template <Range R>
+template <Range R2>
+constexpr Signed<R>::Signed(Ufixed<R2> const& other)
+    requires(R2.direction == Direction::DOWNTO)
+{
+    value_ = truncate_fixed_magnitude_to_signed<R.length()>(bits(other), false, R2.right);
+}
 
 template <Range R1, Range R2>
 constexpr auto operator+(Ufixed<R1> const& a, Unsigned<R2> const& b) {

@@ -30,6 +30,12 @@ template <Range R>
 class Unsigned;
 
 template <Range R>
+class Ufixed;
+
+template <Range R>
+class Sfixed;
+
+template <Range R>
 class Signed {
     static_assert(R.length() >= 0, "Signed width must not be negative");
 
@@ -96,6 +102,14 @@ class Signed {
 
         value_ = SInt<R.length()>(UInt<R2.length()>(src_bits));
     }
+
+    template <Range R2>
+    explicit constexpr Signed(Ufixed<R2> const& other)
+        requires(R2.direction == Direction::DOWNTO);
+
+    template <Range R2>
+    explicit constexpr Signed(Sfixed<R2> const& other)
+        requires(R2.direction == Direction::DOWNTO);
 
     template <Range R2>
     constexpr operator detail::Array<Bit, R2>() const noexcept {
