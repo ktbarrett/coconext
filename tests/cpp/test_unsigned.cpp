@@ -302,6 +302,15 @@ TEST(TestUnsigned, ShiftOperators) {
 
     Unsigned<4> shift_amt(2);
     EXPECT_EQ(static_cast<int>(a << shift_amt), 40);
+
+    constexpr Unsigned<1000> wide_shift_amt(8);
+    constexpr Unsigned<16> one(1);
+    static_assert(static_cast<int>(one << wide_shift_amt) == 256);
+
+    Unsigned<1000> huge_shift_amt;
+    huge_shift_amt[999] = Bit::_1;
+    EXPECT_EQ(static_cast<int>(a << huge_shift_amt), 0);
+    EXPECT_EQ(static_cast<int>(a >> huge_shift_amt), 0);
 }
 
 TEST(TestUnsigned, Iterators) {

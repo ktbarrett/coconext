@@ -306,6 +306,18 @@ TEST(TestSigned, ShiftOperators) {
 
     Signed<4> shift_amt(2);
     EXPECT_EQ(static_cast<int>(a << shift_amt), -32);
+
+    constexpr Signed<1000> wide_shift_amt(2);
+    static_assert(static_cast<int>(Signed<8>(5) << wide_shift_amt) == 20);
+
+    Signed<1000> huge_shift_amt;
+    huge_shift_amt[998] = Bit::_1;
+    EXPECT_EQ(static_cast<int>(a << huge_shift_amt), 0);
+    EXPECT_EQ(static_cast<int>(a >> huge_shift_amt), -1);
+
+    Signed<1000> negative_shift_amt(-1);
+    EXPECT_THROW(a << negative_shift_amt, std::invalid_argument);
+    EXPECT_THROW(a >> negative_shift_amt, std::invalid_argument);
 }
 
 TEST(TestSigned, Iterators) {
