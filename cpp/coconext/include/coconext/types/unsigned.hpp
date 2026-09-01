@@ -204,36 +204,7 @@ class Unsigned {
 
     template <typename ShiftType>
     constexpr Unsigned<R> operator<<(ShiftType const& shift_amount) const {
-        using CleanType = std::remove_cvref_t<ShiftType>;
-
-        // Shift amounts must fit in a native integer.
-        // thing
-        static_assert(
-            std::is_integral_v<CleanType> || detail::is_coconext_unsigned_v<CleanType>
-                || detail::is_coconext_signed_v<CleanType>,
-            "Shift amount can only be a native integer, Signed, or Unsigned"
-        );
-
-        size_t safe_shift = 0;
-
-        if constexpr (std::is_integral_v<CleanType>) {
-            if constexpr (std::is_signed_v<CleanType>) {
-                if (shift_amount < 0) {
-                    throw std::invalid_argument("Negative shift amount");
-                }
-            }
-            safe_shift = static_cast<size_t>(shift_amount);
-        } else if constexpr (detail::is_coconext_unsigned_v<CleanType>) {
-            static_assert(CleanType::size() < 64, "Bit Width cap 2**64");
-            safe_shift = static_cast<size_t>(static_cast<unsigned long long>(shift_amount));
-        } else if constexpr (detail::is_coconext_signed_v<CleanType>) {
-            static_assert(CleanType::size() < 64, "Bit Width cap 2**64");
-            long long signed_val = static_cast<long long>(shift_amount);
-            if (signed_val < 0) {
-                throw std::invalid_argument("Negative shift amount");
-            }
-            safe_shift = static_cast<size_t>(signed_val);
-        }
+        size_t const safe_shift = detail::normalize_shift_amount(shift_amount, R.length());
 
         if (safe_shift >= R.length()) {
             return Unsigned<R>(0);
@@ -244,36 +215,7 @@ class Unsigned {
 
     template <typename ShiftType>
     constexpr Unsigned<R> operator>>(ShiftType const& shift_amount) const {
-        using CleanType = std::remove_cvref_t<ShiftType>;
-
-        // Shift amounts must fit in a native integer.
-        // thing
-        static_assert(
-            std::is_integral_v<CleanType> || detail::is_coconext_unsigned_v<CleanType>
-                || detail::is_coconext_signed_v<CleanType>,
-            "Shift amount can only be a native integer, Signed, or Unsigned"
-        );
-
-        size_t safe_shift = 0;
-
-        if constexpr (std::is_integral_v<CleanType>) {
-            if constexpr (std::is_signed_v<CleanType>) {
-                if (shift_amount < 0) {
-                    throw std::invalid_argument("Negative shift amount");
-                }
-            }
-            safe_shift = static_cast<size_t>(shift_amount);
-        } else if constexpr (detail::is_coconext_unsigned_v<CleanType>) {
-            static_assert(CleanType::size() < 64, "Bit Width cap 2**64");
-            safe_shift = static_cast<size_t>(static_cast<unsigned long long>(shift_amount));
-        } else if constexpr (detail::is_coconext_signed_v<CleanType>) {
-            static_assert(CleanType::size() < 64, "Bit Width cap 2**64");
-            long long signed_val = static_cast<long long>(shift_amount);
-            if (signed_val < 0) {
-                throw std::invalid_argument("Negative shift amount");
-            }
-            safe_shift = static_cast<size_t>(signed_val);
-        }
+        size_t const safe_shift = detail::normalize_shift_amount(shift_amount, R.length());
 
         if (safe_shift >= R.length()) {
             return Unsigned<R>(0);
