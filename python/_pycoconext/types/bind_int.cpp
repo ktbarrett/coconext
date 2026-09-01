@@ -214,9 +214,9 @@ void register_unsigned(nb::module_& m) {
         .def(
             "__int__",
             [](DynUnsigned const& self) {
-                std::string dec_str = bits(self).to_decimal_string();
+                std::string dec_str = bits(self).to_hexadecimal_string();
                 PyObject* py_long = PyLong_FromString(  // NOLINT(misc-include-cleaner)
-                    dec_str.c_str(), nullptr, 10
+                    dec_str.c_str(), nullptr, 16
                 );
 
                 if (!py_long) {
