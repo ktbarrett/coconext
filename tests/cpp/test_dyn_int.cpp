@@ -371,6 +371,57 @@ TEST(DynInt, native_static_and_parsed_construction_preserve_values) {
     DynSInt parsed_signed(9, "-1");
     EXPECT_EQ(parsed_unsigned.to_decimal_string(), "511");
     EXPECT_EQ(parsed_signed.to_decimal_string(), "-1");
+
+    // Exercise the heap-storage assignment path with a narrow signed source.
+    DynSInt from_narrow_signed(200, int8_t{-1});
+    EXPECT_EQ(from_narrow_signed.to_decimal_string(), "-1");
+}
+
+TEST(DynInt, runtime_formatting_and_error_paths) {
+    DynUInt value(16, uint16_t{0xABCD});
+    EXPECT_EQ(value.to_binary_string(), "1010101111001101");
+    EXPECT_EQ(value.to_octal_string(), "125715");
+    EXPECT_THROW(value.get_bit(16), std::out_of_range);
+    EXPECT_THROW(value.set_bit(16, true), std::out_of_range);
+
+    EXPECT_EQ(DynUInt(8, "+42").to_decimal_string(), "42");
+    EXPECT_EQ(DynUInt(8, "0X_Af").to_decimal_string(), "175");
+    EXPECT_THROW(DynSInt(8, "-0x1"), std::invalid_argument);
+    EXPECT_THROW(DynUInt(8, "0xgg"), std::invalid_argument);
+    EXPECT_THROW(DynUInt(64, "12x3"), std::invalid_argument);
+
+    DynUInt null_value(0);
+    EXPECT_EQ(null_value.to_binary_string(), "");
+    EXPECT_EQ(null_value.to_decimal_string(), "");
+    EXPECT_EQ(null_value.to_hexadecimal_string(), "");
+    EXPECT_EQ(null_value.to_octal_string(), "");
+    EXPECT_THROW(null_value.to_native_integer<uint8_t>(), std::domain_error);
+    EXPECT_THROW(DynUInt(0, uint64_t{1}), std::invalid_argument);
+
+    DynUInt dividend(200, uint64_t{5});
+    DynUInt zero(200);
+    EXPECT_THROW(dividend / zero, std::domain_error);
+    EXPECT_THROW(dividend % zero, std::domain_error);
+    EXPECT_EQ(dividend / DynUInt(200, uint64_t{7}), DynUInt(201, uint64_t{0}));
+    EXPECT_EQ(dividend / dividend, DynUInt(201, uint64_t{1}));
+
+    EXPECT_EQ((dividend << 200).to_decimal_string(), "0");
+    EXPECT_EQ((dividend >> 200).to_decimal_string(), "0");
+    EXPECT_EQ((DynSInt(200, -1) >> 200).to_decimal_string(), "-1");
+
+    EXPECT_EQ(DynUInt(200, uint64_t{42}).saturate_unsigned(8).to_decimal_string(), "42");
+    EXPECT_EQ(DynSInt(200, int64_t{42}).saturate_signed(8).to_decimal_string(), "42");
+    EXPECT_EQ(DynUInt(8, uint64_t{42}).saturate_unsigned(16).to_decimal_string(), "42");
+    EXPECT_EQ(DynSInt(8, int64_t{42}).saturate_signed(16).to_decimal_string(), "42");
+    EXPECT_EQ(DynUInt(8, uint64_t{42}).saturate_unsigned(0).width(), 0u);
+    EXPECT_EQ(DynSInt(8, int64_t{42}).saturate_signed(0).width(), 0u);
+
+    EXPECT_EQ(DynUInt(200, uint64_t{255}).to_native_integer<uint8_t>(), 255);
+    EXPECT_EQ(DynSInt(200, int64_t{-128}).to_native_integer<int8_t>(), -128);
+    EXPECT_THROW(
+        DynUInt(200, uint64_t{256}).to_native_integer<uint8_t>(), std::out_of_range
+    );
+    EXPECT_THROW(DynSInt(200, int64_t{-1}).to_native_integer<uint8_t>(), std::out_of_range);
 }
 
 TEST(DynInt, growing_arithmetic_preserves_the_result_invariant) {
