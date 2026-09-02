@@ -1219,7 +1219,7 @@ void register_logic_array(nb::module_& m) {
         .def("__len__", [](BitVector const& self) { return self.range().length(); })
         .def(
             "__iter__",
-            [](BitVector& self) {
+            [](BitVector const& self) {
                 return nb::make_iterator(
                     nb::type<BitVector>(), "BitArrayIterator", self.begin(), self.end()
                 );
@@ -1228,7 +1228,7 @@ void register_logic_array(nb::module_& m) {
         )
         .def(
             "__reversed__",
-            [](BitVector& self) {
+            [](BitVector const& self) {
                 return nb::make_iterator(
                     nb::type<BitVector>(),
                     "BitArrayReverseIterator",
