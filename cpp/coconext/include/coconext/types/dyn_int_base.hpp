@@ -10,12 +10,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <format>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 
 namespace coconext::types::detail {
@@ -246,6 +248,114 @@ class DynInt {
             }
         }
     }
+
+    class BitReference {
+        DynInt& parent_;
+        size_t index_;
+
+      public:
+        BitReference(DynInt& parent, size_t index) : parent_(parent), index_(index) {}
+        operator Bit() const { return parent_.get_bit(index_) ? Bit::_1 : Bit::_0; }
+        explicit operator char() const { return parent_.get_bit(index_) ? '1' : '0'; }
+        explicit operator bool() const { return parent_.get_bit(index_); }
+        BitReference const& operator=(Bit val) const {
+            parent_.set_bit(index_, static_cast<bool>(val));
+            return *this;
+        }
+        BitReference const& operator=(BitReference const& other) const {
+            parent_.set_bit(index_, static_cast<bool>(static_cast<Bit>(other)));
+            return *this;
+        }
+    };
+
+    template <bool IsConst>
+    class IteratorImpl {
+        using Parent = std::conditional_t<IsConst, DynInt const, DynInt>;
+        Parent* parent_ = nullptr;
+        size_t index_ = 0;
+
+      public:
+        using iterator_concept = std::random_access_iterator_tag;
+        using iterator_category = std::random_access_iterator_tag;
+        using value_type = Bit;
+        using difference_type = std::ptrdiff_t;
+        using pointer = void;
+        using reference = std::conditional_t<IsConst, Bit, BitReference>;
+
+        IteratorImpl() = default;
+        IteratorImpl(Parent* parent, size_t index) : parent_(parent), index_(index) {}
+        reference operator*() const {
+            size_t bit_pos = parent_->width() > 0 ? parent_->width() - 1 - index_ : 0;
+            if constexpr (IsConst) {
+                return parent_->get_bit(bit_pos) ? Bit::_1 : Bit::_0;
+            } else {
+                return BitReference(*parent_, bit_pos);
+            }
+        }
+        reference operator[](difference_type n) const { return *(*this + n); }
+        IteratorImpl& operator++() {
+            ++index_;
+            return *this;
+        }
+        IteratorImpl operator++(int) {
+            auto copy = *this;
+            ++*this;
+            return copy;
+        }
+        IteratorImpl& operator--() {
+            --index_;
+            return *this;
+        }
+        IteratorImpl operator--(int) {
+            auto copy = *this;
+            --*this;
+            return copy;
+        }
+        IteratorImpl& operator+=(difference_type n) {
+            index_ += n;
+            return *this;
+        }
+        IteratorImpl& operator-=(difference_type n) {
+            index_ -= n;
+            return *this;
+        }
+        IteratorImpl operator+(difference_type n) const {
+            return IteratorImpl(parent_, index_ + n);
+        }
+        IteratorImpl operator-(difference_type n) const {
+            return IteratorImpl(parent_, index_ - n);
+        }
+        friend IteratorImpl operator+(difference_type n, IteratorImpl const& it) {
+            return it + n;
+        }
+        difference_type operator-(IteratorImpl const& other) const {
+            return static_cast<difference_type>(index_)
+                 - static_cast<difference_type>(other.index_);
+        }
+        bool operator==(IteratorImpl const& other) const {
+            return parent_ == other.parent_ && index_ == other.index_;
+        }
+        auto operator<=>(IteratorImpl const& other) const {
+            return index_ <=> other.index_;
+        }
+    };
+
+    auto begin() { return IteratorImpl<false>(this, 0); }
+    auto begin() const { return IteratorImpl<true>(this, 0); }
+    auto end() { return IteratorImpl<false>(this, width_); }
+    auto end() const { return IteratorImpl<true>(this, width_); }
+    auto rbegin() { return std::make_reverse_iterator(end()); }
+    auto rbegin() const { return std::make_reverse_iterator(end()); }
+    auto rend() { return std::make_reverse_iterator(begin()); }
+    auto rend() const { return std::make_reverse_iterator(begin()); }
+
+    BitReference operator[](size_t index) {
+        if (index >= width_) {
+            throw std::out_of_range("Bit index out of bounds");
+        }
+        return BitReference(*this, index);
+    }
+    Bit operator[](size_t index) const { return get_bit(index) ? Bit::_1 : Bit::_0; }
 
     DynInt<false> logical_bits() const { return DynInt<false>(width_, *this); }
 
