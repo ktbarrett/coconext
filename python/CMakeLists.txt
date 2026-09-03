@@ -41,6 +41,7 @@ nanobind_add_module(
     _pycoconext/types/bind_logic_array.cpp
     _pycoconext/types/bind_range.cpp
     _pycoconext/types/bind_int.cpp
+    _pycoconext/types/bind_fixed.cpp
 )
 target_link_libraries(_pycoconext PRIVATE coconext::coconext_nb)
 coconext_enable_developer_mode(_pycoconext)
