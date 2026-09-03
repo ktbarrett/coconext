@@ -1698,6 +1698,8 @@ class [[nodiscard]] auto_reinterpreted {
             return Target(bits(value_));
         } else if constexpr (std::same_as<Target, Source>) {
             return Target(std::forward<T>(value_));
+        } else if constexpr (std::constructible_from<Target, T&&>) {
+            return Target(std::forward<T>(value_));
         } else {
             return Target(bits(std::forward<T>(value_)));
         }
@@ -1802,6 +1804,8 @@ template <detail::HasDynamicBits Target, detail::HasDynamicBits Source>
 Target as(Source&& source) {
     using SourceType = std::remove_cvref_t<Source>;
     if constexpr (std::same_as<Target, SourceType>) {
+        return Target(std::forward<Source>(source));
+    } else if constexpr (std::constructible_from<Target, Source&&>) {
         return Target(std::forward<Source>(source));
     } else {
         return Target(detail::bits(std::forward<Source>(source)));
