@@ -18,16 +18,13 @@ class DynSigned {
 
   public:
     explicit DynSigned(DynSInt val) : value_(std::move(val)) {}
+    explicit DynSigned(DynUInt val) : value_(std::move(val)) {}
     explicit DynSigned(size_t width, std::string_view str) : value_(width, str) {}
 
     size_t width() const { return value_.width(); }
 
-    DynSigned(Vector<Bit> const& v) : value_(v.size()) {
-        size_t bit_idx = 0;
-        for (auto it = v.rbegin(); it != v.rend(); ++it) {
-            value_.set_bit(bit_idx++, char(*it) == '1');
-        }
-    }
+    DynSigned(Vector<Bit> const& v) : value_(DynSInt(bits(v))) {}
+    DynSigned(Vector<Bit>&& v) : value_(DynSInt(bits(std::move(v)))) {}
 
     // Construct from a native integer.
     template <NativeInteger T>

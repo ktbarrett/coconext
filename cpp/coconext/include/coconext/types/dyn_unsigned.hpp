@@ -8,15 +8,10 @@
 #include <coconext/types/logic_array.hpp>
 #include <coconext/types/range.hpp>
 #include <cstddef>
-#include <cstdint>
-#include <format>
-#include <functional>
 #include <limits>
 #include <stdexcept>
-#include <string>
 #include <string_view>
 #include <type_traits>
-#include <typeinfo>
 #include <utility>
 
 namespace coconext::types::detail {
@@ -31,16 +26,13 @@ class DynUnsigned {
 
   public:
     explicit DynUnsigned(DynUInt val) : value_(std::move(val)) {}
+    explicit DynUnsigned(DynSInt val) : value_(std::move(val)) {}
     explicit DynUnsigned(size_t width, std::string_view str) : value_(width, str) {}
 
     size_t width() const { return value_.width(); }
 
-    DynUnsigned(Vector<Bit> const& v) : value_(v.size()) {
-        size_t bit_idx = 0;
-        for (auto it = v.rbegin(); it != v.rend(); ++it) {
-            value_.set_bit(bit_idx++, char(*it) == '1');
-        }
-    }
+    DynUnsigned(Vector<Bit> const& v) : value_(bits(v)) {}
+    DynUnsigned(Vector<Bit>&& v) : value_(bits(std::move(v))) {}
 
     // Construct from a native integer.
     template <NativeInteger T>

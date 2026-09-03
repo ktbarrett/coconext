@@ -15,6 +15,7 @@
 #include <ranges>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 // The LogicVector ctors below delegate to VectorImpl ctors that are only constexpr in
 // C++23. BitVector uses DynUInt storage instead.
@@ -172,6 +173,10 @@ class Vector<Bit> {
         }
         std::ranges::copy(obj, begin());
     }
+
+    template <bool SignedRepresentation>
+    explicit Vector(detail::DynInt<SignedRepresentation>&& value)
+        : value_(std::move(value)), range_(detail::logic_downto_range(value_.width())) {}
 
     explicit Vector(std::string_view s) : Vector(s, detail::logic_downto_range(s.size())) {}
     explicit Vector(char const* s) : Vector(std::string_view(s)) {}

@@ -21,6 +21,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace nb = nanobind;
@@ -264,7 +265,7 @@ static DynUnsigned logic_array_to_unsigned(LogicVector const& self) {
             "Cannot convert array with undefined logic to Unsigned"
         );
     }
-    return DynUnsigned(*resolved_opt);
+    return as<DynUnsigned>(std::move(*resolved_opt));
 }
 
 static DynSigned logic_array_to_signed(LogicVector const& self) {
@@ -277,7 +278,7 @@ static DynSigned logic_array_to_signed(LogicVector const& self) {
     if (!resolved_opt) {
         throw std::invalid_argument("Cannot convert array with undefined logic to Signed");
     }
-    return DynSigned(*resolved_opt);
+    return as<DynSigned>(std::move(*resolved_opt));
 }
 
 static LogicVector logic_array_from_bytes(

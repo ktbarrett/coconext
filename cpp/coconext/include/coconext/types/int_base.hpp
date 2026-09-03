@@ -6,6 +6,7 @@
 #include <bit>
 #include <cassert>
 #include <climits>
+#include <coconext/types/array_base.hpp>
 #include <coconext/types/bigint.hpp>
 #include <coconext/types/direction.hpp>
 #include <coconext/types/hash.hpp>
@@ -28,6 +29,14 @@
 namespace coconext::types {
 
 namespace detail {
+
+template <typename T>
+concept HasStaticBits =
+    HasBits<std::remove_cvref_t<T>> && StaticRangedSequence<std::remove_cvref_t<T>>;
+
+template <typename T>
+concept HasDynamicBits =
+    HasBits<std::remove_cvref_t<T>> && (!StaticRangedSequence<std::remove_cvref_t<T>>);
 
 struct EmptyStorage {};
 
@@ -1672,14 +1681,26 @@ class [[nodiscard]] auto_reinterpreted {
 
     constexpr T consume() && { return std::forward<T>(value_); }
 
-    template <HasBits Target>
-    constexpr operator Target() && noexcept {
+    template <typename Target>
+        requires(
+            (HasStaticBits<Target> && HasStaticBits<std::remove_cvref_t<T>>)
+            || (HasDynamicBits<Target> && HasDynamicBits<std::remove_cvref_t<T>>)
+        )
+    constexpr operator Target() && noexcept(
+        HasStaticBits<Target> && HasStaticBits<std::remove_cvref_t<T>>
+    ) {
         using Source = std::remove_cvref_t<T>;
-        static_assert(
-            Target::static_range.length() == Source::static_range.length(),
-            "as() requires equal widths."
-        );
-        return Target(bits(value_));
+        if constexpr (HasStaticBits<Target>) {
+            static_assert(
+                Target::static_range.length() == Source::static_range.length(),
+                "as() requires equal widths."
+            );
+            return Target(bits(value_));
+        } else if constexpr (std::same_as<Target, Source>) {
+            return Target(std::forward<T>(value_));
+        } else {
+            return Target(bits(std::forward<T>(value_)));
+        }
     }
 };
 
@@ -1705,21 +1726,6 @@ class [[nodiscard]] auto_resized {
     }
 };
 
-template <typename ExplicitTarget = void, typename T>
-    requires(std::same_as<ExplicitTarget, void> && HasBits<std::remove_cvref_t<T>>)
-[[nodiscard]] constexpr auto_reinterpreted<T const&> as(T const& x) noexcept {
-    return auto_reinterpreted<T const&>(x);
-}
-
-template <typename ExplicitTarget = void, typename T>
-    requires(
-        std::same_as<ExplicitTarget, void> && HasBits<std::remove_cvref_t<T>>
-        && !std::is_lvalue_reference_v<T>
-    )
-[[nodiscard]] constexpr auto_reinterpreted<T> as(T&& x) noexcept {
-    return auto_reinterpreted<T>(std::move(x));
-}
-
 template <typename T>
 [[nodiscard]] constexpr auto_resized<T const&> resize(
     T const& x, overflow_mode ovf, round_mode rnd
@@ -1738,6 +1744,31 @@ template <typename T>
 
 }  // namespace detail
 
+// ExplicitTarget is a sentinel that keeps these deferred overloads out of the
+// overload set when the caller requests immediate conversion with as<Target>().
+template <typename ExplicitTarget = void, typename Source>
+    requires(
+        std::same_as<ExplicitTarget, void>
+        && detail::HasStaticBits<std::remove_cvref_t<Source>>
+    )
+[[nodiscard]] constexpr detail::auto_reinterpreted<Source const&> as(
+    Source const& source
+) noexcept {
+    return detail::auto_reinterpreted<Source const&>(source);
+}
+
+template <typename ExplicitTarget = void, typename Source>
+    requires(
+        std::same_as<ExplicitTarget, void>
+        && (detail::HasStaticBits<std::remove_cvref_t<Source>>
+            || (detail::HasDynamicBits<std::remove_cvref_t<Source>>
+                && !std::is_const_v<std::remove_reference_t<Source>>))
+        && !std::is_lvalue_reference_v<Source>
+    )
+[[nodiscard]] constexpr detail::auto_reinterpreted<Source> as(Source&& source) noexcept {
+    return detail::auto_reinterpreted<Source>(std::move(source));
+}
+
 template <typename X>
     requires(
         detail::is_coconext_unsigned_v<std::remove_cvref_t<X>>
@@ -1754,13 +1785,27 @@ template <typename X>
     return detail::resize(std::forward<X>(x), ovf, rnd);
 }
 
-template <detail::HasBits Target, detail::HasBits Source>
+template <detail::HasStaticBits Target, detail::HasStaticBits Source>
 constexpr Target as(Source const& source) noexcept {
     static_assert(
         Target::static_range.length() == Source::static_range.length(),
         "as() requires equal widths."
     );
     return Target(detail::bits(source));
+}
+
+template <detail::HasDynamicBits Target, detail::HasDynamicBits Source>
+    requires(
+        !std::is_lvalue_reference_v<Source>
+        && !std::is_const_v<std::remove_reference_t<Source>>
+    )
+Target as(Source&& source) {
+    using SourceType = std::remove_cvref_t<Source>;
+    if constexpr (std::same_as<Target, SourceType>) {
+        return Target(std::forward<Source>(source));
+    } else {
+        return Target(detail::bits(std::forward<Source>(source)));
+    }
 }
 
 }  // namespace coconext::types
