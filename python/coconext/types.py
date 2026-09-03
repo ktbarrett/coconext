@@ -9,7 +9,9 @@ from _pycoconext import (
     Logic,
     LogicArray,
     Range,
+    Sfixed,
     Signed,
+    Ufixed,
     Unsigned,
 )
 
@@ -20,7 +22,9 @@ __all__ = (
     "Logic",
     "LogicArray",
     "Range",
+    "Sfixed",
     "Signed",
+    "Ufixed",
     "Unsigned",
 )
 
