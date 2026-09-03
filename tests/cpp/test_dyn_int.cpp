@@ -10,10 +10,41 @@
 #include <unordered_set>
 #include <utility>
 
+using coconext::types::as;
+using coconext::types::BitArray;
+using coconext::types::BitVector;
 using coconext::types::detail::DynSigned;
 using coconext::types::detail::DynSInt;
 using coconext::types::detail::DynUInt;
+using coconext::types::detail::DynUnsigned;
 namespace detail = coconext::types::detail;
+
+template <typename Target, typename Source>
+concept CanReinterpret =
+    requires(Source&& source) { coconext::types::as<Target>(std::move(source)); };
+
+template <typename Target, typename Source>
+concept CanReinterpretLvalue =
+    requires(Source& source) { coconext::types::as<Target>(source); };
+
+template <typename Source>
+concept CanDeferReinterpret =
+    requires(Source&& source) { coconext::types::as(std::forward<Source>(source)); };
+
+static_assert(!CanReinterpret<BitArray<65>, BitVector>);
+static_assert(!CanReinterpret<BitVector, BitArray<65>>);
+static_assert(!CanReinterpretLvalue<DynUnsigned, BitVector>);
+static_assert(!detail::HasBits<int>);
+static_assert(detail::HasStaticBits<BitArray<65>>);
+static_assert(!detail::HasDynamicBits<BitArray<65>>);
+static_assert(detail::HasDynamicBits<BitVector>);
+static_assert(detail::HasDynamicBits<DynUnsigned>);
+static_assert(CanDeferReinterpret<BitVector>);
+static_assert(!CanDeferReinterpret<BitVector&>);
+static_assert(!CanDeferReinterpret<BitVector const>);
+static_assert(std::same_as<
+              decltype(coconext::types::as<DynUnsigned>(std::declval<BitVector>())),
+              DynUnsigned>);
 
 TEST(DynInt, runtime_width_storage_and_formatting) {
     static_assert(std::is_same_v<DynUInt::NativeUInt, std::uint64_t>);
@@ -21,6 +52,8 @@ TEST(DynInt, runtime_width_storage_and_formatting) {
     static_assert(DynUInt::sbo_bits == 64);
     static_assert(DynSInt::sbo_bits == 64);
     static_assert(sizeof(DynUInt) == sizeof(size_t) + sizeof(uint64_t));
+    static_assert(std::is_nothrow_constructible_v<DynUInt, DynSInt&&>);
+    static_assert(std::is_nothrow_constructible_v<DynSInt, DynUInt&&>);
 
     DynUInt native_value(DynUInt::sbo_bits, uint64_t{12345});
     DynUInt heap_value(DynUInt::sbo_bits + 1, uint64_t{12345});
@@ -135,6 +168,30 @@ TEST(DynInt, copy_move_and_conversion_cross_native_boundary) {
     DynSInt signed_wide(wide_width, signed_native);
     EXPECT_EQ(signed_wide.to_decimal_string(), "-1");
     EXPECT_EQ(DynSInt(native_width, signed_wide).to_decimal_string(), "-1");
+}
+
+TEST(DynInt, cross_signed_heap_move_canonicalizes_aligned_and_unaligned_storage) {
+    size_t const unaligned_width = DynUInt::sbo_bits + 1;
+    DynUInt unaligned_source(unaligned_width, uint64_t{1});
+    DynSInt unaligned_target(std::move(unaligned_source));
+    EXPECT_EQ(unaligned_source.width(), 0u);
+    EXPECT_EQ(unaligned_target.to_decimal_string(), "1");
+
+    DynSInt unaligned_signed_source(unaligned_width, -1);
+    DynUInt unaligned_unsigned_target(std::move(unaligned_signed_source));
+    EXPECT_EQ(unaligned_signed_source.width(), 0u);
+    EXPECT_EQ(unaligned_unsigned_target.popcount(), unaligned_width);
+
+    size_t const aligned_width = DynUInt::sbo_bits * 2;
+    DynUInt aligned_source(aligned_width, uint64_t{1});
+    DynSInt aligned_target(std::move(aligned_source));
+    EXPECT_EQ(aligned_source.width(), 0u);
+    EXPECT_EQ(aligned_target.to_decimal_string(), "1");
+
+    DynSInt aligned_signed_source(aligned_width, -1);
+    DynUInt aligned_unsigned_target(std::move(aligned_signed_source));
+    EXPECT_EQ(aligned_signed_source.width(), 0u);
+    EXPECT_EQ(aligned_unsigned_target.popcount(), aligned_width);
 }
 
 TEST(DynInt, bitwise_shift_compare_and_truncate) {
@@ -304,6 +361,20 @@ TEST(DynInt, signed_and_unsigned_have_distinct_values) {
     sign_bit.set_bit(8, false);
     EXPECT_EQ(sign_bit.to_decimal_string(), "0");
     EXPECT_THROW(sign_bit.set_bit(9, true), std::out_of_range);
+
+    size_t const heap_width = DynSInt::sbo_bits + 1;
+    DynSInt heap_sign_bit(heap_width, 0);
+    heap_sign_bit.set_bit(heap_width - 1, true);
+    EXPECT_TRUE(heap_sign_bit.get_bit(heap_width - 1));
+    EXPECT_EQ((heap_sign_bit >> (heap_width - 1)).to_decimal_string(), "-1");
+    heap_sign_bit.set_bit(heap_width - 1, false);
+    EXPECT_EQ(heap_sign_bit.to_decimal_string(), "0");
+
+    DynUInt heap_bit(heap_width, 0);
+    heap_bit.set_bit(heap_width - 1, true);
+    EXPECT_TRUE(heap_bit.get_bit(heap_width - 1));
+    heap_bit.set_bit(heap_width - 1, false);
+    EXPECT_EQ(heap_bit.to_decimal_string(), "0");
 }
 
 TEST(DynInt, native_static_and_parsed_construction_preserve_values) {
@@ -423,6 +494,28 @@ TEST(DynSigned, remainder_and_modulo_are_distinct) {
     EXPECT_THROW(
         static_cast<void>(detail::mod(negative, DynSigned(4, 0))), std::domain_error
     );
+}
+
+TEST(DynInt, bit_vector_reinterpretation) {
+    BitVector bits("10000000000000000000000000000000000000000000000000000000000000001");
+
+    DynSigned signed_value = as(std::move(bits));
+    EXPECT_EQ(signed_value.width(), 65U);
+    EXPECT_EQ(detail::bits(signed_value).popcount(), 2U);
+    EXPECT_EQ(static_cast<long long>(signed_value >> 64), -1);
+
+    DynUnsigned unsigned_value = as<DynUnsigned>(std::move(signed_value));
+    EXPECT_EQ(unsigned_value.width(), 65U);
+    EXPECT_EQ(detail::bits(unsigned_value).popcount(), 2U);
+
+    BitVector restored = as(std::move(unsigned_value));
+    EXPECT_EQ(
+        restored,
+        BitVector("10000000000000000000000000000000000000000000000000000000000000001")
+    );
+
+    auto direct_unsigned = as<DynUnsigned>(BitVector("10100101"));
+    EXPECT_EQ(detail::bits(direct_unsigned).to_binary_string(), "10100101");
 }
 
 // LCOV_EXCL_BR_STOP

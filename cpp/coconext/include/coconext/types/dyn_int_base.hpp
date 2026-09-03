@@ -122,7 +122,7 @@ class DynInt {
                 }
             }
             if constexpr (W > sbo_bits && OtherSigned != SignedRepresentation) {
-                restore_heap_extension();
+                canonicalize_padding_bits();
             }
         }
     }
@@ -145,7 +145,7 @@ class DynInt {
                 destination[i] = i < other.num_words() ? other.word(i) : extension;
             }
             if (width_ < other.width_ || OtherSigned != SignedRepresentation) {
-                restore_heap_extension();
+                canonicalize_padding_bits();
             }
         }
     }
@@ -170,6 +170,20 @@ class DynInt {
             std::destroy_at(&other.storage_.heap_);
             other.width_ = 0;
             std::construct_at(&other.storage_.native_, NativeUInt{0});
+        }
+    }
+
+    template <bool OtherSigned>
+        requires(OtherSigned != SignedRepresentation)
+    DynInt(DynInt<OtherSigned>&& other) noexcept : width_(other.width_) {
+        if (is_native()) {
+            storage_.native_ = native_from_logical_bits(other.logical_native_value());
+        } else {
+            std::construct_at(&storage_.heap_, std::move(other.storage_.heap_));
+            std::destroy_at(&other.storage_.heap_);
+            other.width_ = 0;
+            std::construct_at(&other.storage_.native_, NativeUInt{0});
+            canonicalize_padding_bits();
         }
     }
 
@@ -243,7 +257,7 @@ class DynInt {
             target = val ? target | mask : target & ~mask;
             if constexpr (SignedRepresentation) {
                 if (index == width_ - 1) {
-                    restore_heap_extension();
+                    canonicalize_padding_bits();
                 }
             }
         }
@@ -538,7 +552,7 @@ class DynInt {
                 result.storage_.native_ =
                     result.native_from_logical_bits(result.storage_.native_);
             } else {
-                result.restore_heap_extension();
+                result.canonicalize_padding_bits();
             }
         }
         return result;
@@ -554,7 +568,7 @@ class DynInt {
                 result.native_from_logical_bits(result.storage_.native_);
         } else {
             shift_left(result.heap_physical_mut(), amount);
-            result.restore_heap_extension();
+            result.canonicalize_padding_bits();
         }
         return result;
     }
@@ -1078,7 +1092,7 @@ class DynInt {
         }
     }
 
-    void restore_heap_extension() {
+    void canonicalize_padding_bits() {
         assert(!is_native());
         if (width_ == physical_width()) {
             return;
