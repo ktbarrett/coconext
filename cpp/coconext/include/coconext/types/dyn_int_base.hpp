@@ -672,54 +672,6 @@ class DynInt {
         });
     }
 
-    static DynInt exact_add(DynInt const& a, DynInt const& b) {
-        a.check_same_width(b);
-        DynInt result(a);
-        if (a.is_native()) {
-            // Exact-width arithmetic wraps, so keep it unsigned and then
-            // restore only the extension bits that the wrap can invalidate.
-            result.storage_.native_ = result.native_from_logical_bits(
-                result.storage_.native_ + b.storage_.native_
-            );
-        } else {
-            add_assign(result.heap_physical_mut(), b.heap_physical_cref());
-            result.restore_heap_extension();
-        }
-        return result;
-    }
-    static DynInt exact_sub(DynInt const& a, DynInt const& b) {
-        a.check_same_width(b);
-        DynInt result(a);
-        if (a.is_native()) {
-            result.storage_.native_ = result.native_from_logical_bits(
-                result.storage_.native_ - b.storage_.native_
-            );
-        } else {
-            sub_assign(result.heap_physical_mut(), b.heap_physical_cref());
-            result.restore_heap_extension();
-        }
-        return result;
-    }
-    static DynInt exact_mul(DynInt const& a, DynInt const& b) {
-        a.check_same_width(b);
-        DynInt result(a.width_);
-        if (a.is_native()) {
-            result.storage_.native_ =
-                result.native_from_logical_bits(a.storage_.native_ * b.storage_.native_);
-        } else if constexpr (SignedRepresentation) {
-            multiply_signed(
-                result.heap_physical_mut(), a.heap_physical_cref(), b.heap_physical_cref()
-            );
-            result.restore_heap_extension();
-        } else {
-            multiply_unsigned(
-                result.heap_physical_mut(), a.heap_physical_cref(), b.heap_physical_cref()
-            );
-            result.restore_heap_extension();
-        }
-        return result;
-    }
-
     template <bool Sa, bool Sb>
     static DynInt arithmetic(
         DynInt<Sa> const& a, DynInt<Sb> const& b, size_t result_width, char operation

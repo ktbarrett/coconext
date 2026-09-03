@@ -57,11 +57,6 @@ TEST(DynInt, native_tier_handles_full_64_bit_values) {
     EXPECT_EQ(u.to_decimal_string(), std::to_string(unsigned_max));
     EXPECT_EQ(u.to_hexadecimal_string(), std::string(DynUInt::sbo_bits / 4, 'f'));
     EXPECT_EQ((u >> (DynUInt::sbo_bits - 1)).to_decimal_string(), "1");
-    EXPECT_EQ(
-        DynUInt::exact_add(u, DynUInt(DynUInt::sbo_bits, NativeUInt{1}))
-            .to_decimal_string(),
-        "0"
-    );
 
     DynSInt s(DynSInt::sbo_bits, signed_min);
     EXPECT_EQ(s.to_decimal_string(), std::to_string(signed_min));
@@ -166,17 +161,7 @@ TEST(DynInt, bitwise_shift_compare_and_truncate) {
     EXPECT_THROW(DynUInt(8, 1).truncate(200), std::invalid_argument);
 }
 
-TEST(DynInt, exact_width_arithmetic_is_explicit) {
-    DynUInt a(8, 200);
-    DynUInt b(8, 100);
-    EXPECT_EQ(DynUInt::exact_add(a, b).to_decimal_string(), "44");
-    EXPECT_EQ(DynUInt::exact_sub(b, a).to_decimal_string(), "156");
-    EXPECT_EQ(DynUInt::exact_mul(a, b).to_decimal_string(), "32");
-    EXPECT_THROW(DynUInt::exact_add(a, DynUInt(16, 1)), std::invalid_argument);
-}
-
 TEST(DynInt, native_operations_preserve_extension_without_signed_overflow) {
-    using NativeUInt = DynUInt::NativeUInt;
     using NativeSInt = DynSInt::NativeSInt;
     constexpr size_t width = DynSInt::sbo_bits - 1;
     constexpr NativeSInt magnitude = NativeSInt{1} << (width - 1);
@@ -191,33 +176,8 @@ TEST(DynInt, native_operations_preserve_extension_without_signed_overflow) {
     EXPECT_EQ(growing_negative.width(), DynSInt::sbo_bits);
     EXPECT_EQ(growing_negative.to_decimal_string(), std::to_string(signed_min - 1));
 
-    auto wrapped =
-        DynSInt::exact_add(DynSInt(width, signed_max), DynSInt(width, NativeSInt{1}));
-    EXPECT_EQ(wrapped.to_decimal_string(), std::to_string(signed_min));
-
-    NativeUInt const unsigned_max = (NativeUInt{1} << width) - 1;
-    auto unsigned_wrapped =
-        DynUInt::exact_add(DynUInt(width, unsigned_max), DynUInt(width, NativeUInt{1}));
-    EXPECT_EQ(unsigned_wrapped.to_decimal_string(), "0");
-
     auto shifted_sign = DynSInt(width, magnitude >> 1) << 1;
     EXPECT_EQ(shifted_sign.to_decimal_string(), std::to_string(signed_min));
-}
-
-TEST(DynInt, exact_width_heap_operations_restore_only_extension_bits) {
-    size_t const width = DynSInt::sbo_bits + 1;
-
-    DynSInt signed_max(width, std::numeric_limits<DynUInt::NativeUInt>::max());
-    auto signed_wrapped =
-        DynSInt::exact_add(signed_max, DynSInt(width, DynSInt::NativeSInt{1}));
-    EXPECT_TRUE(signed_wrapped.get_bit(width - 1));
-    EXPECT_EQ(signed_wrapped.popcount(), 1u);
-    EXPECT_EQ((signed_wrapped >> (width - 1)).to_decimal_string(), "-1");
-
-    DynUInt unsigned_max = ~DynUInt(width);
-    auto unsigned_wrapped =
-        DynUInt::exact_add(unsigned_max, DynUInt(width, DynUInt::NativeUInt{1}));
-    EXPECT_EQ(unsigned_wrapped.to_decimal_string(), "0");
 }
 
 TEST(DynInt, saturation_compares_across_the_storage_boundary) {
@@ -238,9 +198,8 @@ TEST(DynInt, saturation_compares_across_the_storage_boundary) {
         std::to_string(std::numeric_limits<NativeSInt>::max())
     );
 
-    DynSInt wide_min(wide_width, std::numeric_limits<NativeSInt>::min());
-    DynSInt below_native_min =
-        DynSInt::exact_sub(wide_min, DynSInt(wide_width, NativeSInt{1}));
+    DynSInt below_native_min = DynSInt(native_width, std::numeric_limits<NativeSInt>::min())
+                             - DynSInt(native_width, NativeSInt{1});
     EXPECT_EQ(
         below_native_min.saturate_signed(native_width).to_decimal_string(),
         std::to_string(std::numeric_limits<NativeSInt>::min())
