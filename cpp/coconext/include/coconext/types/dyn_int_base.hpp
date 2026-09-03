@@ -557,6 +557,22 @@ class DynInt {
         }
         return result;
     }
+
+    static DynInt wrapping_negate(DynInt value)
+        requires(!SignedRepresentation)
+    {
+        if (value.width_ == 0) {
+            return value;
+        }
+        if (value.is_native()) {
+            value.storage_.native_ =
+                value.native_from_logical_bits(NativeUInt{0} - value.storage_.native_);
+        } else {
+            detail::negate(value.heap_physical_mut());
+        }
+        return value;
+    }
+
     DynInt operator<<(size_t amount) const {
         if (amount >= width_) {
             return DynInt(width_);

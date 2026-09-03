@@ -19,6 +19,9 @@ class Ufixed;
 template <Range R>
 class Sfixed;
 
+class DynUfixed;
+class DynSfixed;
+
 template <typename T>
 inline constexpr bool is_coconext_ufixed_v = false;
 
@@ -614,6 +617,10 @@ class Ufixed {
             other_bits.logical_bits(), R2.right, R.right
         );
     }
+
+    // Exact numeric conversion from dynamically ranged fixed-point values.
+    explicit Ufixed(DynUfixed const& other);
+    explicit Ufixed(DynSfixed const& other);
 
     // Construct from float
     template <std::floating_point FloatType>

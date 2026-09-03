@@ -296,6 +296,10 @@ class Sfixed {
         );
     }
 
+    // Exact numeric conversion from dynamically ranged fixed-point values.
+    explicit Sfixed(DynUfixed const& other);
+    explicit Sfixed(DynSfixed const& other);
+
     // Construct from float
     template <std::floating_point FloatType>
     explicit Sfixed(

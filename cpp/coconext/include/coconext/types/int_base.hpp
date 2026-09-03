@@ -1698,6 +1698,14 @@ class [[nodiscard]] auto_reinterpreted {
             return Target(bits(value_));
         } else if constexpr (std::same_as<Target, Source>) {
             return Target(std::forward<T>(value_));
+        } else if constexpr (requires {
+                                 Target(bits(std::forward<T>(value_)), value_.range());
+                             })
+        {
+            auto const range = value_.range();
+            return Target(bits(std::forward<T>(value_)), range);
+        } else if constexpr (requires { Target(std::forward<T>(value_)); }) {
+            return Target(std::forward<T>(value_));
         } else {
             return Target(bits(std::forward<T>(value_)));
         }
@@ -1800,12 +1808,9 @@ template <detail::HasDynamicBits Target, detail::HasDynamicBits Source>
         && !std::is_const_v<std::remove_reference_t<Source>>
     )
 Target as(Source&& source) {
-    using SourceType = std::remove_cvref_t<Source>;
-    if constexpr (std::same_as<Target, SourceType>) {
-        return Target(std::forward<Source>(source));
-    } else {
-        return Target(detail::bits(std::forward<Source>(source)));
-    }
+    return static_cast<Target>(
+        detail::auto_reinterpreted<Source>(std::forward<Source>(source))
+    );
 }
 
 }  // namespace coconext::types

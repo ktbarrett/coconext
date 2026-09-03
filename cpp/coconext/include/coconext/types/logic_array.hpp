@@ -159,11 +159,13 @@ class Vector<Bit> {
     template <std::ranges::sized_range R>
         requires std::convertible_to<std::ranges::range_value_t<R>, Bit>
               && (!std::same_as<std::remove_cvref_t<R>, Vector>)
+              && (!is_fixed<std::remove_cvref_t<R>>)
     explicit Vector(R const& obj)
         : Vector(obj, detail::logic_downto_range(std::ranges::size(obj))) {}
 
     template <std::ranges::sized_range R>
         requires std::convertible_to<std::ranges::range_value_t<R>, Bit>
+              && (!is_fixed<std::remove_cvref_t<R>>)
     Vector(R const& obj, Range range) : Vector(range) {
         if (std::ranges::size(obj) != range.length()) {
             throw std::invalid_argument(
@@ -177,6 +179,14 @@ class Vector<Bit> {
     template <bool SignedRepresentation>
     explicit Vector(detail::DynInt<SignedRepresentation>&& value)
         : value_(std::move(value)), range_(detail::logic_downto_range(value_.width())) {}
+
+    template <bool SignedRepresentation>
+    Vector(detail::DynInt<SignedRepresentation>&& value, Range range)
+        : value_(std::move(value)), range_(range) {
+        if (value_.width() != range_.length()) {
+            throw std::invalid_argument("Packed value width does not match Vector range");
+        }
+    }
 
     explicit Vector(std::string_view s) : Vector(s, detail::logic_downto_range(s.size())) {}
     explicit Vector(char const* s) : Vector(std::string_view(s)) {}
