@@ -202,6 +202,28 @@ class Future : public AbstractFuture<FutureState<T>> {
     void set_exception(std::exception_ptr exc) { this->get_state()->set_exception(exc); }
 };
 
+class Event {
+  public:
+    Event() noexcept = default;
+
+    void set() noexcept {
+        if (!future_.done()) {
+            future_.set_void();
+        }
+    }
+
+    void clear() noexcept {
+        if (future_.done()) {
+            future_ = Future<void>{};
+        }
+    }
+
+    [[nodiscard]] auto wait() noexcept { return future_; }
+
+  private:
+    Future<void> future_;
+};
+
 }  // namespace coconext
 
 #endif  // COCONEXT_FUTURE_HPP

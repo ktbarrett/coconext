@@ -337,4 +337,92 @@ TEST(TestFuture, ConcreteFutureProvidesPublicExceptionAPI) {
     EXPECT_THROW((void)run(concrete_awaiter(future)), std::runtime_error);
 }
 
+namespace {
+
+Coro<void> await_event(coconext::Event& event, int* counter) {
+    co_await event.wait();
+    (*counter)++;
+}
+
+}  // namespace
+
+TEST(TestEvent, SetWakesUpMultipleWaiters) {
+    coconext::Event event;
+    int count = 0;
+
+    auto body = [](coconext::Event& e, int* c) -> Coro<void> {
+        Task<void> t1 = start_soon(await_event(e, c));
+        Task<void> t2 = start_soon(await_event(e, c));
+        Task<void> t3 = start_soon(await_event(e, c));
+
+        // Waiters should be blocked, count is 0
+        EXPECT_EQ(*c, 0);
+
+        // Waking them all up
+        e.set();
+
+        co_await t1;
+        co_await t2;
+        co_await t3;
+    };
+
+    run(body(event, &count));
+    EXPECT_EQ(count, 3);
+}
+
+TEST(TestEvent, WaitOnAlreadySetEventDoesNotBlock) {
+    coconext::Event event;
+    int count = 0;
+
+    // Set the event *before* anyone waits for it
+    event.set();
+
+    auto body = [](coconext::Event& e, int* c) -> Coro<void> {
+        // Because it's already set, this should complete instantly
+        co_await await_event(e, c);
+    };
+
+    run(body(event, &count));
+    EXPECT_EQ(count, 1);
+}
+
+TEST(TestEvent, ClearResetsEventToBlockingState) {
+    coconext::Event event;
+    int count = 0;
+
+    auto body = [](coconext::Event& e, int* c) -> Coro<void> {
+        // 1. Set and wait (should pass immediately)
+        e.set();
+        co_await await_event(e, c);
+        EXPECT_EQ(*c, 1);
+
+        // 2. Clear the event
+        e.clear();
+
+        // 3. Wait again (should block now)
+        Task<void> t1 = start_soon(await_event(e, c));
+
+        // 4. Set to wake the new blocked waiter
+        e.set();
+        co_await t1;
+        EXPECT_EQ(*c, 2);
+    };
+
+    run(body(event, &count));
+}
+
+TEST(TestEvent, MultipleSetsAndClearsAreSafe) {
+    coconext::Event event;
+
+    EXPECT_NO_THROW({
+        event.set();
+        event.set();  // Setting an already set event should be a no-op
+
+        event.clear();
+        event.clear();  // Clearing an already cleared event should be a no-op
+
+        event.set();
+    });
+}
+
 // LCOV_EXCL_BR_STOP
