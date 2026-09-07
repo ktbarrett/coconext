@@ -19,7 +19,7 @@ repos:
   - id: check-toml
   - id: check-added-large-files
 - repo: https://github.com/henryiii/validate-pyproject-schema-store
-  rev: "2026.08.29"
+  rev: "2026.09.04"
   hooks:
     - id: validate-pyproject
 - repo: https://github.com/codespell-project/codespell
@@ -29,7 +29,7 @@ repos:
     additional_dependencies:
     - tomli
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: "v0.16.5"
+  rev: "v0.16.6"
   hooks:
     - id: "ruff"
       args:
@@ -51,7 +51,7 @@ repos:
     exclude: "^cpp/gpi/_vendor/"
     types_or: [c, c++]
 - repo: https://github.com/astral-sh/uv-pre-commit
-  rev: 0.12.7
+  rev: 0.12.10
   hooks:
     - id: uv-lock
 
