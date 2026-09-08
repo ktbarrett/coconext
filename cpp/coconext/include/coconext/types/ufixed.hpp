@@ -730,6 +730,14 @@ class Ufixed {
         return detail::Array<Bit, R2>(value_);
     }
 
+    template <HasStaticStorage Target>
+    [[nodiscard]] constexpr Target as() && noexcept {
+        static_assert(
+            Target::static_range.length() == R.length(), "as() requires equal widths."
+        );
+        return Target(value_);
+    }
+
     explicit constexpr operator bool() const noexcept
         requires(R.direction == Direction::DOWNTO)
     {

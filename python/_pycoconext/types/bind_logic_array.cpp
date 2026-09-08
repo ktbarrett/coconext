@@ -265,7 +265,7 @@ static DynUnsigned logic_array_to_unsigned(LogicVector const& self) {
             "Cannot convert array with undefined logic to Unsigned"
         );
     }
-    return as<DynUnsigned>(std::move(*resolved_opt));
+    return std::move(*resolved_opt).as<DynUnsigned>();
 }
 
 static DynSigned logic_array_to_signed(LogicVector const& self) {
@@ -278,7 +278,7 @@ static DynSigned logic_array_to_signed(LogicVector const& self) {
     if (!resolved_opt) {
         throw std::invalid_argument("Cannot convert array with undefined logic to Signed");
     }
-    return as<DynSigned>(std::move(*resolved_opt));
+    return std::move(*resolved_opt).as<DynSigned>();
 }
 
 static LogicVector logic_array_from_bytes(

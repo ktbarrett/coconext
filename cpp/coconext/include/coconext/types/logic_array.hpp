@@ -205,6 +205,11 @@ class Vector<Bit> {
     }
     Vector(char const* s, Range r) : Vector(std::string_view(s), r) {}
 
+    template <detail::HasDynamicStorage Target>
+    [[nodiscard]] Target as() && {
+        return detail::adopt_storage<Target>(range_, std::move(value_));
+    }
+
     Range const& range() const noexcept { return range_; }
     size_t size() const noexcept { return range_.length(); }
 

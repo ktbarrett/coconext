@@ -136,10 +136,10 @@ TEST(TestSfixed, SubnormalSupernormalInterfaces) {
     EXPECT_EQ(Supernormal(Ufixed<9, 3>(1016)), Supernormal(1016));
 
     using Subnormal = Sfixed<-5, -10>;
-    auto unsigned_subnormal = as<Ufixed<-5, -10>>(BitArray<6>("111111"));
+    auto unsigned_subnormal = BitArray<6>("111111").as<Ufixed<-5, -10>>();
     EXPECT_THROW((Subnormal(unsigned_subnormal)), std::out_of_range);
     EXPECT_EQ(
-        Subnormal(as<Ufixed<-6, -10>>(BitArray<5>("11111"))), Subnormal(31.0 / 1024.0)
+        Subnormal(BitArray<5>("11111").as<Ufixed<-6, -10>>()), Subnormal(31.0 / 1024.0)
     );
 
     static_assert(!std::is_convertible_v<Signed<11>, Supernormal>);
@@ -163,8 +163,8 @@ TEST(TestSfixed, SubnormalSupernormalInterfaces) {
     Sfixed<3, -4> fractional_from_signed = Signed<4>(-5);
     EXPECT_DOUBLE_EQ(static_cast<double>(fractional_from_signed), -5.0);
 
-    auto positive_tiny = as<Sfixed<-95, -100>>(BitArray<6>("000001"));
-    auto negative_tiny = as<Sfixed<-95, -100>>(BitArray<6>("111111"));
+    auto positive_tiny = BitArray<6>("000001").as<Sfixed<-95, -100>>();
+    auto negative_tiny = BitArray<6>("111111").as<Sfixed<-95, -100>>();
     EXPECT_EQ(
         (resize<10, 3>(positive_tiny, overflow_mode::saturate, round_mode::round_to_pos)),
         Supernormal(8)
@@ -179,11 +179,11 @@ TEST(TestSfixed, SubnormalSupernormalInterfaces) {
     );
 
     auto min_double = Sfixed<-1073, -1075>(std::numeric_limits<double>::denorm_min());
-    EXPECT_EQ(as<BitArray<3>>(min_double), BitArray<3>("010"));
+    EXPECT_EQ(std::move(min_double).as<BitArray<3>>(), BitArray<3>("010"));
 
     auto rounded_down =
         Sfixed<1101, 1100>(-1.0, overflow_mode::saturate, round_mode::truncate);
-    EXPECT_EQ(as<BitArray<2>>(rounded_down), BitArray<2>("11"));
+    EXPECT_EQ(std::move(rounded_down).as<BitArray<2>>(), BitArray<2>("11"));
 
     Subnormal compound(1.0 / 1024.0);
     auto const original = compound;
@@ -363,22 +363,17 @@ TEST(TestSfixed, Constructors) {
 }
 
 TEST(TestSfixed, as_overloads) {
-    Sfixed<3, 0> signed_val(-1);
-
-    auto unsigned_val = as<Ufixed<3, 0>>(signed_val);
+    auto unsigned_val = Sfixed<3, 0>(-1).as<Ufixed<3, 0>>();
     EXPECT_EQ(static_cast<int>(unsigned_val), 15);
 
-    Sfixed<3, 0> s_val(-4);
-    auto frac_val = as<Sfixed<-1, -4>>(s_val);
+    auto frac_val = Sfixed<3, 0>(-4).as<Sfixed<-1, -4>>();
     EXPECT_DOUBLE_EQ(static_cast<double>(frac_val), -0.25);
 
-    Sfixed<3, 0> original_downto(-1);
-    auto to_val = as<Sfixed<Range{0, Direction::TO, 3}>>(original_downto);
-    auto new_downto = as<Sfixed<1, -2>>(to_val);
+    auto to_val = Sfixed<3, 0>(-1).as<Sfixed<Range{0, Direction::TO, 3}>>();
+    auto new_downto = std::move(to_val).as<Sfixed<1, -2>>();
     EXPECT_DOUBLE_EQ(static_cast<double>(new_downto), -0.25);
 
-    Sfixed<100, -50> wide_s(-1);
-    auto wide_u = as<Ufixed<100, -50>>(wide_s);
+    auto wide_u = Sfixed<100, -50>(-1).as<Ufixed<100, -50>>();
     EXPECT_TRUE(static_cast<bool>(wide_u[100]));
 }
 
@@ -462,8 +457,7 @@ TEST(TestSfixed, ComparisonOperators) {
 }
 
 TEST(TestSfixed, Indexing) {
-    auto ba = "100110"_b;
-    auto uf = as<Sfixed<4, -1>>(ba);
+    auto uf = "100110"_b.as<Sfixed<4, -1>>();
 
     EXPECT_TRUE(uf[4] && uf[1] && uf[0]);
     EXPECT_FALSE(uf[-1] || uf[3] || uf[2]);
@@ -574,17 +568,14 @@ TEST(TestSfixed, ResizeRoundingModes) {
 }
 
 TEST(TestSfixed, Reverse) {
-    auto ba = "11110110"_b;
-    auto ba_r = "01101111"_b;
-
-    auto sf_down = as<Sfixed<3, -4>>(ba);
-    auto sf_to = as<Sfixed<-4, Direction::TO, 3>>(ba);
+    auto sf_down = "11110110"_b.as<Sfixed<3, -4>>();
+    auto sf_to = "11110110"_b.as<Sfixed<-4, Direction::TO, 3>>();
 
     auto r_to = reverse(sf_down);
     auto r_down = reverse(sf_to);
 
     EXPECT_EQ(r_to, sf_to);
-    EXPECT_EQ(r_down, (as<Sfixed<3, -4>>(ba_r)));
+    EXPECT_EQ(r_down, ("01101111"_b.as<Sfixed<3, -4>>()));
 
     Sfixed<100, -50> w_rev_down(-1);
     auto w_rev_to = reverse(w_rev_down);
@@ -623,22 +614,16 @@ TEST(TestSfixed, Hash) {
     EXPECT_EQ(hash_a, hash_b);
     EXPECT_NE(hash_a, hash_c);
 
-    detail::Array<Bit, Range{3, Direction::DOWNTO, 0}> raw_bits;
-    raw_bits[3] = Bit::_1;
-    raw_bits[2] = Bit::_1;
-    raw_bits[1] = Bit::_0;
-    raw_bits[0] = Bit::_1;
-
-    auto u_downto = as<Ufixed<3, 0>>(raw_bits);
-    auto u_shifted = as<Ufixed<2, -1>>(raw_bits);
-    auto u_to = as<Ufixed<Range{0, Direction::TO, 3}>>(raw_bits);
-    auto s_downto = as<Sfixed<3, 0>>(raw_bits);
+    auto u_downto = "1101"_b.as<Ufixed<3, 0>>();
+    auto u_shifted = "1101"_b.as<Ufixed<2, -1>>();
+    auto u_to = "1101"_b.as<Ufixed<Range{0, Direction::TO, 3}>>();
+    auto s_downto = "1101"_b.as<Sfixed<3, 0>>();
 
     auto hash_u_downto = std::hash<decltype(u_downto)>{}(u_downto);
     auto hash_u_shifted = std::hash<decltype(u_shifted)>{}(u_shifted);
     auto hash_u_to = std::hash<decltype(u_to)>{}(u_to);
     auto hash_s_downto = std::hash<decltype(s_downto)>{}(s_downto);
-    auto hash_raw_bits = std::hash<decltype(raw_bits)>{}(raw_bits);
+    auto hash_raw_bits = std::hash<BitArray<4>>{}("1101"_b);
 
     EXPECT_NE(hash_u_downto, hash_u_shifted);
     EXPECT_NE(hash_u_downto, hash_u_to);
@@ -678,16 +663,16 @@ TEST(TestSfixed, BitwiseAndReduction) {
     EXPECT_TRUE((
         std::is_same_v<decltype(and_res), BitArray<Range{3, Direction::DOWNTO, 0}>>
     ));
-    EXPECT_EQ((as<Sfixed<3, 0>>(and_res)), (Sfixed<3, 0>(0)));
+    EXPECT_EQ((std::move(and_res).as<Sfixed<3, 0>>()), (Sfixed<3, 0>(0)));
 
     auto or_res = a | b;  // 1101 | 0010 = 1111 (-1)
-    EXPECT_EQ((as<Sfixed<3, 0>>(or_res)), (Sfixed<3, 0>(-1)));
+    EXPECT_EQ((std::move(or_res).as<Sfixed<3, 0>>()), (Sfixed<3, 0>(-1)));
 
     auto xor_res = a ^ b;  // 1101 ^ 0010 = 1111 (-1)
-    EXPECT_EQ((as<Sfixed<3, 0>>(xor_res)), (Sfixed<3, 0>(-1)));
+    EXPECT_EQ((std::move(xor_res).as<Sfixed<3, 0>>()), (Sfixed<3, 0>(-1)));
 
     auto not_res = ~a;  // ~1101 = 0010 (2)
-    EXPECT_EQ((as<Sfixed<3, 0>>(not_res)), (Sfixed<3, 0>(2)));
+    EXPECT_EQ((std::move(not_res).as<Sfixed<3, 0>>()), (Sfixed<3, 0>(2)));
 
     // Reduction on a (-3 -> 1101)
     EXPECT_FALSE(and_reduce(a));  // Contains a zero
@@ -695,7 +680,7 @@ TEST(TestSfixed, BitwiseAndReduction) {
     EXPECT_TRUE(xor_reduce(a));   // Contains an odd number of ones (three 1s)
 
     Sfixed<100, -50> w_bw_a(-3), w_bw_b(2);
-    EXPECT_EQ((as<Sfixed<100, -50>>(w_bw_a & w_bw_b)), (Sfixed<100, -50>(0)));
+    EXPECT_EQ(((w_bw_a & w_bw_b).as<Sfixed<100, -50>>()), (Sfixed<100, -50>(0)));
     EXPECT_TRUE(or_reduce(w_bw_a));
 }
 
@@ -706,7 +691,7 @@ TEST(TestSfixed, Concatenation) {
     auto cat_res = concat(a, b);
     EXPECT_TRUE((std::is_same_v<decltype(cat_res), BitArray<8>>));
 
-    EXPECT_EQ(static_cast<int>(as<Sfixed<7, 0>>(cat_res)), 95);
+    EXPECT_EQ(static_cast<int>(std::move(cat_res).as<Sfixed<7, 0>>()), 95);
 
     Sfixed<100, 0> w_cat_a(5);
     Sfixed<30, 0> w_cat_b(3);
@@ -722,14 +707,14 @@ TEST(TestSfixed, SubtypeRoundTrip) {
     Sfixed<3, -4> s(5.0625);
 
     BitArray<Range{3, Direction::DOWNTO, -4}> ba = s;
-    auto restored = as<Sfixed<3, -4>>(ba);
+    auto restored = std::move(ba).as<Sfixed<3, -4>>();
 
     EXPECT_EQ(s, restored);
-    EXPECT_TRUE((s == as<Sfixed<3, -4>>(BitArray<Range{3, Direction::DOWNTO, -4}>(s))));
+    EXPECT_TRUE((s == BitArray<Range{3, Direction::DOWNTO, -4}>(s).as<Sfixed<3, -4>>()));
 
     Sfixed<100, -50> w_rt(-5.0625);
     BitArray<Range{100, Direction::DOWNTO, -50}> w_ba = w_rt;
-    EXPECT_EQ(w_rt, (as<Sfixed<100, -50>>(w_ba)));
+    EXPECT_EQ(w_rt, (std::move(w_ba).as<Sfixed<100, -50>>()));
 }
 
 TEST(TestSfixed, InfinityWrapThrows) {

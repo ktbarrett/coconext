@@ -13,7 +13,6 @@
 #include <unordered_set>
 #include <utility>
 
-using coconext::types::as;
 using coconext::types::BitVector;
 using coconext::types::Direction;
 using coconext::types::DynSfixed;
@@ -63,7 +62,7 @@ concept DynamicSignedArithmetic =
 
 template <typename Target, typename Source>
 concept ExplicitAsAvailable =
-    requires(Source&& source) { as<Target>(std::forward<Source>(source)); };
+    requires(Source&& source) { std::forward<Source>(source).template as<Target>(); };
 
 template <typename Source>
 concept HasBitVectorConversionOperator =
@@ -103,11 +102,9 @@ TEST(DynFixed, PublicTypesAndCrossKindConstruction) {
 
 TEST(DynFixed, SignedConstructionAndShape) {
     Range range{3, Direction::DOWNTO, -4};
-    auto value = as<DynSfixed>(BitVector("10101111", range));
-    DynSfixed deferred = as(BitVector("10101111", range));
+    auto value = BitVector("10101111", range).as<DynSfixed>();
 
     EXPECT_EQ(value.range(), range);
-    EXPECT_EQ(deferred, value);
     EXPECT_EQ(value.size(), 8);
     EXPECT_DOUBLE_EQ(static_cast<double>(value), -5.0625);
     EXPECT_EQ(value.raw_binary(), "10101111");
@@ -120,10 +117,9 @@ TEST(DynFixed, SignedConstructionAndShape) {
 }
 
 TEST(DynFixed, SignedArithmetic) {
-    auto a = as<DynSfixed>(BitVector("101100110000", Range{5, Direction::DOWNTO, -6}));
-    auto b = as<DynSfixed>(
-        BitVector("111111110101000000000", Range{10, Direction::DOWNTO, -10})
-    );
+    auto a = BitVector("101100110000", Range{5, Direction::DOWNTO, -6}).as<DynSfixed>();
+    auto b = BitVector("111111110101000000000", Range{10, Direction::DOWNTO, -10})
+                 .as<DynSfixed>();
 
     auto sum = a + b;
     EXPECT_EQ(sum.range(), (Range{11, Direction::DOWNTO, -10}));
@@ -137,19 +133,19 @@ TEST(DynFixed, SignedArithmetic) {
     EXPECT_EQ(product.range(), (Range{16, Direction::DOWNTO, -16}));
     EXPECT_DOUBLE_EQ(static_cast<double>(product), 105.875);
 
-    auto quotient = as<DynSfixed>(BitVector("110", Range{2, Direction::DOWNTO, 0}))
-                  / as<DynSfixed>(BitVector("011", Range{2, Direction::DOWNTO, 0}));
+    auto quotient = BitVector("110", Range{2, Direction::DOWNTO, 0}).as<DynSfixed>()
+                  / BitVector("011", Range{2, Direction::DOWNTO, 0}).as<DynSfixed>();
     EXPECT_EQ(quotient.range(), (Range{3, Direction::DOWNTO, -2}));
     EXPECT_DOUBLE_EQ(static_cast<double>(quotient), -0.75);
 
-    auto remainder = as<DynSfixed>(BitVector("1011", Range{3, Direction::DOWNTO, 0}))
-                   % as<DynSfixed>(BitVector("011", Range{2, Direction::DOWNTO, 0}));
+    auto remainder = BitVector("1011", Range{3, Direction::DOWNTO, 0}).as<DynSfixed>()
+                   % BitVector("011", Range{2, Direction::DOWNTO, 0}).as<DynSfixed>();
     EXPECT_DOUBLE_EQ(static_cast<double>(remainder), -2.0);
 }
 
 TEST(DynFixed, SignedUnaryShiftAndCompound) {
     Range fractional{3, Direction::DOWNTO, -4};
-    auto value = as<DynSfixed>(BitVector("11110000", fractional));
+    auto value = BitVector("11110000", fractional).as<DynSfixed>();
 
     EXPECT_DOUBLE_EQ(static_cast<double>(value << 1), -2.0);
     EXPECT_DOUBLE_EQ(static_cast<double>(value >> 1), -0.5);
@@ -157,36 +153,37 @@ TEST(DynFixed, SignedUnaryShiftAndCompound) {
     EXPECT_EQ((-value).range(), (Range{4, Direction::DOWNTO, -4}));
     EXPECT_DOUBLE_EQ(static_cast<double>(value.abs()), 1.0);
 
-    auto wrapping = as<DynSfixed>(BitVector("0111", Range{3, Direction::DOWNTO, 0}));
-    wrapping += as<DynSfixed>(BitVector("01", Range{1, Direction::DOWNTO, 0}));
+    auto wrapping = BitVector("0111", Range{3, Direction::DOWNTO, 0}).as<DynSfixed>();
+    wrapping += BitVector("01", Range{1, Direction::DOWNTO, 0}).as<DynSfixed>();
     EXPECT_DOUBLE_EQ(static_cast<double>(wrapping), -8.0);
 
     auto fractional_compound =
-        as<DynSfixed>(BitVector("101011", Range{3, Direction::DOWNTO, -2}));
-    fractional_compound *= as<DynSfixed>(BitVector("011", Range{1, Direction::DOWNTO, -1}));
+        BitVector("101011", Range{3, Direction::DOWNTO, -2}).as<DynSfixed>();
+    fractional_compound *=
+        BitVector("011", Range{1, Direction::DOWNTO, -1}).as<DynSfixed>();
     EXPECT_DOUBLE_EQ(static_cast<double>(fractional_compound), -7.75);
 }
 
 TEST(DynFixed, UnsignedArithmetic) {
     Range range{3, Direction::DOWNTO, -4};
-    auto value = as<DynUfixed>(BitVector("01010001", range));
+    auto value = BitVector("01010001", range).as<DynUfixed>();
     EXPECT_DOUBLE_EQ(static_cast<double>(value), 5.0625);
     EXPECT_EQ(value.raw_binary(), "01010001");
 
-    auto sum = value + as<DynUfixed>(BitVector("01010", Range{2, Direction::DOWNTO, -2}));
+    auto sum = value + BitVector("01010", Range{2, Direction::DOWNTO, -2}).as<DynUfixed>();
     EXPECT_EQ(sum.range(), (Range{4, Direction::DOWNTO, -4}));
     EXPECT_DOUBLE_EQ(static_cast<double>(sum), 7.5625);
 
-    auto difference = as<DynUfixed>(BitVector("0101", Range{3, Direction::DOWNTO, 0}))
-                    - as<DynUfixed>(BitVector("111", Range{2, Direction::DOWNTO, 0}));
+    auto difference = BitVector("0101", Range{3, Direction::DOWNTO, 0}).as<DynUfixed>()
+                    - BitVector("111", Range{2, Direction::DOWNTO, 0}).as<DynUfixed>();
     EXPECT_DOUBLE_EQ(static_cast<double>(difference), -2.0);
 
-    auto product = as<DynUfixed>(BitVector("010101", Range{3, Direction::DOWNTO, -2}))
-                 * as<DynUfixed>(BitVector("0101", Range{2, Direction::DOWNTO, -1}));
+    auto product = BitVector("010101", Range{3, Direction::DOWNTO, -2}).as<DynUfixed>()
+                 * BitVector("0101", Range{2, Direction::DOWNTO, -1}).as<DynUfixed>();
     EXPECT_DOUBLE_EQ(static_cast<double>(product), 13.125);
 
-    auto quotient = as<DynUfixed>(BitVector("10", Range{1, Direction::DOWNTO, 0}))
-                  / as<DynUfixed>(BitVector("11", Range{1, Direction::DOWNTO, 0}));
+    auto quotient = BitVector("10", Range{1, Direction::DOWNTO, 0}).as<DynUfixed>()
+                  / BitVector("11", Range{1, Direction::DOWNTO, 0}).as<DynUfixed>();
     EXPECT_EQ(quotient.range(), (Range{1, Direction::DOWNTO, -2}));
     EXPECT_DOUBLE_EQ(static_cast<double>(quotient), 0.75);
 }
@@ -194,11 +191,11 @@ TEST(DynFixed, UnsignedArithmetic) {
 TEST(DynFixed, WideStorageAndValidation) {
     Range wide_range{100, Direction::DOWNTO, -50};
     std::string wide_bits = std::string(98, '1') + "0101" + std::string(49, '0');
-    auto wide = as<DynSfixed>(BitVector(wide_bits, wide_range));
+    auto wide = BitVector(wide_bits, wide_range).as<DynSfixed>();
     EXPECT_EQ(wide.size(), 151);
     EXPECT_DOUBLE_EQ(static_cast<double>(wide), -5.5);
 
-    auto to_value = as<DynSfixed>(BitVector("0000", Range{0, Direction::TO, 3}));
+    auto to_value = BitVector("0000", Range{0, Direction::TO, 3}).as<DynSfixed>();
     EXPECT_EQ(to_value.range(), (Range{0, Direction::TO, 3}));
     EXPECT_THROW(static_cast<void>(static_cast<double>(to_value)), std::invalid_argument);
 }
@@ -358,28 +355,6 @@ TEST(DynFixed, StaticConversionResizeAndReinterpretation) {
             resize<3, 0>(too_large, overflow_mode::wrap, round_mode::round_to_even)
         ),
         8
-    );
-
-    static_assert(ExplicitAsAvailable<IntegerUfixed, DynSfixed>);
-    static_assert(ExplicitAsAvailable<IntegerSfixed, DynUfixed>);
-    static_assert(!ExplicitAsAvailable<IntegerUfixed, DynSfixed&>);
-    static_assert(!ExplicitAsAvailable<IntegerSfixed, DynUfixed const>);
-
-    EXPECT_EQ(
-        static_cast<int>(as<IntegerUfixed>(
-            as<DynSfixed>(BitVector("1111", Range{3, Direction::DOWNTO, 0}))
-        )),
-        15
-    );
-    EXPECT_EQ(
-        static_cast<int>(as<IntegerSfixed>(
-            as<DynUfixed>(BitVector("1111", Range{3, Direction::DOWNTO, 0}))
-        )),
-        -1
-    );
-    EXPECT_THROW(
-        static_cast<void>(as<IntegerUfixed>(DynUfixed({4, Direction::DOWNTO, 0}, 1))),
-        std::invalid_argument
     );
 }
 
@@ -558,11 +533,11 @@ TEST(DynFixed, BitSurfaceReverseFormattingAndHash) {
     static_assert(ExplicitAsAvailable<BitVector, DynUfixed>);
     static_assert(ExplicitAsAvailable<BitVector, DynSfixed>);
     static_assert(!ExplicitAsAvailable<BitVector, DynUfixed&>);
-    auto reinterpreted = as<BitVector>(DynUfixed(value));
+    auto reinterpreted = DynUfixed(value).as<BitVector>();
     EXPECT_EQ(reinterpreted.range(), range);
     EXPECT_EQ(reinterpreted, BitVector("01010001", range));
 
-    auto signed_reinterpreted = as<BitVector>(DynSfixed(range, -5.0625));
+    auto signed_reinterpreted = DynSfixed(range, -5.0625).as<BitVector>();
     EXPECT_EQ(signed_reinterpreted.range(), range);
     EXPECT_EQ(signed_reinterpreted, BitVector("10101111", range));
 
@@ -608,7 +583,7 @@ TEST(DynFixed, NullAndToRangesRetainBitContainerBehavior) {
     EXPECT_EQ(null_s.size(), 0);
 
     BitVector bits("10010110", Range{-4, Direction::TO, 3});
-    auto to_value = as<DynUfixed>(std::move(bits));
+    auto to_value = std::move(bits).as<DynUfixed>();
     EXPECT_EQ(std::format("{:b}", to_value), "DynUfixed[-4 to 3]{1001.0110}");
     EXPECT_THROW(static_cast<void>(static_cast<bool>(to_value)), std::invalid_argument);
     EXPECT_THROW(static_cast<void>(to_value << 1), std::invalid_argument);

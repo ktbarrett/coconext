@@ -24,30 +24,17 @@ using AsTypes = std::tuple<AsUnsigned, AsSigned, AsUfixed, AsSfixed, AsBitArray>
 
 template <typename Target, typename Source>
 constexpr bool check_as_pair() {
-    AsBitArray expected("10100101");
-    Source source = as<Source>(expected);
-    auto accept_reinterpreted = [](Target value) { return value; };
+    static_assert(
+        std::same_as<decltype(std::declval<Source>().template as<Target>()), Target>
+    );
+    static_assert(!requires(Source& source) { source.template as<Target>(); });
+    static_assert(!requires(Source const&& source) {
+        std::move(source).template as<Target>();
+    });
 
-    static_assert(std::same_as<decltype(as<Target>(source)), Target>);
-    static_assert(std::same_as<decltype(as<Target>(Source(source))), Target>);
-    static_assert(std::same_as<decltype(as<Target>(std::move(source))), Target>);
-
-    Target explicit_lvalue = as<Target>(source);
-    Target explicit_rvalue = as<Target>(Source(source));
-    Source explicit_moved_source(source);
-    Target explicit_moved = as<Target>(std::move(explicit_moved_source));
-
-    Target contextual_lvalue = accept_reinterpreted(as(source));
-    Target contextual_rvalue = accept_reinterpreted(as(Source(source)));
-    Source contextual_moved_source(source);
-    Target contextual_moved = accept_reinterpreted(as(std::move(contextual_moved_source)));
-
-    auto has_expected_bits = [&expected](auto const& value) {
-        return detail::storage(value) == detail::storage(expected);
-    };
-    return has_expected_bits(explicit_lvalue) && has_expected_bits(explicit_rvalue)
-        && has_expected_bits(explicit_moved) && has_expected_bits(contextual_lvalue)
-        && has_expected_bits(contextual_rvalue) && has_expected_bits(contextual_moved);
+    AsBitArray const expected("10100101");
+    Target value = AsBitArray("10100101").as<Source>().template as<Target>();
+    return detail::storage(value) == detail::storage(expected);
 }
 
 template <typename Target, typename... Sources>
@@ -162,7 +149,7 @@ TEST(TestUfixed, SubnormalSupernormalInterfaces) {
     EXPECT_EQ(WideSupernormal(uint8_t{248}), WideSupernormal(248));
     EXPECT_THROW((WideSupernormal(uint8_t{255})), std::out_of_range);
 
-    auto tiny = as<Ufixed<-95, -100>>(BitArray<6>("000001"));
+    auto tiny = BitArray<6>("000001").as<Ufixed<-95, -100>>();
     EXPECT_EQ(
         (resize<10, 3>(tiny, overflow_mode::saturate, round_mode::round_to_pos)),
         Supernormal(8)
@@ -173,11 +160,11 @@ TEST(TestUfixed, SubnormalSupernormalInterfaces) {
     );
 
     auto min_double = Ufixed<-1074, -1075>(std::numeric_limits<double>::denorm_min());
-    EXPECT_EQ(as<BitArray<2>>(min_double), BitArray<2>("10"));
+    EXPECT_EQ(std::move(min_double).as<BitArray<2>>(), BitArray<2>("10"));
 
     auto rounded_up =
         Ufixed<1101, 1100>(1.0, overflow_mode::saturate, round_mode::round_to_pos);
-    EXPECT_EQ(as<BitArray<2>>(rounded_up), BitArray<2>("01"));
+    EXPECT_EQ(std::move(rounded_up).as<BitArray<2>>(), BitArray<2>("01"));
 
     Ufixed<-5, -10> compound(1.0 / 1024.0);
     auto const original = compound;
@@ -398,7 +385,7 @@ TEST(TestUfixed, Constructors) {
 
     BitArray<7, 0> bits;
     bits[7] = Bit::_1;
-    auto val_ba = as<Ufixed<3, -4>>(bits);
+    auto val_ba = std::move(bits).as<Ufixed<3, -4>>();
     EXPECT_DOUBLE_EQ(static_cast<double>(val_ba), 8.0);
 
     Sfixed<3, -4> negative_val(-5.0);
@@ -426,37 +413,28 @@ TEST(TestUfixed, Constructors) {
 }
 
 TEST(TestUfixed, as_overloads) {
-    Ufixed<3, 0> unsigned_val(15);
-
-    auto signed_val = as<Sfixed<3, 0>>(unsigned_val);
+    auto signed_val = Ufixed<3, 0>(15).as<Sfixed<3, 0>>();
     EXPECT_EQ(static_cast<int>(signed_val), -1);
 
-    auto restored_u_val = as<Ufixed<3, 0>>(signed_val);
+    auto restored_u_val = std::move(signed_val).as<Ufixed<3, 0>>();
     EXPECT_EQ(static_cast<int>(restored_u_val), 15);
 
-    Ufixed<3, 0> u_val(4);
-    auto frac_val = as<Ufixed<-1, -4>>(u_val);
+    auto frac_val = Ufixed<3, 0>(4).as<Ufixed<-1, -4>>();
     EXPECT_DOUBLE_EQ(static_cast<double>(frac_val), 0.25);
 
-    Ufixed<3, 0> original_downto(1);
-    auto to_val = as<Ufixed<Range{0, Direction::TO, 3}>>(original_downto);
-
-    auto new_downto = as<Ufixed<1, -2>>(to_val);
-
+    auto to_val = Ufixed<3, 0>(1).as<Ufixed<Range{0, Direction::TO, 3}>>();
+    auto new_downto = std::move(to_val).as<Ufixed<1, -2>>();
     EXPECT_DOUBLE_EQ(static_cast<double>(new_downto), 0.25);
 
-    Ufixed<3, 0> u_val_i(5);
-
-    auto bits = as<BitArray<Range{3, Direction::DOWNTO, 0}>>(u_val_i);
+    auto bits = Ufixed<3, 0>(5).as<BitArray<Range{3, Direction::DOWNTO, 0}>>();
     EXPECT_TRUE(bits[0] == Bit('1'));
     EXPECT_TRUE(bits[1] == Bit('0'));
     EXPECT_TRUE(bits[2] == Bit('1'));
     EXPECT_TRUE(bits[3] == Bit('0'));
-    auto s_val = as<Ufixed<3, 0>>(bits);
+    auto s_val = std::move(bits).as<Ufixed<3, 0>>();
     EXPECT_EQ(static_cast<int>(s_val), 5);
 
-    Ufixed<100, -50> wide_u(15);
-    auto wide_s = as<Sfixed<100, -50>>(wide_u);
+    auto wide_s = Ufixed<100, -50>(15).as<Sfixed<100, -50>>();
     EXPECT_EQ(static_cast<int>(wide_s), 15);
 }
 
@@ -554,8 +532,7 @@ TEST(TestUfixed, ComparisonOperators) {
 }
 
 TEST(TestUfixed, Indexing) {
-    auto ba = "100110"_b;
-    auto uf = as<Ufixed<4, -1>>(ba);
+    auto uf = "100110"_b.as<Ufixed<4, -1>>();
 
     EXPECT_TRUE(uf[4] && uf[1] && uf[0]);
     EXPECT_FALSE(uf[-1] || uf[3] || uf[2]);
@@ -663,17 +640,14 @@ TEST(TestUfixed, ResizeRoundingModes) {
 }
 
 TEST(TestUfixed, Reverse) {
-    auto ba = "10010110"_b;
-    auto ba_r = "01101001"_b;
-
-    auto uf_down = as<Ufixed<3, -4>>(ba);
-    auto uf_to = as<Ufixed<-4, Direction::TO, 3>>(ba);
+    auto uf_down = "10010110"_b.as<Ufixed<3, -4>>();
+    auto uf_to = "10010110"_b.as<Ufixed<-4, Direction::TO, 3>>();
 
     auto r_to = reverse(uf_down);  // only direction changed
     auto r_down = reverse(uf_to);  // bits also reversed
 
     EXPECT_EQ(r_to, uf_to);
-    EXPECT_EQ(r_down, (as<Ufixed<3, -4>>(ba_r)));
+    EXPECT_EQ(r_down, ("01101001"_b.as<Ufixed<3, -4>>()));
 
     Ufixed<100, -50> w_rev_down(1);
     auto w_rev_to = reverse(w_rev_down);
@@ -728,22 +702,16 @@ TEST(TestUfixed, Hash) {
     EXPECT_EQ(hash_a, hash_b);
     EXPECT_NE(hash_a, hash_c);
 
-    detail::Array<Bit, Range{3, Direction::DOWNTO, 0}> raw_bits;
-    raw_bits[3] = Bit::_1;
-    raw_bits[2] = Bit::_1;
-    raw_bits[1] = Bit::_0;
-    raw_bits[0] = Bit::_1;
-
-    auto u_downto = as<Ufixed<3, 0>>(raw_bits);
-    auto u_shifted = as<Ufixed<2, -1>>(raw_bits);
-    auto u_to = as<Ufixed<Range{0, Direction::TO, 3}>>(raw_bits);
-    auto s_downto = as<Sfixed<3, 0>>(raw_bits);
+    auto u_downto = "1101"_b.as<Ufixed<3, 0>>();
+    auto u_shifted = "1101"_b.as<Ufixed<2, -1>>();
+    auto u_to = "1101"_b.as<Ufixed<Range{0, Direction::TO, 3}>>();
+    auto s_downto = "1101"_b.as<Sfixed<3, 0>>();
 
     auto hash_u_downto = std::hash<decltype(u_downto)>{}(u_downto);
     auto hash_u_shifted = std::hash<decltype(u_shifted)>{}(u_shifted);
     auto hash_u_to = std::hash<decltype(u_to)>{}(u_to);
     auto hash_s_downto = std::hash<decltype(s_downto)>{}(s_downto);
-    auto hash_raw_bits = std::hash<decltype(raw_bits)>{}(raw_bits);
+    auto hash_raw_bits = std::hash<BitArray<4>>{}("1101"_b);
 
     EXPECT_NE(hash_u_downto, hash_u_shifted);
     EXPECT_NE(hash_u_downto, hash_u_to);
@@ -784,23 +752,23 @@ TEST(TestUfixed, BitwiseAndReduction) {
         std::is_same_v<decltype(and_res), BitArray<Range{3, Direction::DOWNTO, 0}>>
     ));
 
-    EXPECT_EQ((as<Ufixed<3, 0>>(and_res)), (Ufixed<3, 0>(8)));  // 1000
+    EXPECT_EQ((std::move(and_res).as<Ufixed<3, 0>>()), (Ufixed<3, 0>(8)));  // 1000
 
     auto or_res = a | b;
-    EXPECT_EQ((as<Ufixed<3, 0>>(or_res)), (Ufixed<3, 0>(14)));  // 1110
+    EXPECT_EQ((std::move(or_res).as<Ufixed<3, 0>>()), (Ufixed<3, 0>(14)));  // 1110
 
     auto xor_res = a ^ b;
-    EXPECT_EQ((as<Ufixed<3, 0>>(xor_res)), (Ufixed<3, 0>(6)));  // 0110
+    EXPECT_EQ((std::move(xor_res).as<Ufixed<3, 0>>()), (Ufixed<3, 0>(6)));  // 0110
 
     auto not_res = ~a;
-    EXPECT_EQ((as<Ufixed<3, 0>>(not_res)), (Ufixed<3, 0>(5)));  // 0101
+    EXPECT_EQ((std::move(not_res).as<Ufixed<3, 0>>()), (Ufixed<3, 0>(5)));  // 0101
 
     EXPECT_FALSE(and_reduce(a));
     EXPECT_TRUE(or_reduce(a));
     EXPECT_FALSE(xor_reduce(a));
 
     Ufixed<100, -50> w_bw_a(10), w_bw_b(12);
-    EXPECT_EQ((as<Ufixed<100, -50>>(w_bw_a & w_bw_b)), (Ufixed<100, -50>(8)));
+    EXPECT_EQ(((w_bw_a & w_bw_b).as<Ufixed<100, -50>>()), (Ufixed<100, -50>(8)));
 }
 
 TEST(TestUfixed, Concatenation) {
@@ -811,7 +779,7 @@ TEST(TestUfixed, Concatenation) {
     EXPECT_TRUE((std::is_same_v<decltype(cat_res), BitArray<8>>));
 
     // 1010 concatenated with 1111 -> 10101111 = 175
-    EXPECT_EQ(static_cast<int>(as<Ufixed<7, 0>>(cat_res)), 175);
+    EXPECT_EQ(static_cast<int>(std::move(cat_res).as<Ufixed<7, 0>>()), 175);
 
     Ufixed<100, 0> w_cat_a(10);
     Ufixed<30, 0> w_cat_b(3);
@@ -827,14 +795,14 @@ TEST(TestUfixed, SubtypeRoundTrip) {
     Ufixed<3, -4> s(5.0625);
 
     BitArray<Range{3, Direction::DOWNTO, -4}> ba = s;
-    auto restored = as<Ufixed<3, -4>>(ba);
+    auto restored = std::move(ba).as<Ufixed<3, -4>>();
 
     EXPECT_EQ(s, restored);
-    EXPECT_TRUE((s == as<Ufixed<3, -4>>(BitArray<Range{3, Direction::DOWNTO, -4}>(s))));
+    EXPECT_TRUE((s == BitArray<Range{3, Direction::DOWNTO, -4}>(s).as<Ufixed<3, -4>>()));
 
     Ufixed<100, -50> w_rt(5.0625);
     BitArray<Range{100, Direction::DOWNTO, -50}> w_ba = w_rt;
-    EXPECT_EQ(w_rt, (as<Ufixed<100, -50>>(w_ba)));
+    EXPECT_EQ(w_rt, (std::move(w_ba).as<Ufixed<100, -50>>()));
 }
 
 TEST(TestUfixed, InfinityWrapThrows) {

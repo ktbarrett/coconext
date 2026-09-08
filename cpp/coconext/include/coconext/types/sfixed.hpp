@@ -443,6 +443,14 @@ class Sfixed {
         return detail::Array<Bit, R2>(value_);
     }
 
+    template <HasStaticStorage Target>
+    [[nodiscard]] constexpr Target as() && noexcept {
+        static_assert(
+            Target::static_range.length() == R.length(), "as() requires equal widths."
+        );
+        return Target(value_);
+    }
+
     explicit constexpr operator bool() const noexcept
         requires(R.direction == Direction::DOWNTO)
     {
@@ -1341,7 +1349,7 @@ constexpr LHS& assign_mixed_fixed_result(LHS& lhs, Result&& result) {
     auto resized = coconext::types::resize<target_range>(
         std::forward<Result>(result), overflow_mode::wrap, round_mode::round_to_zero
     );
-    lhs = coconext::types::as<LhsType>(resized);
+    lhs = std::move(resized).template as<LhsType>();
     return lhs;
 }
 

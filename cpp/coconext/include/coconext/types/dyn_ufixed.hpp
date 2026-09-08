@@ -99,14 +99,6 @@ class DynUfixed {
         dyn_fixed_detail::validate_storage(range_, value_.width());
     }
 
-  private:
-    explicit DynUfixed(BitVector const& source)
-        : DynUfixed(source.range(), DynUInt(source.size(), storage(source))) {}
-
-    explicit DynUfixed(BitVector&& source)
-        : DynUfixed(source.range(), storage(std::move(source))) {}
-
-  public:
     template <NativeInteger T>
     DynUfixed(Range range, T value) : range_(range), value_(range.length()) {
         dyn_fixed_detail::require_numeric_range(range_);
@@ -207,6 +199,11 @@ class DynUfixed {
 
     template <Range R>
     DynUfixed(Range range, Sfixed<R> const& source);
+
+    template <HasDynamicStorage Target>
+    [[nodiscard]] Target as() && {
+        return adopt_storage<Target>(range_, std::move(value_));
+    }
 
     static DynUfixed resized(
         Range target,
@@ -511,8 +508,6 @@ class DynUfixed {
 
     friend class DynSfixed;
     friend struct storage_fn;
-    template <typename>
-    friend class auto_reinterpreted;
 
     Range range_;
     DynUInt value_;
