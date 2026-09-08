@@ -210,6 +210,10 @@ class Vector<Bit> {
         return detail::adopt_storage<Target>(range_, std::move(value_));
     }
 
+    [[nodiscard]] auto as() && noexcept {
+        return detail::reinterpreted<Vector>(std::move(*this));
+    }
+
     Range const& range() const noexcept { return range_; }
     size_t size() const noexcept { return range_.length(); }
 

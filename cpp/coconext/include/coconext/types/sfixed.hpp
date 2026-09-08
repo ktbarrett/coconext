@@ -451,6 +451,10 @@ class Sfixed {
         return Target(value_);
     }
 
+    [[nodiscard]] constexpr auto as() && noexcept {
+        return reinterpreted<Sfixed>(std::move(*this));
+    }
+
     explicit constexpr operator bool() const noexcept
         requires(R.direction == Direction::DOWNTO)
     {

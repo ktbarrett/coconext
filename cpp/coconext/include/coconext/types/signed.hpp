@@ -128,6 +128,10 @@ class Signed {
         return Target(value_);
     }
 
+    [[nodiscard]] constexpr auto as() && noexcept {
+        return reinterpreted<Signed>(std::move(*this));
+    }
+
     template <typename SourceWrapper>
     constexpr Signed(detail::auto_resized<SourceWrapper>&& wrapper) {
         auto [src, ovf, rnd] = std::move(wrapper).consume();

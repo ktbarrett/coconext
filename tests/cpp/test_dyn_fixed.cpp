@@ -103,8 +103,10 @@ TEST(DynFixed, PublicTypesAndCrossKindConstruction) {
 TEST(DynFixed, SignedConstructionAndShape) {
     Range range{3, Direction::DOWNTO, -4};
     auto value = BitVector("10101111", range).as<DynSfixed>();
+    DynSfixed deferred = BitVector("10101111", range).as();
 
     EXPECT_EQ(value.range(), range);
+    EXPECT_EQ(deferred, value);
     EXPECT_EQ(value.size(), 8);
     EXPECT_DOUBLE_EQ(static_cast<double>(value), -5.0625);
     EXPECT_EQ(value.raw_binary(), "10101111");

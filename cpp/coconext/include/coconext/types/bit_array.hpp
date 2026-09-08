@@ -130,6 +130,10 @@ class Array<Bit, R> {
         return Target(value_);
     }
 
+    [[nodiscard]] constexpr auto as() && noexcept {
+        return reinterpreted<Array>(std::move(*this));
+    }
+
   private:
     friend struct storage_fn;
 

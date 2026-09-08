@@ -164,6 +164,8 @@ TEST(TestUnsigned, as_overloads) {
     static_assert(std::is_same_v<decltype(a), Unsigned<5>>);
     EXPECT_EQ(static_cast<uint8_t>(a), 9U);
     BitArray<4, 0> arr_exp = a;
+    Unsigned<5> deferred = BitArray<5>({'0'_b, '1'_b, '0'_b, '0'_b, '1'_b}).as();
+    EXPECT_EQ(static_cast<uint8_t>(deferred), 9U);
     EXPECT_EQ(arr_exp, "01001"_b);
 }
 
