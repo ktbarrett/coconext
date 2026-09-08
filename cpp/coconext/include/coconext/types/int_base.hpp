@@ -1699,11 +1699,11 @@ class [[nodiscard]] auto_reinterpreted {
         } else if constexpr (std::same_as<Target, Source>) {
             return Target(std::forward<T>(value_));
         } else if constexpr (requires {
-                                 Target(bits(std::forward<T>(value_)), value_.range());
+                                 Target(value_.range(), bits(std::forward<T>(value_)));
                              })
         {
             auto const range = value_.range();
-            return Target(bits(std::forward<T>(value_)), range);
+            return Target(range, bits(std::forward<T>(value_)));
         } else if constexpr (requires { Target(std::forward<T>(value_)); }) {
             return Target(std::forward<T>(value_));
         } else {
