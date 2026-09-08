@@ -154,7 +154,7 @@ static LogicVector logic_array_from_unsigned(
     if (on_overflow == "error") {
         auto max_unsigned = DynUInt(v_width, ~DynUInt(r_width));
 
-        if (r_width < v_width && bits(value) > max_unsigned) {
+        if (r_width < v_width && storage(value) > max_unsigned) {
             throw nb::value_error(
                 "Unsigned value will not fit in a LogicArray with given bounds"
             );

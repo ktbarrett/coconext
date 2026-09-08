@@ -34,11 +34,11 @@ concept CanDeferReinterpret =
 static_assert(!CanReinterpret<BitArray<65>, BitVector>);
 static_assert(!CanReinterpret<BitVector, BitArray<65>>);
 static_assert(!CanReinterpretLvalue<DynUnsigned, BitVector>);
-static_assert(!detail::HasBits<int>);
-static_assert(detail::HasStaticBits<BitArray<65>>);
-static_assert(!detail::HasDynamicBits<BitArray<65>>);
-static_assert(detail::HasDynamicBits<BitVector>);
-static_assert(detail::HasDynamicBits<DynUnsigned>);
+static_assert(!detail::HasStorage<int>);
+static_assert(detail::HasStaticStorage<BitArray<65>>);
+static_assert(!detail::HasDynamicStorage<BitArray<65>>);
+static_assert(detail::HasDynamicStorage<BitVector>);
+static_assert(detail::HasDynamicStorage<DynUnsigned>);
 static_assert(CanDeferReinterpret<BitVector>);
 static_assert(!CanDeferReinterpret<BitVector&>);
 static_assert(!CanDeferReinterpret<BitVector const>);
@@ -501,12 +501,12 @@ TEST(DynInt, bit_vector_reinterpretation) {
 
     DynSigned signed_value = as(std::move(bits));
     EXPECT_EQ(signed_value.width(), 65U);
-    EXPECT_EQ(detail::bits(signed_value).popcount(), 2U);
+    EXPECT_EQ(detail::storage(signed_value).popcount(), 2U);
     EXPECT_EQ(static_cast<long long>(signed_value >> 64), -1);
 
     DynUnsigned unsigned_value = as<DynUnsigned>(std::move(signed_value));
     EXPECT_EQ(unsigned_value.width(), 65U);
-    EXPECT_EQ(detail::bits(unsigned_value).popcount(), 2U);
+    EXPECT_EQ(detail::storage(unsigned_value).popcount(), 2U);
 
     BitVector restored = as(std::move(unsigned_value));
     EXPECT_EQ(
@@ -515,7 +515,7 @@ TEST(DynInt, bit_vector_reinterpretation) {
     );
 
     auto direct_unsigned = as<DynUnsigned>(BitVector("10100101"));
-    EXPECT_EQ(detail::bits(direct_unsigned).to_binary_string(), "10100101");
+    EXPECT_EQ(detail::storage(direct_unsigned).to_binary_string(), "10100101");
 }
 
 // LCOV_EXCL_BR_STOP

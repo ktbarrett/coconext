@@ -88,7 +88,7 @@ class Signed {
 
     template <Range R2>
     explicit(R.length() <= R2.length()) constexpr Signed(Unsigned<R2> const& other) {
-        auto const& src_bits = bits(other);
+        auto const& src_bits = storage(other);
         if constexpr (R.length() <= R2.length()) {
             // The sign bit costs one bit, so the source must fit in R-1 bits:
             // every bit at or above R-1 has to be clear.
@@ -469,19 +469,19 @@ class Signed {
     friend struct std::hash;
 
   private:
-    friend struct bits_fn;
+    friend struct storage_fn;
 
     SInt<R.length()> value_{};
 };
 
 template <Range R>
 constexpr bool operator==(Signed<R> const& lhs, Signed<R> const& rhs) noexcept {
-    return bits(lhs) == bits(rhs);
+    return storage(lhs) == storage(rhs);
 }
 
 template <Range R>
 constexpr auto operator<=>(Signed<R> const& lhs, Signed<R> const& rhs) noexcept {
-    return bits(lhs) <=> bits(rhs);
+    return storage(lhs) <=> storage(rhs);
 }
 
 template <Range R>

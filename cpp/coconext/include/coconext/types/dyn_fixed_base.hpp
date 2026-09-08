@@ -610,11 +610,11 @@ inline size_t normalize_dynamic_shift(ShiftType const& amount, size_t limit) {
     } else if constexpr (std::same_as<Clean, DynUnsigned> || std::same_as<Clean, DynSigned>)
     {
         if constexpr (std::same_as<Clean, DynSigned>) {
-            if (bits(amount).width() != 0 && bits(amount).is_negative()) {
+            if (storage(amount).width() != 0 && storage(amount).is_negative()) {
                 throw std::invalid_argument("Negative shift amount");
             }
         }
-        auto const& raw = bits(amount);
+        auto const& raw = storage(amount);
         size_t value = 0;
         for (size_t bit = raw.width(); bit > 0; --bit) {
             if (value > limit / 2) {

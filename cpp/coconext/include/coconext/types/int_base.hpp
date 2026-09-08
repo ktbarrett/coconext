@@ -31,12 +31,12 @@ namespace coconext::types {
 namespace detail {
 
 template <typename T>
-concept HasStaticBits =
-    HasBits<std::remove_cvref_t<T>> && StaticRangedSequence<std::remove_cvref_t<T>>;
+concept HasStaticStorage =
+    HasStorage<std::remove_cvref_t<T>> && StaticRangedSequence<std::remove_cvref_t<T>>;
 
 template <typename T>
-concept HasDynamicBits =
-    HasBits<std::remove_cvref_t<T>> && (!StaticRangedSequence<std::remove_cvref_t<T>>);
+concept HasDynamicStorage =
+    HasStorage<std::remove_cvref_t<T>> && (!StaticRangedSequence<std::remove_cvref_t<T>>);
 
 struct EmptyStorage {};
 
@@ -1683,31 +1683,31 @@ class [[nodiscard]] auto_reinterpreted {
 
     template <typename Target>
         requires(
-            (HasStaticBits<Target> && HasStaticBits<std::remove_cvref_t<T>>)
-            || (HasDynamicBits<Target> && HasDynamicBits<std::remove_cvref_t<T>>)
+            (HasStaticStorage<Target> && HasStaticStorage<std::remove_cvref_t<T>>)
+            || (HasDynamicStorage<Target> && HasDynamicStorage<std::remove_cvref_t<T>>)
         )
     constexpr operator Target() && noexcept(
-        HasStaticBits<Target> && HasStaticBits<std::remove_cvref_t<T>>
+        HasStaticStorage<Target> && HasStaticStorage<std::remove_cvref_t<T>>
     ) {
         using Source = std::remove_cvref_t<T>;
-        if constexpr (HasStaticBits<Target>) {
+        if constexpr (HasStaticStorage<Target>) {
             static_assert(
                 Target::static_range.length() == Source::static_range.length(),
                 "as() requires equal widths."
             );
-            return Target(bits(value_));
+            return Target(storage(value_));
         } else if constexpr (std::same_as<Target, Source>) {
             return Target(std::forward<T>(value_));
         } else if constexpr (requires {
-                                 Target(value_.range(), bits(std::forward<T>(value_)));
+                                 Target(value_.range(), storage(std::forward<T>(value_)));
                              })
         {
             auto const range = value_.range();
-            return Target(range, bits(std::forward<T>(value_)));
+            return Target(range, storage(std::forward<T>(value_)));
         } else if constexpr (requires { Target(std::forward<T>(value_)); }) {
             return Target(std::forward<T>(value_));
         } else {
-            return Target(bits(std::forward<T>(value_)));
+            return Target(storage(std::forward<T>(value_)));
         }
     }
 };
@@ -1757,7 +1757,7 @@ template <typename T>
 template <typename ExplicitTarget = void, typename Source>
     requires(
         std::same_as<ExplicitTarget, void>
-        && detail::HasStaticBits<std::remove_cvref_t<Source>>
+        && detail::HasStaticStorage<std::remove_cvref_t<Source>>
     )
 [[nodiscard]] constexpr detail::auto_reinterpreted<Source const&> as(
     Source const& source
@@ -1768,8 +1768,8 @@ template <typename ExplicitTarget = void, typename Source>
 template <typename ExplicitTarget = void, typename Source>
     requires(
         std::same_as<ExplicitTarget, void>
-        && (detail::HasStaticBits<std::remove_cvref_t<Source>>
-            || (detail::HasDynamicBits<std::remove_cvref_t<Source>>
+        && (detail::HasStaticStorage<std::remove_cvref_t<Source>>
+            || (detail::HasDynamicStorage<std::remove_cvref_t<Source>>
                 && !std::is_const_v<std::remove_reference_t<Source>>))
         && !std::is_lvalue_reference_v<Source>
     )
@@ -1793,16 +1793,16 @@ template <typename X>
     return detail::resize(std::forward<X>(x), ovf, rnd);
 }
 
-template <detail::HasStaticBits Target, detail::HasStaticBits Source>
+template <detail::HasStaticStorage Target, detail::HasStaticStorage Source>
 constexpr Target as(Source const& source) noexcept {
     static_assert(
         Target::static_range.length() == Source::static_range.length(),
         "as() requires equal widths."
     );
-    return Target(detail::bits(source));
+    return Target(detail::storage(source));
 }
 
-template <detail::HasDynamicBits Target, detail::HasDynamicBits Source>
+template <detail::HasDynamicStorage Target, detail::HasDynamicStorage Source>
     requires(
         !std::is_lvalue_reference_v<Source>
         && !std::is_const_v<std::remove_reference_t<Source>>

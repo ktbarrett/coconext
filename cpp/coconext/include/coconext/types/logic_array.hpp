@@ -278,7 +278,7 @@ class Vector<Bit> {
     auto rend() const noexcept { return value_.rend(); }
 
   private:
-    friend struct detail::bits_fn;
+    friend struct detail::storage_fn;
 
     detail::DynUInt value_;
     Range range_;
