@@ -40,11 +40,10 @@ TEST(TestUnsigned, Constructors) {
 
     EXPECT_THROW(Unsigned<4> narrow_fail(large_val), std::out_of_range);
 
-    BitArray<5> arr_a({'0'_b, '1'_b, '0'_b, '0'_b, '1'_b});
-    auto u_arr_a = as<Unsigned<5>>(arr_a);
+    auto u_arr_a = BitArray<5>({'0'_b, '1'_b, '0'_b, '0'_b, '1'_b}).as<Unsigned<5>>();
     EXPECT_EQ(static_cast<uint32_t>(u_arr_a), 9U);
 
-    auto arr_a_exp = as<Unsigned<5>>("01001"_b);
+    auto arr_a_exp = "01001"_b.as<Unsigned<5>>();
     EXPECT_EQ(u_arr_a, arr_a_exp);
 
     Signed<20> s(2000);
@@ -161,19 +160,11 @@ TEST(UnsignedMixedSignednessTest, CompoundAssignmentOperators) {
 }
 
 TEST(TestUnsigned, as_overloads) {
-    BitArray<5> arr_a({'0'_b, '1'_b, '0'_b, '0'_b, '1'_b});
-
-    auto a = as<Unsigned<5>>(arr_a);
-    BitArray<4, 0> arr_exp = a;
+    auto a = BitArray<5>({'0'_b, '1'_b, '0'_b, '0'_b, '1'_b}).as<Unsigned<5>>();
     static_assert(std::is_same_v<decltype(a), Unsigned<5>>);
-    EXPECT_EQ(static_cast<uint8_t>(a), 9U);  // explicit conversion to int
-    EXPECT_EQ(arr_a, arr_exp);
-
-    Unsigned<5> a1;
-    a1 = as(arr_a);
-    BitArray<4, 0> arr_exp_a1 = a1;
-    EXPECT_EQ(static_cast<uint8_t>(a1), 9U);
-    EXPECT_EQ(arr_a, arr_exp_a1);
+    EXPECT_EQ(static_cast<uint8_t>(a), 9U);
+    BitArray<4, 0> arr_exp = a;
+    EXPECT_EQ(arr_exp, "01001"_b);
 }
 
 TEST(TestUnsigned, resize_overloads) {
@@ -452,10 +443,10 @@ TEST(TestUnsigned, Formatter) {
     Unsigned<139> chunk3(0x0AFFFE9001);  // Next 40 bits
     Unsigned<139> chunk4(0xFFFFF);       // Bottom 20 bits
 
-    very_large = as<Unsigned<139>>(
-        as<Unsigned<139>>(as<Unsigned<139>>(chunk1 << 100 | chunk2 << 60) | chunk3 << 20)
-        | chunk4
-    );
+    very_large = (((chunk1 << 100 | chunk2 << 60).as<Unsigned<139>>() | chunk3 << 20)
+                      .as<Unsigned<139>>()
+                  | chunk4)
+                     .as<Unsigned<139>>();
 
     EXPECT_EQ(std::format("{:b}", small), "Unsigned[9 downto 0]{0001100110}");
     EXPECT_EQ(

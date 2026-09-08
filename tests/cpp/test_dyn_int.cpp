@@ -10,7 +10,6 @@
 #include <unordered_set>
 #include <utility>
 
-using coconext::types::as;
 using coconext::types::BitArray;
 using coconext::types::BitVector;
 using coconext::types::detail::DynSigned;
@@ -21,30 +20,25 @@ namespace detail = coconext::types::detail;
 
 template <typename Target, typename Source>
 concept CanReinterpret =
-    requires(Source&& source) { coconext::types::as<Target>(std::move(source)); };
+    requires(Source&& source) { std::move(source).template as<Target>(); };
 
 template <typename Target, typename Source>
-concept CanReinterpretLvalue =
-    requires(Source& source) { coconext::types::as<Target>(source); };
+concept CanReinterpretLvalue = requires(Source& source) { source.template as<Target>(); };
 
-template <typename Source>
-concept CanDeferReinterpret =
-    requires(Source&& source) { coconext::types::as(std::forward<Source>(source)); };
-
+static_assert(CanReinterpret<DynUnsigned, BitVector>);
+static_assert(CanReinterpret<BitVector, DynSigned>);
 static_assert(!CanReinterpret<BitArray<65>, BitVector>);
 static_assert(!CanReinterpret<BitVector, BitArray<65>>);
 static_assert(!CanReinterpretLvalue<DynUnsigned, BitVector>);
+static_assert(!std::is_constructible_v<DynUnsigned, BitVector>);
 static_assert(!detail::HasStorage<int>);
 static_assert(detail::HasStaticStorage<BitArray<65>>);
 static_assert(!detail::HasDynamicStorage<BitArray<65>>);
 static_assert(detail::HasDynamicStorage<BitVector>);
 static_assert(detail::HasDynamicStorage<DynUnsigned>);
-static_assert(CanDeferReinterpret<BitVector>);
-static_assert(!CanDeferReinterpret<BitVector&>);
-static_assert(!CanDeferReinterpret<BitVector const>);
-static_assert(std::same_as<
-              decltype(coconext::types::as<DynUnsigned>(std::declval<BitVector>())),
-              DynUnsigned>);
+static_assert(
+    std::same_as<decltype(std::declval<BitVector>().as<DynUnsigned>()), DynUnsigned>
+);
 
 TEST(DynInt, runtime_width_storage_and_formatting) {
     static_assert(std::is_same_v<DynUInt::NativeUInt, std::uint64_t>);
@@ -499,22 +493,22 @@ TEST(DynSigned, remainder_and_modulo_are_distinct) {
 TEST(DynInt, bit_vector_reinterpretation) {
     BitVector bits("10000000000000000000000000000000000000000000000000000000000000001");
 
-    DynSigned signed_value = as(std::move(bits));
+    DynSigned signed_value = std::move(bits).as<DynSigned>();
     EXPECT_EQ(signed_value.width(), 65U);
     EXPECT_EQ(detail::storage(signed_value).popcount(), 2U);
     EXPECT_EQ(static_cast<long long>(signed_value >> 64), -1);
 
-    DynUnsigned unsigned_value = as<DynUnsigned>(std::move(signed_value));
+    DynUnsigned unsigned_value = std::move(signed_value).as<DynUnsigned>();
     EXPECT_EQ(unsigned_value.width(), 65U);
     EXPECT_EQ(detail::storage(unsigned_value).popcount(), 2U);
 
-    BitVector restored = as(std::move(unsigned_value));
+    BitVector restored = std::move(unsigned_value).as<BitVector>();
     EXPECT_EQ(
         restored,
         BitVector("10000000000000000000000000000000000000000000000000000000000000001")
     );
 
-    auto direct_unsigned = as<DynUnsigned>(BitVector("10100101"));
+    auto direct_unsigned = BitVector("10100101").as<DynUnsigned>();
     EXPECT_EQ(detail::storage(direct_unsigned).to_binary_string(), "10100101");
 }
 

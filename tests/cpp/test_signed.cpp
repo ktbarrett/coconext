@@ -35,11 +35,10 @@ TEST(TestSigned, Constructors) {
 
     EXPECT_THROW(Signed<4> narrow_fail(large_val), std::out_of_range);
 
-    BitArray<5> arr_a({'1'_b, '1'_b, '0'_b, '1'_b, '1'_b});
-    auto s_arr_a = as<Signed<5>>(arr_a);
+    auto s_arr_a = BitArray<5>({'1'_b, '1'_b, '0'_b, '1'_b, '1'_b}).as<Signed<5>>();
     EXPECT_EQ(static_cast<int32_t>(s_arr_a), -5);
 
-    auto arr_a_exp = as<Signed<5>>("11011"_b);
+    auto arr_a_exp = "11011"_b.as<Signed<5>>();
     EXPECT_EQ(s_arr_a, arr_a_exp);
 
     Unsigned<8> u(100);
@@ -164,19 +163,11 @@ TEST(SignedMixedSignednessTest, CompoundAssignmentOperators) {
 }
 
 TEST(TestSigned, as_overloads) {
-    BitArray<5> arr_a({'1'_b, '1'_b, '0'_b, '1'_b, '1'_b});
-
-    auto a = as<Signed<5>>(arr_a);
-    BitArray<4, 0> arr_exp = a;
+    auto a = BitArray<5>({'1'_b, '1'_b, '0'_b, '1'_b, '1'_b}).as<Signed<5>>();
     static_assert(std::is_same_v<decltype(a), Signed<5>>);
     EXPECT_EQ(static_cast<int8_t>(a), -5);
-    EXPECT_EQ(arr_a, arr_exp);
-
-    Signed<5> a1;
-    a1 = as(arr_a);
-    BitArray<4, 0> arr_exp_a1 = a1;
-    EXPECT_EQ(static_cast<int8_t>(a1), -5);
-    EXPECT_EQ(arr_a, arr_exp_a1);
+    BitArray<4, 0> arr_exp = a;
+    EXPECT_EQ(arr_exp, "11011"_b);
 }
 
 TEST(TestSigned, resize_overloads) {

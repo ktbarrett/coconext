@@ -1665,54 +1665,6 @@ constexpr Range make_fixed_range() {
 }
 
 template <typename T>
-class [[nodiscard]] auto_reinterpreted {
-    T value_;
-
-  public:
-    constexpr explicit auto_reinterpreted(T v) : value_(std::forward<T>(v)) {}
-
-    auto_reinterpreted(auto_reinterpreted const&) = delete;
-    auto_reinterpreted& operator=(auto_reinterpreted const&) = delete;
-
-    constexpr auto_reinterpreted(auto_reinterpreted&& other) noexcept
-        : value_(std::forward<T>(other.value_)) {}
-
-    constexpr auto_reinterpreted& operator=(auto_reinterpreted&&) = delete;
-
-    constexpr T consume() && { return std::forward<T>(value_); }
-
-    template <typename Target>
-        requires(
-            (HasStaticStorage<Target> && HasStaticStorage<std::remove_cvref_t<T>>)
-            || (HasDynamicStorage<Target> && HasDynamicStorage<std::remove_cvref_t<T>>)
-        )
-    constexpr operator Target() && noexcept(
-        HasStaticStorage<Target> && HasStaticStorage<std::remove_cvref_t<T>>
-    ) {
-        using Source = std::remove_cvref_t<T>;
-        if constexpr (HasStaticStorage<Target>) {
-            static_assert(
-                Target::static_range.length() == Source::static_range.length(),
-                "as() requires equal widths."
-            );
-            return Target(storage(value_));
-        } else if constexpr (std::same_as<Target, Source>) {
-            return Target(std::forward<T>(value_));
-        } else if constexpr (requires {
-                                 Target(value_.range(), storage(std::forward<T>(value_)));
-                             })
-        {
-            auto const range = value_.range();
-            return Target(range, storage(std::forward<T>(value_)));
-        } else if constexpr (requires { Target(std::forward<T>(value_)); }) {
-            return Target(std::forward<T>(value_));
-        } else {
-            return Target(storage(std::forward<T>(value_)));
-        }
-    }
-};
-
-template <typename T>
 class [[nodiscard]] auto_resized {
     T value_;
     overflow_mode ovf_;
@@ -1752,31 +1704,6 @@ template <typename T>
 
 }  // namespace detail
 
-// ExplicitTarget is a sentinel that keeps these deferred overloads out of the
-// overload set when the caller requests immediate conversion with as<Target>().
-template <typename ExplicitTarget = void, typename Source>
-    requires(
-        std::same_as<ExplicitTarget, void>
-        && detail::HasStaticStorage<std::remove_cvref_t<Source>>
-    )
-[[nodiscard]] constexpr detail::auto_reinterpreted<Source const&> as(
-    Source const& source
-) noexcept {
-    return detail::auto_reinterpreted<Source const&>(source);
-}
-
-template <typename ExplicitTarget = void, typename Source>
-    requires(
-        std::same_as<ExplicitTarget, void>
-        && (detail::HasStaticStorage<std::remove_cvref_t<Source>>
-            || (detail::HasDynamicStorage<std::remove_cvref_t<Source>>
-                && !std::is_const_v<std::remove_reference_t<Source>>))
-        && !std::is_lvalue_reference_v<Source>
-    )
-[[nodiscard]] constexpr detail::auto_reinterpreted<Source> as(Source&& source) noexcept {
-    return detail::auto_reinterpreted<Source>(std::move(source));
-}
-
 template <typename X>
     requires(
         detail::is_coconext_unsigned_v<std::remove_cvref_t<X>>
@@ -1791,26 +1718,6 @@ template <typename X>
                                                       : round_mode::truncate
 ) noexcept {
     return detail::resize(std::forward<X>(x), ovf, rnd);
-}
-
-template <detail::HasStaticStorage Target, detail::HasStaticStorage Source>
-constexpr Target as(Source const& source) noexcept {
-    static_assert(
-        Target::static_range.length() == Source::static_range.length(),
-        "as() requires equal widths."
-    );
-    return Target(detail::storage(source));
-}
-
-template <detail::HasDynamicStorage Target, detail::HasDynamicStorage Source>
-    requires(
-        !std::is_lvalue_reference_v<Source>
-        && !std::is_const_v<std::remove_reference_t<Source>>
-    )
-Target as(Source&& source) {
-    return static_cast<Target>(
-        detail::auto_reinterpreted<Source>(std::forward<Source>(source))
-    );
 }
 
 }  // namespace coconext::types

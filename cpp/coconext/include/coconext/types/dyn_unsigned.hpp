@@ -31,9 +31,6 @@ class DynUnsigned {
 
     size_t width() const { return value_.width(); }
 
-    DynUnsigned(Vector<Bit> const& v) : value_(storage(v)) {}
-    DynUnsigned(Vector<Bit>&& v) : value_(storage(std::move(v))) {}
-
     // Construct from a native integer.
     template <NativeInteger T>
     DynUnsigned(size_t width, T v) : value_(width) {
@@ -44,6 +41,12 @@ class DynUnsigned {
             throw std::overflow_error("value does not fit in Unsigned width");
         }
         value_ = DynUInt(width, v);
+    }
+
+    template <HasDynamicStorage Target>
+    [[nodiscard]] Target as() && {
+        auto const range = int_downto_range(value_.width());
+        return adopt_storage<Target>(range, std::move(value_));
     }
 
     bool operator==(DynUnsigned const& rhs) const noexcept { return value_ == rhs.value_; }

@@ -122,6 +122,14 @@ class Array<Bit, R> {
     template <NativeInteger T>
     constexpr Array(T packed_val) : value_(packed_val) {}
 
+    template <HasStaticStorage Target>
+    [[nodiscard]] constexpr Target as() && noexcept {
+        static_assert(
+            Target::static_range.length() == R.length(), "as() requires equal widths."
+        );
+        return Target(value_);
+    }
+
   private:
     friend struct storage_fn;
 

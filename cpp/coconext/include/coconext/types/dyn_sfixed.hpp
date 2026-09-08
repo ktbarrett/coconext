@@ -117,14 +117,6 @@ class DynSfixed {
         dyn_fixed_detail::validate_storage(range_, value_.width());
     }
 
-  private:
-    explicit DynSfixed(BitVector const& source)
-        : DynSfixed(source.range(), DynSInt(source.size(), storage(source))) {}
-
-    explicit DynSfixed(BitVector&& source)
-        : DynSfixed(source.range(), DynSInt(storage(std::move(source)))) {}
-
-  public:
     template <NativeInteger T>
     DynSfixed(Range range, T value) : range_(range), value_(range.length()) {
         dyn_fixed_detail::require_numeric_range(range_);
@@ -257,6 +249,11 @@ class DynSfixed {
               )
           ) {
         dyn_fixed_detail::require_downto(R);
+    }
+
+    template <HasDynamicStorage Target>
+    [[nodiscard]] Target as() && {
+        return adopt_storage<Target>(range_, std::move(value_));
     }
 
     static DynSfixed resized(
@@ -587,8 +584,6 @@ class DynSfixed {
 
     friend class DynUfixed;
     friend struct storage_fn;
-    template <typename>
-    friend class auto_reinterpreted;
 
     Range range_;
     DynSInt value_;
@@ -1245,19 +1240,6 @@ detail::Sfixed<detail::make_fixed_range<Args...>()> resize(
     return detail::Sfixed<target>(
         detail::DynSfixed::resized(target, source, overflow, rounding)
     );
-}
-
-template <detail::StaticFixedOperand Target, detail::DynFixedOperand Source>
-    requires(
-        !std::is_lvalue_reference_v<Source>
-        && !std::is_const_v<std::remove_reference_t<Source>>
-    )
-Target as(Source&& source) {
-    if (source.size() != Target::size()) {
-        throw std::invalid_argument("as() requires equal widths.");
-    }
-    auto raw = detail::storage(source).logical_bits();
-    return Target(detail::dyn_fixed_detail::copy_to_static_int<Target::size(), false>(raw));
 }
 
 inline detail::DynSfixed divide(

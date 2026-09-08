@@ -1165,6 +1165,16 @@ class DynInt {
 using DynUInt = DynInt<false>;
 using DynSInt = DynInt<true>;
 
+// Targets that carry a Range adopt it with the storage; the rest take storage alone.
+template <typename Target, bool SignedRepresentation>
+Target adopt_storage(Range range, DynInt<SignedRepresentation>&& value) {
+    if constexpr (std::constructible_from<Target, Range, DynInt<SignedRepresentation>&&>) {
+        return Target(range, std::move(value));
+    } else {
+        return Target(std::move(value));
+    }
+}
+
 inline DynUInt operator+(DynUInt const& a, DynUInt const& b) {
     return DynUInt::arithmetic(a, b, std::max(a.width(), b.width()) + 1, '+');
 }

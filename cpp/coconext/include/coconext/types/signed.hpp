@@ -56,7 +56,7 @@ class Signed {
     constexpr Signed() noexcept = default;
 
     template <bool IsSigned>
-    constexpr Signed(Int<R.length(), IsSigned> const& val) : value_(val.logical_bits()) {}
+    constexpr Signed(Int<R.length(), IsSigned> const& val) : value_(val) {}
 
     template <NativeInteger T>
     explicit(
@@ -118,6 +118,14 @@ class Signed {
             R.length() == R2.length(), "BitArray reinterpret requires identical width"
         );
         return detail::Array<Bit, R2>(value_);
+    }
+
+    template <HasStaticStorage Target>
+    [[nodiscard]] constexpr Target as() && noexcept {
+        static_assert(
+            Target::static_range.length() == R.length(), "as() requires equal widths."
+        );
+        return Target(value_);
     }
 
     template <typename SourceWrapper>
@@ -368,21 +376,21 @@ class Signed {
     template <Range R2>
     constexpr Signed& operator+=(Unsigned<R2> const& rhs) {
         auto res = coconext::types::resize<R.length()>(*this + (+rhs), overflow_mode::wrap);
-        *this = coconext::types::as<Signed<R>>(static_cast<detail::Array<Bit, R>>(res));
+        *this = std::move(res).template as<Signed<R>>();
         return *this;
     }
 
     template <Range R2>
     constexpr Signed& operator-=(Unsigned<R2> const& rhs) {
         auto res = coconext::types::resize<R.length()>(*this - (+rhs), overflow_mode::wrap);
-        *this = coconext::types::as<Signed<R>>(static_cast<detail::Array<Bit, R>>(res));
+        *this = std::move(res).template as<Signed<R>>();
         return *this;
     }
 
     template <Range R2>
     constexpr Signed& operator*=(Unsigned<R2> const& rhs) {
         auto res = coconext::types::resize<R.length()>(*this * (+rhs), overflow_mode::wrap);
-        *this = coconext::types::as<Signed<R>>(static_cast<detail::Array<Bit, R>>(res));
+        *this = std::move(res).template as<Signed<R>>();
         return *this;
     }
 
@@ -392,7 +400,7 @@ class Signed {
             throw std::domain_error("Division by zero");
         }
         auto res = coconext::types::resize<R.length()>(*this / (+rhs), overflow_mode::wrap);
-        *this = coconext::types::as<Signed<R>>(static_cast<detail::Array<Bit, R>>(res));
+        *this = std::move(res).template as<Signed<R>>();
         return *this;
     }
 
@@ -402,7 +410,7 @@ class Signed {
             throw std::domain_error("Division by zero");
         }
         auto res = coconext::types::resize<R.length()>(*this % (+rhs), overflow_mode::wrap);
-        *this = coconext::types::as<Signed<R>>(static_cast<detail::Array<Bit, R>>(res));
+        *this = std::move(res).template as<Signed<R>>();
         return *this;
     }
 

@@ -23,9 +23,6 @@ class DynSigned {
 
     size_t width() const { return value_.width(); }
 
-    DynSigned(Vector<Bit> const& v) : value_(DynSInt(storage(v))) {}
-    DynSigned(Vector<Bit>&& v) : value_(DynSInt(storage(std::move(v)))) {}
-
     // Construct from a native integer.
     template <NativeInteger T>
     DynSigned(size_t width, T v) : value_(width) {
@@ -36,6 +33,12 @@ class DynSigned {
             throw std::overflow_error("value does not fit in Signed width");
         }
         value_ = DynSInt(width, v);
+    }
+
+    template <HasDynamicStorage Target>
+    [[nodiscard]] Target as() && {
+        auto const range = int_downto_range(value_.width());
+        return adopt_storage<Target>(range, std::move(value_));
     }
 
     bool operator==(DynSigned const& rhs) const noexcept {
