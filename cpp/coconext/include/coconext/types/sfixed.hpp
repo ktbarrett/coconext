@@ -268,10 +268,10 @@ class Sfixed {
         );
         if constexpr (R2.length() == 0) {
             value_ = detail::convert_signed_magnitude<R.length()>(
-                bits(other).logical_bits(), false, R2.right, R.right
+                storage(other).logical_bits(), false, R2.right, R.right
             );
         } else {
-            auto const other_bits = bits(other);
+            auto const other_bits = storage(other);
             bool const negative = other_bits.get_bit(R2.length() - 1);
             auto const raw_bits = other_bits.logical_bits();
             UInt<R2.length()> const magnitude =
@@ -292,7 +292,7 @@ class Sfixed {
             "Sfixed cross-kind construction requires DOWNTO direction"
         );
         value_ = detail::convert_signed_magnitude<R.length()>(
-            bits(other), false, R2.right, R.right
+            storage(other), false, R2.right, R.right
         );
     }
 
@@ -364,7 +364,7 @@ class Sfixed {
     ) constexpr Sfixed(Signed<R2> v)
         requires(R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO)
     {
-        assign_signed_integer(bits(v));
+        assign_signed_integer(storage(v));
     }
 
     // Construction from Unsigned
@@ -374,7 +374,7 @@ class Sfixed {
     ) constexpr Sfixed(Unsigned<R2> v)
         requires(R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO)
     {
-        assign_unsigned_integer(bits(v));
+        assign_unsigned_integer(storage(v));
     }
 
     template <typename SourceWrapper>
@@ -399,8 +399,8 @@ class Sfixed {
         bool negative = false;
         UInt<SourceW> magnitude{};
         if constexpr (SourceW > 0) {
-            negative = bits(src).get_bit(SourceW - 1);
-            auto const raw_bits = bits(src).logical_bits();
+            negative = storage(src).get_bit(SourceW - 1);
+            auto const raw_bits = storage(src).logical_bits();
             magnitude = negative ? detail::wrapped_negate(raw_bits) : raw_bits;
         }
         if constexpr (TargetW == 0) {
@@ -716,7 +716,7 @@ class Sfixed {
         constexpr size_t ShiftR = R2.right - R_res.right;
 
         auto lhs_aligned = detail::shift_left_sign_extended<ShiftL>(value_);
-        auto rhs_aligned = detail::shift_left_sign_extended<ShiftR>(bits(rhs));
+        auto rhs_aligned = detail::shift_left_sign_extended<ShiftR>(storage(rhs));
 
         return Sfixed<R_res>(lhs_aligned + rhs_aligned);
     }
@@ -734,7 +734,7 @@ class Sfixed {
         constexpr size_t ShiftR = R2.right - R_res.right;
 
         auto lhs_aligned = detail::shift_left_sign_extended<ShiftL>(value_);
-        auto rhs_aligned = detail::shift_left_sign_extended<ShiftR>(bits(rhs));
+        auto rhs_aligned = detail::shift_left_sign_extended<ShiftR>(storage(rhs));
 
         return Sfixed<R_res>(lhs_aligned - rhs_aligned);
     }
@@ -746,7 +746,7 @@ class Sfixed {
             "Operations require DOWNTO"
         );
         constexpr Range R_res{R.left + R2.left + 1, Direction::DOWNTO, R.right + R2.right};
-        return Sfixed<R_res>(value_ * bits(rhs));
+        return Sfixed<R_res>(value_ * storage(rhs));
     }
 
     template <Range R2>
@@ -788,7 +788,7 @@ class Sfixed {
         constexpr size_t ShiftR = detail::index_distance(R2.right, result_right);
 
         auto lhs_aligned = detail::shift_left_sign_extended<ShiftL>(value_);
-        auto rhs_aligned = detail::shift_left_sign_extended<ShiftR>(bits(rhs));
+        auto rhs_aligned = detail::shift_left_sign_extended<ShiftR>(storage(rhs));
         auto [quotient_bits, remainder_bits] =
             detail::divrem_signed_fixed<false, QuotientRange.length(), QuotientRange.right>(
                 lhs_aligned, rhs_aligned, rounding, guard_bits
@@ -829,7 +829,7 @@ class Sfixed {
         constexpr size_t ShiftR = detail::index_distance(R2.right, result_right);
 
         auto lhs_aligned = detail::shift_left_sign_extended<ShiftL>(value_);
-        auto rhs_aligned = detail::shift_left_sign_extended<ShiftR>(bits(rhs));
+        auto rhs_aligned = detail::shift_left_sign_extended<ShiftR>(storage(rhs));
         auto [quotient_bits, modulo_bits] =
             detail::divrem_signed_fixed<true, QuotientRange.length(), QuotientRange.right>(
                 lhs_aligned, rhs_aligned, rounding, guard_bits
@@ -1037,7 +1037,7 @@ class Sfixed {
     }
 
   private:
-    friend struct bits_fn;
+    friend struct storage_fn;
 
     SInt<R.length()> value_{};
 };
@@ -1047,7 +1047,7 @@ template <Range R2>
 constexpr Unsigned<R>::Unsigned(Sfixed<R2> const& other)
     requires(R2.direction == Direction::DOWNTO)
 {
-    auto const& source_bits = bits(other);
+    auto const& source_bits = storage(other);
     bool negative = false;
     UInt<R2.length()> magnitude{};
     if constexpr (R2.length() > 0) {
@@ -1064,7 +1064,7 @@ template <Range R2>
 constexpr Signed<R>::Signed(Sfixed<R2> const& other)
     requires(R2.direction == Direction::DOWNTO)
 {
-    auto const& source_bits = bits(other);
+    auto const& source_bits = storage(other);
     bool negative = false;
     UInt<R2.length()> magnitude{};
     if constexpr (R2.length() > 0) {
@@ -1322,7 +1322,7 @@ constexpr LHS& assign_mixed_fixed_result(LHS& lhs, Result&& result) {
 
     if constexpr (is_coconext_ufixed_v<LhsType> && is_coconext_sfixed_v<ResultType>) {
         if constexpr (ResultType::size() > 0) {
-            if (bits(result).get_bit(ResultType::size() - 1)) {
+            if (storage(result).get_bit(ResultType::size() - 1)) {
                 throw std::out_of_range(
                     "compound arithmetic does not allow a negative Ufixed result"
                 );
@@ -1506,9 +1506,9 @@ constexpr auto resize(X&& x, overflow_mode ovf, round_mode rnd) {
 template <Range R>
 constexpr auto reverse(detail::Sfixed<R> const& v) noexcept {
     if constexpr (R.direction == Direction::TO) {
-        return detail::Sfixed<reverse(R)>(detail::bits(v).reverse());
+        return detail::Sfixed<reverse(R)>(detail::storage(v).reverse());
     } else {
-        return detail::Sfixed<reverse(R)>(detail::bits(v));
+        return detail::Sfixed<reverse(R)>(detail::storage(v));
     }
 }
 
@@ -1560,13 +1560,14 @@ struct std::formatter<coconext::types::detail::Sfixed<R>> {
             constexpr auto F = coconext::types::detail::Sfixed<R>::frac_bits();
             constexpr auto I = coconext::types::detail::Sfixed<R>::int_bits();
             constexpr size_t decimal_pos = F > 0 && I > 0 ? static_cast<size_t>(F) : 0;
-            str_r = coconext::types::detail::bits(v).to_binary_string(decimal_pos);
+            str_r = coconext::types::detail::storage(v).to_binary_string(decimal_pos);
             break;
         }
         default: {
             constexpr auto F = coconext::types::detail::Sfixed<R>::frac_bits();
-            str_r =
-                coconext::types::detail::bits(v).template to_fixed_decimal_string<F>(true);
+            str_r = coconext::types::detail::storage(v).template to_fixed_decimal_string<F>(
+                true
+            );
             break;
         }
         }
@@ -1580,7 +1581,7 @@ struct std::hash<coconext::types::detail::Sfixed<R>> {
         std::string_view type_name = typeid(coconext::types::detail::Sfixed<R>).name();
         size_t sfixed_seed = std::hash<std::string_view>{}(type_name);
         return coconext::types::detail::hash_combine(
-            sfixed_seed, R, coconext::types::detail::bits(v).hash_value()
+            sfixed_seed, R, coconext::types::detail::storage(v).hash_value()
         );
     }
 };

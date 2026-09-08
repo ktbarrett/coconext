@@ -31,8 +31,8 @@ class DynUnsigned {
 
     size_t width() const { return value_.width(); }
 
-    DynUnsigned(Vector<Bit> const& v) : value_(bits(v)) {}
-    DynUnsigned(Vector<Bit>&& v) : value_(bits(std::move(v))) {}
+    DynUnsigned(Vector<Bit> const& v) : value_(storage(v)) {}
+    DynUnsigned(Vector<Bit>&& v) : value_(storage(std::move(v))) {}
 
     // Construct from a native integer.
     template <NativeInteger T>
@@ -155,15 +155,15 @@ class DynUnsigned {
     }
 
     auto operator|(DynUnsigned const& other) const {
-        return DynUnsigned(value_ | bits(other));
+        return DynUnsigned(value_ | storage(other));
     }
 
     auto operator&(DynUnsigned const& other) const {
-        return DynUnsigned(value_ & bits(other));
+        return DynUnsigned(value_ & storage(other));
     }
 
     auto operator^(DynUnsigned const& other) const {
-        return DynUnsigned(value_ ^ bits(other));
+        return DynUnsigned(value_ ^ storage(other));
     }
 
     auto operator~() const { return DynUnsigned(~value_); }
@@ -284,7 +284,7 @@ class DynUnsigned {
         return lhs_value < rhs_value ? -1 : rhs_value < lhs_value ? 1 : 0;
     }
 
-    friend struct bits_fn;
+    friend struct storage_fn;
     DynUInt value_;
 };
 

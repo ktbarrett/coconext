@@ -43,7 +43,7 @@ constexpr size_t normalize_shift_amount(ShiftType const& shift_amount, size_t li
     {
         constexpr size_t width = CleanType::size();
         if constexpr (is_coconext_signed_v<CleanType> && width > 0) {
-            if (bits(shift_amount).get_bit(width - 1)) {
+            if (storage(shift_amount).get_bit(width - 1)) {
                 throw std::invalid_argument("Negative shift amount");
             }
         }
@@ -62,7 +62,7 @@ constexpr size_t normalize_shift_amount(ShiftType const& shift_amount, size_t li
                 if (value >= limit) {
                     return limit;
                 }
-                if (bits(shift_amount).get_bit(bit_pos - 1)) {
+                if (storage(shift_amount).get_bit(bit_pos - 1)) {
                     ++value;
                     if (value >= limit) {
                         return limit;

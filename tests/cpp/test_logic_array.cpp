@@ -850,9 +850,9 @@ TEST(TestBitArray, VectorLengthCtorDefaultsToDowntoBit) {
 
 TEST(TestBitArray, BitVectorUsesPackedDynUIntStorage) {
     BitVector a("10100101");
-    static_assert(std::same_as<decltype(detail::bits(a)), detail::DynUInt const&>);
-    EXPECT_EQ(detail::bits(a).width(), a.size());
-    EXPECT_EQ(detail::bits(a).to_binary_string(), "10100101");
+    static_assert(std::same_as<decltype(detail::storage(a)), detail::DynUInt const&>);
+    EXPECT_EQ(detail::storage(a).width(), a.size());
+    EXPECT_EQ(detail::storage(a).to_binary_string(), "10100101");
 }
 
 TEST(TestBitArray, WideBitVectorPackedStorageAndMutation) {
@@ -861,7 +861,7 @@ TEST(TestBitArray, WideBitVectorPackedStorageAndMutation) {
     a[64] = '1'_b;
     a[0] = '1'_b;
 
-    EXPECT_EQ(detail::bits(a).popcount(), 3U);
+    EXPECT_EQ(detail::storage(a).popcount(), 3U);
     EXPECT_EQ(a[128], '1'_b);
     EXPECT_EQ(a[64], '1'_b);
     EXPECT_EQ(a[0], '1'_b);

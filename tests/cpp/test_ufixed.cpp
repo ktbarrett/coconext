@@ -43,7 +43,7 @@ constexpr bool check_as_pair() {
     Target contextual_moved = accept_reinterpreted(as(std::move(contextual_moved_source)));
 
     auto has_expected_bits = [&expected](auto const& value) {
-        return detail::bits(value) == detail::bits(expected);
+        return detail::storage(value) == detail::storage(expected);
     };
     return has_expected_bits(explicit_lvalue) && has_expected_bits(explicit_rvalue)
         && has_expected_bits(explicit_moved) && has_expected_bits(contextual_lvalue)

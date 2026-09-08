@@ -79,11 +79,11 @@ inline constexpr bool is_coconext_unsigned_v = false;
 template <typename T>
 inline constexpr bool is_coconext_signed_v = false;
 
-// Niebloid that reads a bit-backed type's packed storage. Implementers declare
-// `friend struct detail::bits_fn;` and keep `value_` private; ADL cannot find
-// this call because `bits` is an object, so users can only reach it via the
-// qualified `detail::bits(x)`.
-struct bits_fn {
+// Niebloid that reads a type's packed storage. Implementers declare
+// `friend struct detail::storage_fn;` and keep `value_` private; ADL cannot find
+// this call because `storage` is an object, so users can only reach it via the
+// qualified `detail::storage(x)`.
+struct storage_fn {
     template <typename T>
     constexpr auto operator()(T const& t) const noexcept -> decltype((t.value_)) {
         return t.value_;
@@ -97,11 +97,11 @@ struct bits_fn {
     }
 };
 
-inline constexpr bits_fn bits{};
+inline constexpr storage_fn storage{};
 
 template <typename T>
-concept HasBits = requires(T const& t) {
-    { detail::bits(t) };
+concept HasStorage = requires(T const& t) {
+    { detail::storage(t) };
 };
 
 template <typename T>

@@ -38,7 +38,7 @@ auto python_div = [](DynSigned const& a, DynSigned const& b) {
 
 auto python_imod = [](DynSigned& lhs, DynSigned const& rhs) -> DynSigned& {
     auto result = mod(lhs, rhs);
-    lhs = DynSigned(DynSInt(lhs.width(), bits(result)));
+    lhs = DynSigned(DynSInt(lhs.width(), storage(result)));
     return lhs;
 };
 
@@ -87,7 +87,7 @@ void register_unsigned(nb::module_& m) {
         .def(
             "__format__",
             [](DynUnsigned const& self, std::string spec) {
-                auto const& val = bits(self);
+                auto const& val = storage(self);
                 std::string str_r;
 
                 if (spec.empty() || spec.back() == 'd') {
@@ -218,7 +218,7 @@ void register_unsigned(nb::module_& m) {
         .def(
             "__int__",
             [](DynUnsigned const& self) {
-                std::string dec_str = bits(self).to_hexadecimal_string();
+                std::string dec_str = storage(self).to_hexadecimal_string();
                 PyObject* py_long = PyLong_FromString(  // NOLINT(misc-include-cleaner)
                     dec_str.c_str(), nullptr, 16
                 );
@@ -347,7 +347,7 @@ void register_signed(nb::module_& m) {
 
                 if (width > 0) {
                     bool str_is_negative = (!dec_str.empty() && dec_str[0] == '-');
-                    bool val_is_negative = bits(temp).get_bit(width - 1);
+                    bool val_is_negative = storage(temp).get_bit(width - 1);
                     if (str_is_negative != val_is_negative) {
                         throw std::invalid_argument(
                             "Signed value does not fit in provided width"
@@ -384,7 +384,7 @@ void register_signed(nb::module_& m) {
         .def(
             "__format__",
             [](DynSigned const& self, std::string spec) {
-                auto const& val = bits(self);
+                auto const& val = storage(self);
                 std::string str_r;
 
                 if (spec.empty() || spec.back() == 'd') {
@@ -511,7 +511,7 @@ void register_signed(nb::module_& m) {
         .def(
             "__int__",
             [](DynSigned const& self) {
-                std::string dec_str = bits(self).to_decimal_string(true);
+                std::string dec_str = storage(self).to_decimal_string(true);
                 PyObject* py_long = PyLong_FromString(dec_str.c_str(), nullptr, 10);
 
                 if (!py_long) {

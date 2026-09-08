@@ -91,7 +91,7 @@ class Unsigned {
     // or is negative.
     template <Range R2>
     explicit constexpr Unsigned(Signed<R2> const& other) {
-        auto const& src_bits = bits(other);
+        auto const& src_bits = storage(other);
         if constexpr (R2.length() > 0) {
             if (src_bits.get_bit(R2.length() - 1)) {
                 throw std::out_of_range(
@@ -496,19 +496,19 @@ class Unsigned {
     friend struct std::hash;
 
   private:
-    friend struct bits_fn;
+    friend struct storage_fn;
 
     UInt<R.length()> value_{};
 };
 
 template <Range R>
 constexpr bool operator==(Unsigned<R> const& lhs, Unsigned<R> const& rhs) noexcept {
-    return bits(lhs) == bits(rhs);
+    return storage(lhs) == storage(rhs);
 }
 
 template <Range R>
 constexpr auto operator<=>(Unsigned<R> const& lhs, Unsigned<R> const& rhs) noexcept {
-    return bits(lhs) <=> bits(rhs);
+    return storage(lhs) <=> storage(rhs);
 }
 
 template <Range R>

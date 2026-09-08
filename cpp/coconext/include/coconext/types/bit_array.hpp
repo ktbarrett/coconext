@@ -18,17 +18,17 @@ class Array;
 // All bits set iff every one of the R.length() bits is counted.
 template <Range R>
 Bit and_reduce(detail::Array<Bit, R> const& s) {
-    return (detail::bits(s).popcount() == R.length()) ? Bit::_1 : Bit::_0;
+    return (detail::storage(s).popcount() == R.length()) ? Bit::_1 : Bit::_0;
 }
 
 template <Range R>
 auto or_reduce(detail::Array<Bit, R> const& s) {
-    return (detail::bits(s) != detail::UInt<R.length()>{}) ? Bit::_1 : Bit::_0;
+    return (detail::storage(s) != detail::UInt<R.length()>{}) ? Bit::_1 : Bit::_0;
 }
 
 template <Range R>
 Bit xor_reduce(detail::Array<Bit, R> const& s) {
-    return (detail::bits(s).popcount() % 2 == 1) ? Bit::_1 : Bit::_0;
+    return (detail::storage(s).popcount() % 2 == 1) ? Bit::_1 : Bit::_0;
 }
 
 namespace detail {
@@ -123,7 +123,7 @@ class Array<Bit, R> {
     constexpr Array(T packed_val) : value_(packed_val) {}
 
   private:
-    friend struct bits_fn;
+    friend struct storage_fn;
 
     UInt<R.length()> value_;
 };
@@ -143,7 +143,7 @@ template <Range R>
 constexpr std::optional<Range::value_type> index_of(
     detail::Array<Bit, R> const& s, Bit const& v
 ) {
-    auto packed = detail::bits(s);
+    auto packed = detail::storage(s);
     if (!static_cast<bool>(v)) {
         packed = ~packed;
     }
@@ -160,7 +160,7 @@ template <Range R>
 constexpr std::optional<Range::value_type> rindex_of(
     detail::Array<Bit, R> const& s, Bit const& v
 ) {
-    auto packed = detail::bits(s);
+    auto packed = detail::storage(s);
     if (!static_cast<bool>(v)) {
         packed = ~packed;
     }

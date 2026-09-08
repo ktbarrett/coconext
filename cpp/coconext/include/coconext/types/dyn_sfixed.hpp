@@ -119,10 +119,10 @@ class DynSfixed {
 
   private:
     explicit DynSfixed(BitVector const& source)
-        : DynSfixed(source.range(), DynSInt(source.size(), bits(source))) {}
+        : DynSfixed(source.range(), DynSInt(source.size(), storage(source))) {}
 
     explicit DynSfixed(BitVector&& source)
-        : DynSfixed(source.range(), DynSInt(bits(std::move(source)))) {}
+        : DynSfixed(source.range(), DynSInt(storage(std::move(source)))) {}
 
   public:
     template <NativeInteger T>
@@ -180,7 +180,7 @@ class DynSfixed {
     DynSfixed(Range range, DynSigned const& source)
         : range_(range), value_(range.length()) {
         dyn_fixed_detail::require_downto(range_);
-        auto const& raw = bits(source);
+        auto const& raw = storage(source);
         bool const negative = raw.width() != 0 && raw.is_negative();
         value_ = dyn_fixed_detail::convert_signed_magnitude(
             dyn_fixed_detail::unsigned_magnitude(raw), negative, 0, range_
@@ -190,7 +190,7 @@ class DynSfixed {
     DynSfixed(Range range, DynUnsigned const& source)
         : DynSfixed(
               range,
-              dyn_fixed_detail::convert_signed_magnitude(bits(source), false, 0, range)
+              dyn_fixed_detail::convert_signed_magnitude(storage(source), false, 0, range)
           ) {}
 
     template <Range R>
@@ -198,7 +198,7 @@ class DynSfixed {
         : DynSfixed(
               range,
               dyn_fixed_detail::convert_signed_magnitude(
-                  DynUInt(bits(source)), false, 0, range
+                  DynUInt(storage(source)), false, 0, range
               )
           ) {
         dyn_fixed_detail::require_downto(R);
@@ -208,7 +208,7 @@ class DynSfixed {
     DynSfixed(Range range, Signed<R> const& source)
         : range_(range), value_(range.length()) {
         dyn_fixed_detail::require_downto(R);
-        auto raw = DynSInt(bits(source));
+        auto raw = DynSInt(storage(source));
         bool const negative = raw.width() != 0 && raw.is_negative();
         value_ = dyn_fixed_detail::convert_signed_magnitude(
             dyn_fixed_detail::unsigned_magnitude(raw), negative, 0, range_
@@ -231,7 +231,7 @@ class DynSfixed {
         : DynSfixed(
               range,
               dyn_fixed_detail::convert_signed_magnitude(
-                  bits(source), false, source.range().right, range
+                  storage(source), false, source.range().right, range
               )
           ) {
         dyn_fixed_detail::require_downto(source.range());
@@ -241,7 +241,7 @@ class DynSfixed {
     DynSfixed(Range range, Sfixed<R> const& source)
         : range_(range), value_(range.length()) {
         dyn_fixed_detail::require_downto(R);
-        auto raw = DynSInt(bits(source));
+        auto raw = DynSInt(storage(source));
         bool const negative = raw.width() != 0 && raw.is_negative();
         value_ = dyn_fixed_detail::convert_signed_magnitude(
             dyn_fixed_detail::unsigned_magnitude(raw), negative, R.right, range_
@@ -253,7 +253,7 @@ class DynSfixed {
         : DynSfixed(
               range,
               dyn_fixed_detail::convert_signed_magnitude(
-                  DynUInt(bits(source)), false, R.right, range
+                  DynUInt(storage(source)), false, R.right, range
               )
           ) {
         dyn_fixed_detail::require_downto(R);
@@ -586,7 +586,7 @@ class DynSfixed {
     }
 
     friend class DynUfixed;
-    friend struct bits_fn;
+    friend struct storage_fn;
     template <typename>
     friend class auto_reinterpreted;
 
@@ -601,8 +601,9 @@ Ufixed<R>::Ufixed(DynUfixed const& other) {
         "Ufixed construction from DynUfixed requires DOWNTO direction"
     );
     dyn_fixed_detail::require_downto(other.range());
-    auto converted =
-        dyn_fixed_detail::convert_unsigned_magnitude(bits(other), other.range().right, R);
+    auto converted = dyn_fixed_detail::convert_unsigned_magnitude(
+        storage(other), other.range().right, R
+    );
     value_ = dyn_fixed_detail::copy_to_static_int<R.length(), false>(converted);
 }
 
@@ -613,7 +614,7 @@ Ufixed<R>::Ufixed(DynSfixed const& other) {
         "Ufixed construction from DynSfixed requires DOWNTO direction"
     );
     dyn_fixed_detail::require_downto(other.range());
-    auto const& raw = bits(other);
+    auto const& raw = storage(other);
     if (raw.width() != 0 && raw.is_negative()) {
         throw std::out_of_range("negative value in Ufixed construction");
     }
@@ -631,7 +632,7 @@ Sfixed<R>::Sfixed(DynUfixed const& other) {
     );
     dyn_fixed_detail::require_downto(other.range());
     auto converted = dyn_fixed_detail::convert_signed_magnitude(
-        bits(other), false, other.range().right, R
+        storage(other), false, other.range().right, R
     );
     value_ =
         dyn_fixed_detail::copy_to_static_int<R.length(), true>(converted.logical_bits());
@@ -644,7 +645,7 @@ Sfixed<R>::Sfixed(DynSfixed const& other) {
         "Sfixed construction from DynSfixed requires DOWNTO direction"
     );
     dyn_fixed_detail::require_downto(other.range());
-    auto const& raw = bits(other);
+    auto const& raw = storage(other);
     bool const negative = raw.width() != 0 && raw.is_negative();
     auto converted = dyn_fixed_detail::convert_signed_magnitude(
         dyn_fixed_detail::unsigned_magnitude(raw), negative, other.range().right, R
@@ -656,7 +657,7 @@ Sfixed<R>::Sfixed(DynSfixed const& other) {
 inline DynUfixed::DynUfixed(Range range, DynSigned const& source)
     : range_(range), value_(range.length()) {
     dyn_fixed_detail::require_downto(range_);
-    auto const& raw = bits(source);
+    auto const& raw = storage(source);
     if (raw.width() != 0 && raw.is_negative()) {
         throw std::out_of_range("Cannot construct DynUfixed from a negative DynSigned");
     }
@@ -667,7 +668,7 @@ template <Range R>
 DynUfixed::DynUfixed(Range range, Sfixed<R> const& source)
     : range_(range), value_(range.length()) {
     dyn_fixed_detail::require_downto(R);
-    auto raw = DynSInt(bits(source));
+    auto raw = DynSInt(storage(source));
     if (raw.width() != 0 && raw.is_negative()) {
         throw std::out_of_range("Cannot construct DynUfixed from a negative Sfixed");
     }
@@ -723,13 +724,13 @@ inline DynUfixed& DynUfixed::operator-=(DynUfixed const& rhs) {
         return *this;
     }
     auto difference = *this - rhs;
-    if (bits(difference).is_negative()) {
+    if (storage(difference).is_negative()) {
         throw std::out_of_range(
             "Compound subtraction does not allow a negative DynUfixed result"
         );
     }
     value_ = dyn_fixed_detail::resize_unsigned_magnitude(
-        bits(difference).logical_bits(),
+        storage(difference).logical_bits(),
         difference.range().right,
         range_,
         overflow_mode::wrap,
@@ -776,7 +777,7 @@ inline DynUfixed& operator+=(DynUfixed& lhs, DynSfixed const& rhs) {
         return lhs;
     }
     auto result = +lhs + rhs;
-    if (bits(result).is_negative()) {
+    if (storage(result).is_negative()) {
         throw std::out_of_range(
             "Compound arithmetic does not allow a negative DynUfixed result"
         );
@@ -804,7 +805,7 @@ inline DynUfixed& operator*=(DynUfixed& lhs, DynSfixed const& rhs) {
         return lhs;
     }
     auto result = +lhs * rhs;
-    if (bits(result).is_negative()) {
+    if (storage(result).is_negative()) {
         throw std::out_of_range(
             "Compound arithmetic does not allow a negative DynUfixed result"
         );
@@ -827,7 +828,7 @@ inline DynUfixed& operator/=(DynUfixed& lhs, DynSfixed const& rhs) {
         return lhs;
     }
     auto result = +lhs / rhs;
-    if (bits(result).is_negative()) {
+    if (storage(result).is_negative()) {
         throw std::out_of_range(
             "Compound arithmetic does not allow a negative DynUfixed result"
         );
@@ -850,7 +851,7 @@ inline DynUfixed& operator%=(DynUfixed& lhs, DynSfixed const& rhs) {
         return lhs;
     }
     auto result = +lhs % rhs;
-    if (bits(result).is_negative()) {
+    if (storage(result).is_negative()) {
         throw std::out_of_range(
             "Compound arithmetic does not allow a negative DynUfixed result"
         );
@@ -909,21 +910,25 @@ concept DynIntegerOperand = std::same_as<std::remove_cvref_t<T>, DynUnsigned>
                          || is_coconext_signed_v<std::remove_cvref_t<T>>;
 
 inline DynUfixed integer_as_fixed(DynUnsigned const& value) {
-    return DynUfixed(int_downto_range(value.width()), DynUInt(value.width(), bits(value)));
+    return DynUfixed(
+        int_downto_range(value.width()), DynUInt(value.width(), storage(value))
+    );
 }
 
 inline DynSfixed integer_as_fixed(DynSigned const& value) {
-    return DynSfixed(int_downto_range(value.width()), DynSInt(value.width(), bits(value)));
+    return DynSfixed(
+        int_downto_range(value.width()), DynSInt(value.width(), storage(value))
+    );
 }
 
 template <Range R>
 DynUfixed integer_as_fixed(Unsigned<R> const& value) {
-    return DynUfixed(int_downto_range(R.length()), DynUInt(bits(value)));
+    return DynUfixed(int_downto_range(R.length()), DynUInt(storage(value)));
 }
 
 template <Range R>
 DynSfixed integer_as_fixed(Signed<R> const& value) {
-    return DynSfixed(int_downto_range(R.length()), DynSInt(bits(value)));
+    return DynSfixed(int_downto_range(R.length()), DynSInt(storage(value)));
 }
 
 inline DynUfixed const& as_dynamic_fixed(DynUfixed const& value) { return value; }
@@ -932,12 +937,12 @@ inline DynSfixed const& as_dynamic_fixed(DynSfixed const& value) { return value;
 
 template <Range R>
 DynUfixed as_dynamic_fixed(Ufixed<R> const& value) {
-    return DynUfixed(R, DynUInt(bits(value)));
+    return DynUfixed(R, DynUInt(storage(value)));
 }
 
 template <Range R>
 DynSfixed as_dynamic_fixed(Sfixed<R> const& value) {
-    return DynSfixed(R, DynSInt(bits(value)));
+    return DynSfixed(R, DynSInt(storage(value)));
 }
 
 template <typename LHS, typename RHS>
@@ -976,7 +981,7 @@ LHS& assign_dynamic_fixed_result(LHS& lhs, Result const& result) {
     using ResultType = std::remove_cvref_t<Result>;
 
     if constexpr (is_coconext_ufixed_v<LhsType> && std::same_as<ResultType, DynSfixed>) {
-        if (result.size() != 0 && bits(result).is_negative()) {
+        if (result.size() != 0 && storage(result).is_negative()) {
             throw std::out_of_range(
                 "compound arithmetic does not allow a negative Ufixed result"
             );
@@ -1251,7 +1256,7 @@ Target as(Source&& source) {
     if (source.size() != Target::size()) {
         throw std::invalid_argument("as() requires equal widths.");
     }
-    auto raw = detail::bits(source).logical_bits();
+    auto raw = detail::storage(source).logical_bits();
     return Target(detail::dyn_fixed_detail::copy_to_static_int<Target::size(), false>(raw));
 }
 
@@ -1341,7 +1346,7 @@ inline detail::DynSfixed reciprocal(
 inline detail::DynSfixed abs(detail::DynSfixed const& value) { return value.abs(); }
 
 inline detail::DynSfixed reverse(detail::DynSfixed const& value) {
-    auto logical = detail::bits(value).logical_bits();
+    auto logical = detail::storage(value).logical_bits();
     auto raw = value.range().direction == Direction::TO
                  ? detail::dyn_fixed_detail::reverse_bits(logical)
                  : std::move(logical);
@@ -1375,11 +1380,12 @@ struct std::formatter<coconext::types::detail::DynSfixed> {
         if (presentation == 'd' && value.range().direction != Direction::DOWNTO) {
             throw std::format_error("Decimal format requires DOWNTO direction");
         }
-        bool const negative = value.size() != 0 && detail::bits(value).is_negative();
-        auto magnitude = detail::dyn_fixed_detail::unsigned_magnitude(detail::bits(value));
+        bool const negative = value.size() != 0 && detail::storage(value).is_negative();
+        auto magnitude =
+            detail::dyn_fixed_detail::unsigned_magnitude(detail::storage(value));
         std::string body = presentation == 'b'
                              ? detail::dyn_fixed_detail::fixed_binary_string(
-                                   detail::bits(value).logical_bits(), value.range()
+                                   detail::storage(value).logical_bits(), value.range()
                                )
                              : detail::dyn_fixed_detail::fixed_decimal_string(
                                    std::move(magnitude), negative, value.range().right
@@ -1395,7 +1401,7 @@ struct std::hash<coconext::types::detail::DynSfixed> {
         return detail::hash_combine(
             std::string_view(typeid(value).name()),
             value.range(),
-            detail::bits(value).to_binary_string()
+            detail::storage(value).to_binary_string()
         );
     }
 };
