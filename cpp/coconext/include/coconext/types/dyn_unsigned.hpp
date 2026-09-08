@@ -49,6 +49,10 @@ class DynUnsigned {
         return adopt_storage<Target>(range, std::move(value_));
     }
 
+    [[nodiscard]] auto as() && noexcept {
+        return reinterpreted<DynUnsigned>(std::move(*this));
+    }
+
     bool operator==(DynUnsigned const& rhs) const noexcept { return value_ == rhs.value_; }
 
     bool operator<(DynUnsigned const& rhs) const { return compare_value(rhs) < 0; }

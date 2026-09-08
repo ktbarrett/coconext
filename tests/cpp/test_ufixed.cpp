@@ -32,9 +32,13 @@ constexpr bool check_as_pair() {
         std::move(source).template as<Target>();
     });
 
+    static_assert(!requires(Source& source) { source.as(); });
+
     AsBitArray const expected("10100101");
     Target value = AsBitArray("10100101").as<Source>().template as<Target>();
-    return detail::storage(value) == detail::storage(expected);
+    Target deferred = AsBitArray("10100101").as<Source>().as();
+    return detail::storage(value) == detail::storage(expected)
+        && detail::storage(deferred) == detail::storage(expected);
 }
 
 template <typename Target, typename... Sources>

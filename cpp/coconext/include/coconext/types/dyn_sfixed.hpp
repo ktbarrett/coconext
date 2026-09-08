@@ -256,6 +256,10 @@ class DynSfixed {
         return adopt_storage<Target>(range_, std::move(value_));
     }
 
+    [[nodiscard]] auto as() && noexcept {
+        return reinterpreted<DynSfixed>(std::move(*this));
+    }
+
     static DynSfixed resized(
         Range target,
         DynSfixed const& source,

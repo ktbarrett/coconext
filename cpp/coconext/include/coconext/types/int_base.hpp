@@ -1664,6 +1664,29 @@ constexpr Range make_fixed_range() {
     }
 }
 
+// Deferred form of as(): `Target t = std::move(x).as();` converts on use.
+template <typename Source>
+class [[nodiscard]] reinterpreted {
+    Source source_;
+
+  public:
+    constexpr explicit reinterpreted(Source&& source) noexcept
+        : source_(std::move(source)) {}
+
+    reinterpreted(reinterpreted const&) = delete;
+    reinterpreted& operator=(reinterpreted const&) = delete;
+    constexpr reinterpreted(reinterpreted&&) noexcept = default;
+    reinterpreted& operator=(reinterpreted&&) = delete;
+
+    template <typename Target>
+        requires requires(Source&& source) { std::move(source).template as<Target>(); }
+    constexpr operator Target() && noexcept(
+        noexcept(std::declval<Source>().template as<Target>())
+    ) {
+        return std::move(source_).template as<Target>();
+    }
+};
+
 template <typename T>
 class [[nodiscard]] auto_resized {
     T value_;

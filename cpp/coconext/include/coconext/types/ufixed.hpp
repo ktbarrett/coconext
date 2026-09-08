@@ -738,6 +738,10 @@ class Ufixed {
         return Target(value_);
     }
 
+    [[nodiscard]] constexpr auto as() && noexcept {
+        return reinterpreted<Ufixed>(std::move(*this));
+    }
+
     explicit constexpr operator bool() const noexcept
         requires(R.direction == Direction::DOWNTO)
     {

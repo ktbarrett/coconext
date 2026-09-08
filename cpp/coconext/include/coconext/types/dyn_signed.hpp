@@ -41,6 +41,10 @@ class DynSigned {
         return adopt_storage<Target>(range, std::move(value_));
     }
 
+    [[nodiscard]] auto as() && noexcept {
+        return reinterpreted<DynSigned>(std::move(*this));
+    }
+
     bool operator==(DynSigned const& rhs) const noexcept {
         return value_ == rhs.value_ && width() == rhs.width();
     }

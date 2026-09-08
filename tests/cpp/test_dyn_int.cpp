@@ -25,11 +25,19 @@ concept CanReinterpret =
 template <typename Target, typename Source>
 concept CanReinterpretLvalue = requires(Source& source) { source.template as<Target>(); };
 
+template <typename Source>
+concept CanDeferLvalue = requires(Source& source) { source.as(); };
+
 static_assert(CanReinterpret<DynUnsigned, BitVector>);
 static_assert(CanReinterpret<BitVector, DynSigned>);
 static_assert(!CanReinterpret<BitArray<65>, BitVector>);
 static_assert(!CanReinterpret<BitVector, BitArray<65>>);
 static_assert(!CanReinterpretLvalue<DynUnsigned, BitVector>);
+static_assert(!CanDeferLvalue<BitVector>);
+static_assert(std::is_convertible_v<decltype(std::declval<BitVector>().as()), DynUnsigned>);
+static_assert(
+    !std::is_convertible_v<decltype(std::declval<BitVector>().as()), BitArray<65>>
+);
 static_assert(!std::is_constructible_v<DynUnsigned, BitVector>);
 static_assert(!detail::HasStorage<int>);
 static_assert(detail::HasStaticStorage<BitArray<65>>);
@@ -493,7 +501,7 @@ TEST(DynSigned, remainder_and_modulo_are_distinct) {
 TEST(DynInt, bit_vector_reinterpretation) {
     BitVector bits("10000000000000000000000000000000000000000000000000000000000000001");
 
-    DynSigned signed_value = std::move(bits).as<DynSigned>();
+    DynSigned signed_value = std::move(bits).as();
     EXPECT_EQ(signed_value.width(), 65U);
     EXPECT_EQ(detail::storage(signed_value).popcount(), 2U);
     EXPECT_EQ(static_cast<long long>(signed_value >> 64), -1);
@@ -502,7 +510,7 @@ TEST(DynInt, bit_vector_reinterpretation) {
     EXPECT_EQ(unsigned_value.width(), 65U);
     EXPECT_EQ(detail::storage(unsigned_value).popcount(), 2U);
 
-    BitVector restored = std::move(unsigned_value).as<BitVector>();
+    BitVector restored = std::move(unsigned_value).as();
     EXPECT_EQ(
         restored,
         BitVector("10000000000000000000000000000000000000000000000000000000000000001")
