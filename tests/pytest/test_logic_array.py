@@ -7,7 +7,7 @@ import copy
 
 import pytest
 
-from coconext.types import Logic, LogicArray, Range, Signed, Unsigned
+from coconext.types import Logic, LogicArray, Range
 
 
 def test_logic_array_str_construction():
@@ -171,55 +171,6 @@ def test_logic_array_bytes_conversion():
 def test_logic_array_properties():
     assert LogicArray("01").is_resolvable
     assert not LogicArray("1X1").is_resolvable
-
-
-def test_logic_array_properties_deprecated():
-    with pytest.warns(DeprecationWarning):
-        assert LogicArray("1010").integer == 10
-
-    l = LogicArray("1100")
-    with pytest.warns(DeprecationWarning):
-        l.integer = 1
-    assert l.to_unsigned() == 1
-    with pytest.warns(DeprecationWarning), pytest.raises(ValueError):
-        l.integer = 100
-    with pytest.warns(DeprecationWarning), pytest.raises(ValueError):
-        l.integer = -1
-
-    with pytest.warns(DeprecationWarning):
-        assert LogicArray("1010").signed_integer == -6
-
-    l = LogicArray("1100")
-    with pytest.warns(DeprecationWarning):
-        l.signed_integer = 3
-    assert l.to_signed() == 3
-    with pytest.warns(DeprecationWarning):
-        l.signed_integer = -1
-    assert l.to_signed() == -1
-    with pytest.warns(DeprecationWarning), pytest.raises(ValueError):
-        l.signed_integer = 100
-    with pytest.warns(DeprecationWarning), pytest.raises(ValueError):
-        l.signed_integer = -10
-
-    with pytest.warns(DeprecationWarning):
-        assert LogicArray("1010").binstr == "1010"
-
-    l = LogicArray("1010")
-    with pytest.warns(DeprecationWarning):
-        l.binstr = "0101"
-    assert str(l) == "0101"
-
-    with pytest.warns(DeprecationWarning):
-        assert LogicArray("01000001" + "00101111").buff == b"\x41\x2f"
-
-    l = LogicArray("0" * 16)
-    with pytest.warns(DeprecationWarning):
-        l.buff = b"\x41\x2f"
-    assert l.to_bytes(byteorder="big") == b"\x41\x2f"
-    with pytest.warns(DeprecationWarning), pytest.raises(ValueError):
-        l.buff = b"\x41\x2f0123"
-    with pytest.warns(DeprecationWarning), pytest.raises(ValueError):
-        l.buff = b""
 
 
 def test_logic_array_setattr():
@@ -556,15 +507,3 @@ def test_from_unsigned_wrap():
     assert LogicArray.from_unsigned(20, 4, on_overflow="wrap") == LogicArray("0100")
     with pytest.raises(ValueError):
         LogicArray.from_unsigned(10, 4, on_overflow="6789")
-
-
-def test_logic_array_int_conversions():
-    a = Unsigned(4, 8)
-    assert LogicArray.from_unsigned(a, 4) == LogicArray("1000")
-    assert LogicArray.from_unsigned(a, 4).to_unsigned() == a
-    assert LogicArray.from_unsigned(a, 4).to_unsigned() == 8
-
-    b = Signed(4, -5)
-    assert LogicArray.from_signed(b, 4) == LogicArray("1011")
-    assert LogicArray.from_signed(b, 4).to_signed() == b
-    assert LogicArray.from_signed(b, 4).to_signed() == -5

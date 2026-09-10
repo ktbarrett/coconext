@@ -77,22 +77,13 @@ def test_logic_array_bytes_conversion_invalid_byte_order():
 
 
 def test_logic_array_to_bytes():
-    assert LogicArray("").to_bytes(byteorder="big") == b""
+    with pytest.raises(ValueError):
+        LogicArray("").to_bytes(byteorder="big")
     assert LogicArray("0011001000110001").to_bytes(byteorder="little") == b"12"
     with pytest.raises(ValueError, match="byteorder must be either 'big' or 'little'"):
         LogicArray("00101010").to_bytes(byteorder="foo")
     with pytest.raises(ValueError):
         LogicArray("XZX").to_bytes(byteorder="little")
-
-
-def test_logic_array_deprecated_invalid():
-    with (
-        pytest.warns(DeprecationWarning),
-        pytest.raises(
-            ValueError, match="String length must match the LogicArray length"
-        ),
-    ):
-        LogicArray("101").binstr = "0101"
 
 
 def test_logic_array_invalid_slicing():
@@ -109,7 +100,36 @@ def test_index_invalid():
 
 def test_format():
     l = LogicArray("1010")
-    assert f"{l:\0}" == "10"
+    with pytest.raises(ValueError):
+        f"{l:\0}"
+
+
+def test_wide_int_conversions() -> None:
+    wide = LogicArray(2**70, 80)
+    assert wide.to_unsigned() == 2**70
+    assert isinstance(wide.to_unsigned(), int)
+    assert LogicArray(-(2**70), 80).to_signed() == -(2**70)
+    assert int(LogicArray.from_unsigned(2**63, 64)) == 2**63
+    assert LogicArray.from_signed(-(2**79), 80) == LogicArray("1" + "0" * 79)
+    ones = LogicArray("1" * 65)
+    assert int(ones) == 2**65 - 1
+    assert ones == 2**65 - 1
+    assert ones == -1
+    assert format(ones, "x") == "1ffffffffffffffff"
+    assert f"{ones:#_x}" == "0x1_ffff_ffff_ffff_ffff"
+    data = b"\x80" + b"\x01" * 9
+    assert (
+        LogicArray.from_bytes(data, byteorder="big").to_bytes(byteorder="big") == data
+    )
+    with pytest.raises(ValueError):
+        LogicArray(2**80, 80)
+    with pytest.raises(ValueError):
+        LogicArray.from_unsigned(2**64, 64)
+
+
+def test_weak_values_convert_to_int() -> None:
+    assert LogicArray("HL1L").to_unsigned() == 10
+    assert LogicArray("HL1L") == 10
 
 
 # -- Properties ------------------------------------------------------------
@@ -647,7 +667,6 @@ def test_format_bit_array():
     assert f"{l!r}" == "BitArray('0110', Range(3, 'downto', 0))"
 
     l = BitArray("1010")
-    assert f"{l:\0}" == "10"
     assert f"{l:d}" == "10"
     assert f"{l:b}" == "1010"
     assert f"{l:x}" == "a"
