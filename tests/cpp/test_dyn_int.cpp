@@ -1,8 +1,10 @@
 // LCOV_EXCL_BR_START
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <coconext/types/dyn_signed.hpp>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -10,6 +12,7 @@
 #include <unordered_set>
 #include <utility>
 
+using coconext::types::Bit;
 using coconext::types::BitArray;
 using coconext::types::BitVector;
 using coconext::types::detail::DynSigned;
@@ -518,6 +521,203 @@ TEST(DynInt, bit_vector_reinterpretation) {
 
     auto direct_unsigned = BitVector("10100101").as<DynUnsigned>();
     EXPECT_EQ(detail::storage(direct_unsigned).to_binary_string(), "10100101");
+}
+
+// Exercise each operation with native, aligned heap, and partial-word heap
+// operands on both sides. DynInt is not constexpr, so these already run at runtime.
+template <typename T>
+class DynIntStorage : public ::testing::Test {};
+
+using DynIntStorageTypes = ::testing::Types<DynUInt, DynSInt>;
+TYPED_TEST_SUITE(DynIntStorage, DynIntStorageTypes);
+
+TYPED_TEST(DynIntStorage, arithmetic_across_storage_tiers) {
+    for (size_t lhs_width : {9u, 64u, 65u, 128u, 129u}) {
+        for (size_t rhs_width : {9u, 64u, 65u, 128u, 129u}) {
+            SCOPED_TRACE(::testing::Message() << lhs_width << ", " << rhs_width);
+            TypeParam a(lhs_width, TypeParam::is_signed ? -201 : 201);
+            TypeParam b(rhs_width, 7);
+            auto sum = a + b;
+            auto difference = a - b;
+            auto product = a * b;
+            auto [quotient, remainder] = detail::divrem(a, b);
+            EXPECT_EQ(sum.width(), std::max(lhs_width, rhs_width) + 1);
+            EXPECT_EQ(difference.width(), sum.width());
+            EXPECT_EQ(product.width(), lhs_width + rhs_width);
+            EXPECT_EQ(quotient.width(), lhs_width + 1);
+            EXPECT_EQ(remainder.width(), rhs_width);
+            EXPECT_EQ(sum.to_decimal_string(), TypeParam::is_signed ? "-194" : "208");
+            EXPECT_EQ(
+                difference.to_decimal_string(), TypeParam::is_signed ? "-208" : "194"
+            );
+            EXPECT_EQ(product.to_decimal_string(), TypeParam::is_signed ? "-1407" : "1407");
+            EXPECT_EQ(quotient.to_decimal_string(), TypeParam::is_signed ? "-28" : "28");
+            EXPECT_EQ(remainder.to_decimal_string(), TypeParam::is_signed ? "-5" : "5");
+            EXPECT_EQ((-a).width(), lhs_width + 1);
+            EXPECT_EQ((-a).to_decimal_string(), TypeParam::is_signed ? "201" : "-201");
+        }
+    }
+}
+
+TYPED_TEST(DynIntStorage, bitwise_shifts_and_formatting_across_storage_tiers) {
+    for (size_t width : {8u, 64u, 65u, 128u, 129u}) {
+        SCOPED_TRACE(width);
+        TypeParam a(width, 0x55);
+        TypeParam b(width, 0x33);
+        EXPECT_EQ((a & b).template to_native_integer<int>(), 0x11);
+        EXPECT_EQ((a | b).template to_native_integer<int>(), 0x77);
+        EXPECT_EQ((a ^ b).template to_native_integer<int>(), 0x66);
+        EXPECT_EQ((a << 1).logical_bits().template to_native_integer<unsigned>(), 0xAAu);
+        EXPECT_EQ((a >> 1).template to_native_integer<int>(), 0x2A);
+        EXPECT_EQ(a.to_binary_string(), std::string(width - 8, '0') + "01010101");
+        EXPECT_EQ(a.to_octal_string(), std::string((width + 2) / 3 - 3, '0') + "125");
+
+        TypeParam sign_bit(width);
+        sign_bit.set_bit(width - 1, true);
+        EXPECT_EQ(sign_bit.popcount(), 1u);
+        EXPECT_EQ(sign_bit.count_leading_zeros(), 0u);
+        EXPECT_EQ(sign_bit.count_trailing_zeros(), width - 1);
+        EXPECT_EQ((sign_bit << 1).popcount(), 0u);
+        EXPECT_EQ((sign_bit >> width).popcount(), TypeParam::is_signed ? width : 0u);
+        EXPECT_EQ(
+            (sign_bit >> (width - 1)).to_decimal_string(), TypeParam::is_signed ? "-1" : "1"
+        );
+        EXPECT_EQ(TypeParam(width).count_leading_zeros(), width);
+        EXPECT_EQ(TypeParam(width).count_trailing_zeros(), width);
+        EXPECT_EQ((~TypeParam(width)).popcount(), width);
+
+        TypeParam wrong_width(width + 1);
+        EXPECT_THROW(a & wrong_width, std::invalid_argument);
+        EXPECT_THROW(a | wrong_width, std::invalid_argument);
+        EXPECT_THROW(a ^ wrong_width, std::invalid_argument);
+    }
+}
+
+TYPED_TEST(DynIntStorage, bit_proxies_and_random_access_iterators) {
+    for (size_t width : {8u, 65u, 129u}) {
+        SCOPED_TRACE(width);
+        TypeParam value(width, 0);
+        value[0] = Bit::_1;
+        value[width - 1] = value[0];
+        EXPECT_TRUE(static_cast<bool>(value[width - 1]));
+        EXPECT_EQ(static_cast<char>(value[0]), '1');
+        EXPECT_EQ(static_cast<char>(value[1]), '0');
+        EXPECT_EQ(std::as_const(value)[0], Bit::_1);
+        EXPECT_THROW(static_cast<void>(value[width]), std::out_of_range);
+        EXPECT_THROW(static_cast<void>(std::as_const(value)[width]), std::out_of_range);
+
+        auto it = value.begin();
+        EXPECT_EQ(static_cast<Bit>(*it++), Bit::_1);
+        EXPECT_EQ(static_cast<Bit>(*it), Bit::_0);
+        EXPECT_EQ(static_cast<Bit>(*--it), Bit::_1);
+        it += width - 1;
+        EXPECT_EQ(static_cast<Bit>(*it--), Bit::_1);
+        EXPECT_EQ(static_cast<Bit>(*it), Bit::_0);
+        it -= width - 2;
+        EXPECT_EQ(it, value.begin());
+        EXPECT_EQ(value.end() - it, static_cast<std::ptrdiff_t>(width));
+        EXPECT_EQ(1 + it, it + 1);
+        EXPECT_EQ(value.end() - 1, it + (width - 1));
+        EXPECT_LT(it, value.end());
+        EXPECT_EQ(static_cast<Bit>(it[width - 1]), Bit::_1);
+        *it = Bit::_0;
+        EXPECT_FALSE(value.get_bit(width - 1));
+
+        std::string forward;
+        for (auto bit : std::as_const(value)) {
+            forward += static_cast<char>(bit);
+        }
+        EXPECT_EQ(forward, std::string(width - 1, '0') + '1');
+        std::string reverse;
+        for (auto rit = std::as_const(value).rbegin(); rit != std::as_const(value).rend();
+             ++rit)
+        {
+            reverse += static_cast<char>(*rit);
+        }
+        EXPECT_EQ(reverse, '1' + std::string(width - 1, '0'));
+        *value.rbegin() = Bit::_0;
+        EXPECT_EQ(
+            std::distance(value.rbegin(), value.rend()), static_cast<std::ptrdiff_t>(width)
+        );
+        EXPECT_EQ(value.popcount(), 0u);
+    }
+}
+
+TYPED_TEST(DynIntStorage, zero_width_and_division_errors) {
+    TypeParam empty(0);
+    EXPECT_EQ(empty.begin(), empty.end());
+    EXPECT_EQ(empty.rbegin(), empty.rend());
+    EXPECT_EQ(empty.popcount(), 0u);
+    EXPECT_EQ(empty.count_leading_zeros(), 0u);
+    EXPECT_EQ(empty.count_trailing_zeros(), 0u);
+    EXPECT_EQ((~empty).width(), 0u);
+    EXPECT_EQ((empty << 1).width(), 0u);
+    EXPECT_EQ((empty >> 1).width(), 0u);
+    EXPECT_EQ((empty + empty).to_decimal_string(), "0");
+    EXPECT_EQ((empty * TypeParam(8, 42)).to_decimal_string(), "0");
+    for (size_t width : {8u, 65u, 129u}) {
+        SCOPED_TRACE(width);
+        TypeParam one(width, 1);
+        TypeParam zero(width);
+        EXPECT_THROW(detail::divrem(one, zero), std::domain_error);
+        EXPECT_THROW(one / empty, std::domain_error);
+    }
+}
+
+TEST(DynInt, heap_arithmetic_preserves_high_words) {
+    DynUInt high(129, "1267650600228229401496703205376");  // 2**100
+    DynUInt low(65, 7);
+    EXPECT_EQ((high + low).to_decimal_string(), "1267650600228229401496703205383");
+    EXPECT_EQ((high - low).to_decimal_string(), "1267650600228229401496703205369");
+    EXPECT_EQ((high * low).to_decimal_string(), "8873554201597605810476922437632");
+    EXPECT_EQ((-high).to_decimal_string(), "-1267650600228229401496703205376");
+    DynSInt negative(129, "-1267650600228229401496703205376");
+    DynSInt seven(65, 7);
+    EXPECT_EQ((negative + seven).to_decimal_string(), "-1267650600228229401496703205369");
+    EXPECT_EQ((negative - seven).to_decimal_string(), "-1267650600228229401496703205383");
+    EXPECT_EQ((negative * seven).to_decimal_string(), "-8873554201597605810476922437632");
+    EXPECT_EQ(detail::abs(negative).to_decimal_string(), high.to_decimal_string());
+    EXPECT_EQ(
+        (-DynSInt(64, std::numeric_limits<int64_t>::min())).to_decimal_string(),
+        "9223372036854775808"
+    );
+}
+
+#if defined(__SIZEOF_INT128__)
+TEST(DynInt, int128_construction_covers_native_and_heap_storage) {
+    __uint128_t const high = __uint128_t{1} << 100;
+    for (size_t width : {8u, 64u, 65u, 128u, 129u, 200u}) {
+        SCOPED_TRACE(width);
+        EXPECT_EQ(DynUInt(width, __uint128_t{42}).to_native_integer<int>(), 42);
+        EXPECT_EQ(DynSInt(width, __int128_t{-42}).to_native_integer<int>(), -42);
+    }
+    for (size_t width : {128u, 129u, 200u}) {
+        SCOPED_TRACE(width);
+        DynUInt positive(width, high + 7);
+        DynSInt negative(width, -static_cast<__int128_t>(high) - 7);
+        EXPECT_EQ(positive.to_native_integer<__uint128_t>(), high + 7);
+        EXPECT_EQ(
+            negative.to_native_integer<__int128_t>(), -static_cast<__int128_t>(high) - 7
+        );
+        EXPECT_EQ(positive.to_decimal_string(), "1267650600228229401496703205383");
+        EXPECT_EQ(negative.to_decimal_string(), "-1267650600228229401496703205383");
+    }
+}
+#endif
+
+TEST(DynInt, wrapper_construction_and_shift_errors) {
+    EXPECT_THROW(DynUnsigned(0, 0), std::invalid_argument);
+    EXPECT_THROW(DynSigned(0, 0), std::invalid_argument);
+    EXPECT_THROW(DynUnsigned(8, 256), std::overflow_error);
+    EXPECT_THROW(DynUnsigned(8, -1), std::overflow_error);
+    EXPECT_THROW(DynSigned(8, 128), std::overflow_error);
+    EXPECT_THROW(DynSigned(8, -129), std::overflow_error);
+    DynSigned negative(8, -16);
+    EXPECT_EQ(static_cast<long long>(negative >> DynSigned(65, 2)), -4);
+    EXPECT_EQ(static_cast<long long>(negative >> DynUnsigned(65, 2)), -4);
+    EXPECT_THROW(negative >> -1, std::invalid_argument);
+    EXPECT_THROW(negative >> DynSigned(65, -1), std::invalid_argument);
+    EXPECT_THROW(negative /= DynSigned(8, 0), std::domain_error);
 }
 
 // LCOV_EXCL_BR_STOP
