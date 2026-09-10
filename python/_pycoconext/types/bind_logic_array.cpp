@@ -7,7 +7,6 @@
 #include <nanobind/stl/string_view.h>
 
 #include <algorithm>
-#include <cctype>
 #include <coconext/types/direction.hpp>
 #include <coconext/types/dyn_signed.hpp>
 #include <coconext/types/logic.hpp>
@@ -16,9 +15,7 @@
 #include <cstdint>
 #include <format>
 #include <iterator>
-#include <limits>
 #include <optional>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -54,6 +51,7 @@ std::optional<Range> parse_range_arg(nb::object const& range_obj) {
     if (range_obj.is_none()) {
         return std::nullopt;
     }
+    // TODO profile try/catch instead, maybe upstream a cast -> std::optional
     if (nb::isinstance<Range>(range_obj)) {
         return nb::cast<Range>(range_obj);
     }
@@ -82,6 +80,7 @@ std::string normalize_logic_string(std::string_view s) {
 // Parse a Python iterable into a std::vector of Logic/Bit.
 template <typename Elem>
 std::vector<Elem> parse_iterable(nb::iterable const& value, nb::object const& elem_class) {
+    // TODO iterable -> list -> vector faster?
     std::vector<Elem> items;
     for (auto const& v : value) {
         items.push_back(nb::cast<Elem>(elem_class(v)));
@@ -89,377 +88,261 @@ std::vector<Elem> parse_iterable(nb::iterable const& value, nb::object const& el
     return items;
 }
 
-}  // namespace
+// -- Python int <-> bit patterns ----------------------------------------------
 
-static LogicVector logic_array_from_unsigned_int(
-    int64_t value, Range range, std::string_view on_overflow
-) {
-    if (on_overflow != "error" && on_overflow != "wrap") {
-        throw nb::value_error("on_overflow only accepts [error] or [wrap]");
+enum class IntFit {
+    UNSIGNED,
+    SIGNED,
+    EITHER,
+    WRAP
+};
+
+IntFit parse_on_overflow(std::string_view on_overflow, IntFit strict) {
+    if (on_overflow == "error") {
+        return strict;
     }
+    if (on_overflow == "wrap") {
+        return IntFit::WRAP;
+    }
+    throw nb::value_error("Invalid value for on_overflow. Expected 'error' or 'wrap'.");
+}
 
-    if (value < 0) {
+// Two's-complement pattern of a Python int in `width` bits. The range check
+// runs on the Python int, so the value may be wider than any native type.
+DynUInt bits_from_pyint(nb::handle value, size_t width, IntFit fit, std::string_view what) {
+    nb::object v = nb::borrow(value);
+    if (width == 0) {
+        throw nb::value_error(std::format("{} will not fit in a null range", what).c_str());
+    }
+    nb::object const modulus = nb::int_(1) << nb::int_(width);
+    if (fit != IntFit::WRAP) {
+        nb::object const half = modulus >> nb::int_(1);
+        nb::object lo = -half;
+        nb::object hi = modulus;
+        if (fit == IntFit::UNSIGNED) {
+            lo = nb::int_(0);
+        } else if (fit == IntFit::SIGNED) {
+            hi = half;
+        }
+        if (v < lo || v >= hi) {
+            throw nb::value_error(
+                std::format(
+                    "{} {} will not fit in {} bits",
+                    what,
+                    nb::cast<std::string>(nb::repr(v)),
+                    width
+                )
+                    .c_str()
+            );
+        }
+    }
+    nb::object const bits = v & (modulus - nb::int_(1));
+    if (width <= 64) {
+        return DynUInt(width, nb::cast<uint64_t>(bits));
+    }
+    // TODO int -> bytes -> DynUInt?
+    nb::str hex = nb::steal<nb::str>(PyNumber_ToBase(bits.ptr(), 16));
+    if (!hex.is_valid()) {
+        throw nb::python_error();
+    }
+    return DynUInt(width, nb::cast<std::string_view>(hex));
+}
+
+nb::int_ pyint_from_bits(DynUInt const& bits) {
+    if (bits.width() == 0) {
+        return nb::int_(0);
+    }
+    if (bits.width() <= 64) {
+        return nb::int_(bits.to_native_integer<uint64_t>());
+    }
+    // TODO DynUInt -> bytes -> int faster?
+    std::string const hex = bits.to_hexadecimal_string();
+    PyObject* result = PyLong_FromString(hex.c_str(), nullptr, 16);
+    if (result == nullptr) {
+        throw nb::python_error();
+    }
+    return nb::steal<nb::int_>(result);
+}
+
+nb::int_ pyint_from_bits_signed(DynUInt const& bits) {
+    size_t const width = bits.width();
+    if (width <= 64) {
+        return nb::int_(DynSInt(width, bits).to_native_integer<int64_t>());
+    }
+    // TODO DynUInt -> bytes -> int faster?
+    nb::int_ value = pyint_from_bits(bits);
+    if (bits.get_bit(width - 1)) {
+        return nb::borrow<nb::int_>(value - (nb::int_(1) << nb::int_(width)));
+    }
+    return value;
+}
+
+template <typename VectorT>
+VectorT vector_from_bits(DynUInt&& bits, Range range) {
+    if constexpr (std::is_same_v<VectorT, BitVector>) {
+        return BitVector(range, std::move(bits));
+    } else {
+        return LogicVector(BitVector(range, std::move(bits)), range);
+    }
+}
+
+template <typename VectorT>
+constexpr char const* py_name() {
+    return std::is_same_v<VectorT, BitVector> ? "BitArray" : "LogicArray";
+}
+
+// Resolved bit pattern, or nullopt when the vector holds non-0/1 values.
+template <typename VectorT>
+std::optional<DynUInt> bits_of(VectorT const& self) {
+    if constexpr (std::is_same_v<VectorT, BitVector>) {
+        return storage(self);
+    } else {
+        auto resolved = resolve(self);
+        if (!resolved.has_value()) {
+            return std::nullopt;
+        }
+        return storage(std::move(*resolved));
+    }
+}
+
+template <typename VectorT>
+DynUInt checked_bits(VectorT const& self) {
+    if (self.size() == 0) {
+        throw nb::value_error("Cannot convert null vector to integer");
+    }
+    auto bits = bits_of(self);
+    if (!bits.has_value()) {
+        throw nb::value_error(
+            std::format(
+                "Can't convert {} to int: it contains non-0/1 values", py_name<VectorT>()
+            )
+                .c_str()
+        );
+    }
+    return std::move(*bits);
+}
+
+template <typename VectorT>
+nb::int_ to_unsigned(VectorT const& self) {
+    return pyint_from_bits(checked_bits(self));
+}
+
+template <typename VectorT>
+nb::int_ to_signed(VectorT const& self) {
+    return pyint_from_bits_signed(checked_bits(self));
+}
+
+template <typename VectorT>
+bool truthy(VectorT const& self) {
+    if (self.size() == 0) {
+        return false;
+    }
+    return checked_bits(self).popcount() != 0;
+}
+
+LogicVector from_unsigned_pyint(
+    nb::int_ const& value, Range range, std::string_view on_overflow
+) {
+    IntFit const fit = parse_on_overflow(on_overflow, IntFit::UNSIGNED);
+    if (value < nb::int_(0)) {
         throw nb::value_error("Expected unsigned integer, got negative value");
     }
-
-    uint64_t u_value = static_cast<uint64_t>(value);
-    int width = range.length();
-
-    if (width == 0) {
-        throw nb::value_error(
-            "Unsigned integer will not fit in a LogicArray with bounds of length 0"
-        );
-    }
-
-    if (on_overflow == "wrap") {
-        if (width < 64) {
-            u_value %= (1ULL << width);
-        }
-    } else {
-        // default on_overflow value is "error"
-        if (width < 64 && u_value >= (1ULL << width)) {
-            throw nb::value_error(
-                "Unsigned integer will not fit in a LogicArray with given bounds"
-            );
-        }
-    }
-
-    uint64_t mask = (width >= 64) ? ~0ULL : (1ULL << width) - 1;
-    uint64_t masked_value = u_value & mask;
-    std::string s = std::format("{:0{}b}", masked_value, width);
-
-    return LogicVector(s, range);
+    return vector_from_bits<LogicVector>(
+        bits_from_pyint(value, range.length(), fit, "Unsigned integer"), range
+    );
 }
 
-static LogicVector logic_array_from_unsigned(
-    DynUnsigned const& value, Range range, std::string_view on_overflow
+LogicVector from_signed_pyint(
+    nb::int_ const& value, Range range, std::string_view on_overflow
 ) {
-    if (on_overflow != "error" && on_overflow != "wrap") {
-        throw nb::value_error("on_overflow only accepts [error] or [wrap]");
-    }
-
-    if (!static_cast<bool>(value)) {
-        return LogicVector(range);
-    }
-
-    auto r_width = range.length();
-    if (r_width == 0) {
-        throw nb::value_error(
-            "Unsigned integer will not fit in a LogicArray with bounds of length 0"
-        );
-    }
-
-    auto v_width = value.width();
-
-    if (on_overflow == "error") {
-        auto max_unsigned = DynUInt(v_width, ~DynUInt(r_width));
-
-        if (r_width < v_width && storage(value) > max_unsigned) {
-            throw nb::value_error(
-                "Unsigned value will not fit in a LogicArray with given bounds"
-            );
-        }
-    }
-
-    LogicVector result(range);
-    for (size_t i = 0; i < v_width; ++i) {
-        result[i] = Logic(value.index(i));
-    }
-
-    return result;
+    IntFit const fit = parse_on_overflow(on_overflow, IntFit::SIGNED);
+    return vector_from_bits<LogicVector>(
+        bits_from_pyint(value, range.length(), fit, "Signed integer"), range
+    );
 }
 
-static LogicVector logic_array_from_signed_int(
-    int64_t value, Range range, std::string_view on_overflow
+template <typename VectorT>
+VectorT from_bytes(
+    nb::object const& value, nb::object const& range_obj, std::string_view byteorder
 ) {
-    if (on_overflow != "error" && on_overflow != "wrap") {
-        throw nb::value_error("on_overflow only accepts [error] or [wrap]");
-    }
-
-    int width = range.length();
-
-    if (width == 0) {
-        throw nb::value_error(
-            "Signed integer will not fit in a LogicArray with bounds of length 0"
-        );
-    }
-
-    if (on_overflow == "error") {
-        if (width < 64) {
-            int64_t limit = 1LL << (width - 1);
-            if (value < -limit || value >= limit) {
-                throw nb::value_error(
-                    "Signed integer will not fit in a LogicArray with given bounds"
-                );
-            }
-        }
-    }
-
-    uint64_t mask = (width >= 64) ? ~0ULL : (1ULL << width) - 1;
-    uint64_t masked_value = static_cast<uint64_t>(value) & mask;
-    std::string s = std::format("{:0{}b}", masked_value, width);
-
-    return LogicVector(s, range);
-}
-
-static LogicVector logic_array_from_signed(
-    DynSigned const& value, Range range, std::string_view on_overflow
-) {
-    if (on_overflow != "error" && on_overflow != "wrap") {
-        throw nb::value_error("on_overflow only accepts [error] or [wrap]");
-    }
-
-    if (!static_cast<bool>(value)) {
-        return LogicVector(range);
-    }
-
-    auto r_width = range.length();
-    if (r_width == 0) {
-        throw nb::value_error(
-            "Signed integer will not fit in a LogicArray with bounds of length 0"
-        );
-    }
-
-    auto v_width = value.width();
-
-    if (on_overflow == "error" && r_width < v_width) {
-        bool new_sign_bit = value.index(r_width - 1);
-        bool overflow = false;
-
-        for (size_t i = r_width; i < v_width; ++i) {
-            if (value.index(i) != new_sign_bit) {
-                overflow = true;
-                break;
-            }
-        }
-
-        if (overflow) {
-            throw nb::value_error(
-                "Signed value will not fit in a LogicArray with given bounds"
-            );
-        }
-    }
-
-    LogicVector result(range);
-
-    for (size_t i = 0; i < r_width; ++i) {
-        if (i < v_width) {
-            result[i] = Logic(value.index(i));
-        } else {
-            result[i] = Logic(value.index(v_width - 1));
-        }
-    }
-
-    return result;
-}
-
-static DynUnsigned logic_array_to_unsigned(LogicVector const& self) {
-    int width = self.size();
-    if (width == 0) {
-        throw nb::value_error("Cannot convert empty LogicArray to integer");
-    }
-
-    auto resolved_opt = resolve(self);
-    if (!resolved_opt) {
-        throw std::invalid_argument(
-            "Cannot convert array with undefined logic to Unsigned"
-        );
-    }
-    return std::move(*resolved_opt).as<DynUnsigned>();
-}
-
-static DynSigned logic_array_to_signed(LogicVector const& self) {
-    int width = self.size();
-    if (width == 0) {
-        throw nb::value_error("Cannot convert empty LogicArray to integer");
-    }
-
-    auto resolved_opt = resolve(self);
-    if (!resolved_opt) {
-        throw std::invalid_argument("Cannot convert array with undefined logic to Signed");
-    }
-    return std::move(*resolved_opt).as<DynSigned>();
-}
-
-static LogicVector logic_array_from_bytes(
-    nb::object value_obj, nb::object range_obj, std::string_view byteorder
-) {
-    auto const size = nb::len(value_obj);
-    auto const expected_width = static_cast<size_t>(size) * 8;
-
+    size_t const width = nb::len(value) * 8;
     auto range = parse_range_arg(range_obj);
     if (!range.has_value()) {
-        range =
-            Range(static_cast<Range::value_type>(expected_width) - 1, Direction::DOWNTO, 0);
-    } else if (range->length() != expected_width) {
+        range = logic_downto_range(width);
+    } else if (range->length() != width) {
         throw nb::value_error("Range must be exactly equal to bytes width");
     }
-
-    nb::object py_builtins = nb::module_::import_("builtins");
-    nb::object py_int = py_builtins.attr("int");
-    nb::object py_format = py_builtins.attr("format");
-    nb::object int_val = py_int.attr("from_bytes")(value_obj, byteorder);
-    std::string fmt_spec = std::format("0{}b", expected_width);
-    nb::object bin_str_obj = py_format(int_val, fmt_spec.c_str());
-    std::string bin_str = nb::cast<std::string>(bin_str_obj);
-
-    return LogicVector(bin_str, *range);
+    nb::handle const int_type(reinterpret_cast<PyObject*>(&PyLong_Type));
+    nb::object const as_int = int_type.attr("from_bytes")(value, byteorder);
+    return vector_from_bits<VectorT>(
+        bits_from_pyint(as_int, width, IntFit::WRAP, "Bytes"), *range
+    );
 }
 
-static nb::bytes logic_array_to_bytes(LogicVector const& self, std::string_view byteorder) {
+template <typename VectorT>
+nb::bytes to_bytes(VectorT const& self, std::string_view byteorder) {
     if (byteorder != "big" && byteorder != "little") {
         throw nb::value_error("byteorder must be either 'big' or 'little'");
     }
+    return nb::cast<nb::bytes>(
+        to_unsigned(self).attr("to_bytes")((self.size() + 7) / 8, byteorder)
+    );
+}
 
-    auto resolved_opt = resolve(self);
-    if (!resolved_opt.has_value()) {
+// Mirrors cocotb's LogicArray.__format__: pad to the width of the array,
+// then let Python apply the alternate form and digit grouping.
+template <typename VectorT>
+std::string format_vector(VectorT const& self, std::string_view spec) {
+    if (spec.empty()) {
+        return to_string(self);
+    }
+    std::string alternate;
+    size_t base_len = 0;
+    if (spec.starts_with('#')) {
+        alternate = "#";
+        spec.remove_prefix(1);
+        base_len = 2;
+    }
+    std::string grouping;
+    if (spec.starts_with('_') || spec.starts_with(',')) {
+        grouping = spec.front();
+        spec.remove_prefix(1);
+    }
+    if (spec != "b" && spec != "x" && spec != "X" && spec != "d" && spec != "o") {
         throw nb::value_error(
-            "Cannot convert LogicArray to bytes: contains non-resolvable bits ('X', 'Z', "
-            "etc.)"
+            std::format("Unsupported format specifier: '{}'", spec).c_str()
         );
     }
-
-    std::string bin_str = to_string(self);
-    int bit_len = self.size();
-
-    int num_bytes = (bit_len + 7) / 8;
-    if (num_bytes == 0) {
-        return nb::bytes("", 0);
-    }
-
-    int pad_len = num_bytes * 8 - bit_len;
-    std::string padded;
-    padded.reserve(num_bytes * 8);
-    padded.append(pad_len, '0');
-    padded.append(bin_str);
-
-    std::string out_bytes;
-    out_bytes.resize(num_bytes);
-
-    for (int i = 0; i < num_bytes; ++i) {
-        uint8_t b = 0;
-        for (int j = 0; j < 8; ++j) {
-            b = (b << 1) | (padded[i * 8 + j] - '0');
-        }
-
-        if (byteorder == "big") {
-            out_bytes[i] = static_cast<char>(b);
-        } else {
-            out_bytes[num_bytes - 1 - i] = static_cast<char>(b);
-        }
-    }
-
-    return nb::bytes(out_bytes.data(), num_bytes);
-}
-
-static std::string format_bit_vector(BitVector const& resolved, std::string_view spec) {
-    std::string binary_str = to_string(resolved);
-    uint64_t val = std::stoull(binary_str, nullptr, 2);
-
-    bool alt = false;
-    char group = '\0';
-    char type = '\0';
-
-    for (char c : spec) {
-        if (c == '#') {
-            alt = true;
-        } else if (c == '_' || c == ',') {
-            group = c;
-        } else if (std::isalpha(c)) {
-            type = c;
-        }
-    }
-
-    if (type == '\0') {
-        type = 'd';
-    }
-
-    if (type != 'b' && type != 'd' && type != 'o' && type != 'x' && type != 'X') {
-        throw nb::value_error("Invalid format specifier");
-    }
-
-    int num_bits = resolved.size();
-    int pad_width = 0;
-    int group_size = 4;
-
-    if (type == 'b') {
-        pad_width = num_bits;
-    } else if (type == 'o') {
-        pad_width = (num_bits + 2) / 3;
-        pad_width = (num_bits + 2) / 3;
-
-        int expected_python_width = pad_width;
-        if (alt) {
-            expected_python_width += 2;
-        }
-        if (group != '\0') {
-            expected_python_width += (pad_width - 1) / 3;
-        }
-
-        while (true) {
-            int current_width = pad_width;
-            if (alt) {
-                current_width += 2;
-            }
-            if (group != '\0') {
-                current_width += (pad_width - 1) / 4;
-            }
-            if (current_width >= expected_python_width) {
-                break;
-            }
-            pad_width++;
-        }
-    } else if (type == 'x' || type == 'X') {
-        pad_width = (num_bits + 3) / 4;
-    } else if (type == 'd') {
-        pad_width = (num_bits * 301 + 999) / 1000;
-        group_size = 3;
-    }
-
-    std::string raw;
-    if (type == 'b') {
-        raw = std::format("{:0{}b}", val, pad_width);
-    } else if (type == 'o') {
-        raw = std::format("{:0{}o}", val, pad_width);
-    } else if (type == 'x') {
-        raw = std::format("{:0{}x}", val, pad_width);
-    } else if (type == 'X') {
-        raw = std::format("{:0{}X}", val, pad_width);
-    } else if (type == 'd') {
-        raw = std::format("{:0{}d}", val, pad_width);
-    }
-
-    std::string grouped;
-    if (group != '\0') {
-        int n = raw.size();
-        for (int i = 0; i < n; ++i) {
-            grouped.push_back(raw[i]);
-            int remaining = n - 1 - i;
-            if (remaining > 0 && remaining % group_size == 0) {
-                grouped.push_back(group);
-            }
-        }
-    } else {
-        grouped = raw;
-    }
-
+    nb::int_ const value = to_unsigned(self);
+    size_t const n = self.size();
+    size_t length = 0;
     std::string prefix;
-    if (alt) {
-        if (type == 'b') {
-            prefix = "0b";
-        } else if (type == 'o') {
-            prefix = "0o";
-        } else if (type == 'x') {
-            prefix = "0x";
-        } else if (type == 'X') {
-            prefix = "0X";
-        } else if (type == 'd') {
+    if (spec == "b") {
+        length = n + (grouping.empty() ? 0 : (n - 1) / 4) + base_len;
+    } else if (spec == "d") {
+        length = (n + 9) / 10;
+        length += (grouping.empty() ? 0 : (length - 1) / 3) + base_len;
+        if (!alternate.empty()) {
             prefix = "0d";
+            alternate.clear();
         }
+    } else if (spec == "o") {
+        length = (n + 2) / 3 + base_len;
+        length += grouping.empty() ? 0 : (length - 1) / 4;
+    } else {
+        length = (n + 3) / 4;
+        length += (grouping.empty() ? 0 : (length - 1) / 4) + base_len;
     }
-
-    return prefix + grouped;
+    std::string const py_spec = std::format("{}0{}{}{}", alternate, length, grouping, spec);
+    nb::str out =
+        nb::steal<nb::str>(PyObject_Format(value.ptr(), nb::str(py_spec.c_str()).ptr()));
+    if (!out.is_valid()) {
+        throw nb::python_error();
+    }
+    return prefix + nb::cast<std::string>(out);
 }
+
+}  // namespace
 
 void register_logic_array(nb::module_& m) {
     nb::object logic_class = m.attr("Logic");
@@ -502,38 +385,16 @@ void register_logic_array(nb::module_& m) {
                     }
                 } else if (nb::isinstance<nb::int_>(value)) {
                     if (!range.has_value()) {
-                        throw nb::type_error("int construction requires a range");
+                        throw nb::type_error("Missing required arguments: 'range'");
                     }
-
-                    int width = range->length();
-                    int64_t v;
-
-                    v = nb::cast<int64_t>(value);
-
-                    if (width < 64) {
-                        if (v < 0) {
-                            uint64_t abs_v = (v == std::numeric_limits<int64_t>::min())
-                                               ? (1ULL << 63)
-                                               : static_cast<uint64_t>(-v);
-
-                            if (width == 0 || abs_v > (1ULL << (width - 1))) {
-                                throw nb::value_error(
-                                    "Value cannot fit in specified number of bits"
-                                );
-                            }
-                        } else {
-                            if (static_cast<uint64_t>(v) >= (1ULL << width)) {
-                                throw nb::value_error(
-                                    "Value cannot fit in specified number of bits"
-                                );
-                            }
-                        }
-                    }
-                    uint64_t mask = (width >= 64) ? ~0ULL : (1ULL << width) - 1;
-                    uint64_t v_2s_comp = static_cast<uint64_t>(v) & mask;
-                    std::string s = std::format("{:0{}b}", v_2s_comp, width);
-
-                    new (self) LogicVector(s, *range);
+                    new (self) LogicVector(
+                        vector_from_bits<LogicVector>(
+                            bits_from_pyint(
+                                value, range->length(), IntFit::EITHER, "Value"
+                            ),
+                            *range
+                        )
+                    );
                 } else if (nb::isinstance<nb::iterable>(value)) {
                     auto items =
                         parse_iterable<Logic>(nb::cast<nb::iterable>(value), logic_class);
@@ -555,37 +416,16 @@ void register_logic_array(nb::module_& m) {
             "range"_a = nb::none()
         )
 
-        // --class method conversions------
         .def_static(
             "from_unsigned",
-            [](int64_t value_obj, nb::object range_obj, std::string_view on_overflow) {
-                auto range = parse_range_arg(range_obj);
-                return logic_array_from_unsigned_int(value_obj, *range, on_overflow);
-            },
-            "value"_a,
-            "range"_a,
-            nb::kw_only(),
-            "on_overflow"_a = "error"
-        )
-        .def_static(
-            "from_unsigned",
-            [](DynUnsigned const& value_obj,
-               nb::object range_obj,
+            [](nb::int_ const& value,
+               nb::object const& range_obj,
                std::string_view on_overflow) {
                 auto range = parse_range_arg(range_obj);
-                return logic_array_from_unsigned(value_obj, *range, on_overflow);
-            },
-            "value"_a,
-            "range"_a,
-            nb::kw_only(),
-            "on_overflow"_a = "error"
-        )
-
-        .def_static(
-            "from_signed",
-            [](int64_t value_obj, nb::object range_obj, std::string_view on_overflow) {
-                auto range = parse_range_arg(range_obj);
-                return logic_array_from_signed_int(value_obj, *range, on_overflow);
+                if (!range.has_value()) {
+                    throw nb::type_error("Missing required arguments: 'range'");
+                }
+                return from_unsigned_pyint(value, *range, on_overflow);
             },
             "value"_a,
             "range"_a,
@@ -594,21 +434,23 @@ void register_logic_array(nb::module_& m) {
         )
         .def_static(
             "from_signed",
-            [](DynSigned const& value_obj,
-               nb::object range_obj,
+            [](nb::int_ const& value,
+               nb::object const& range_obj,
                std::string_view on_overflow) {
                 auto range = parse_range_arg(range_obj);
-                return logic_array_from_signed(value_obj, *range, on_overflow);
+                if (!range.has_value()) {
+                    throw nb::type_error("Missing required arguments: 'range'");
+                }
+                return from_signed_pyint(value, *range, on_overflow);
             },
             "value"_a,
             "range"_a,
             nb::kw_only(),
             "on_overflow"_a = "error"
         )
-
         .def_static(
             "from_bytes",
-            &logic_array_from_bytes,
+            &from_bytes<LogicVector>,
             "value"_a,
             "range"_a = nb::none(),
             nb::kw_only(),
@@ -616,121 +458,9 @@ void register_logic_array(nb::module_& m) {
         )
 
         // -- to conversions -----
-        .def("to_unsigned", &logic_array_to_unsigned)
-        .def("to_signed", &logic_array_to_signed)
-        .def("to_bytes", &logic_array_to_bytes, nb::kw_only(), "byteorder"_a)
-
-        // TODO all these deprecations should be removed
-        // --cocotb deprecarted-------
-        .def_prop_rw(
-            "integer",
-            [](LogicVector const& self) {
-                PyErr_WarnEx(
-                    PyExc_DeprecationWarning,
-                    "`logic_array.integer` getter is deprecated. Use "
-                    "`logic_array.to_unsigned()` instead.",
-                    1
-                );
-
-                return logic_array_to_unsigned(self);
-            },
-
-            [](LogicVector& self, int value) {
-                PyErr_WarnEx(
-                    PyExc_DeprecationWarning,
-                    "`logic_array.integer = value` setter is deprecated. Use "
-                    "`logic_array[:] = value` instead.",
-                    1
-                );
-                LogicVector new_vec =
-                    logic_array_from_unsigned_int(value, self.range(), "error");
-                std::ranges::copy(new_vec, self.begin());
-            }
-        )
-
-        .def_prop_rw(
-            "signed_integer",
-            [](LogicVector const& self) {
-                PyErr_WarnEx(
-                    PyExc_DeprecationWarning,
-                    "`logic_array.signed_integer` getter is deprecated. Use "
-                    "`logic_array.to_signed()` instead.",
-                    1
-                );
-
-                return logic_array_to_signed(self);
-            },
-
-            [](LogicVector& self, int value) {
-                PyErr_WarnEx(
-                    PyExc_DeprecationWarning,
-                    "`logic_array.signed_integer = value` setter is deprecated. "
-                    "Use `logic_array[:] = LogicArray.from_signed(value, "
-                    "len(logic_array))` instead.",
-                    1
-                );
-                LogicVector new_vec =
-                    logic_array_from_signed_int(value, self.range(), "error");
-                std::ranges::copy(new_vec, self.begin());
-            }
-        )
-
-        .def_prop_rw(
-            "binstr",
-            [](LogicVector const& self) {
-                PyErr_WarnEx(
-                    PyExc_DeprecationWarning,
-                    "`logic_array.binstr` getter is deprecated. Use `str(logic_array)` "
-                    "instead.",
-                    1
-                );
-
-                return to_string(self);
-            },
-
-            [](LogicVector& self, std::string value) {
-                PyErr_WarnEx(
-                    PyExc_DeprecationWarning,
-                    "`logic_array.binstr = value` setter is deprecated. Use "
-                    "`logic_array[:] = value` instead.",
-                    1
-                );
-                std::string normalized = normalize_logic_string(value);
-                LogicVector new_vec(normalized);
-                if (new_vec.size() != self.size()) {
-                    throw nb::value_error("String length must match the LogicArray length");
-                }
-                std::ranges::copy(new_vec, self.begin());
-            }
-        )
-
-        .def_prop_rw(
-            "buff",
-            [](LogicVector const& self) {
-                PyErr_WarnEx(
-                    PyExc_DeprecationWarning,
-                    "`logic_array.buff` getter is deprecated. "
-                    "Use `logic_array.to_bytes(byteorder=\"big\")` instead.",
-                    1
-                );
-
-                return logic_array_to_bytes(self, "big");
-            },
-
-            [](LogicVector& self, nb::object value) {
-                PyErr_WarnEx(
-                    PyExc_DeprecationWarning,
-                    "`logic_array.buff = value` setter is deprecated. "
-                    "Use `logic_array[:] = LogicArray.from_bytes(value, len(logic_array), "
-                    "byteorder=\"big\")` instead.",
-                    1
-                );
-
-                LogicVector new_vec =
-                    logic_array_from_bytes(value, nb::cast(self.range()), "big");
-                std::ranges::copy(new_vec, self.begin());
-            }
-        )
+        .def("to_unsigned", &to_unsigned<LogicVector>)
+        .def("to_signed", &to_signed<LogicVector>)
+        .def("to_bytes", &to_bytes<LogicVector>, nb::kw_only(), "byteorder"_a)
 
         // -- range / left / direction / right / is_resolvable ---------------
         // NOTE: set_range is removed; Vectors are immutable in size.
@@ -973,28 +703,17 @@ void register_logic_array(nb::module_& m) {
         )
         .def(
             "__eq__",
-            [](LogicVector const& self, nb::int_ other) {
-                if (!resolve(self, ResolveMethod::ERROR).has_value()) {
+            [](LogicVector const& self, nb::int_ const& other) {
+                if (self.size() == 0) {
                     return false;
                 }
-
-                try {
-                    if (logic_array_to_signed(self)
-                        == DynSigned(self.size(), nb::cast<int64_t>(other)))
-                    {
-                        return true;
-                    }
-                } catch (...) {}
-
-                try {
-                    if (logic_array_to_unsigned(self)
-                        == DynUnsigned(self.size(), nb::cast<uint64_t>(other)))
-                    {
-                        return true;
-                    }
-                } catch (...) {}
-
-                return false;
+                auto bits = bits_of(self);
+                if (!bits.has_value()) {
+                    return false;
+                }
+                nb::int_ const mine = other < nb::int_(0) ? pyint_from_bits_signed(*bits)
+                                                          : pyint_from_bits(*bits);
+                return mine.equal(other);
             },
             nb::is_operator()
         )
@@ -1056,32 +775,9 @@ void register_logic_array(nb::module_& m) {
 
         // -- Special methods ------------------------------------------------
         .def("__str__", [](LogicVector const& self) { return to_string(self); })
-        .def(
-            "__int__",
-            [](LogicVector const& self) {
-                return static_cast<unsigned long long>(logic_array_to_unsigned(self));
-            }
-        )
-        .def(
-            "__bool__",
-            [](LogicVector const& self) {
-                auto resolved_opt = resolve(self, ResolveMethod::ERROR);
-                if (!resolved_opt.has_value()) {
-                    throw nb::value_error(
-                        "Cannot convert LogicArray to bool: contains non-resolvable bits"
-                    );
-                }
-
-                std::string s = to_string(*resolved_opt);
-                return s.find('1') != std::string::npos;
-            }
-        )
-        .def(
-            "__index__",
-            [](LogicVector const& self) {
-                return static_cast<unsigned long long>(logic_array_to_unsigned(self));
-            }
-        )
+        .def("__int__", &to_unsigned<LogicVector>)
+        .def("__bool__", &truthy<LogicVector>)
+        .def("__index__", &to_unsigned<LogicVector>)
         .def(
             "__repr__",
             [](LogicVector const& self) {
@@ -1094,21 +790,7 @@ void register_logic_array(nb::module_& m) {
                 );
             }
         )
-        .def(
-            "__format__",
-            [](LogicVector const& self, std::string_view spec) -> std::string {
-                if (spec.empty()) {
-                    return to_string(self);
-                }
-                auto resolved_opt = resolve(self, ResolveMethod::ERROR);
-                if (!resolved_opt.has_value()) {
-                    throw nb::value_error(
-                        "Cannot format LogicArray: contains non-resolvable bits"
-                    );
-                }
-                return format_bit_vector(*resolved_opt, spec);
-            }
-        )
+        .def("__format__", &format_vector<LogicVector>)
         // TODO this should be implemented
         .def(
             "__copy__",
@@ -1160,36 +842,16 @@ void register_logic_array(nb::module_& m) {
                     }
                 } else if (nb::isinstance<nb::int_>(value)) {
                     if (!range.has_value()) {
-                        throw nb::type_error("int construction requires a range");
+                        throw nb::type_error("Missing required arguments: 'range'");
                     }
-
-                    int width = range->length();
-                    int64_t v = nb::cast<int64_t>(value);
-
-                    if (width < 64) {
-                        if (v < 0) {
-                            uint64_t abs_v = (v == std::numeric_limits<int64_t>::min())
-                                               ? (1ULL << 63)
-                                               : static_cast<uint64_t>(-v);
-
-                            if (width == 0 || abs_v > (1ULL << (width - 1))) {
-                                throw nb::value_error(
-                                    "Value cannot fit in specified number of bits"
-                                );
-                            }
-                        } else {
-                            if (static_cast<uint64_t>(v) >= (1ULL << width)) {
-                                throw nb::value_error(
-                                    "Value cannot fit in specified number of bits"
-                                );
-                            }
-                        }
-                    }
-                    uint64_t mask = (width >= 64) ? ~0ULL : (1ULL << width) - 1;
-                    uint64_t v_2s_comp = static_cast<uint64_t>(v) & mask;
-                    std::string s = std::format("{:0{}b}", v_2s_comp, width);
-
-                    new (self) BitVector(s, *range);
+                    new (self) BitVector(
+                        vector_from_bits<BitVector>(
+                            bits_from_pyint(
+                                value, range->length(), IntFit::EITHER, "Value"
+                            ),
+                            *range
+                        )
+                    );
                 } else if (nb::isinstance<nb::iterable>(value)) {
                     auto items =
                         parse_iterable<Bit>(nb::cast<nb::iterable>(value), bit_class);
@@ -1430,15 +1092,7 @@ void register_logic_array(nb::module_& m) {
                 );
             }
         )
-        .def(
-            "__format__",
-            [](BitVector const& self, std::string_view spec) -> std::string {
-                if (spec.empty()) {
-                    return to_string(self);
-                }
-                return format_bit_vector(self, spec);
-            }
-        )
+        .def("__format__", &format_vector<BitVector>)
         .def("__copy__", [](BitVector const& self) { return BitVector(self); })
         .def("__deepcopy__", [](BitVector const& self, nb::dict /* memo */) {
             return BitVector(self);
