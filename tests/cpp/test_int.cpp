@@ -6,8 +6,11 @@
 #include <string>
 #include <type_traits>
 
+#include "force_runtime.hpp"
+
 using namespace coconext::types;
 using namespace coconext::literals;
+using coconext::test::force_runtime;
 
 // ---------------------------------------------------------------------------
 // Integer representation and growing arithmetic.
@@ -95,11 +98,12 @@ TEST(Int, native_value_fit_predicate) {
 #endif
 
     // Keep runtime checks alongside the constexpr contract. Coverage tools cannot
-    // observe paths that are evaluated exclusively by static_assert.
-    int unsigned_in_range = 15;
-    int unsigned_out_of_range = 16;
-    int signed_minimum = -8;
-    int signed_too_small = -9;
+    // observe paths that are evaluated exclusively by static_assert. The input
+    // barrier also prevents these checks from being folded during optimization.
+    int unsigned_in_range = force_runtime(15);
+    int unsigned_out_of_range = force_runtime(16);
+    int signed_minimum = force_runtime(-8);
+    int signed_too_small = force_runtime(-9);
     EXPECT_TRUE((detail::native_value_fits<4, false>(unsigned_in_range)));
     EXPECT_FALSE((detail::native_value_fits<4, false>(unsigned_out_of_range)));
     EXPECT_TRUE((detail::native_value_fits<4, true>(signed_minimum)));
@@ -112,10 +116,10 @@ TEST(Int, checked_native_integer_conversion) {
     static_assert(detail::UInt<200>(255).to_native_integer<uint8_t>() == 255);
     static_assert(detail::SInt<200>(-128).to_native_integer<int8_t>() == -128);
 
-    detail::UInt<9> runtime_unsigned(511);
-    detail::SInt<9> runtime_signed(-256);
-    detail::UInt<200> runtime_wide_unsigned(255);
-    detail::SInt<200> runtime_wide_signed(-128);
+    detail::UInt<9> runtime_unsigned(force_runtime(511));
+    detail::SInt<9> runtime_signed(force_runtime(-256));
+    detail::UInt<200> runtime_wide_unsigned(force_runtime(255));
+    detail::SInt<200> runtime_wide_signed(force_runtime(-128));
     EXPECT_EQ(runtime_unsigned.to_native_integer<uint16_t>(), 511);
     EXPECT_EQ(runtime_signed.to_native_integer<int16_t>(), -256);
     EXPECT_EQ(runtime_wide_unsigned.to_native_integer<uint8_t>(), 255);
@@ -166,9 +170,9 @@ TEST(Int, packed_bit_operations) {
     static_assert(!detail::SInt<200>(1).is_negative());
     static_assert(detail::SInt<200>(-1).is_negative());
 
-    detail::SInt<12> runtime_zero(0);
-    detail::SInt<12> runtime_negative(-1);
-    detail::SInt<200> runtime_wide_negative(-1);
+    detail::SInt<12> runtime_zero(force_runtime(0));
+    detail::SInt<12> runtime_negative(force_runtime(-1));
+    detail::SInt<200> runtime_wide_negative(force_runtime(-1));
     EXPECT_FALSE(runtime_zero.is_negative());
     EXPECT_TRUE(runtime_negative.is_negative());
     EXPECT_TRUE(runtime_wide_negative.is_negative());
@@ -227,8 +231,8 @@ TEST(Int, widening_shift_preserves_value) {
     );
     static_assert(unsigned_native.to_native_integer<uint16_t>() == 384);
 
-    detail::SInt<9> runtime_signed(-3);
-    detail::UInt<9> runtime_unsigned(3);
+    detail::SInt<9> runtime_signed(force_runtime(-3));
+    detail::UInt<9> runtime_unsigned(force_runtime(3));
     EXPECT_EQ(runtime_signed.widening_shift_left<7>(), detail::SInt<16>(-384));
     EXPECT_EQ(runtime_unsigned.widening_shift_left<7>(), detail::UInt<16>(384));
 
@@ -253,19 +257,21 @@ TEST(Int, exact_width_arithmetic_is_explicit) {
         == detail::SInt<9>(-6)
     );
 
-    detail::UInt<8> runtime_a(200);
-    detail::UInt<8> runtime_b(100);
+    detail::UInt<8> runtime_a(force_runtime(200));
+    detail::UInt<8> runtime_b(force_runtime(100));
     EXPECT_EQ(detail::UInt<8>::exact_add(runtime_a, runtime_b), detail::UInt<8>(44));
     EXPECT_EQ(detail::UInt<8>::exact_sub(runtime_b, runtime_a), detail::UInt<8>(156));
     EXPECT_EQ(detail::UInt<8>::exact_mul(runtime_a, runtime_b), detail::UInt<8>(32));
 
-    detail::SInt<9> runtime_maximum(255);
-    detail::SInt<9> runtime_minimum(-256);
-    detail::SInt<9> runtime_one(1);
+    detail::SInt<9> runtime_maximum(force_runtime(255));
+    detail::SInt<9> runtime_minimum(force_runtime(-256));
+    detail::SInt<9> runtime_one(force_runtime(1));
     EXPECT_EQ(detail::SInt<9>::exact_add(runtime_maximum, runtime_one), runtime_minimum);
     EXPECT_EQ(detail::SInt<9>::exact_sub(runtime_minimum, runtime_one), runtime_maximum);
     EXPECT_EQ(
-        detail::SInt<9>::exact_mul(detail::SInt<9>(-2), detail::SInt<9>(3)),
+        detail::SInt<9>::exact_mul(
+            detail::SInt<9>(force_runtime(-2)), detail::SInt<9>(force_runtime(3))
+        ),
         detail::SInt<9>(-6)
     );
 
@@ -317,20 +323,26 @@ TEST(IntNative, scalar_tiers_cover_the_complete_native_operation) {
     static_assert(
         product.to_native_integer<__uint128_t>() == __uint128_t{~uint64_t{0}} * 2
     );
+
+    auto runtime_product = detail::UInt<64>(force_runtime(~uint64_t{0}))
+                         * detail::UInt<64>(force_runtime(uint64_t{2}));
+    EXPECT_EQ(
+        runtime_product.to_native_integer<__uint128_t>(), __uint128_t{~uint64_t{0}} * 2
+    );
 #endif
 
-    detail::UInt<16> runtime_maximum(uint16_t{0xFFFF});
+    detail::UInt<16> runtime_maximum(force_runtime(uint16_t{0xFFFF}));
     EXPECT_EQ(
         detail::UInt<16>::exact_mul(runtime_maximum, runtime_maximum),
         detail::UInt<16>(uint16_t{1})
     );
 
-    detail::SInt<32> runtime_minimum(std::numeric_limits<int32_t>::min());
+    detail::SInt<32> runtime_minimum(force_runtime(std::numeric_limits<int32_t>::min()));
     EXPECT_EQ(
         runtime_minimum / detail::SInt<32>(-1), detail::SInt<33>(uint64_t{0x80000000})
     );
-    EXPECT_LT(detail::SInt<65>(detail::SInt<8>(-1)), detail::SInt<65>(1));
-    EXPECT_EQ(detail::UInt<9>("0x1ff"), detail::UInt<9>(511));
+    EXPECT_LT(detail::SInt<65>(detail::SInt<8>(force_runtime(-1))), detail::SInt<65>(1));
+    EXPECT_EQ(detail::UInt<9>(force_runtime("0x1ff")), detail::UInt<9>(511));
 }
 
 TEST(IntGrowing, additive_grows_by_one_bit) {
@@ -507,7 +519,12 @@ TEST(IntGrowing, usable_in_constant_expressions) {
     static_assert(a * b == detail::UInt<16>(uint16_t{1400}));
     static_assert(q == detail::UInt<9>(uint16_t{28}));
     static_assert(r == detail::UInt<8>(uint8_t{4}));
-    SUCCEED();
+    auto runtime_a = force_runtime(a);
+    auto runtime_b = force_runtime(b);
+    EXPECT_EQ(runtime_a + runtime_b, detail::UInt<9>(207));
+    EXPECT_EQ(runtime_a * runtime_b, detail::UInt<16>(1400));
+    EXPECT_EQ(runtime_a / runtime_b, detail::UInt<9>(28));
+    EXPECT_EQ(runtime_a % runtime_b, detail::UInt<8>(4));
 }
 
 TEST(Int, signed_and_unsigned_have_distinct_values) {
@@ -525,13 +542,13 @@ TEST(Int, signed_and_unsigned_have_distinct_values) {
     static_assert(widened_unsigned.to_native_integer<uint16_t>() == 0x00FF);
     static_assert(widened_signed.to_native_integer<int16_t>() == -1);
 
-    detail::UInt<9> runtime_unsigned_pattern(0x1FF);
-    detail::SInt<9> runtime_signed_pattern(-1);
+    detail::UInt<9> runtime_unsigned_pattern(force_runtime(0x1FF));
+    detail::SInt<9> runtime_signed_pattern(force_runtime(-1));
     EXPECT_EQ(runtime_unsigned_pattern.to_native_integer<uint16_t>(), 0x01FF);
     EXPECT_EQ(runtime_signed_pattern.to_native_integer<int16_t>(), -1);
 
-    detail::UInt<9> runtime_widened_unsigned(detail::UInt<8>(0xFF));
-    detail::SInt<9> runtime_widened_signed(detail::SInt<8>(-1));
+    detail::UInt<9> runtime_widened_unsigned(force_runtime(detail::UInt<8>(0xFF)));
+    detail::SInt<9> runtime_widened_signed(force_runtime(detail::SInt<8>(-1)));
     EXPECT_EQ(runtime_widened_unsigned.to_native_integer<uint16_t>(), 0x00FF);
     EXPECT_EQ(runtime_widened_signed.to_native_integer<int16_t>(), -1);
 
@@ -566,15 +583,15 @@ TEST(Int, conversion_and_parsing_preserve_values) {
     static_assert(parsed_unsigned.to_native_integer<uint16_t>() == 0x01FF);
     static_assert(parsed_signed.to_native_integer<int16_t>() == -1);
 
-    detail::UInt<9> runtime_narrowed_unsigned(detail::UInt<16>(0xFFFF));
-    detail::UInt<9> runtime_narrowed_signed(detail::SInt<16>(-1));
-    detail::SInt<9> runtime_reinterpreted_unsigned(detail::UInt<9>(0x1FF));
+    detail::UInt<9> runtime_narrowed_unsigned(force_runtime(detail::UInt<16>(0xFFFF)));
+    detail::UInt<9> runtime_narrowed_signed(force_runtime(detail::SInt<16>(-1)));
+    detail::SInt<9> runtime_reinterpreted_unsigned(force_runtime(detail::UInt<9>(0x1FF)));
     EXPECT_EQ(runtime_narrowed_unsigned.to_native_integer<uint16_t>(), 0x01FF);
     EXPECT_EQ(runtime_narrowed_signed.to_native_integer<uint16_t>(), 0x01FF);
     EXPECT_EQ(runtime_reinterpreted_unsigned.to_native_integer<int16_t>(), -1);
 
-    detail::UInt<9> runtime_parsed_unsigned("511");
-    detail::SInt<9> runtime_parsed_signed("-1");
+    detail::UInt<9> runtime_parsed_unsigned(force_runtime("511"));
+    detail::SInt<9> runtime_parsed_signed(force_runtime("-1"));
     EXPECT_EQ(runtime_parsed_unsigned.to_native_integer<uint16_t>(), 0x01FF);
     EXPECT_EQ(runtime_parsed_signed.to_native_integer<int16_t>(), -1);
 }
@@ -594,15 +611,21 @@ TEST(Int, native_division_results_have_expected_values) {
     static_assert(wide_result.first == detail::SInt<130>(3));
     static_assert(wide_result.second == detail::SInt<8>(-2));
 
-    auto runtime_unsigned_result = detail::divrem(detail::UInt<8>(200), detail::UInt<8>(7));
+    auto runtime_unsigned_result = detail::divrem(
+        detail::UInt<8>(force_runtime(200)), detail::UInt<8>(force_runtime(7))
+    );
     EXPECT_EQ(runtime_unsigned_result.first, detail::UInt<9>(28));
     EXPECT_EQ(runtime_unsigned_result.second, detail::UInt<8>(4));
 
-    auto runtime_signed_result = detail::divrem(detail::SInt<8>(-17), detail::SInt<8>(5));
+    auto runtime_signed_result = detail::divrem(
+        detail::SInt<8>(force_runtime(-17)), detail::SInt<8>(force_runtime(5))
+    );
     EXPECT_EQ(runtime_signed_result.first, detail::SInt<9>(-3));
     EXPECT_EQ(runtime_signed_result.second, detail::SInt<8>(-2));
 
-    auto runtime_wide_result = detail::divrem(detail::SInt<129>(-17), detail::SInt<8>(-5));
+    auto runtime_wide_result = detail::divrem(
+        detail::SInt<129>(force_runtime(-17)), detail::SInt<8>(force_runtime(-5))
+    );
     EXPECT_EQ(runtime_wide_result.first, detail::SInt<130>(3));
     EXPECT_EQ(runtime_wide_result.second, detail::SInt<8>(-2));
 }
@@ -629,7 +652,26 @@ TEST(Int, growing_arithmetic_preserves_the_result_invariant) {
     static_assert(signed_sum == detail::SInt<9>(44));
     static_assert(signed_product == detail::SInt<16>(-21));
 
-    auto [quotient, remainder] = detail::divrem(detail::SInt<8>(-17), detail::SInt<8>(5));
+    EXPECT_EQ(
+        detail::UInt<8>(force_runtime(200)) + detail::UInt<8>(force_runtime(100)),
+        detail::UInt<9>(300)
+    );
+    EXPECT_EQ(
+        detail::UInt<8>(force_runtime(5)) - detail::UInt<8>(force_runtime(7)),
+        detail::SInt<9>(-2)
+    );
+    EXPECT_EQ(
+        detail::SInt<8>(force_runtime(-56)) + detail::SInt<8>(force_runtime(100)),
+        detail::SInt<9>(44)
+    );
+    EXPECT_EQ(
+        detail::SInt<8>(force_runtime(-3)) * detail::SInt<8>(force_runtime(7)),
+        detail::SInt<16>(-21)
+    );
+
+    auto [quotient, remainder] = detail::divrem(
+        detail::SInt<8>(force_runtime(-17)), detail::SInt<8>(force_runtime(5))
+    );
     EXPECT_EQ(quotient.to_decimal_string(), "-3");
     EXPECT_EQ(remainder.to_decimal_string(), "-2");
 }

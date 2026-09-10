@@ -10,6 +10,9 @@
 #include <type_traits>
 #include <unordered_set>
 
+#include "force_runtime.hpp"
+
+using coconext::test::force_runtime;
 using namespace coconext::types;
 using namespace coconext::literals;
 
@@ -322,6 +325,9 @@ TEST(TestSigned, ShiftOperators) {
 
     constexpr Signed<1000> wide_shift_amt(2);
     static_assert(static_cast<int>(Signed<8>(5) << wide_shift_amt) == 20);
+    auto runtime_shift_amt = force_runtime(wide_shift_amt);
+    EXPECT_EQ(static_cast<int>(Signed<8>(force_runtime(5)) << runtime_shift_amt), 20);
+    EXPECT_EQ(static_cast<int>(Signed<8>(force_runtime(-20)) >> runtime_shift_amt), -5);
 
     Signed<1000> huge_shift_amt;
     huge_shift_amt[998] = Bit::_1;

@@ -7,6 +7,8 @@
 #include <type_traits>
 #include <utility>
 
+#include "force_runtime.hpp"
+
 using namespace coconext::types;
 using namespace coconext::literals;
 
@@ -23,7 +25,7 @@ using AsBitArray = BitArray<8>;
 using AsTypes = std::tuple<AsUnsigned, AsSigned, AsUfixed, AsSfixed, AsBitArray>;
 
 template <typename Target, typename Source>
-constexpr bool check_as_pair() {
+constexpr bool check_as_pair(AsBitArray const& expected) {
     static_assert(
         std::same_as<decltype(std::declval<Source>().template as<Target>()), Target>
     );
@@ -34,26 +36,44 @@ constexpr bool check_as_pair() {
 
     static_assert(!requires(Source& source) { source.as(); });
 
-    AsBitArray const expected("10100101");
-    Target value = AsBitArray("10100101").as<Source>().template as<Target>();
-    Target deferred = AsBitArray("10100101").as<Source>().as();
+    Target value = AsBitArray(expected).as<Source>().template as<Target>();
+    Target deferred = AsBitArray(expected).as<Source>().as();
     return detail::storage(value) == detail::storage(expected)
         && detail::storage(deferred) == detail::storage(expected);
 }
 
 template <typename Target, typename... Sources>
-consteval bool check_as_sources(std::type_identity<std::tuple<Sources...>>) {
-    return (check_as_pair<Target, Sources>() && ...);
+constexpr bool check_as_sources(
+    std::type_identity<std::tuple<Sources...>>, AsBitArray const& expected
+) {
+    return (check_as_pair<Target, Sources>(expected) && ...);
 }
 
 }  // namespace
 
 TEST(TestUfixed, AsReinterpretationMatrix) {
-    static_assert(check_as_sources<AsUnsigned>(std::type_identity<AsTypes>{}));
-    static_assert(check_as_sources<AsSigned>(std::type_identity<AsTypes>{}));
-    static_assert(check_as_sources<AsUfixed>(std::type_identity<AsTypes>{}));
-    static_assert(check_as_sources<AsSfixed>(std::type_identity<AsTypes>{}));
-    static_assert(check_as_sources<AsBitArray>(std::type_identity<AsTypes>{}));
+    static_assert(
+        check_as_sources<AsUnsigned>(std::type_identity<AsTypes>{}, AsBitArray("10100101"))
+    );
+    static_assert(
+        check_as_sources<AsSigned>(std::type_identity<AsTypes>{}, AsBitArray("10100101"))
+    );
+    static_assert(
+        check_as_sources<AsUfixed>(std::type_identity<AsTypes>{}, AsBitArray("10100101"))
+    );
+    static_assert(
+        check_as_sources<AsSfixed>(std::type_identity<AsTypes>{}, AsBitArray("10100101"))
+    );
+    static_assert(
+        check_as_sources<AsBitArray>(std::type_identity<AsTypes>{}, AsBitArray("10100101"))
+    );
+
+    auto const expected = coconext::test::force_runtime(AsBitArray("10100101"));
+    EXPECT_TRUE(check_as_sources<AsUnsigned>(std::type_identity<AsTypes>{}, expected));
+    EXPECT_TRUE(check_as_sources<AsSigned>(std::type_identity<AsTypes>{}, expected));
+    EXPECT_TRUE(check_as_sources<AsUfixed>(std::type_identity<AsTypes>{}, expected));
+    EXPECT_TRUE(check_as_sources<AsSfixed>(std::type_identity<AsTypes>{}, expected));
+    EXPECT_TRUE(check_as_sources<AsBitArray>(std::type_identity<AsTypes>{}, expected));
 }
 
 TEST(TestUfixed, ReviewRegressions) {
