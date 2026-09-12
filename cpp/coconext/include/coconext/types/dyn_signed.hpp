@@ -17,28 +17,46 @@ class DynSigned {
     }
 
   public:
-    explicit DynSigned(DynSInt val) : value_(std::move(val)) {}
-    explicit DynSigned(DynUInt val) : value_(std::move(val)) {}
-    explicit DynSigned(std::string_view str, size_t width) : value_(str, width) {}
+    explicit DynSigned(Range range) : value_(range.length()), range_(range) {}
 
-    size_t size() const { return value_.size(); }
+    template <bool IsSigned>
+    explicit DynSigned(DynInt<IsSigned> val)
+        : value_(std::move(val)), range_(int_downto_range(value_.size())) {}
 
-    // Construct from a native integer.
+    template <bool IsSigned>
+    DynSigned(DynInt<IsSigned> val, Range range) : value_(std::move(val)), range_(range) {
+        if (value_.size() != range_.length()) {
+            throw std::invalid_argument("Integer storage width does not match its range");
+        }
+    }
+
+    DynSigned(std::string_view str, Range range)
+        : value_(str, range.length()), range_(range) {}
+
+    explicit DynSigned(std::string_view str, size_t width)
+        : DynSigned(str, int_downto_range(width)) {}
+
+    Range range() const noexcept { return range_; }
+    size_t size() const noexcept { return range_.length(); }
+
+    // Construct from a native integer. Range coordinates label bits, not powers of two.
     template <NativeInteger T>
-    DynSigned(T v, size_t width) : value_(width) {
-        if (width == 0) {
+    DynSigned(T v, Range range) : DynSigned(range) {
+        if (size() == 0) {
             throw std::invalid_argument("DynSigned(0) has no integer representation");
         }
-        if (!native_value_fits<true>(width, v)) {
+        if (!native_value_fits<true>(size(), v)) {
             throw std::overflow_error("value does not fit in Signed width");
         }
-        value_ = DynSInt(v, width);
+        value_ = DynSInt(v, size());
     }
+
+    template <NativeInteger T>
+    DynSigned(T v, size_t width) : DynSigned(v, int_downto_range(width)) {}
 
     template <HasDynamicStorage Target>
     [[nodiscard]] Target as() && {
-        auto const range = int_downto_range(value_.size());
-        return adopt_storage<Target>(range, std::move(value_));
+        return adopt_storage<Target>(range_, std::move(value_));
     }
 
     [[nodiscard]] auto as() && noexcept {
@@ -101,10 +119,10 @@ class DynSigned {
         }
 
         if (safe_shift >= size()) {
-            return DynSigned(0, size());
+            return DynSigned(0, range_);
         }
 
-        return DynSigned(value_ << safe_shift);
+        return DynSigned(value_ << safe_shift, range_);
     }
 
     template <typename ShiftType>
@@ -147,13 +165,13 @@ class DynSigned {
 
         if (safe_shift >= size()) {
             if (safe_shift > 0) {
-                return DynSigned(-1, size());
+                return DynSigned(-1, range_);
             } else {
-                return DynSigned(0, size());
+                return DynSigned(0, range_);
             }
         }
 
-        return DynSigned(value_ >> safe_shift);
+        return DynSigned(value_ >> safe_shift, range_);
     }
 
     template <typename ShiftType>
@@ -169,18 +187,18 @@ class DynSigned {
     }
 
     auto operator|(DynSigned const& other) const {
-        return DynSigned(value_ | storage(other));
+        return DynSigned(value_ | storage(other), range_);
     }
 
     auto operator&(DynSigned const& other) const {
-        return DynSigned(value_ & storage(other));
+        return DynSigned(value_ & storage(other), range_);
     }
 
     auto operator^(DynSigned const& other) const {
-        return DynSigned(value_ ^ storage(other));
+        return DynSigned(value_ ^ storage(other), range_);
     }
 
-    auto operator~() const { return DynSigned(~value_); }
+    auto operator~() const { return DynSigned(~value_, range_); }
 
     auto operator+() const { return *this; }
 
@@ -203,7 +221,7 @@ class DynSigned {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        return DynSigned(value_ % rhs.value_);
+        return DynSigned(value_ % rhs.value_, rhs.range_);
     }
 
     auto operator+=(DynSigned const& rhs) {
@@ -278,12 +296,23 @@ class DynSigned {
     auto rend() noexcept { return value_.rend(); }
     auto rend() const noexcept { return value_.rend(); }
 
-    auto index(Range::value_type index) const {
-        if (index >= static_cast<Range::value_type>(size()) || index < 0) {
-            throw std::out_of_range("Out of bounds access in DynSigned.index()");
+    auto operator[](Range::value_type index) {
+        auto const offset = offset_of(range_, index);
+        if (!offset) {
+            throw std::out_of_range("DynSigned index out of bounds");
         }
-        return value_.get_bit(index);
+        return value_[size() - 1 - *offset];
     }
+
+    auto operator[](Range::value_type index) const {
+        auto const offset = offset_of(range_, index);
+        if (!offset) {
+            throw std::out_of_range("DynSigned index out of bounds");
+        }
+        return value_[size() - 1 - *offset];
+    }
+
+    bool index(Range::value_type index) const { return static_cast<bool>((*this)[index]); }
 
     friend DynSigned& operator+=(DynSigned& lhs, DynUnsigned const& rhs);
     friend DynSigned& operator-=(DynSigned& lhs, DynUnsigned const& rhs);
@@ -301,6 +330,7 @@ class DynSigned {
 
     friend struct storage_fn;
     DynSInt value_;
+    Range range_;
 };
 
 inline DynSigned rem(DynSigned const& lhs, DynSigned const& rhs) { return lhs % rhs; }
@@ -309,7 +339,7 @@ inline DynSigned mod(DynSigned const& lhs, DynSigned const& rhs) {
     if (!static_cast<bool>(rhs)) {
         throw std::domain_error("Division by zero");
     }
-    return DynSigned(mod(storage(lhs), storage(rhs)));
+    return DynSigned(mod(storage(lhs), storage(rhs)), rhs.range());
 }
 
 // DynUnsigned Unary operators
