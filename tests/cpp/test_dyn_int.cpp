@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <iterator>
 #include <limits>
+#include <ranges>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -20,6 +21,73 @@ using coconext::types::detail::DynSInt;
 using coconext::types::detail::DynUInt;
 using coconext::types::detail::DynUnsigned;
 namespace detail = coconext::types::detail;
+
+template <typename T>
+class DynIntegerIteration : public testing::Test {};
+
+using DynIntegerTypes = testing::Types<DynUnsigned, DynSigned>;
+TYPED_TEST_SUITE(DynIntegerIteration, DynIntegerTypes);
+
+TYPED_TEST(DynIntegerIteration, forward_reverse_and_mutation) {
+    static_assert(std::ranges::random_access_range<TypeParam>);
+    static_assert(std::ranges::random_access_range<TypeParam const>);
+    static_assert(std::ranges::sized_range<TypeParam>);
+    static_assert(std::same_as<std::ranges::range_value_t<TypeParam>, Bit>);
+
+    for (size_t width : {8u, 65u, 129u}) {
+        SCOPED_TRACE(width);
+        TypeParam value(10, width);
+        std::string const expected = std::string(width - 4, '0') + "1010";
+        std::string forward;
+        for (auto bit : value) {
+            forward += static_cast<char>(bit);
+        }
+        EXPECT_EQ(forward, expected);
+        forward.clear();
+        for (auto bit : std::as_const(value)) {
+            forward += static_cast<char>(bit);
+        }
+        EXPECT_EQ(forward, expected);
+        std::string reverse;
+        for (auto it = value.rbegin(); it != value.rend(); ++it) {
+            reverse += static_cast<char>(*it);
+        }
+        EXPECT_EQ(reverse, std::string(expected.rbegin(), expected.rend()));
+        reverse.clear();
+        for (auto it = std::as_const(value).rbegin(); it != std::as_const(value).rend();
+             ++it)
+        {
+            reverse += static_cast<char>(*it);
+        }
+        EXPECT_EQ(reverse, std::string(expected.rbegin(), expected.rend()));
+        EXPECT_EQ(value.end() - value.begin(), static_cast<std::ptrdiff_t>(width));
+        EXPECT_EQ(static_cast<Bit>(value.begin()[width - 4]), Bit::_1);
+        *value.begin() = Bit::_1;
+        *value.rbegin() = Bit::_1;
+        EXPECT_TRUE(value.index(width - 1));
+        EXPECT_TRUE(value.index(0));
+        EXPECT_EQ(value.width(), width);
+    }
+}
+
+TYPED_TEST(DynIntegerIteration, empty) {
+    TypeParam empty{DynUInt(0)};
+    EXPECT_EQ(empty.begin(), empty.end());
+    EXPECT_EQ(empty.rbegin(), empty.rend());
+    EXPECT_EQ(std::as_const(empty).begin(), std::as_const(empty).end());
+    EXPECT_EQ(std::as_const(empty).rbegin(), std::as_const(empty).rend());
+}
+
+TEST(DynInt, signed_iteration_preserves_twos_complement) {
+    for (size_t width : {8u, 65u, 129u}) {
+        DynSigned const value(-10, width);
+        std::string bits;
+        for (auto bit : value) {
+            bits += static_cast<char>(bit);
+        }
+        EXPECT_EQ(bits, std::string(width - 4, '1') + "0110");
+    }
+}
 
 template <typename Target, typename Source>
 concept CanReinterpret =

@@ -3,6 +3,7 @@
 #include <coconext/types/dyn_signed.hpp>
 #include <coconext/types/range.hpp>
 
+#include <nanobind/make_iterator.h>
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>  // IWYU pragma: keep
 
@@ -232,6 +233,27 @@ void register_unsigned(nb::module_& m) {
         )
 
         .def("__len__", [](DynUnsigned const& self) { return self.width(); })
+        .def(
+            "__iter__",
+            [](DynUnsigned const& self) {
+                return nb::make_iterator(
+                    nb::type<DynUnsigned>(), "UnsignedIterator", self.begin(), self.end()
+                );
+            },
+            nb::keep_alive<0, 1>()
+        )
+        .def(
+            "__reversed__",
+            [](DynUnsigned const& self) {
+                return nb::make_iterator(
+                    nb::type<DynUnsigned>(),
+                    "UnsignedReverseIterator",
+                    self.rbegin(),
+                    self.rend()
+                );
+            },
+            nb::keep_alive<0, 1>()
+        )
         .def("__bool__", [](DynUnsigned const& self) { return static_cast<bool>(self); })
 
         .def(
@@ -523,6 +545,27 @@ void register_signed(nb::module_& m) {
         )
 
         .def("__len__", [](DynSigned const& self) { return self.width(); })
+        .def(
+            "__iter__",
+            [](DynSigned const& self) {
+                return nb::make_iterator(
+                    nb::type<DynSigned>(), "SignedIterator", self.begin(), self.end()
+                );
+            },
+            nb::keep_alive<0, 1>()
+        )
+        .def(
+            "__reversed__",
+            [](DynSigned const& self) {
+                return nb::make_iterator(
+                    nb::type<DynSigned>(),
+                    "SignedReverseIterator",
+                    self.rbegin(),
+                    self.rend()
+                );
+            },
+            nb::keep_alive<0, 1>()
+        )
         .def("__bool__", [](DynSigned const& self) { return static_cast<bool>(self); })
 
         .def(
