@@ -171,6 +171,7 @@ class DynSfixed {
 
     DynSfixed(DynSigned const& source, Range range)
         : range_(range), value_(range.length()) {
+        dyn_fixed_detail::require_downto(source.range());
         dyn_fixed_detail::require_downto(range_);
         auto const& raw = storage(source);
         bool const negative = raw.size() != 0 && raw.is_negative();
@@ -183,7 +184,9 @@ class DynSfixed {
         : DynSfixed(
               dyn_fixed_detail::convert_signed_magnitude(storage(source), false, 0, range),
               range
-          ) {}
+          ) {
+        dyn_fixed_detail::require_downto(source.range());
+    }
 
     template <Range R>
     DynSfixed(Unsigned<R> const& source, Range range)
@@ -654,6 +657,7 @@ Sfixed<R>::Sfixed(DynSfixed const& other) {
 
 inline DynUfixed::DynUfixed(DynSigned const& source, Range range)
     : range_(range), value_(range.length()) {
+    dyn_fixed_detail::require_downto(source.range());
     dyn_fixed_detail::require_downto(range_);
     auto const& raw = storage(source);
     if (raw.size() != 0 && raw.is_negative()) {
