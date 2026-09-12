@@ -25,11 +25,11 @@ class DynSfixed {
     static DynSfixed integer_operand(T value) {
         bool negative = false;
         auto magnitude = dyn_fixed_detail::native_magnitude(value, negative);
-        Range range = int_downto_range(magnitude.width());
+        Range range = int_downto_range(magnitude.size());
         return DynSfixed(
             DynSInt(
                 negative ? dyn_fixed_detail::wrapped_negate(magnitude) : magnitude,
-                magnitude.width()
+                magnitude.size()
             ),
             range
         );
@@ -69,16 +69,16 @@ class DynSfixed {
     template <std::floating_point T>
     T to_native_float() const {
         dyn_fixed_detail::require_numeric_range(range_);
-        if (value_.width() == 0 || value_.popcount() == 0) {
+        if (value_.size() == 0 || value_.popcount() == 0) {
             return T{0};
         }
         bool const negative = value_.is_negative();
         auto magnitude = dyn_fixed_detail::unsigned_magnitude(value_);
-        size_t const msb = magnitude.width() - magnitude.count_leading_zeros() - 1;
+        size_t const msb = magnitude.size() - magnitude.count_leading_zeros() - 1;
         size_t constexpr precision = std::numeric_limits<T>::digits;
         size_t const shift = msb >= precision ? msb - precision + 1 : 0;
         std::uint64_t mantissa = 0;
-        size_t const retained = std::min(precision, magnitude.width() - shift);
+        size_t const retained = std::min(precision, magnitude.size() - shift);
         for (size_t i = 0; i < retained; ++i) {
             if (magnitude.get_bit(shift + i)) {
                 mantissa |= std::uint64_t{1} << i;
@@ -114,7 +114,7 @@ class DynSfixed {
     explicit DynSfixed(Range range) : range_(range), value_(range.length()) {}
 
     DynSfixed(DynSInt raw, Range range) : range_(range), value_(std::move(raw)) {
-        dyn_fixed_detail::validate_storage(range_, value_.width());
+        dyn_fixed_detail::validate_storage(range_, value_.size());
     }
 
     template <NativeInteger T>
@@ -173,7 +173,7 @@ class DynSfixed {
         : range_(range), value_(range.length()) {
         dyn_fixed_detail::require_downto(range_);
         auto const& raw = storage(source);
-        bool const negative = raw.width() != 0 && raw.is_negative();
+        bool const negative = raw.size() != 0 && raw.is_negative();
         value_ = dyn_fixed_detail::convert_signed_magnitude(
             dyn_fixed_detail::unsigned_magnitude(raw), negative, 0, range_
         );
@@ -201,7 +201,7 @@ class DynSfixed {
         : range_(range), value_(range.length()) {
         dyn_fixed_detail::require_downto(R);
         auto raw = DynSInt(storage(source));
-        bool const negative = raw.width() != 0 && raw.is_negative();
+        bool const negative = raw.size() != 0 && raw.is_negative();
         value_ = dyn_fixed_detail::convert_signed_magnitude(
             dyn_fixed_detail::unsigned_magnitude(raw), negative, 0, range_
         );
@@ -210,7 +210,7 @@ class DynSfixed {
     DynSfixed(DynSfixed const& source, Range range)
         : range_(range), value_(range.length()) {
         dyn_fixed_detail::require_downto(source.range_);
-        bool const negative = source.value_.width() != 0 && source.value_.is_negative();
+        bool const negative = source.value_.size() != 0 && source.value_.is_negative();
         value_ = dyn_fixed_detail::convert_signed_magnitude(
             dyn_fixed_detail::unsigned_magnitude(source.value_),
             negative,
@@ -234,7 +234,7 @@ class DynSfixed {
         : range_(range), value_(range.length()) {
         dyn_fixed_detail::require_downto(R);
         auto raw = DynSInt(storage(source));
-        bool const negative = raw.width() != 0 && raw.is_negative();
+        bool const negative = raw.size() != 0 && raw.is_negative();
         value_ = dyn_fixed_detail::convert_signed_magnitude(
             dyn_fixed_detail::unsigned_magnitude(raw), negative, R.right, range_
         );
@@ -267,7 +267,7 @@ class DynSfixed {
         round_mode rounding = round_mode::round_to_even
     ) {
         dyn_fixed_detail::require_downto(source.range_);
-        bool const negative = source.value_.width() != 0 && source.value_.is_negative();
+        bool const negative = source.value_.size() != 0 && source.value_.is_negative();
         return DynSfixed(
             dyn_fixed_detail::resize_signed_magnitude(
                 dyn_fixed_detail::unsigned_magnitude(source.value_),
@@ -283,7 +283,6 @@ class DynSfixed {
 
     Range range() const noexcept { return range_; }
     size_t size() const noexcept { return range_.length(); }
-    size_t width() const noexcept { return size(); }
 
     Range::value_type frac_bits() const noexcept {
         return -(range_.direction == Direction::DOWNTO ? range_.right : range_.left);
@@ -614,7 +613,7 @@ Ufixed<R>::Ufixed(DynSfixed const& other) {
     );
     dyn_fixed_detail::require_downto(other.range());
     auto const& raw = storage(other);
-    if (raw.width() != 0 && raw.is_negative()) {
+    if (raw.size() != 0 && raw.is_negative()) {
         throw std::out_of_range("negative value in Ufixed construction");
     }
     auto converted = dyn_fixed_detail::convert_unsigned_magnitude(
@@ -645,7 +644,7 @@ Sfixed<R>::Sfixed(DynSfixed const& other) {
     );
     dyn_fixed_detail::require_downto(other.range());
     auto const& raw = storage(other);
-    bool const negative = raw.width() != 0 && raw.is_negative();
+    bool const negative = raw.size() != 0 && raw.is_negative();
     auto converted = dyn_fixed_detail::convert_signed_magnitude(
         dyn_fixed_detail::unsigned_magnitude(raw), negative, other.range().right, R
     );
@@ -657,7 +656,7 @@ inline DynUfixed::DynUfixed(DynSigned const& source, Range range)
     : range_(range), value_(range.length()) {
     dyn_fixed_detail::require_downto(range_);
     auto const& raw = storage(source);
-    if (raw.width() != 0 && raw.is_negative()) {
+    if (raw.size() != 0 && raw.is_negative()) {
         throw std::out_of_range("Cannot construct DynUfixed from a negative DynSigned");
     }
     value_ = dyn_fixed_detail::convert_unsigned_magnitude(raw.logical_bits(), 0, range_);
@@ -668,7 +667,7 @@ DynUfixed::DynUfixed(Sfixed<R> const& source, Range range)
     : range_(range), value_(range.length()) {
     dyn_fixed_detail::require_downto(R);
     auto raw = DynSInt(storage(source));
-    if (raw.width() != 0 && raw.is_negative()) {
+    if (raw.size() != 0 && raw.is_negative()) {
         throw std::out_of_range("Cannot construct DynUfixed from a negative Sfixed");
     }
     value_ =
@@ -679,7 +678,7 @@ inline DynUfixed::DynUfixed(DynSfixed const& source, Range range)
     : range_(range), value_(range.length()) {
     dyn_fixed_detail::require_downto(range_);
     dyn_fixed_detail::require_downto(source.range_);
-    if (source.value_.width() != 0 && source.value_.is_negative()) {
+    if (source.value_.size() != 0 && source.value_.is_negative()) {
         throw std::out_of_range("Cannot construct DynUfixed from a negative DynSfixed");
     }
     value_ = dyn_fixed_detail::convert_unsigned_magnitude(
@@ -909,15 +908,11 @@ concept DynIntegerOperand = std::same_as<std::remove_cvref_t<T>, DynUnsigned>
                          || is_coconext_signed_v<std::remove_cvref_t<T>>;
 
 inline DynUfixed integer_as_fixed(DynUnsigned const& value) {
-    return DynUfixed(
-        DynUInt(storage(value), value.width()), int_downto_range(value.width())
-    );
+    return DynUfixed(DynUInt(storage(value), value.size()), int_downto_range(value.size()));
 }
 
 inline DynSfixed integer_as_fixed(DynSigned const& value) {
-    return DynSfixed(
-        DynSInt(storage(value), value.width()), int_downto_range(value.width())
-    );
+    return DynSfixed(DynSInt(storage(value), value.size()), int_downto_range(value.size()));
 }
 
 template <Range R>
@@ -1141,12 +1136,12 @@ template <NativeInteger T>
 auto native_as_fixed(T value) {
     bool negative = false;
     auto magnitude = dyn_fixed_detail::native_magnitude(value, negative);
-    Range const range = int_downto_range(magnitude.width());
+    Range const range = int_downto_range(magnitude.size());
     if constexpr (std::numeric_limits<T>::is_signed) {
         return DynSfixed(
             DynSInt(
                 negative ? dyn_fixed_detail::wrapped_negate(magnitude) : magnitude,
-                magnitude.width()
+                magnitude.size()
             ),
             range
         );
