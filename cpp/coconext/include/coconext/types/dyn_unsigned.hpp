@@ -276,6 +276,15 @@ class DynUnsigned {
     friend DynUnsigned& operator/=(DynUnsigned& lhs, DynSigned const& rhs);
     friend DynUnsigned& operator%=(DynUnsigned& lhs, DynSigned const& rhs);
 
+    auto begin() noexcept { return value_.begin(); }
+    auto begin() const noexcept { return value_.begin(); }
+    auto end() noexcept { return value_.end(); }
+    auto end() const noexcept { return value_.end(); }
+    auto rbegin() noexcept { return value_.rbegin(); }
+    auto rbegin() const noexcept { return value_.rbegin(); }
+    auto rend() noexcept { return value_.rend(); }
+    auto rend() const noexcept { return value_.rend(); }
+
     auto index(Range::value_type index) const {
         if (index >= static_cast<Range::value_type>(width()) || index < 0) {
             throw std::out_of_range("Out of bounds access in DynSigned.index()");
