@@ -131,12 +131,12 @@ inline DynUInt unsigned_magnitude(DynSInt const& value) {
 
 inline DynUInt shift_left_widened(DynUInt const& value, size_t shift) {
     size_t const width = checked_size_add(value.width(), shift);
-    return DynUInt(width, value) << shift;
+    return DynUInt(value, width) << shift;
 }
 
 inline DynSInt shift_left_widened(DynSInt const& value, size_t shift) {
     size_t const width = checked_size_add(value.width(), shift);
-    return DynSInt(width, value) << shift;
+    return DynSInt(value, width) << shift;
 }
 
 struct aligned_magnitude {
@@ -237,7 +237,7 @@ inline void round_magnitude(aligned_magnitude& value, round_mode mode, bool nega
         value.overflow = true;
     }
     value.bits = DynUInt(
-        value.bits.width(), value.bits + DynUInt(value.bits.width(), std::uint64_t{1})
+        value.bits + DynUInt(std::uint64_t{1}, value.bits.width()), value.bits.width()
     );
 }
 
@@ -262,7 +262,7 @@ inline DynUInt convert_unsigned_magnitude(
             "value cannot be represented exactly in destination DynUfixed"
         );
     }
-    return DynUInt(target.length(), aligned.bits);
+    return DynUInt(aligned.bits, target.length());
 }
 
 inline DynSInt convert_signed_magnitude(
@@ -291,8 +291,8 @@ inline DynSInt convert_signed_magnitude(
             "value cannot be represented exactly in destination DynSfixed"
         );
     }
-    auto magnitude = DynUInt(target_width, aligned.bits);
-    return DynSInt(target_width, negative ? wrapped_negate(magnitude) : magnitude);
+    auto magnitude = DynUInt(aligned.bits, target_width);
+    return DynSInt(negative ? wrapped_negate(magnitude) : magnitude, target_width);
 }
 
 template <size_t Width, bool SignedRepresentation>
@@ -330,7 +330,7 @@ inline DynUInt resize_unsigned_magnitude(
     if (out_of_range && overflow == overflow_mode::saturate) {
         return ~DynUInt(target_width);
     }
-    return DynUInt(target_width, aligned.bits);
+    return DynUInt(aligned.bits, target_width);
 }
 
 inline DynSInt resize_signed_magnitude(
@@ -359,11 +359,11 @@ inline DynSInt resize_signed_magnitude(
     if (out_of_range && overflow == overflow_mode::saturate) {
         DynUInt sign_bit(target_width);
         sign_bit.set_bit(target_width - 1, true);
-        return DynSInt(target_width, negative ? sign_bit : ~sign_bit);
+        return DynSInt(negative ? sign_bit : ~sign_bit, target_width);
     }
 
-    auto magnitude = DynUInt(target_width, aligned.bits);
-    return DynSInt(target_width, negative ? wrapped_negate(magnitude) : magnitude);
+    auto magnitude = DynUInt(aligned.bits, target_width);
+    return DynSInt(negative ? wrapped_negate(magnitude) : magnitude, target_width);
 }
 
 template <std::floating_point FloatType>
@@ -421,14 +421,14 @@ inline std::pair<DynUInt, DynUInt> divide_fixed_magnitudes(
         }
     }
 
-    DynUInt const extended_divisor(divisor.width() + 1, divisor);
+    DynUInt const extended_divisor(divisor, divisor.width() + 1);
     auto next_quotient_bit = [&] {
-        auto doubled = DynUInt(divisor.width() + 1, remainder) << 1;
+        auto doubled = DynUInt(remainder, divisor.width() + 1) << 1;
         bool const bit = !(doubled < extended_divisor);
         if (bit) {
-            doubled = DynUInt(doubled.width(), doubled - extended_divisor);
+            doubled = DynUInt(doubled - extended_divisor, doubled.width());
         }
-        remainder = DynUInt(divisor.width(), doubled);
+        remainder = DynUInt(doubled, divisor.width());
         return bit;
     };
 
@@ -459,7 +459,7 @@ inline std::pair<DynUInt, DynUInt> divide_fixed_magnitudes(
     }
     rounded.discarded = rounded.half_bit || rounded.lower_bits;
     round_magnitude(rounded, rounding, negative);
-    return {DynUInt(result_width, rounded.bits), exact_remainder};
+    return {DynUInt(rounded.bits, result_width), exact_remainder};
 }
 
 inline std::pair<DynSInt, DynSInt> divrem_signed_fixed(
@@ -491,19 +491,19 @@ inline std::pair<DynSInt, DynSInt> divrem_signed_fixed(
         guard_bits
     );
     DynSInt quotient(
-        result_width,
-        quotient_negative ? wrapped_negate(quotient_magnitude) : quotient_magnitude
+        quotient_negative ? wrapped_negate(quotient_magnitude) : quotient_magnitude,
+        result_width
     );
 
     bool remainder_negative = lhs_negative;
     if (modulo && remainder_magnitude.popcount() != 0 && lhs_negative != rhs_negative) {
         remainder_magnitude =
-            DynUInt(rhs_magnitude.width(), rhs_magnitude - remainder_magnitude);
+            DynUInt(rhs_magnitude - remainder_magnitude, rhs_magnitude.width());
         remainder_negative = rhs_negative;
     }
     DynSInt remainder(
-        remainder_magnitude.width(),
-        remainder_negative ? wrapped_negate(remainder_magnitude) : remainder_magnitude
+        remainder_negative ? wrapped_negate(remainder_magnitude) : remainder_magnitude,
+        remainder_magnitude.width()
     );
     return {std::move(quotient), std::move(remainder)};
 }
@@ -514,11 +514,11 @@ inline DynUInt native_magnitude(T value, bool& negative) {
         std::numeric_limits<T>::digits + (std::numeric_limits<T>::is_signed ? 1 : 0);
     if constexpr (std::numeric_limits<T>::is_signed) {
         negative = value < 0;
-        DynSInt source(source_width, value);
+        DynSInt source(value, source_width);
         return unsigned_magnitude(source);
     } else {
         negative = false;
-        return DynUInt(source_width, value);
+        return DynUInt(value, source_width);
     }
 }
 
@@ -551,7 +551,7 @@ inline std::string fixed_decimal_string(
     } else {
         size_t const fractional_digits = index_distance(0, right);
         for (size_t i = 0; i < fractional_digits; ++i) {
-            magnitude = magnitude * DynUInt(3, std::uint64_t{5});
+            magnitude = magnitude * DynUInt(std::uint64_t{5}, 3);
         }
         result = magnitude.to_decimal_string();
         if (result.size() <= fractional_digits) {

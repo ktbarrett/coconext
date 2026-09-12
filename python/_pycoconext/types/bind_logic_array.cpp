@@ -138,14 +138,14 @@ DynUInt bits_from_pyint(nb::handle value, size_t width, IntFit fit, std::string_
     }
     nb::object const bits = v & (modulus - nb::int_(1));
     if (width <= 64) {
-        return DynUInt(width, nb::cast<uint64_t>(bits));
+        return DynUInt(nb::cast<uint64_t>(bits), width);
     }
     // TODO int -> bytes -> DynUInt?
     nb::str hex = nb::steal<nb::str>(PyNumber_ToBase(bits.ptr(), 16));
     if (!hex.is_valid()) {
         throw nb::python_error();
     }
-    return DynUInt(width, nb::cast<std::string_view>(hex));
+    return DynUInt(nb::cast<std::string_view>(hex), width);
 }
 
 nb::int_ pyint_from_bits(DynUInt const& bits) {
@@ -167,7 +167,7 @@ nb::int_ pyint_from_bits(DynUInt const& bits) {
 nb::int_ pyint_from_bits_signed(DynUInt const& bits) {
     size_t const width = bits.width();
     if (width <= 64) {
-        return nb::int_(DynSInt(width, bits).to_native_integer<int64_t>());
+        return nb::int_(DynSInt(bits, width).to_native_integer<int64_t>());
     }
     // TODO DynUInt -> bytes -> int faster?
     nb::int_ value = pyint_from_bits(bits);
@@ -180,9 +180,9 @@ nb::int_ pyint_from_bits_signed(DynUInt const& bits) {
 template <typename VectorT>
 VectorT vector_from_bits(DynUInt&& bits, Range range) {
     if constexpr (std::is_same_v<VectorT, BitVector>) {
-        return BitVector(range, std::move(bits));
+        return BitVector(std::move(bits), range);
     } else {
-        return LogicVector(BitVector(range, std::move(bits)), range);
+        return LogicVector(BitVector(std::move(bits), range), range);
     }
 }
 

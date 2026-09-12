@@ -93,11 +93,11 @@ TEST(DynFixed, PublicTypesAndCrossKindConstruction) {
     static_assert(!std::constructible_from<BitVector, DynSfixed const&>);
 
     Range const range{3, Direction::DOWNTO, 0};
-    DynUfixed unsigned_value(range, 5);
-    DynSfixed signed_value(range, -5);
-    EXPECT_EQ(static_cast<int>(DynSfixed(range, unsigned_value)), 5);
-    EXPECT_EQ(static_cast<int>(DynUfixed(range, DynSfixed(range, 5))), 5);
-    EXPECT_THROW(DynUfixed(range, signed_value), std::out_of_range);
+    DynUfixed unsigned_value(5, range);
+    DynSfixed signed_value(-5, range);
+    EXPECT_EQ(static_cast<int>(DynSfixed(unsigned_value, range)), 5);
+    EXPECT_EQ(static_cast<int>(DynUfixed(DynSfixed(5, range), range)), 5);
+    EXPECT_THROW(DynUfixed(signed_value, range), std::out_of_range);
 }
 
 TEST(DynFixed, SignedConstructionAndShape) {
@@ -204,8 +204,8 @@ TEST(DynFixed, WideStorageAndValidation) {
 
 TEST(DynFixed, ConstructionConversionAndResizeParity) {
     Range const fractional{3, Direction::DOWNTO, -4};
-    DynUfixed u(fractional, 5.0625);
-    DynSfixed s(fractional, -5.0625);
+    DynUfixed u(5.0625, fractional);
+    DynSfixed s(-5.0625, fractional);
 
     EXPECT_EQ(static_cast<int>(u), 5);
     EXPECT_EQ(static_cast<int>(s), -5);
@@ -217,24 +217,24 @@ TEST(DynFixed, ConstructionConversionAndResizeParity) {
     EXPECT_THROW(static_cast<void>(static_cast<unsigned>(s)), std::out_of_range);
     EXPECT_THROW(
         static_cast<void>(
-            static_cast<signed char>(DynUfixed({11, Direction::DOWNTO, 0}, 300))
+            static_cast<signed char>(DynUfixed(300, {11, Direction::DOWNTO, 0}))
         ),
         std::out_of_range
     );
 
-    DynUnsigned dyn_unsigned(8, 5);
-    DynSigned dyn_signed(8, -5);
-    EXPECT_DOUBLE_EQ(static_cast<double>(DynUfixed(fractional, dyn_unsigned)), 5.0);
-    EXPECT_DOUBLE_EQ(static_cast<double>(DynSfixed(fractional, dyn_signed)), -5.0);
-    EXPECT_THROW(DynUfixed(fractional, dyn_signed), std::out_of_range);
+    DynUnsigned dyn_unsigned(5, 8);
+    DynSigned dyn_signed(-5, 8);
+    EXPECT_DOUBLE_EQ(static_cast<double>(DynUfixed(dyn_unsigned, fractional)), 5.0);
+    EXPECT_DOUBLE_EQ(static_cast<double>(DynSfixed(dyn_signed, fractional)), -5.0);
+    EXPECT_THROW(DynUfixed(dyn_signed, fractional), std::out_of_range);
 
     coconext::types::Ufixed<3, -4> static_u(5.0625);
     EXPECT_DOUBLE_EQ(
-        static_cast<double>(DynSfixed({4, Direction::DOWNTO, -4}, static_u)), 5.0625
+        static_cast<double>(DynSfixed(static_u, {4, Direction::DOWNTO, -4})), 5.0625
     );
 
     Range const integer{10, Direction::DOWNTO, 0};
-    DynUfixed positive({10, Direction::DOWNTO, -10}, 9.5);
+    DynUfixed positive(9.5, {10, Direction::DOWNTO, -10});
     EXPECT_EQ(
         static_cast<int>(
             resize(positive, integer, overflow_mode::saturate, round_mode::truncate)
@@ -248,7 +248,7 @@ TEST(DynFixed, ConstructionConversionAndResizeParity) {
         10
     );
 
-    DynSfixed negative({10, Direction::DOWNTO, -10}, -9.5);
+    DynSfixed negative(-9.5, {10, Direction::DOWNTO, -10});
     EXPECT_EQ(
         static_cast<int>(
             resize(negative, integer, overflow_mode::saturate, round_mode::truncate)
@@ -262,7 +262,7 @@ TEST(DynFixed, ConstructionConversionAndResizeParity) {
         -9
     );
 
-    DynUfixed too_large({7, Direction::DOWNTO, 0}, 200);
+    DynUfixed too_large(200, {7, Direction::DOWNTO, 0});
     EXPECT_EQ(static_cast<int>(resize(too_large, Range{3, Direction::DOWNTO, 0})), 15);
     EXPECT_EQ(
         static_cast<int>(resize(
@@ -274,13 +274,13 @@ TEST(DynFixed, ConstructionConversionAndResizeParity) {
         8
     );
 
-    EXPECT_THROW(DynUfixed(fractional, -1), std::out_of_range);
-    EXPECT_THROW(DynSfixed({3, Direction::DOWNTO, 0}, 8), std::out_of_range);
+    EXPECT_THROW(DynUfixed(-1, fractional), std::out_of_range);
+    EXPECT_THROW(DynSfixed(8, {3, Direction::DOWNTO, 0}), std::out_of_range);
     EXPECT_THROW(
-        DynUfixed(fractional, std::numeric_limits<double>::quiet_NaN()), std::domain_error
+        DynUfixed(std::numeric_limits<double>::quiet_NaN(), fractional), std::domain_error
     );
     EXPECT_DOUBLE_EQ(
-        static_cast<double>(DynSfixed(fractional, std::numeric_limits<double>::infinity())),
+        static_cast<double>(DynSfixed(std::numeric_limits<double>::infinity(), fractional)),
         7.9375
     );
 }
@@ -307,9 +307,9 @@ TEST(DynFixed, StaticConversionResizeAndReinterpretation) {
     );
 
     Range const fractional{3, Direction::DOWNTO, -2};
-    DynUfixed dynamic_unsigned(fractional, 5.25);
-    DynSfixed dynamic_positive(fractional, 5.25);
-    DynSfixed dynamic_negative(fractional, -2.5);
+    DynUfixed dynamic_unsigned(5.25, fractional);
+    DynSfixed dynamic_positive(5.25, fractional);
+    DynSfixed dynamic_negative(-2.5, fractional);
     EXPECT_DOUBLE_EQ(static_cast<double>(FractionalUfixed(dynamic_unsigned)), 5.25);
     EXPECT_DOUBLE_EQ(static_cast<double>(FractionalUfixed(dynamic_positive)), 5.25);
     EXPECT_DOUBLE_EQ(static_cast<double>(FractionalSfixed(dynamic_unsigned)), 5.25);
@@ -319,10 +319,10 @@ TEST(DynFixed, StaticConversionResizeAndReinterpretation) {
     EXPECT_THROW(static_cast<void>(IntegerSfixed(dynamic_negative)), std::out_of_range);
     EXPECT_THROW(static_cast<void>(IntegerUfixed(dynamic_negative)), std::out_of_range);
     EXPECT_THROW(
-        IntegerSfixed(DynUfixed({3, Direction::DOWNTO, 0}, 15)), std::out_of_range
+        IntegerSfixed(DynUfixed(15, {3, Direction::DOWNTO, 0})), std::out_of_range
     );
 
-    DynUfixed unsigned_half({7, Direction::DOWNTO, -1}, 9.5);
+    DynUfixed unsigned_half(9.5, {7, Direction::DOWNTO, -1});
     EXPECT_EQ(
         static_cast<int>(
             resize<3, 0>(unsigned_half, overflow_mode::saturate, round_mode::truncate)
@@ -336,7 +336,7 @@ TEST(DynFixed, StaticConversionResizeAndReinterpretation) {
         10
     );
 
-    DynSfixed signed_half({7, Direction::DOWNTO, -1}, -9.5);
+    DynSfixed signed_half(-9.5, {7, Direction::DOWNTO, -1});
     EXPECT_EQ(
         static_cast<int>(
             resize<4, 0>(signed_half, overflow_mode::saturate, round_mode::truncate)
@@ -350,7 +350,7 @@ TEST(DynFixed, StaticConversionResizeAndReinterpretation) {
         -9
     );
 
-    DynUfixed too_large({7, Direction::DOWNTO, 0}, 200);
+    DynUfixed too_large(200, {7, Direction::DOWNTO, 0});
     EXPECT_EQ(static_cast<int>(resize<3, 0>(too_large)), 15);
     EXPECT_EQ(
         static_cast<int>(
@@ -361,8 +361,8 @@ TEST(DynFixed, StaticConversionResizeAndReinterpretation) {
 }
 
 TEST(DynFixed, DivisionFamilyAndRounding) {
-    DynUfixed two({1, Direction::DOWNTO, 0}, 2);
-    DynUfixed three({1, Direction::DOWNTO, 0}, 3);
+    DynUfixed two(2, {1, Direction::DOWNTO, 0});
+    DynUfixed three(3, {1, Direction::DOWNTO, 0});
 
     EXPECT_DOUBLE_EQ(static_cast<double>(two / three), 0.75);
     EXPECT_DOUBLE_EQ(
@@ -372,15 +372,15 @@ TEST(DynFixed, DivisionFamilyAndRounding) {
         static_cast<double>(divide(two, three, round_mode::round_to_zero, 3)), 0.5
     );
 
-    DynUfixed five({2, Direction::DOWNTO, 0}, 5);
+    DynUfixed five(5, {2, Direction::DOWNTO, 0});
     auto [unsigned_quotient, unsigned_remainder] = divrem(five, three);
     EXPECT_EQ(unsigned_quotient, divide(five, three));
     EXPECT_EQ(static_cast<unsigned>(unsigned_remainder), 2U);
     EXPECT_EQ(rem(five, three), unsigned_remainder);
     EXPECT_EQ(mod(five, three), unsigned_remainder);
 
-    DynSfixed negative_two({2, Direction::DOWNTO, 0}, -2);
-    DynSfixed signed_three({2, Direction::DOWNTO, 0}, 3);
+    DynSfixed negative_two(-2, {2, Direction::DOWNTO, 0});
+    DynSfixed signed_three(3, {2, Direction::DOWNTO, 0});
     EXPECT_DOUBLE_EQ(static_cast<double>(negative_two / signed_three), -0.75);
     EXPECT_DOUBLE_EQ(
         static_cast<double>(
@@ -389,46 +389,46 @@ TEST(DynFixed, DivisionFamilyAndRounding) {
         -0.5
     );
 
-    DynSfixed negative_five({3, Direction::DOWNTO, 0}, -5);
+    DynSfixed negative_five(-5, {3, Direction::DOWNTO, 0});
     EXPECT_EQ(static_cast<int>(remainder(negative_five, signed_three)), -2);
     EXPECT_EQ(static_cast<int>(modulo(negative_five, signed_three)), 1);
 
     EXPECT_DOUBLE_EQ(static_cast<double>(reciprocal(three)), 0.25);
     EXPECT_DOUBLE_EQ(static_cast<double>(reciprocal(signed_three)), 0.25);
     EXPECT_THROW(
-        static_cast<void>(divide(two, DynUfixed({1, Direction::DOWNTO, 0}, 0))),
+        static_cast<void>(divide(two, DynUfixed(0, {1, Direction::DOWNTO, 0}))),
         std::domain_error
     );
 }
 
 TEST(DynFixed, MixedAndNativeArithmetic) {
     Range const range{7, Direction::DOWNTO, -4};
-    DynUfixed u(range, 5.25);
-    DynSfixed s(range, -2.5);
+    DynUfixed u(5.25, range);
+    DynSfixed s(-2.5, range);
 
     EXPECT_DOUBLE_EQ(static_cast<double>(u + s), 2.75);
     EXPECT_DOUBLE_EQ(static_cast<double>(s - u), -7.75);
     EXPECT_DOUBLE_EQ(static_cast<double>(u * s), -13.125);
 
-    DynUnsigned unsigned_integer(8, 2);
-    DynSigned signed_integer(8, -2);
+    DynUnsigned unsigned_integer(2, 8);
+    DynSigned signed_integer(-2, 8);
     EXPECT_DOUBLE_EQ(static_cast<double>(u + unsigned_integer), 7.25);
     EXPECT_DOUBLE_EQ(static_cast<double>(u + signed_integer), 3.25);
     EXPECT_DOUBLE_EQ(static_cast<double>(signed_integer + u), 3.25);
     EXPECT_DOUBLE_EQ(static_cast<double>(s + 2), -0.5);
     EXPECT_DOUBLE_EQ(static_cast<double>(2 + s), -0.5);
 
-    DynUfixed compound_u(range, 5.25);
+    DynUfixed compound_u(5.25, range);
     compound_u += unsigned_integer;
     EXPECT_DOUBLE_EQ(static_cast<double>(compound_u), 7.25);
-    EXPECT_THROW(compound_u += DynSigned(8, -20), std::out_of_range);
+    EXPECT_THROW(compound_u += DynSigned(-20, 8), std::out_of_range);
 
-    DynSfixed compound_s(range, -5.25);
+    DynSfixed compound_s(-5.25, range);
     compound_s += unsigned_integer;
     compound_s *= 2;
     EXPECT_DOUBLE_EQ(static_cast<double>(compound_s), -6.5);
 
-    DynUfixed incremented(range, 5.25);
+    DynUfixed incremented(5.25, range);
     EXPECT_DOUBLE_EQ(static_cast<double>(++incremented), 6.25);
     EXPECT_DOUBLE_EQ(static_cast<double>(incremented--), 6.25);
     EXPECT_DOUBLE_EQ(static_cast<double>(incremented), 5.25);
@@ -448,7 +448,7 @@ TEST(DynFixed, StaticFixedArithmeticInterop) {
     static_assert(DynamicSignedArithmetic<StaticUfixed, DynSfixed>);
 
     Range const range{7, Direction::DOWNTO, 0};
-    DynUfixed dynamic_unsigned(range, 6);
+    DynUfixed dynamic_unsigned(6, range);
     StaticUfixed static_unsigned(2);
     EXPECT_EQ(static_cast<int>(dynamic_unsigned + static_unsigned), 8);
     EXPECT_EQ(static_cast<int>(static_unsigned - dynamic_unsigned), -4);
@@ -456,7 +456,7 @@ TEST(DynFixed, StaticFixedArithmeticInterop) {
     EXPECT_EQ(static_cast<int>(dynamic_unsigned / static_unsigned), 3);
     EXPECT_EQ(static_cast<int>(dynamic_unsigned % StaticUfixed(4)), 2);
 
-    DynSfixed dynamic_signed(range, -6);
+    DynSfixed dynamic_signed(-6, range);
     StaticSfixed static_signed(2);
     EXPECT_EQ(static_cast<int>(dynamic_signed + static_signed), -4);
     EXPECT_EQ(static_cast<int>(static_signed - dynamic_signed), 8);
@@ -469,7 +469,7 @@ TEST(DynFixed, StaticFixedArithmeticInterop) {
     EXPECT_EQ(static_cast<int>(dynamic_signed + static_unsigned), -4);
     EXPECT_EQ(static_cast<int>(static_unsigned - dynamic_signed), 8);
 
-    DynUfixed compound_unsigned(range, 8);
+    DynUfixed compound_unsigned(8, range);
     compound_unsigned += static_unsigned;
     compound_unsigned -= static_unsigned;
     compound_unsigned *= static_unsigned;
@@ -478,7 +478,7 @@ TEST(DynFixed, StaticFixedArithmeticInterop) {
     compound_unsigned += StaticSfixed(-1);
     EXPECT_EQ(static_cast<int>(compound_unsigned), 1);
 
-    DynSfixed compound_signed(range, -8);
+    DynSfixed compound_signed(-8, range);
     compound_signed += static_unsigned;
     compound_signed -= StaticSfixed(-2);
     compound_signed *= static_unsigned;
@@ -492,15 +492,15 @@ TEST(DynFixed, StaticFixedArithmeticInterop) {
     );
     static_compound_unsigned += dynamic_unsigned;
     EXPECT_EQ(static_cast<int>(static_compound_unsigned), 14);
-    static_compound_unsigned -= DynUfixed(range, 2);
+    static_compound_unsigned -= DynUfixed(2, range);
     EXPECT_EQ(static_cast<int>(static_compound_unsigned), 12);
-    static_compound_unsigned *= DynUfixed(range, 2);
+    static_compound_unsigned *= DynUfixed(2, range);
     EXPECT_EQ(static_cast<int>(static_compound_unsigned), 8);
-    static_compound_unsigned /= DynUfixed(range, 2);
+    static_compound_unsigned /= DynUfixed(2, range);
     EXPECT_EQ(static_cast<int>(static_compound_unsigned), 4);
-    static_compound_unsigned %= DynUfixed(range, 3);
+    static_compound_unsigned %= DynUfixed(3, range);
     EXPECT_EQ(static_cast<int>(static_compound_unsigned), 1);
-    EXPECT_THROW(static_compound_unsigned += DynSfixed(range, -2), std::out_of_range);
+    EXPECT_THROW(static_compound_unsigned += DynSfixed(-2, range), std::out_of_range);
 
     StaticSfixed static_compound_signed(-7);
     static_assert(
@@ -508,19 +508,19 @@ TEST(DynFixed, StaticFixedArithmeticInterop) {
     );
     static_compound_signed += dynamic_unsigned;
     EXPECT_EQ(static_cast<int>(static_compound_signed), -1);
-    static_compound_signed -= DynSfixed(range, -2);
+    static_compound_signed -= DynSfixed(-2, range);
     EXPECT_EQ(static_cast<int>(static_compound_signed), 1);
-    static_compound_signed *= DynUfixed(range, 2);
+    static_compound_signed *= DynUfixed(2, range);
     EXPECT_EQ(static_cast<int>(static_compound_signed), 2);
-    static_compound_signed /= DynSfixed(range, -2);
+    static_compound_signed /= DynSfixed(-2, range);
     EXPECT_EQ(static_cast<int>(static_compound_signed), -1);
-    static_compound_signed %= DynUfixed(range, 3);
+    static_compound_signed %= DynUfixed(3, range);
     EXPECT_EQ(static_cast<int>(static_compound_signed), -1);
 }
 
 TEST(DynFixed, BitSurfaceReverseFormattingAndHash) {
     Range const range{3, Direction::DOWNTO, -4};
-    DynUfixed value(range, 5.0625);
+    DynUfixed value(5.0625, range);
     static_assert(std::ranges::random_access_range<DynUfixed>);
     static_assert(coconext::types::is_fixed<DynUfixed>);
 
@@ -539,7 +539,7 @@ TEST(DynFixed, BitSurfaceReverseFormattingAndHash) {
     EXPECT_EQ(reinterpreted.range(), range);
     EXPECT_EQ(reinterpreted, BitVector("01010001", range));
 
-    auto signed_reinterpreted = DynSfixed(range, -5.0625).as<BitVector>();
+    auto signed_reinterpreted = DynSfixed(-5.0625, range).as<BitVector>();
     EXPECT_EQ(signed_reinterpreted.range(), range);
     EXPECT_EQ(signed_reinterpreted, BitVector("10101111", range));
 
@@ -555,14 +555,14 @@ TEST(DynFixed, BitSurfaceReverseFormattingAndHash) {
 
     EXPECT_EQ(std::format("{}", value), "DynUfixed[3 downto -4]{5.0625}");
     EXPECT_EQ(std::format("{:b}", value), "DynUfixed[3 downto -4]{0101.0001}");
-    DynSfixed signed_value(range, -5.0625);
+    DynSfixed signed_value(-5.0625, range);
     EXPECT_EQ(std::format("{}", signed_value), "DynSfixed[3 downto -4]{-5.0625}");
     EXPECT_EQ(std::format("{:b}", signed_value), "DynSfixed[3 downto -4]{1010.1111}");
 
     std::unordered_set<DynUfixed> values;
     values.insert(value);
-    values.insert(DynUfixed(range, 5.0625));
-    values.insert(DynUfixed(range, 6.0));
+    values.insert(DynUfixed(5.0625, range));
+    values.insert(DynUfixed(6.0, range));
     EXPECT_EQ(values.size(), 2);
 }
 
@@ -579,8 +579,8 @@ TEST(DynFixed, NullAndToRangesRetainBitContainerBehavior) {
     EXPECT_EQ(sum.range(), (Range{0, Direction::DOWNTO, 0}));
     EXPECT_FALSE(static_cast<bool>(sum));
 
-    null_u += DynUfixed({3, Direction::DOWNTO, 0}, 1);
-    null_s -= DynSfixed({3, Direction::DOWNTO, 0}, 1);
+    null_u += DynUfixed(1, {3, Direction::DOWNTO, 0});
+    null_s -= DynSfixed(1, {3, Direction::DOWNTO, 0});
     EXPECT_EQ(null_u.size(), 0);
     EXPECT_EQ(null_s.size(), 0);
 
