@@ -122,7 +122,7 @@ inline DynUInt wrapped_negate(DynUInt value) {
 }
 
 inline DynUInt unsigned_magnitude(DynSInt const& value) {
-    if (value.width() == 0) {
+    if (value.size() == 0) {
         return DynUInt(0);
     }
     auto raw = value.logical_bits();
@@ -130,12 +130,12 @@ inline DynUInt unsigned_magnitude(DynSInt const& value) {
 }
 
 inline DynUInt shift_left_widened(DynUInt const& value, size_t shift) {
-    size_t const width = checked_size_add(value.width(), shift);
+    size_t const width = checked_size_add(value.size(), shift);
     return DynUInt(value, width) << shift;
 }
 
 inline DynSInt shift_left_widened(DynSInt const& value, size_t shift) {
-    size_t const width = checked_size_add(value.width(), shift);
+    size_t const width = checked_size_add(value.size(), shift);
     return DynSInt(value, width) << shift;
 }
 
@@ -162,7 +162,7 @@ inline aligned_magnitude align_magnitude(
     }
 
     aligned_magnitude result(result_width);
-    size_t const source_width = source.width();
+    size_t const source_width = source.size();
     if (source_width == 0) {
         return result;
     }
@@ -226,18 +226,18 @@ inline void round_magnitude(aligned_magnitude& value, round_mode mode, bool nega
         break;
     case round_mode::round_to_even:
         round_up = value.half_bit
-                && (value.lower_bits || (value.bits.width() != 0 && value.bits.get_bit(0)));
+                && (value.lower_bits || (value.bits.size() != 0 && value.bits.get_bit(0)));
         break;
     }
 
     if (!round_up) {
         return;
     }
-    if (value.bits.popcount() == value.bits.width()) {
+    if (value.bits.popcount() == value.bits.size()) {
         value.overflow = true;
     }
     value.bits = DynUInt(
-        value.bits + DynUInt(std::uint64_t{1}, value.bits.width()), value.bits.width()
+        value.bits + DynUInt(std::uint64_t{1}, value.bits.size()), value.bits.size()
     );
 }
 
@@ -297,7 +297,7 @@ inline DynSInt convert_signed_magnitude(
 
 template <size_t Width, bool SignedRepresentation>
 inline Int<Width, SignedRepresentation> copy_to_static_int(DynUInt const& source) {
-    if (source.width() != Width) {
+    if (source.size() != Width) {
         throw std::invalid_argument(
             "Dynamic integer width does not match static destination width"
         );
@@ -397,7 +397,7 @@ inline std::pair<DynUInt, DynUInt> divide_fixed_magnitudes(
     round_mode rounding,
     size_t guard_bits
 ) {
-    if (divisor.width() == 0 || divisor.popcount() == 0) {
+    if (divisor.size() == 0 || divisor.popcount() == 0) {
         throw std::domain_error("Division by zero");
     }
 
@@ -406,29 +406,29 @@ inline std::pair<DynUInt, DynUInt> divide_fixed_magnitudes(
     aligned_magnitude rounded(checked_size_add(result_width, 1));
 
     auto integer_bit = [&](size_t index) {
-        return index < integer_quotient.width() && integer_quotient.get_bit(index);
+        return index < integer_quotient.size() && integer_quotient.get_bit(index);
     };
 
     if (quotient_right >= 0) {
         size_t const first = static_cast<size_t>(quotient_right);
-        for (size_t i = 0; i < rounded.bits.width(); ++i) {
+        for (size_t i = 0; i < rounded.bits.size(); ++i) {
             rounded.bits.set_bit(i, integer_bit(checked_size_add(first, i)));
         }
     } else {
         size_t const fraction_bits = index_distance(0, quotient_right);
-        for (size_t i = fraction_bits; i < rounded.bits.width(); ++i) {
+        for (size_t i = fraction_bits; i < rounded.bits.size(); ++i) {
             rounded.bits.set_bit(i, integer_bit(i - fraction_bits));
         }
     }
 
-    DynUInt const extended_divisor(divisor, divisor.width() + 1);
+    DynUInt const extended_divisor(divisor, divisor.size() + 1);
     auto next_quotient_bit = [&] {
-        auto doubled = DynUInt(remainder, divisor.width() + 1) << 1;
+        auto doubled = DynUInt(remainder, divisor.size() + 1) << 1;
         bool const bit = !(doubled < extended_divisor);
         if (bit) {
-            doubled = DynUInt(doubled - extended_divisor, doubled.width());
+            doubled = DynUInt(doubled - extended_divisor, doubled.size());
         }
-        remainder = DynUInt(doubled, divisor.width());
+        remainder = DynUInt(doubled, divisor.size());
         return bit;
     };
 
@@ -436,7 +436,7 @@ inline std::pair<DynUInt, DynUInt> divide_fixed_magnitudes(
         size_t const fraction_bits = index_distance(0, quotient_right);
         for (size_t i = fraction_bits; i > 0; --i) {
             bool const bit = next_quotient_bit();
-            if (i <= rounded.bits.width()) {
+            if (i <= rounded.bits.size()) {
                 rounded.bits.set_bit(i - 1, bit);
             }
         }
@@ -471,11 +471,11 @@ inline std::pair<DynSInt, DynSInt> divrem_signed_fixed(
     round_mode rounding,
     size_t guard_bits
 ) {
-    if (divisor.width() == 0 || divisor.popcount() == 0) {
+    if (divisor.size() == 0 || divisor.popcount() == 0) {
         throw std::domain_error("Division by zero");
     }
 
-    bool const lhs_negative = dividend.width() != 0 && dividend.is_negative();
+    bool const lhs_negative = dividend.size() != 0 && dividend.is_negative();
     bool const rhs_negative = divisor.is_negative();
     auto lhs_magnitude = unsigned_magnitude(dividend);
     auto rhs_magnitude = unsigned_magnitude(divisor);
@@ -498,12 +498,12 @@ inline std::pair<DynSInt, DynSInt> divrem_signed_fixed(
     bool remainder_negative = lhs_negative;
     if (modulo && remainder_magnitude.popcount() != 0 && lhs_negative != rhs_negative) {
         remainder_magnitude =
-            DynUInt(rhs_magnitude - remainder_magnitude, rhs_magnitude.width());
+            DynUInt(rhs_magnitude - remainder_magnitude, rhs_magnitude.size());
         remainder_negative = rhs_negative;
     }
     DynSInt remainder(
         remainder_negative ? wrapped_negate(remainder_magnitude) : remainder_magnitude,
-        remainder_magnitude.width()
+        remainder_magnitude.size()
     );
     return {std::move(quotient), std::move(remainder)};
 }
@@ -540,7 +540,7 @@ inline long double scaled_long_double(
 inline std::string fixed_decimal_string(
     DynUInt magnitude, bool negative, Range::value_type right
 ) {
-    if (magnitude.width() == 0) {
+    if (magnitude.size() == 0) {
         return "";
     }
     std::string result;
@@ -581,9 +581,9 @@ inline std::string fixed_binary_string(DynUInt const& raw, Range range) {
 }
 
 inline DynUInt reverse_bits(DynUInt const& value) {
-    DynUInt result(value.width());
-    for (size_t i = 0; i < value.width(); ++i) {
-        result.set_bit(value.width() - 1 - i, value.get_bit(i));
+    DynUInt result(value.size());
+    for (size_t i = 0; i < value.size(); ++i) {
+        result.set_bit(value.size() - 1 - i, value.get_bit(i));
     }
     return result;
 }
@@ -610,13 +610,13 @@ inline size_t normalize_dynamic_shift(ShiftType const& amount, size_t limit) {
     } else if constexpr (std::same_as<Clean, DynUnsigned> || std::same_as<Clean, DynSigned>)
     {
         if constexpr (std::same_as<Clean, DynSigned>) {
-            if (storage(amount).width() != 0 && storage(amount).is_negative()) {
+            if (storage(amount).size() != 0 && storage(amount).is_negative()) {
                 throw std::invalid_argument("Negative shift amount");
             }
         }
         auto const& raw = storage(amount);
         size_t value = 0;
-        for (size_t bit = raw.width(); bit > 0; --bit) {
+        for (size_t bit = raw.size(); bit > 0; --bit) {
             if (value > limit / 2) {
                 return limit;
             }

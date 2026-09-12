@@ -29,7 +29,7 @@ class DynUnsigned {
     explicit DynUnsigned(DynSInt val) : value_(std::move(val)) {}
     explicit DynUnsigned(std::string_view str, size_t width) : value_(str, width) {}
 
-    size_t width() const { return value_.width(); }
+    size_t size() const { return value_.size(); }
 
     // Construct from a native integer.
     template <NativeInteger T>
@@ -45,7 +45,7 @@ class DynUnsigned {
 
     template <HasDynamicStorage Target>
     [[nodiscard]] Target as() && {
-        auto const range = int_downto_range(value_.width());
+        auto const range = int_downto_range(value_.size());
         return adopt_storage<Target>(range, std::move(value_));
     }
 
@@ -109,8 +109,8 @@ class DynUnsigned {
             safe_shift = static_cast<size_t>(signed_val);
         }
 
-        if (safe_shift >= width()) {
-            return DynUnsigned(0, width());
+        if (safe_shift >= size()) {
+            return DynUnsigned(0, size());
         }
 
         return DynUnsigned(value_ << safe_shift);
@@ -154,8 +154,8 @@ class DynUnsigned {
             safe_shift = static_cast<size_t>(signed_val);
         }
 
-        if (safe_shift >= width()) {
-            return DynUnsigned(0, width());
+        if (safe_shift >= size()) {
+            return DynUnsigned(0, size());
         }
 
         return DynUnsigned(value_ >> safe_shift);
@@ -210,17 +210,17 @@ class DynUnsigned {
     }
 
     auto operator+=(DynUnsigned const& rhs) {
-        value_ = DynUInt(value_ + rhs.value_, width());
+        value_ = DynUInt(value_ + rhs.value_, size());
         return *this;
     }
 
     auto operator-=(DynUnsigned const& rhs) {
-        value_ = DynUInt(value_ - rhs.value_, width());
+        value_ = DynUInt(value_ - rhs.value_, size());
         return *this;
     }
 
     auto operator*=(DynUnsigned const& rhs) {
-        value_ = DynUInt(value_ * rhs.value_, width());
+        value_ = DynUInt(value_ * rhs.value_, size());
         return *this;
     }
 
@@ -228,7 +228,7 @@ class DynUnsigned {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        value_ = DynUInt(value_ / rhs.value_, width());
+        value_ = DynUInt(value_ / rhs.value_, size());
         return *this;
     }
 
@@ -236,7 +236,7 @@ class DynUnsigned {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        value_ = DynUInt(value_ % rhs.value_, width());
+        value_ = DynUInt(value_ % rhs.value_, size());
         return *this;
     }
 
@@ -286,7 +286,7 @@ class DynUnsigned {
     auto rend() const noexcept { return value_.rend(); }
 
     auto index(Range::value_type index) const {
-        if (index >= static_cast<Range::value_type>(width()) || index < 0) {
+        if (index >= static_cast<Range::value_type>(size()) || index < 0) {
             throw std::out_of_range("Out of bounds access in DynSigned.index()");
         }
         return value_.get_bit(index);
@@ -294,7 +294,7 @@ class DynUnsigned {
 
   private:
     int compare_value(DynUnsigned const& rhs) const {
-        size_t const compare_width = std::max(width(), rhs.width());
+        size_t const compare_width = std::max(size(), rhs.size());
         auto lhs_value = DynUInt(value_, compare_width);
         auto rhs_value = DynUInt(rhs.value_, compare_width);
         return lhs_value < rhs_value ? -1 : rhs_value < lhs_value ? 1 : 0;

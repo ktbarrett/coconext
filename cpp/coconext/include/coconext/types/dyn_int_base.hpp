@@ -128,7 +128,7 @@ class DynInt {
     }
 
     template <bool OtherSigned>
-    explicit DynInt(DynInt<OtherSigned> const& other) : DynInt(other, other.width()) {}
+    explicit DynInt(DynInt<OtherSigned> const& other) : DynInt(other, other.size()) {}
 
     template <bool OtherSigned>
     DynInt(DynInt<OtherSigned> const& other, size_t width) : DynInt(width) {
@@ -216,7 +216,7 @@ class DynInt {
 
     ~DynInt() { destroy_storage(); }
 
-    size_t width() const { return width_; }
+    size_t size() const { return width_; }
     size_t num_words() const { return (width_ + word_bits - 1) / word_bits; }
     size_t physical_width() const {
         return width_ == 0 ? 0 : is_native() ? sbo_bits : num_words() * word_bits;
@@ -299,7 +299,7 @@ class DynInt {
         IteratorImpl() = default;
         IteratorImpl(Parent* parent, size_t index) : parent_(parent), index_(index) {}
         reference operator*() const {
-            size_t bit_pos = parent_->width() > 0 ? parent_->width() - 1 - index_ : 0;
+            size_t bit_pos = parent_->size() > 0 ? parent_->size() - 1 - index_ : 0;
             if constexpr (IsConst) {
                 return parent_->get_bit(bit_pos) ? Bit::_1 : Bit::_0;
             } else {
@@ -1176,22 +1176,22 @@ Target adopt_storage(Range range, DynInt<SignedRepresentation>&& value) {
 }
 
 inline DynUInt operator+(DynUInt const& a, DynUInt const& b) {
-    return DynUInt::arithmetic(a, b, std::max(a.width(), b.width()) + 1, '+');
+    return DynUInt::arithmetic(a, b, std::max(a.size(), b.size()) + 1, '+');
 }
 inline DynSInt operator+(DynSInt const& a, DynSInt const& b) {
-    return DynSInt::arithmetic(a, b, std::max(a.width(), b.width()) + 1, '+');
+    return DynSInt::arithmetic(a, b, std::max(a.size(), b.size()) + 1, '+');
 }
 inline DynSInt operator-(DynUInt const& a, DynUInt const& b) {
-    return DynSInt::arithmetic(a, b, std::max(a.width(), b.width()) + 1, '-');
+    return DynSInt::arithmetic(a, b, std::max(a.size(), b.size()) + 1, '-');
 }
 inline DynSInt operator-(DynSInt const& a, DynSInt const& b) {
-    return DynSInt::arithmetic(a, b, std::max(a.width(), b.width()) + 1, '-');
+    return DynSInt::arithmetic(a, b, std::max(a.size(), b.size()) + 1, '-');
 }
 inline DynUInt operator*(DynUInt const& a, DynUInt const& b) {
-    return DynUInt::arithmetic(a, b, a.width() + b.width(), '*');
+    return DynUInt::arithmetic(a, b, a.size() + b.size(), '*');
 }
 inline DynSInt operator*(DynSInt const& a, DynSInt const& b) {
-    return DynSInt::arithmetic(a, b, a.width() + b.width(), '*');
+    return DynSInt::arithmetic(a, b, a.size() + b.size(), '*');
 }
 
 inline std::pair<DynUInt, DynUInt> divrem(DynUInt const& a, DynUInt const& b) {
@@ -1212,7 +1212,7 @@ inline DynSInt mod(DynSInt const& a, DynSInt const& b) { return divmod(a, b).sec
 inline DynSInt operator-(DynSInt const& a) { return DynSInt::growing_negate(a); }
 inline DynSInt operator-(DynUInt const& a) { return DynSInt::growing_negate(a); }
 inline DynSInt abs(DynSInt const& a) {
-    DynSInt extended(a, a.width() + 1);
+    DynSInt extended(a, a.size() + 1);
     return a.is_negative() ? -a : extended;
 }
 

@@ -66,7 +66,7 @@ TYPED_TEST(DynIntegerIteration, forward_reverse_and_mutation) {
         *value.rbegin() = Bit::_1;
         EXPECT_TRUE(value.index(width - 1));
         EXPECT_TRUE(value.index(0));
-        EXPECT_EQ(value.width(), width);
+        EXPECT_EQ(value.size(), width);
     }
 }
 
@@ -174,34 +174,34 @@ TEST(DynInt, native_operands_produce_wide_results_without_losing_bits) {
     constexpr uint64_t unsigned_max = std::numeric_limits<uint64_t>::max();
 
     auto sum = DynUInt(unsigned_max, 64) + DynUInt(uint64_t{1}, 64);
-    EXPECT_EQ(sum.width(), 65u);
+    EXPECT_EQ(sum.size(), 65u);
     EXPECT_EQ(sum.to_decimal_string(), "18446744073709551616");
 
     auto difference = DynUInt(uint64_t{0}, 64) - DynUInt(unsigned_max, 64);
-    EXPECT_EQ(difference.width(), 65u);
+    EXPECT_EQ(difference.size(), 65u);
     EXPECT_EQ(difference.to_decimal_string(), "-18446744073709551615");
 
     auto product = DynUInt(unsigned_max, 64) * DynUInt(unsigned_max, 64);
-    EXPECT_EQ(product.width(), 128u);
+    EXPECT_EQ(product.size(), 128u);
     EXPECT_EQ(product.to_decimal_string(), "340282366920938463426481119284349108225");
 
     auto quotient = DynUInt(unsigned_max, 64) / DynUInt(uint64_t{3}, 64);
-    EXPECT_EQ(quotient.width(), 65u);
+    EXPECT_EQ(quotient.size(), 65u);
     EXPECT_EQ(quotient.to_decimal_string(), "6148914691236517205");
 
     auto signed_overflow_quotient =
         DynSInt(std::numeric_limits<int64_t>::min(), 64) / DynSInt(int64_t{-1}, 64);
-    EXPECT_EQ(signed_overflow_quotient.width(), 65u);
+    EXPECT_EQ(signed_overflow_quotient.size(), 65u);
     EXPECT_EQ(signed_overflow_quotient.to_decimal_string(), "9223372036854775808");
 
     auto signed_sum =
         DynSInt(std::numeric_limits<int64_t>::max(), 64) + DynSInt(int64_t{1}, 64);
-    EXPECT_EQ(signed_sum.width(), 65u);
+    EXPECT_EQ(signed_sum.size(), 65u);
     EXPECT_EQ(signed_sum.to_decimal_string(), "9223372036854775808");
 
     auto signed_product =
         DynSInt(std::numeric_limits<int64_t>::min(), 64) * DynSInt(int64_t{-1}, 64);
-    EXPECT_EQ(signed_product.width(), 128u);
+    EXPECT_EQ(signed_product.size(), 128u);
     EXPECT_EQ(signed_product.to_decimal_string(), "9223372036854775808");
 }
 
@@ -229,12 +229,12 @@ TEST(DynInt, copy_move_and_conversion_cross_native_boundary) {
 
     DynUInt assigned_native(uint64_t{0}, wide_width);
     assigned_native = DynUInt(uint64_t{17}, native_width);
-    EXPECT_EQ(assigned_native.width(), native_width);
+    EXPECT_EQ(assigned_native.size(), native_width);
     EXPECT_EQ(assigned_native.to_decimal_string(), "17");
 
     DynUInt assigned_wide(uint64_t{0}, native_width);
     assigned_wide = DynUInt(unsigned_max, wide_width);
-    EXPECT_EQ(assigned_wide.width(), wide_width);
+    EXPECT_EQ(assigned_wide.size(), wide_width);
     EXPECT_EQ(assigned_wide.to_decimal_string(), std::to_string(unsigned_max));
 
     DynSInt signed_native(DynSInt::NativeSInt{-1}, native_width);
@@ -247,23 +247,23 @@ TEST(DynInt, cross_signed_heap_move_canonicalizes_aligned_and_unaligned_storage)
     size_t const unaligned_width = DynUInt::sbo_bits + 1;
     DynUInt unaligned_source(uint64_t{1}, unaligned_width);
     DynSInt unaligned_target(std::move(unaligned_source));
-    EXPECT_EQ(unaligned_source.width(), 0u);
+    EXPECT_EQ(unaligned_source.size(), 0u);
     EXPECT_EQ(unaligned_target.to_decimal_string(), "1");
 
     DynSInt unaligned_signed_source(-1, unaligned_width);
     DynUInt unaligned_unsigned_target(std::move(unaligned_signed_source));
-    EXPECT_EQ(unaligned_signed_source.width(), 0u);
+    EXPECT_EQ(unaligned_signed_source.size(), 0u);
     EXPECT_EQ(unaligned_unsigned_target.popcount(), unaligned_width);
 
     size_t const aligned_width = DynUInt::sbo_bits * 2;
     DynUInt aligned_source(uint64_t{1}, aligned_width);
     DynSInt aligned_target(std::move(aligned_source));
-    EXPECT_EQ(aligned_source.width(), 0u);
+    EXPECT_EQ(aligned_source.size(), 0u);
     EXPECT_EQ(aligned_target.to_decimal_string(), "1");
 
     DynSInt aligned_signed_source(-1, aligned_width);
     DynUInt aligned_unsigned_target(std::move(aligned_signed_source));
-    EXPECT_EQ(aligned_signed_source.width(), 0u);
+    EXPECT_EQ(aligned_signed_source.size(), 0u);
     EXPECT_EQ(aligned_unsigned_target.popcount(), aligned_width);
 }
 
@@ -299,11 +299,11 @@ TEST(DynInt, native_operations_preserve_extension_without_signed_overflow) {
     constexpr NativeSInt signed_min = -magnitude;
 
     auto growing_positive = DynSInt(signed_max, width) + DynSInt(NativeSInt{1}, width);
-    EXPECT_EQ(growing_positive.width(), DynSInt::sbo_bits);
+    EXPECT_EQ(growing_positive.size(), DynSInt::sbo_bits);
     EXPECT_EQ(growing_positive.to_decimal_string(), std::to_string(magnitude));
 
     auto growing_negative = DynSInt(signed_min, width) + DynSInt(NativeSInt{-1}, width);
-    EXPECT_EQ(growing_negative.width(), DynSInt::sbo_bits);
+    EXPECT_EQ(growing_negative.size(), DynSInt::sbo_bits);
     EXPECT_EQ(growing_negative.to_decimal_string(), std::to_string(signed_min - 1));
 
     auto shifted_sign = DynSInt(magnitude >> 1, width) << 1;
@@ -343,19 +343,19 @@ TEST(DynInt, growing_arithmetic_accepts_mixed_widths) {
     DynUInt b(uint64_t{1000}, 16);
 
     auto sum = a + b;
-    EXPECT_EQ(sum.width(), 17u);
+    EXPECT_EQ(sum.size(), 17u);
     EXPECT_EQ(sum.to_decimal_string(), "1200");
 
     auto prod = a * b;
-    EXPECT_EQ(prod.width(), 24u);
+    EXPECT_EQ(prod.size(), 24u);
     EXPECT_EQ(prod.to_decimal_string(), "200000");
 
     // Unsigned subtraction borrows into the extra bit instead of wrapping.
     EXPECT_EQ((a - b).to_decimal_string(true), "-800");
 
     auto [quotient, remainder] = detail::divrem(a, DynUInt(uint64_t{3}, 200));
-    EXPECT_EQ(quotient.width(), 9u);
-    EXPECT_EQ(remainder.width(), 200u);
+    EXPECT_EQ(quotient.size(), 9u);
+    EXPECT_EQ(remainder.size(), 200u);
     EXPECT_EQ(quotient.to_decimal_string(), "66");
     EXPECT_EQ(remainder.to_decimal_string(), "2");
 }
@@ -516,8 +516,8 @@ TEST(DynInt, runtime_formatting_and_error_paths) {
     EXPECT_EQ(DynSInt(int64_t{42}, 200).saturate_signed(8).to_decimal_string(), "42");
     EXPECT_EQ(DynUInt(uint64_t{42}, 8).saturate_unsigned(16).to_decimal_string(), "42");
     EXPECT_EQ(DynSInt(int64_t{42}, 8).saturate_signed(16).to_decimal_string(), "42");
-    EXPECT_EQ(DynUInt(uint64_t{42}, 8).saturate_unsigned(0).width(), 0u);
-    EXPECT_EQ(DynSInt(int64_t{42}, 8).saturate_signed(0).width(), 0u);
+    EXPECT_EQ(DynUInt(uint64_t{42}, 8).saturate_unsigned(0).size(), 0u);
+    EXPECT_EQ(DynSInt(int64_t{42}, 8).saturate_signed(0).size(), 0u);
 
     EXPECT_EQ(DynUInt(uint64_t{255}, 200).to_native_integer<uint8_t>(), 255);
     EXPECT_EQ(DynSInt(int64_t{-128}, 200).to_native_integer<int8_t>(), -128);
@@ -533,7 +533,7 @@ TEST(DynInt, growing_arithmetic_preserves_the_result_invariant) {
     auto signed_sum = DynSInt(-56, 8) + DynSInt(100, 8);
     auto signed_product = DynSInt(-3, 8) * DynSInt(7, 8);
 
-    EXPECT_EQ(unsigned_sum.width(), 9);
+    EXPECT_EQ(unsigned_sum.size(), 9);
     EXPECT_EQ(unsigned_sum.to_decimal_string(), "300");
     EXPECT_EQ(unsigned_difference.to_decimal_string(), "-2");
     EXPECT_EQ(signed_sum.to_decimal_string(), "44");
@@ -559,7 +559,7 @@ TEST(DynSigned, remainder_and_modulo_are_distinct) {
 
     negative %= positive;
     EXPECT_EQ(static_cast<long long>(negative), -2);
-    EXPECT_EQ(negative.width(), 8u);
+    EXPECT_EQ(negative.size(), 8u);
 
     EXPECT_THROW(
         static_cast<void>(detail::rem(negative, DynSigned(0, 4))), std::domain_error
@@ -573,12 +573,12 @@ TEST(DynInt, bit_vector_reinterpretation) {
     BitVector bits("10000000000000000000000000000000000000000000000000000000000000001");
 
     DynSigned signed_value = std::move(bits).as();
-    EXPECT_EQ(signed_value.width(), 65U);
+    EXPECT_EQ(signed_value.size(), 65U);
     EXPECT_EQ(detail::storage(signed_value).popcount(), 2U);
     EXPECT_EQ(static_cast<long long>(signed_value >> 64), -1);
 
     DynUnsigned unsigned_value = std::move(signed_value).as<DynUnsigned>();
-    EXPECT_EQ(unsigned_value.width(), 65U);
+    EXPECT_EQ(unsigned_value.size(), 65U);
     EXPECT_EQ(detail::storage(unsigned_value).popcount(), 2U);
 
     BitVector restored = std::move(unsigned_value).as();
@@ -609,11 +609,11 @@ TYPED_TEST(DynIntStorage, arithmetic_across_storage_tiers) {
             auto difference = a - b;
             auto product = a * b;
             auto [quotient, remainder] = detail::divrem(a, b);
-            EXPECT_EQ(sum.width(), std::max(lhs_width, rhs_width) + 1);
-            EXPECT_EQ(difference.width(), sum.width());
-            EXPECT_EQ(product.width(), lhs_width + rhs_width);
-            EXPECT_EQ(quotient.width(), lhs_width + 1);
-            EXPECT_EQ(remainder.width(), rhs_width);
+            EXPECT_EQ(sum.size(), std::max(lhs_width, rhs_width) + 1);
+            EXPECT_EQ(difference.size(), sum.size());
+            EXPECT_EQ(product.size(), lhs_width + rhs_width);
+            EXPECT_EQ(quotient.size(), lhs_width + 1);
+            EXPECT_EQ(remainder.size(), rhs_width);
             EXPECT_EQ(sum.to_decimal_string(), TypeParam::is_signed ? "-194" : "208");
             EXPECT_EQ(
                 difference.to_decimal_string(), TypeParam::is_signed ? "-208" : "194"
@@ -621,7 +621,7 @@ TYPED_TEST(DynIntStorage, arithmetic_across_storage_tiers) {
             EXPECT_EQ(product.to_decimal_string(), TypeParam::is_signed ? "-1407" : "1407");
             EXPECT_EQ(quotient.to_decimal_string(), TypeParam::is_signed ? "-28" : "28");
             EXPECT_EQ(remainder.to_decimal_string(), TypeParam::is_signed ? "-5" : "5");
-            EXPECT_EQ((-a).width(), lhs_width + 1);
+            EXPECT_EQ((-a).size(), lhs_width + 1);
             EXPECT_EQ((-a).to_decimal_string(), TypeParam::is_signed ? "201" : "-201");
         }
     }
@@ -718,9 +718,9 @@ TYPED_TEST(DynIntStorage, zero_width_and_division_errors) {
     EXPECT_EQ(empty.popcount(), 0u);
     EXPECT_EQ(empty.count_leading_zeros(), 0u);
     EXPECT_EQ(empty.count_trailing_zeros(), 0u);
-    EXPECT_EQ((~empty).width(), 0u);
-    EXPECT_EQ((empty << 1).width(), 0u);
-    EXPECT_EQ((empty >> 1).width(), 0u);
+    EXPECT_EQ((~empty).size(), 0u);
+    EXPECT_EQ((empty << 1).size(), 0u);
+    EXPECT_EQ((empty >> 1).size(), 0u);
     EXPECT_EQ((empty + empty).to_decimal_string(), "0");
     EXPECT_EQ((empty * TypeParam(42, 8)).to_decimal_string(), "0");
     for (size_t width : {8u, 65u, 129u}) {

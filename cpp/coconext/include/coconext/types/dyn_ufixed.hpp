@@ -28,7 +28,7 @@ class DynUfixed {
     static DynUfixed integer_operand(T value) {
         bool negative = false;
         auto magnitude = dyn_fixed_detail::native_magnitude(value, negative);
-        Range range = int_downto_range(magnitude.width());
+        Range range = int_downto_range(magnitude.size());
         return DynUfixed(std::move(magnitude), range);
     }
 
@@ -55,14 +55,14 @@ class DynUfixed {
     template <std::floating_point T>
     T to_native_float() const {
         dyn_fixed_detail::require_numeric_range(range_);
-        if (value_.width() == 0 || value_.popcount() == 0) {
+        if (value_.size() == 0 || value_.popcount() == 0) {
             return T{0};
         }
-        size_t const msb = value_.width() - value_.count_leading_zeros() - 1;
+        size_t const msb = value_.size() - value_.count_leading_zeros() - 1;
         size_t constexpr precision = std::numeric_limits<T>::digits;
         size_t const shift = msb >= precision ? msb - precision + 1 : 0;
         std::uint64_t mantissa = 0;
-        size_t const retained = std::min(precision, value_.width() - shift);
+        size_t const retained = std::min(precision, value_.size() - shift);
         for (size_t i = 0; i < retained; ++i) {
             if (value_.get_bit(shift + i)) {
                 mantissa |= std::uint64_t{1} << i;
@@ -96,7 +96,7 @@ class DynUfixed {
     explicit DynUfixed(Range range) : range_(range), value_(range.length()) {}
 
     DynUfixed(DynUInt raw, Range range) : range_(range), value_(std::move(raw)) {
-        dyn_fixed_detail::validate_storage(range_, value_.width());
+        dyn_fixed_detail::validate_storage(range_, value_.size());
     }
 
     template <NativeInteger T>
@@ -167,7 +167,7 @@ class DynUfixed {
         : range_(range), value_(range.length()) {
         dyn_fixed_detail::require_downto(R);
         auto raw = DynSInt(storage(source));
-        if (raw.width() != 0 && raw.is_negative()) {
+        if (raw.size() != 0 && raw.is_negative()) {
             throw std::out_of_range("Cannot construct DynUfixed from a negative Signed");
         }
         value_ =
@@ -226,7 +226,6 @@ class DynUfixed {
 
     Range range() const noexcept { return range_; }
     size_t size() const noexcept { return range_.length(); }
-    size_t width() const noexcept { return size(); }
 
     Range::value_type frac_bits() const noexcept {
         return -(range_.direction == Direction::DOWNTO ? range_.right : range_.left);
@@ -442,7 +441,7 @@ class DynUfixed {
     DynUfixed& operator+=(T rhs) {
         bool negative = false;
         auto magnitude = dyn_fixed_detail::native_magnitude(rhs, negative);
-        auto const range = int_downto_range(magnitude.width());
+        auto const range = int_downto_range(magnitude.size());
         DynUfixed operand(std::move(magnitude), range);
         return negative ? *this -= operand : *this += operand;
     }
@@ -450,7 +449,7 @@ class DynUfixed {
     DynUfixed& operator-=(T rhs) {
         bool negative = false;
         auto magnitude = dyn_fixed_detail::native_magnitude(rhs, negative);
-        auto const range = int_downto_range(magnitude.width());
+        auto const range = int_downto_range(magnitude.size());
         DynUfixed operand(std::move(magnitude), range);
         return negative ? *this += operand : *this -= operand;
     }
@@ -463,7 +462,7 @@ class DynUfixed {
                 "Compound arithmetic does not allow a negative DynUfixed result"
             );
         }
-        auto const range = int_downto_range(magnitude.width());
+        auto const range = int_downto_range(magnitude.size());
         return *this *= DynUfixed(std::move(magnitude), range);
     }
     template <NativeInteger T>
@@ -475,14 +474,14 @@ class DynUfixed {
                 "Compound arithmetic does not allow a negative DynUfixed result"
             );
         }
-        auto const range = int_downto_range(magnitude.width());
+        auto const range = int_downto_range(magnitude.size());
         return *this /= DynUfixed(std::move(magnitude), range);
     }
     template <NativeInteger T>
     DynUfixed& operator%=(T rhs) {
         bool negative = false;
         auto magnitude = dyn_fixed_detail::native_magnitude(rhs, negative);
-        auto const range = int_downto_range(magnitude.width());
+        auto const range = int_downto_range(magnitude.size());
         return *this %= DynUfixed(std::move(magnitude), range);
     }
 

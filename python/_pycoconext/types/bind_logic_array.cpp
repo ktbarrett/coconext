@@ -149,10 +149,10 @@ DynUInt bits_from_pyint(nb::handle value, size_t width, IntFit fit, std::string_
 }
 
 nb::int_ pyint_from_bits(DynUInt const& bits) {
-    if (bits.width() == 0) {
+    if (bits.size() == 0) {
         return nb::int_(0);
     }
-    if (bits.width() <= 64) {
+    if (bits.size() <= 64) {
         return nb::int_(bits.to_native_integer<uint64_t>());
     }
     // TODO DynUInt -> bytes -> int faster?
@@ -165,7 +165,7 @@ nb::int_ pyint_from_bits(DynUInt const& bits) {
 }
 
 nb::int_ pyint_from_bits_signed(DynUInt const& bits) {
-    size_t const width = bits.width();
+    size_t const width = bits.size();
     if (width <= 64) {
         return nb::int_(DynSInt(bits, width).to_native_integer<int64_t>());
     }
