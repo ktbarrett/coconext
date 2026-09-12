@@ -44,7 +44,7 @@ class DynInt {
     explicit DynInt(size_t width) : width_(width) { initialize_storage(); }
 
     template <NativeInteger IntT>
-    DynInt(size_t width, IntT val) : DynInt(width) {
+    DynInt(IntT val, size_t width) : DynInt(width) {
         if (width == 0) {
             throw std::invalid_argument("DynInt(0) has no integer representation");
         }
@@ -68,17 +68,17 @@ class DynInt {
     }
 
 #if defined(__SIZEOF_INT128__)
-    DynInt(size_t width, __int128_t val) : DynInt(width) {
+    DynInt(__int128_t val, size_t width) : DynInt(width) {
         assert((native_value_fits<SignedRepresentation>(width, val)));
         assign_int128(val);
     }
-    DynInt(size_t width, __uint128_t val) : DynInt(width) {
+    DynInt(__uint128_t val, size_t width) : DynInt(width) {
         assert((native_value_fits<SignedRepresentation>(width, val)));
         assign_uint128(val);
     }
 #endif
 
-    DynInt(size_t width, std::string_view str) : DynInt(width) {
+    DynInt(std::string_view str, size_t width) : DynInt(width) {
         if (is_native()) {
             storage_.native_ = parse_native(str);
         } else {
@@ -128,10 +128,10 @@ class DynInt {
     }
 
     template <bool OtherSigned>
-    explicit DynInt(DynInt<OtherSigned> const& other) : DynInt(other.width(), other) {}
+    explicit DynInt(DynInt<OtherSigned> const& other) : DynInt(other, other.width()) {}
 
     template <bool OtherSigned>
-    DynInt(size_t width, DynInt<OtherSigned> const& other) : DynInt(width) {
+    DynInt(DynInt<OtherSigned> const& other, size_t width) : DynInt(width) {
         if (is_native()) {
             storage_.native_ =
                 native_from_logical_bits(static_cast<NativeUInt>(other.low_word()));
@@ -371,7 +371,7 @@ class DynInt {
     }
     Bit operator[](size_t index) const { return get_bit(index) ? Bit::_1 : Bit::_0; }
 
-    DynInt<false> logical_bits() const { return DynInt<false>(width_, *this); }
+    DynInt<false> logical_bits() const { return DynInt<false>(*this, width_); }
 
     template <NativeInteger T>
     T to_native_integer() const {
@@ -620,27 +620,27 @@ class DynInt {
         if (target > width_) {
             throw std::invalid_argument("truncate cannot widen");
         }
-        return DynInt(target, *this);
+        return DynInt(*this, target);
     }
 
     DynInt<false> saturate_unsigned(size_t target) const
         requires(!SignedRepresentation)
     {
         if (target >= width_) {
-            return DynInt<false>(target, *this);
+            return DynInt<false>(*this, target);
         }
         if (target == 0) {
             return DynInt<false>(0);
         }
         DynInt<false> maximum = ~DynInt<false>(target);
-        return !maximum.less(*this) ? DynInt<false>(target, *this) : maximum;
+        return !maximum.less(*this) ? DynInt<false>(*this, target) : maximum;
     }
 
     DynInt<true> saturate_signed(size_t target) const
         requires SignedRepresentation
     {
         if (target >= width_) {
-            return DynInt<true>(target, *this);
+            return DynInt<true>(*this, target);
         }
         if (target == 0) {
             return DynInt<true>(0);
@@ -654,7 +654,7 @@ class DynInt {
         if (maximum.less(*this)) {
             return maximum;
         }
-        return DynInt<true>(target, *this);
+        return DynInt<true>(*this, target);
     }
 
     std::string to_binary_string() const {
@@ -805,8 +805,8 @@ class DynInt {
                 }
                 if (lhs == std::numeric_limits<NativeSInt>::min() && rhs == -1) {
                     return {
-                        DynInt(a.width_ + 1, NativeUInt{1} << (sbo_bits - 1)),
-                        DynInt(b.width_, NativeSInt{0})
+                        DynInt(NativeUInt{1} << (sbo_bits - 1), a.width_ + 1),
+                        DynInt(NativeSInt{0}, b.width_)
                     };
                 }
                 NativeSInt quotient = lhs / rhs;
@@ -815,14 +815,14 @@ class DynInt {
                     --quotient;
                     remainder += rhs;
                 }
-                return {DynInt(a.width_ + 1, quotient), DynInt(b.width_, remainder)};
+                return {DynInt(quotient, a.width_ + 1), DynInt(remainder, b.width_)};
             } else {
                 NativeUInt lhs = a.logical_native_value();
                 NativeUInt rhs = b.logical_native_value();
                 if (rhs == 0) {
                     throw std::domain_error("Division by zero");
                 }
-                return {DynInt(a.width_ + 1, lhs / rhs), DynInt(b.width_, lhs % rhs)};
+                return {DynInt(lhs / rhs, a.width_ + 1), DynInt(lhs % rhs, b.width_)};
             }
         }
         size_t lhs_limbs = a.num_words() * limbs_per_word;
@@ -881,7 +881,7 @@ class DynInt {
 #endif
         }
         return arithmetic(
-            DynInt(result_width), DynInt(result_width, value), result_width, '-'
+            DynInt(result_width), DynInt(value, result_width), result_width, '-'
         );
     }
 
@@ -1168,8 +1168,8 @@ using DynSInt = DynInt<true>;
 // Targets that carry a Range adopt it with the storage; the rest take storage alone.
 template <typename Target, bool SignedRepresentation>
 Target adopt_storage(Range range, DynInt<SignedRepresentation>&& value) {
-    if constexpr (std::constructible_from<Target, Range, DynInt<SignedRepresentation>&&>) {
-        return Target(range, std::move(value));
+    if constexpr (std::constructible_from<Target, DynInt<SignedRepresentation>&&, Range>) {
+        return Target(std::move(value), range);
     } else {
         return Target(std::move(value));
     }
@@ -1212,7 +1212,7 @@ inline DynSInt mod(DynSInt const& a, DynSInt const& b) { return divmod(a, b).sec
 inline DynSInt operator-(DynSInt const& a) { return DynSInt::growing_negate(a); }
 inline DynSInt operator-(DynUInt const& a) { return DynSInt::growing_negate(a); }
 inline DynSInt abs(DynSInt const& a) {
-    DynSInt extended(a.width() + 1, a);
+    DynSInt extended(a, a.width() + 1);
     return a.is_negative() ? -a : extended;
 }
 

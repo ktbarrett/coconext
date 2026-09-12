@@ -29,7 +29,7 @@ class DynUfixed {
         bool negative = false;
         auto magnitude = dyn_fixed_detail::native_magnitude(value, negative);
         Range range = int_downto_range(magnitude.width());
-        return DynUfixed(range, std::move(magnitude));
+        return DynUfixed(std::move(magnitude), range);
     }
 
     template <NativeInteger T>
@@ -49,7 +49,7 @@ class DynUfixed {
         if (out_of_range) {
             throw std::out_of_range("DynUfixed value does not fit destination integer");
         }
-        return DynUInt(target_width, aligned.bits).template to_native_integer<T>();
+        return DynUInt(aligned.bits, target_width).template to_native_integer<T>();
     }
 
     template <std::floating_point T>
@@ -95,12 +95,12 @@ class DynUfixed {
   public:
     explicit DynUfixed(Range range) : range_(range), value_(range.length()) {}
 
-    DynUfixed(Range range, DynUInt raw) : range_(range), value_(std::move(raw)) {
+    DynUfixed(DynUInt raw, Range range) : range_(range), value_(std::move(raw)) {
         dyn_fixed_detail::validate_storage(range_, value_.width());
     }
 
     template <NativeInteger T>
-    DynUfixed(Range range, T value) : range_(range), value_(range.length()) {
+    DynUfixed(T value, Range range) : range_(range), value_(range.length()) {
         dyn_fixed_detail::require_numeric_range(range_);
         bool negative = false;
         auto magnitude = dyn_fixed_detail::native_magnitude(value, negative);
@@ -112,8 +112,8 @@ class DynUfixed {
 
     template <std::floating_point T>
     explicit DynUfixed(
-        Range range,
         T value,
+        Range range,
         overflow_mode overflow = overflow_mode::saturate,
         round_mode rounding = round_mode::round_to_even
     )
@@ -140,30 +140,30 @@ class DynUfixed {
         if (out_of_range && overflow == overflow_mode::saturate) {
             value_ = ~DynUInt(size());
         } else {
-            value_ = DynUInt(size(), aligned.bits);
+            value_ = DynUInt(aligned.bits, size());
         }
     }
 
-    DynUfixed(Range range, DynUnsigned const& source)
+    DynUfixed(DynUnsigned const& source, Range range)
         : DynUfixed(
-              range, dyn_fixed_detail::convert_unsigned_magnitude(storage(source), 0, range)
+              dyn_fixed_detail::convert_unsigned_magnitude(storage(source), 0, range), range
           ) {}
 
     template <Range R>
-    DynUfixed(Range range, Unsigned<R> const& source)
+    DynUfixed(Unsigned<R> const& source, Range range)
         : DynUfixed(
-              range,
               dyn_fixed_detail::convert_unsigned_magnitude(
                   DynUInt(storage(source)), 0, range
-              )
+              ),
+              range
           ) {
         dyn_fixed_detail::require_downto(R);
     }
 
-    DynUfixed(Range range, DynSigned const& source);
+    DynUfixed(DynSigned const& source, Range range);
 
     template <Range R>
-    DynUfixed(Range range, Signed<R> const& source)
+    DynUfixed(Signed<R> const& source, Range range)
         : range_(range), value_(range.length()) {
         dyn_fixed_detail::require_downto(R);
         auto raw = DynSInt(storage(source));
@@ -174,31 +174,31 @@ class DynUfixed {
             dyn_fixed_detail::convert_unsigned_magnitude(raw.logical_bits(), 0, range_);
     }
 
-    DynUfixed(Range range, DynUfixed const& source)
+    DynUfixed(DynUfixed const& source, Range range)
         : DynUfixed(
-              range,
               dyn_fixed_detail::convert_unsigned_magnitude(
                   source.value_, source.range_.right, range
-              )
+              ),
+              range
           ) {
         dyn_fixed_detail::require_downto(source.range_);
     }
 
-    DynUfixed(Range range, DynSfixed const& source);
+    DynUfixed(DynSfixed const& source, Range range);
 
     template <Range R>
-    DynUfixed(Range range, Ufixed<R> const& source)
+    DynUfixed(Ufixed<R> const& source, Range range)
         : DynUfixed(
-              range,
               dyn_fixed_detail::convert_unsigned_magnitude(
                   DynUInt(storage(source)), R.right, range
-              )
+              ),
+              range
           ) {
         dyn_fixed_detail::require_downto(R);
     }
 
     template <Range R>
-    DynUfixed(Range range, Sfixed<R> const& source);
+    DynUfixed(Sfixed<R> const& source, Range range);
 
     template <HasDynamicStorage Target>
     [[nodiscard]] Target as() && {
@@ -217,10 +217,10 @@ class DynUfixed {
     ) {
         dyn_fixed_detail::require_downto(source.range_);
         return DynUfixed(
-            target,
             dyn_fixed_detail::resize_unsigned_magnitude(
                 source.value_, source.range_.right, target, overflow, rounding
-            )
+            ),
+            target
         );
     }
 
@@ -309,13 +309,13 @@ class DynUfixed {
     DynUfixed operator<<(ShiftType const& amount) const {
         dyn_fixed_detail::require_numeric_range(range_);
         size_t const shift = dyn_fixed_detail::normalize_dynamic_shift(amount, size());
-        return DynUfixed(range_, value_ << shift);
+        return DynUfixed(value_ << shift, range_);
     }
     template <typename ShiftType>
     DynUfixed operator>>(ShiftType const& amount) const {
         dyn_fixed_detail::require_numeric_range(range_);
         size_t const shift = dyn_fixed_detail::normalize_dynamic_shift(amount, size());
-        return DynUfixed(range_, value_ >> shift);
+        return DynUfixed(value_ >> shift, range_);
     }
     template <typename ShiftType>
     DynUfixed& operator<<=(ShiftType const& amount) {
@@ -337,14 +337,14 @@ class DynUfixed {
             dyn_fixed_detail::index_distance(rhs.range_.right, result_range.right);
         auto lhs = dyn_fixed_detail::shift_left_widened(value_, lhs_shift);
         auto rhs_value = dyn_fixed_detail::shift_left_widened(rhs.value_, rhs_shift);
-        return DynUfixed(result_range, DynUInt(result_range.length(), lhs + rhs_value));
+        return DynUfixed(DynUInt(lhs + rhs_value, result_range.length()), result_range);
     }
 
     DynSfixed operator-(DynUfixed const& rhs) const;
 
     DynUfixed operator*(DynUfixed const& rhs) const {
         Range const result_range = dyn_fixed_detail::multiply_range(range_, rhs.range_);
-        return DynUfixed(result_range, value_ * rhs.value_);
+        return DynUfixed(value_ * rhs.value_, result_range);
     }
 
     std::pair<DynUfixed, DynUfixed> divrem(
@@ -374,8 +374,8 @@ class DynUfixed {
             guard_bits
         );
         return {
-            DynUfixed(quotient_range, std::move(quotient)),
-            DynUfixed(remainder_range, DynUInt(remainder_range.length(), remainder))
+            DynUfixed(std::move(quotient), quotient_range),
+            DynUfixed(DynUInt(remainder, remainder_range.length()), remainder_range)
         };
     }
 
@@ -442,14 +442,16 @@ class DynUfixed {
     DynUfixed& operator+=(T rhs) {
         bool negative = false;
         auto magnitude = dyn_fixed_detail::native_magnitude(rhs, negative);
-        DynUfixed operand(int_downto_range(magnitude.width()), std::move(magnitude));
+        auto const range = int_downto_range(magnitude.width());
+        DynUfixed operand(std::move(magnitude), range);
         return negative ? *this -= operand : *this += operand;
     }
     template <NativeInteger T>
     DynUfixed& operator-=(T rhs) {
         bool negative = false;
         auto magnitude = dyn_fixed_detail::native_magnitude(rhs, negative);
-        DynUfixed operand(int_downto_range(magnitude.width()), std::move(magnitude));
+        auto const range = int_downto_range(magnitude.width());
+        DynUfixed operand(std::move(magnitude), range);
         return negative ? *this += operand : *this -= operand;
     }
     template <NativeInteger T>
@@ -461,8 +463,8 @@ class DynUfixed {
                 "Compound arithmetic does not allow a negative DynUfixed result"
             );
         }
-        return *this *=
-               DynUfixed(int_downto_range(magnitude.width()), std::move(magnitude));
+        auto const range = int_downto_range(magnitude.width());
+        return *this *= DynUfixed(std::move(magnitude), range);
     }
     template <NativeInteger T>
     DynUfixed& operator/=(T rhs) {
@@ -473,15 +475,15 @@ class DynUfixed {
                 "Compound arithmetic does not allow a negative DynUfixed result"
             );
         }
-        return *this /=
-               DynUfixed(int_downto_range(magnitude.width()), std::move(magnitude));
+        auto const range = int_downto_range(magnitude.width());
+        return *this /= DynUfixed(std::move(magnitude), range);
     }
     template <NativeInteger T>
     DynUfixed& operator%=(T rhs) {
         bool negative = false;
         auto magnitude = dyn_fixed_detail::native_magnitude(rhs, negative);
-        return *this %=
-               DynUfixed(int_downto_range(magnitude.width()), std::move(magnitude));
+        auto const range = int_downto_range(magnitude.width());
+        return *this %= DynUfixed(std::move(magnitude), range);
     }
 
     DynUfixed& operator++() {
@@ -604,14 +606,14 @@ inline detail::DynUfixed reciprocal(
     size_t guard_bits = fixed_guard_bits
 ) {
     Range const one_range{0, Direction::DOWNTO, 0};
-    return divide(detail::DynUfixed(one_range, 1), value, rounding, guard_bits);
+    return divide(detail::DynUfixed(1, one_range), value, rounding, guard_bits);
 }
 
 inline detail::DynUfixed reverse(detail::DynUfixed const& value) {
     auto raw = value.range().direction == Direction::TO
                  ? detail::dyn_fixed_detail::reverse_bits(detail::storage(value))
-                 : detail::DynUInt(value.size(), detail::storage(value));
-    return detail::DynUfixed(coconext::types::reverse(value.range()), std::move(raw));
+                 : detail::DynUInt(detail::storage(value), value.size());
+    return detail::DynUfixed(std::move(raw), coconext::types::reverse(value.range()));
 }
 
 }  // namespace coconext::types
