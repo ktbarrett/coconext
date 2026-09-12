@@ -178,12 +178,12 @@ class Vector<Bit> {
 
     template <bool SignedRepresentation>
     explicit Vector(detail::DynInt<SignedRepresentation>&& value)
-        : value_(std::move(value)), range_(detail::logic_downto_range(value_.width())) {}
+        : value_(std::move(value)), range_(detail::logic_downto_range(value_.size())) {}
 
     template <bool SignedRepresentation>
     Vector(detail::DynInt<SignedRepresentation>&& value, Range range)
         : value_(std::move(value)), range_(range) {
-        if (value_.width() != range_.length()) {
+        if (value_.size() != range_.length()) {
             throw std::invalid_argument("Packed value width does not match Vector range");
         }
     }

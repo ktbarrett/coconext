@@ -851,7 +851,7 @@ TEST(TestBitArray, VectorLengthCtorDefaultsToDowntoBit) {
 TEST(TestBitArray, BitVectorUsesPackedDynUIntStorage) {
     BitVector a("10100101");
     static_assert(std::same_as<decltype(detail::storage(a)), detail::DynUInt const&>);
-    EXPECT_EQ(detail::storage(a).width(), a.size());
+    EXPECT_EQ(detail::storage(a).size(), a.size());
     EXPECT_EQ(detail::storage(a).to_binary_string(), "10100101");
 }
 
