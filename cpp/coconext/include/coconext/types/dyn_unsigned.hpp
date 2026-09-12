@@ -25,28 +25,46 @@ class DynUnsigned {
     }
 
   public:
-    explicit DynUnsigned(DynUInt val) : value_(std::move(val)) {}
-    explicit DynUnsigned(DynSInt val) : value_(std::move(val)) {}
-    explicit DynUnsigned(std::string_view str, size_t width) : value_(str, width) {}
+    explicit DynUnsigned(Range range) : value_(range.length()), range_(range) {}
 
-    size_t size() const { return value_.size(); }
+    template <bool IsSigned>
+    explicit DynUnsigned(DynInt<IsSigned> val)
+        : value_(std::move(val)), range_(int_downto_range(value_.size())) {}
 
-    // Construct from a native integer.
+    template <bool IsSigned>
+    DynUnsigned(DynInt<IsSigned> val, Range range) : value_(std::move(val)), range_(range) {
+        if (value_.size() != range_.length()) {
+            throw std::invalid_argument("Integer storage width does not match its range");
+        }
+    }
+
+    DynUnsigned(std::string_view str, Range range)
+        : value_(str, range.length()), range_(range) {}
+
+    explicit DynUnsigned(std::string_view str, size_t width)
+        : DynUnsigned(str, int_downto_range(width)) {}
+
+    Range range() const noexcept { return range_; }
+    size_t size() const noexcept { return range_.length(); }
+
+    // Construct from a native integer. Range coordinates label bits, not powers of two.
     template <NativeInteger T>
-    DynUnsigned(T v, size_t width) : value_(width) {
-        if (width == 0) {
+    DynUnsigned(T v, Range range) : DynUnsigned(range) {
+        if (size() == 0) {
             throw std::invalid_argument("DynUnsigned(0) has no integer representation");
         }
-        if (!native_value_fits<false>(width, v)) {
+        if (!native_value_fits<false>(size(), v)) {
             throw std::overflow_error("value does not fit in Unsigned width");
         }
-        value_ = DynUInt(v, width);
+        value_ = DynUInt(v, size());
     }
+
+    template <NativeInteger T>
+    DynUnsigned(T v, size_t width) : DynUnsigned(v, int_downto_range(width)) {}
 
     template <HasDynamicStorage Target>
     [[nodiscard]] Target as() && {
-        auto const range = int_downto_range(value_.size());
-        return adopt_storage<Target>(range, std::move(value_));
+        return adopt_storage<Target>(range_, std::move(value_));
     }
 
     [[nodiscard]] auto as() && noexcept {
@@ -110,10 +128,10 @@ class DynUnsigned {
         }
 
         if (safe_shift >= size()) {
-            return DynUnsigned(0, size());
+            return DynUnsigned(0, range_);
         }
 
-        return DynUnsigned(value_ << safe_shift);
+        return DynUnsigned(value_ << safe_shift, range_);
     }
 
     template <typename ShiftType>
@@ -155,25 +173,25 @@ class DynUnsigned {
         }
 
         if (safe_shift >= size()) {
-            return DynUnsigned(0, size());
+            return DynUnsigned(0, range_);
         }
 
-        return DynUnsigned(value_ >> safe_shift);
+        return DynUnsigned(value_ >> safe_shift, range_);
     }
 
     auto operator|(DynUnsigned const& other) const {
-        return DynUnsigned(value_ | storage(other));
+        return DynUnsigned(value_ | storage(other), range_);
     }
 
     auto operator&(DynUnsigned const& other) const {
-        return DynUnsigned(value_ & storage(other));
+        return DynUnsigned(value_ & storage(other), range_);
     }
 
     auto operator^(DynUnsigned const& other) const {
-        return DynUnsigned(value_ ^ storage(other));
+        return DynUnsigned(value_ ^ storage(other), range_);
     }
 
-    auto operator~() const { return DynUnsigned(~value_); }
+    auto operator~() const { return DynUnsigned(~value_, range_); }
 
     template <typename ShiftType>
     constexpr DynUnsigned& operator<<=(ShiftType const& shift_amount) {
@@ -206,7 +224,7 @@ class DynUnsigned {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        return DynUnsigned(value_ % rhs.value_);
+        return DynUnsigned(value_ % rhs.value_, rhs.range_);
     }
 
     auto operator+=(DynUnsigned const& rhs) {
@@ -285,12 +303,23 @@ class DynUnsigned {
     auto rend() noexcept { return value_.rend(); }
     auto rend() const noexcept { return value_.rend(); }
 
-    auto index(Range::value_type index) const {
-        if (index >= static_cast<Range::value_type>(size()) || index < 0) {
-            throw std::out_of_range("Out of bounds access in DynSigned.index()");
+    auto operator[](Range::value_type index) {
+        auto const offset = offset_of(range_, index);
+        if (!offset) {
+            throw std::out_of_range("DynUnsigned index out of bounds");
         }
-        return value_.get_bit(index);
+        return value_[size() - 1 - *offset];
     }
+
+    auto operator[](Range::value_type index) const {
+        auto const offset = offset_of(range_, index);
+        if (!offset) {
+            throw std::out_of_range("DynUnsigned index out of bounds");
+        }
+        return value_[size() - 1 - *offset];
+    }
+
+    bool index(Range::value_type index) const { return static_cast<bool>((*this)[index]); }
 
   private:
     int compare_value(DynUnsigned const& rhs) const {
@@ -302,6 +331,7 @@ class DynUnsigned {
 
     friend struct storage_fn;
     DynUInt value_;
+    Range range_;
 };
 
 }  // namespace coconext::types::detail

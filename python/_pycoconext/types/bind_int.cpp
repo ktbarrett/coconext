@@ -1,11 +1,14 @@
 // Python bindings for coconext unsigned dynamic type.
 #include <coconext/types/concepts.hpp>
+#include <coconext/types/direction.hpp>
 #include <coconext/types/dyn_signed.hpp>
+#include <coconext/types/logic.hpp>
 #include <coconext/types/range.hpp>
 
 #include <nanobind/make_iterator.h>
 #include <nanobind/nanobind.h>
-#include <nanobind/stl/string.h>  // IWYU pragma: keep
+#include <nanobind/stl/string.h>       // IWYU pragma: keep
+#include <nanobind/stl/string_view.h>  // IWYU pragma: keep
 
 // #include <Python.h>
 #include <cstddef>
@@ -20,6 +23,25 @@ using namespace nb::literals;
 
 using namespace coconext::types;
 using namespace coconext::types::detail;
+
+namespace {
+
+template <typename Integer>
+Integer integer_from_python(nb::int_ value, Range range) {
+    nb::object const limit = nb::int_(1) << nb::int_(range.length());
+    nb::object lower = nb::int_(0);
+    nb::object upper = limit;
+    if constexpr (std::same_as<Integer, DynSigned>) {
+        upper = limit >> nb::int_(1);
+        lower = -upper;
+    }
+    if (range.length() == 0 || value < lower || value >= upper) {
+        throw std::overflow_error("Integer value does not fit in provided range");
+    }
+    return Integer(nb::cast<std::string>(nb::str(value)), range);
+}
+
+}  // namespace
 
 auto python_div = [](DynSigned const& a, DynSigned const& b) {
     if (!static_cast<bool>(b)) {
@@ -39,12 +61,35 @@ auto python_div = [](DynSigned const& a, DynSigned const& b) {
 
 auto python_imod = [](DynSigned& lhs, DynSigned const& rhs) -> DynSigned& {
     auto result = mod(lhs, rhs);
-    lhs = DynSigned(DynSInt(storage(result), lhs.size()));
+    lhs = DynSigned(DynSInt(storage(result), lhs.size()), lhs.range());
     return lhs;
 };
 
 void register_unsigned(nb::module_& m) {
     nb::class_<DynUnsigned>(m, "Unsigned")
+        .def(
+            "__init__",
+            [](DynUnsigned* self, int64_t value, Range range) {
+                new (self) DynUnsigned(value, range);
+            },
+            "value"_a,
+            "range"_a
+        )
+        .def(
+            "__init__",
+            [](DynUnsigned* self, nb::int_ value, Range range) {
+                new (self) DynUnsigned(integer_from_python<DynUnsigned>(value, range));
+            },
+            "value"_a,
+            "range"_a
+        )
+        .def_prop_ro("range", &DynUnsigned::range)
+        .def_prop_ro("left", [](DynUnsigned const& self) { return self.range().left; })
+        .def_prop_ro("right", [](DynUnsigned const& self) { return self.range().right; })
+        .def_prop_ro(
+            "direction",
+            [](DynUnsigned const& self) { return to_string(self.range().direction); }
+        )
         .def(
             "__init__",
             [](DynUnsigned* self, int64_t v, size_t width) {
@@ -86,6 +131,13 @@ void register_unsigned(nb::module_& m) {
         .def("__pos__", [](DynUnsigned const& self) { return +self; })
 
         .def(
+            "__setitem__",
+            [](DynUnsigned& self, Range::value_type index, nb::object const& value) {
+                self[index] = nb::cast<Bit>(nb::type<Bit>()(value));
+            }
+        )
+
+        .def(
             "__format__",
             [](DynUnsigned const& self, std::string spec) {
                 auto const& val = storage(self);
@@ -103,10 +155,7 @@ void register_unsigned(nb::module_& m) {
                     throw std::invalid_argument("Invalid format specifier for Unsigned");
                 }
 
-                size_t width = self.size();
-                size_t left_index = width > 0 ? width - 1 : 0;
-
-                return std::format("Unsigned[{} downto 0]{{{}}}", left_index, str_r);
+                return std::format("Unsigned{}{{{}}}", self.range(), str_r);
             },
             "format_spec"_a = ""
         )
@@ -119,7 +168,7 @@ void register_unsigned(nb::module_& m) {
             "__eq__",
             [](DynUnsigned const& self, nb::int_ other) {
                 try {
-                    return self == DynUnsigned(nb::cast<uint64_t>(other), self.size());
+                    return self == DynUnsigned(nb::cast<uint64_t>(other), self.range());
                 } catch (...) {
                     return false;
                 }
@@ -357,6 +406,29 @@ void register_signed(nb::module_& m) {
     nb::class_<DynSigned>(m, "Signed")
         .def(
             "__init__",
+            [](DynSigned* self, int64_t value, Range range) {
+                new (self) DynSigned(value, range);
+            },
+            "value"_a,
+            "range"_a
+        )
+        .def(
+            "__init__",
+            [](DynSigned* self, nb::int_ value, Range range) {
+                new (self) DynSigned(integer_from_python<DynSigned>(value, range));
+            },
+            "value"_a,
+            "range"_a
+        )
+        .def_prop_ro("range", &DynSigned::range)
+        .def_prop_ro("left", [](DynSigned const& self) { return self.range().left; })
+        .def_prop_ro("right", [](DynSigned const& self) { return self.range().right; })
+        .def_prop_ro(
+            "direction",
+            [](DynSigned const& self) { return to_string(self.range().direction); }
+        )
+        .def(
+            "__init__",
             [](DynSigned* self, int64_t v, size_t width) { new (self) DynSigned(v, width); }
         )
         .def(
@@ -404,6 +476,13 @@ void register_signed(nb::module_& m) {
         .def("__pos__", [](DynSigned const& self) { return +self; })
 
         .def(
+            "__setitem__",
+            [](DynSigned& self, Range::value_type index, nb::object const& value) {
+                self[index] = nb::cast<Bit>(nb::type<Bit>()(value));
+            }
+        )
+
+        .def(
             "__format__",
             [](DynSigned const& self, std::string spec) {
                 auto const& val = storage(self);
@@ -421,10 +500,7 @@ void register_signed(nb::module_& m) {
                     throw std::invalid_argument("Invalid format specifier for Unsigned");
                 }
 
-                size_t width = self.size();
-                size_t left_index = width > 0 ? width - 1 : 0;
-
-                return std::format("Signed[{} downto 0]{{{}}}", left_index, str_r);
+                return std::format("Signed{}{{{}}}", self.range(), str_r);
             },
             "format_spec"_a = ""
         )
@@ -437,7 +513,7 @@ void register_signed(nb::module_& m) {
             "__eq__",
             [](DynSigned const& self, nb::int_ other) {
                 try {
-                    return self == DynSigned(nb::cast<int64_t>(other), self.size());
+                    return self == DynSigned(nb::cast<int64_t>(other), self.range());
                 } catch (...) {
                     return false;
                 }

@@ -16,6 +16,8 @@
 using coconext::types::Bit;
 using coconext::types::BitArray;
 using coconext::types::BitVector;
+using coconext::types::Direction;
+using coconext::types::Range;
 using coconext::types::detail::DynSigned;
 using coconext::types::detail::DynSInt;
 using coconext::types::detail::DynUInt;
@@ -76,6 +78,101 @@ TYPED_TEST(DynIntegerIteration, empty) {
     EXPECT_EQ(empty.rbegin(), empty.rend());
     EXPECT_EQ(std::as_const(empty).begin(), std::as_const(empty).end());
     EXPECT_EQ(std::as_const(empty).rbegin(), std::as_const(empty).rend());
+}
+
+TYPED_TEST(DynIntegerIteration, stored_ranges_and_indexing) {
+    static_assert(coconext::types::RangedSequence<TypeParam, Bit>);
+    static_assert(coconext::types::RangedSequence<TypeParam const, Bit>);
+    for (Range range :
+         {
+             Range{12, Direction::DOWNTO, 5},
+             Range{-4, Direction::TO,     3}
+    })
+    {
+        TypeParam value(10, range);
+        EXPECT_EQ(value.range(), range);
+        EXPECT_EQ(value.size(), 8u);
+        std::string bits;
+        for (auto index : range) {
+            bits += static_cast<char>(std::as_const(value)[index]);
+        }
+        EXPECT_EQ(bits, "00001010");
+        EXPECT_EQ(coconext::types::to_string(value), bits);
+        value[range.left] = Bit::_1;
+        value[range.right] = Bit::_1;
+        EXPECT_EQ(coconext::types::to_string(value), "10001011");
+        EXPECT_TRUE(value.index(range.left));
+        EXPECT_THROW((void)value[100], std::out_of_range);
+        EXPECT_THROW((void)std::as_const(value)[100], std::out_of_range);
+
+        TypeParam copy = value;
+        copy[range.left] = Bit::_0;
+        EXPECT_EQ(copy.range(), range);
+        EXPECT_EQ(value[range.left], Bit::_1);
+        TypeParam assigned(0, 1);
+        assigned = value;
+        EXPECT_EQ(assigned.range(), range);
+        EXPECT_EQ(coconext::types::to_string(assigned), "10001011");
+        auto restored = std::move(assigned).template as<BitVector>();
+        EXPECT_EQ(restored.range(), range);
+        EXPECT_EQ(coconext::types::to_string(restored), "10001011");
+        auto round_trip = std::move(restored).template as<TypeParam>();
+        EXPECT_EQ(round_trip.range(), range);
+    }
+    Range const empty_range{3, Direction::DOWNTO, 4};
+    TypeParam empty(empty_range);
+    EXPECT_EQ(empty.range(), empty_range);
+    EXPECT_EQ(empty.size(), 0u);
+    EXPECT_EQ(empty.begin(), empty.end());
+    EXPECT_EQ(TypeParam(10, 8).range(), (Range{7, Direction::DOWNTO, 0}));
+    EXPECT_THROW((TypeParam(DynUInt(1, 7), Range{7, 0})), std::invalid_argument);
+    EXPECT_THROW((TypeParam(1, empty_range)), std::invalid_argument);
+}
+
+TYPED_TEST(DynIntegerIteration, operations_preserve_operand_ranges) {
+    Range const range{-4, Direction::TO, 3};
+    TypeParam value(10, range);
+    TypeParam rhs(3, Range{12, Direction::DOWNTO, 5});
+    EXPECT_EQ((value << 1).range(), range);
+    EXPECT_EQ((value >> 1).range(), range);
+    EXPECT_EQ((value << 10).range(), range);
+    EXPECT_EQ((value >> 10).range(), range);
+    EXPECT_EQ((value | rhs).range(), range);
+    EXPECT_EQ((value & rhs).range(), range);
+    EXPECT_EQ((value ^ rhs).range(), range);
+    EXPECT_EQ((~value).range(), range);
+    EXPECT_EQ((value % rhs).range(), rhs.range());
+    EXPECT_EQ((value + rhs).range(), (Range{8, Direction::DOWNTO, 0}));
+    EXPECT_EQ((value * rhs).range(), (Range{15, Direction::DOWNTO, 0}));
+    value += rhs;
+    value -= rhs;
+    value *= rhs;
+    value /= rhs;
+    value %= rhs;
+    value <<= 1;
+    value >>= 1;
+    EXPECT_EQ(value.range(), range);
+    EXPECT_EQ(static_cast<long long>(value), 1);
+}
+
+TEST(DynInt, wide_integer_reinterpretation_preserves_range) {
+    for (Range range :
+         {
+             Range{65,  Direction::DOWNTO, -64},
+             Range{-64, Direction::TO,     65 }
+    })
+    {
+        std::string const pattern = "1" + std::string(125, '0') + "1010";
+        auto signed_value = BitVector(pattern, range).as<DynSigned>();
+        EXPECT_EQ(signed_value.range(), range);
+        EXPECT_EQ(coconext::types::to_string(signed_value), pattern);
+        auto unsigned_value = std::move(signed_value).as<DynUnsigned>();
+        EXPECT_EQ(unsigned_value.range(), range);
+        EXPECT_EQ(coconext::types::to_string(unsigned_value), pattern);
+        auto restored = std::move(unsigned_value).as<BitVector>();
+        EXPECT_EQ(restored.range(), range);
+        EXPECT_EQ(coconext::types::to_string(restored), pattern);
+    }
 }
 
 TEST(DynInt, signed_iteration_preserves_twos_complement) {

@@ -147,7 +147,9 @@ class DynUfixed {
     DynUfixed(DynUnsigned const& source, Range range)
         : DynUfixed(
               dyn_fixed_detail::convert_unsigned_magnitude(storage(source), 0, range), range
-          ) {}
+          ) {
+        dyn_fixed_detail::require_downto(source.range());
+    }
 
     template <Range R>
     DynUfixed(Unsigned<R> const& source, Range range)

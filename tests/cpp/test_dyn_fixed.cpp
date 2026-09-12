@@ -118,6 +118,52 @@ TEST(DynFixed, SignedConstructionAndShape) {
     EXPECT_DOUBLE_EQ(static_cast<double>(value), 2.875);
 }
 
+TEST(DynFixed, RangeSurvivesIntegerReinterpretation) {
+    for (Range range :
+         {
+             Range{65,  Direction::DOWNTO, -64},
+             Range{-64, Direction::TO,     65 }
+    })
+    {
+        std::string const pattern = "1" + std::string(125, '0') + "1010";
+        auto signed_fixed = BitVector(pattern, range).as<DynSfixed>();
+        auto unsigned_fixed = BitVector(pattern, range).as<DynUfixed>();
+        EXPECT_EQ(signed_fixed.range(), range);
+        EXPECT_EQ(unsigned_fixed.range(), range);
+        EXPECT_EQ(to_string(signed_fixed), pattern);
+        EXPECT_EQ(to_string(unsigned_fixed), pattern);
+        auto signed_integer = DynSfixed(signed_fixed).as<DynSigned>();
+        auto unsigned_integer = DynUfixed(unsigned_fixed).as<DynUnsigned>();
+        EXPECT_EQ(signed_integer.range(), range);
+        EXPECT_EQ(unsigned_integer.range(), range);
+        EXPECT_EQ(std::move(signed_integer).as<DynSfixed>(), signed_fixed);
+        EXPECT_EQ(std::move(unsigned_integer).as<DynUfixed>(), unsigned_fixed);
+        auto crossed = DynSfixed(signed_fixed).as<DynUnsigned>().as<DynSfixed>();
+        EXPECT_EQ(crossed, signed_fixed);
+    }
+    Range const empty_range{3, Direction::DOWNTO, 4};
+    EXPECT_EQ(DynSfixed(empty_range).as<DynSigned>().as<DynSfixed>().range(), empty_range);
+    EXPECT_EQ(
+        DynUfixed(empty_range).as<DynUnsigned>().as<DynUfixed>().range(), empty_range
+    );
+}
+
+TEST(DynFixed, DynamicIntegerConversionRespectsSourceDirection) {
+    Range const fixed_range{3, Direction::DOWNTO, -4};
+    Range const ascending{-4, Direction::TO, 3};
+    Range const descending{12, Direction::DOWNTO, 5};
+    EXPECT_EQ(
+        DynUfixed(DynUnsigned(5, descending), fixed_range), DynUfixed(5, fixed_range)
+    );
+    EXPECT_EQ(
+        DynSfixed(DynSigned(-5, descending), fixed_range), DynSfixed(-5, fixed_range)
+    );
+    EXPECT_THROW(DynUfixed(DynUnsigned(5, ascending), fixed_range), std::invalid_argument);
+    EXPECT_THROW(DynUfixed(DynSigned(5, ascending), fixed_range), std::invalid_argument);
+    EXPECT_THROW(DynSfixed(DynUnsigned(5, ascending), fixed_range), std::invalid_argument);
+    EXPECT_THROW(DynSfixed(DynSigned(5, ascending), fixed_range), std::invalid_argument);
+}
+
 TEST(DynFixed, SignedArithmetic) {
     auto a = BitVector("101100110000", Range{5, Direction::DOWNTO, -6}).as<DynSfixed>();
     auto b = BitVector("111111110101000000000", Range{10, Direction::DOWNTO, -10})
