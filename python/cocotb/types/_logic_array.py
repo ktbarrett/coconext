@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import copy
 import sys
-import warnings
 from collections.abc import Iterable, Iterator
 from math import ceil
 from typing import (
@@ -17,7 +16,6 @@ from typing import (
 
 from cocotb._deprecation import deprecated
 from cocotb.types._abstract_array import AbstractMutableArray
-from cocotb.types._indexing import IndexingChangedWarning
 from cocotb.types._logic import Logic, LogicConstructibleT
 from cocotb.types._range import Range
 from cocotb.types._resolve import RESOLVE_X, ResolverLiteral, get_str_resolver
@@ -228,14 +226,12 @@ class LogicArray(AbstractMutableArray[Logic]):
     _value_as_int: int | None
     _value_as_str: str | None
     _range: Range
-    _warn_indexing: bool
 
     __slots__ = (
         "_range",
         "_value_as_array",
         "_value_as_int",
         "_value_as_str",
-        "_warn_indexing",
     )
 
     def __init__(
@@ -246,7 +242,6 @@ class LogicArray(AbstractMutableArray[Logic]):
         self._value_as_array = None
         self._value_as_int = None
         self._value_as_str = None
-        self._warn_indexing = False
 
         if isinstance(range, int):
             range = Range(range - 1, "downto", 0)
@@ -428,7 +423,6 @@ class LogicArray(AbstractMutableArray[Logic]):
         self._value_as_int = value
         self._value_as_str = None
         self._range = range
-        self._warn_indexing = False
         return self
 
     @classmethod
@@ -509,7 +503,6 @@ class LogicArray(AbstractMutableArray[Logic]):
         self._value_as_int = value
         self._value_as_str = None
         self._range = range
-        self._warn_indexing = False
         return self
 
     @classmethod
@@ -549,7 +542,7 @@ class LogicArray(AbstractMutableArray[Logic]):
         return LogicArray(value_as_int, range)
 
     @classmethod
-    def _from_handle(cls, value: str, warn_indexing: bool) -> LogicArray:
+    def _from_handle(cls, value: str) -> LogicArray:
         # Used by cocotb.handle classes to make LogicArray from values gotten from the
         # simulator which we expect to be well-formed.
         # Values are required to be uppercase.
@@ -558,7 +551,6 @@ class LogicArray(AbstractMutableArray[Logic]):
         self._value_as_int = None
         self._value_as_str = value
         self._range = Range(len(value) - 1, "downto", 0)
-        self._warn_indexing = warn_indexing
         return self
 
     @property
@@ -837,23 +829,9 @@ class LogicArray(AbstractMutableArray[Logic]):
     def __getitem__(self, item: int | slice) -> Logic | LogicArray:
         array = self._get_array()
         if isinstance(item, int):
-            if self._warn_indexing:
-                warnings.warn(
-                    f"Update index {item} to {self.range[item]}",
-                    IndexingChangedWarning,
-                    stacklevel=2,
-                )
             idx = self._translate_index(item)
             return array[idx]
         elif isinstance(item, slice):
-            if self._warn_indexing:
-                start = item.start if item.start is not None else 0
-                stop = item.stop if item.stop is not None else len(self) - 1
-                warnings.warn(
-                    f"Update slice {start}:{stop} to {self.range[start]}:{self.range[stop]}",
-                    IndexingChangedWarning,
-                    stacklevel=2,
-                )
             start = item.start if item.start is not None else self.left
             stop = item.stop if item.stop is not None else self.right
             if item.step is not None:
@@ -1017,7 +995,6 @@ class LogicArray(AbstractMutableArray[Logic]):
         res._value_as_int = self._value_as_int
         res._value_as_str = self._value_as_str
         res._range = copy.deepcopy(self._range, memo=memo)
-        res._warn_indexing = self._warn_indexing
         return res
 
     def __format__(self, spec: str, /) -> str:
