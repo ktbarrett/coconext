@@ -29,8 +29,8 @@ auto python_div = [](DynSigned const& a, DynSigned const& b) {
     DynSigned r = a - (q * b);
 
     if (static_cast<bool>(r)) {
-        if ((a < DynSigned(a.width(), 0)) != (b < DynSigned(b.width(), 0))) {
-            q -= DynSigned(q.width(), 1);
+        if ((a < DynSigned(0, a.width())) != (b < DynSigned(0, b.width()))) {
+            q -= DynSigned(1, q.width());
         }
     }
     return q;
@@ -38,7 +38,7 @@ auto python_div = [](DynSigned const& a, DynSigned const& b) {
 
 auto python_imod = [](DynSigned& lhs, DynSigned const& rhs) -> DynSigned& {
     auto result = mod(lhs, rhs);
-    lhs = DynSigned(DynSInt(lhs.width(), storage(result)));
+    lhs = DynSigned(DynSInt(storage(result), lhs.width()));
     return lhs;
 };
 
@@ -46,17 +46,17 @@ void register_unsigned(nb::module_& m) {
     nb::class_<DynUnsigned>(m, "Unsigned")
         .def(
             "__init__",
-            [](DynUnsigned* self, size_t width, int64_t v) {
-                new (self) DynUnsigned(width, v);
+            [](DynUnsigned* self, int64_t v, size_t width) {
+                new (self) DynUnsigned(v, width);
             }
         )
         // python int has infinite precision
         .def(
             "__init__",
-            [](DynUnsigned* self, size_t width, nb::int_ value_obj) {
+            [](DynUnsigned* self, nb::int_ value_obj, size_t width) {
                 nb::str py_str = nb::str(value_obj);
                 std::string dec_str = nb::cast<std::string>(py_str);
-                new (self) DynUnsigned(width, dec_str);
+                new (self) DynUnsigned(dec_str, width);
             }
         )
 
@@ -118,7 +118,7 @@ void register_unsigned(nb::module_& m) {
             "__eq__",
             [](DynUnsigned const& self, nb::int_ other) {
                 try {
-                    return self == DynUnsigned(self.width(), nb::cast<uint64_t>(other));
+                    return self == DynUnsigned(nb::cast<uint64_t>(other), self.width());
                 } catch (...) {
                     return false;
                 }
@@ -335,15 +335,15 @@ void register_signed(nb::module_& m) {
     nb::class_<DynSigned>(m, "Signed")
         .def(
             "__init__",
-            [](DynSigned* self, size_t width, int64_t v) { new (self) DynSigned(width, v); }
+            [](DynSigned* self, int64_t v, size_t width) { new (self) DynSigned(v, width); }
         )
         .def(
             "__init__",
-            [](DynSigned* self, size_t width, nb::int_ value_obj) {
+            [](DynSigned* self, nb::int_ value_obj, size_t width) {
                 nb::str py_str = nb::str(value_obj);
                 std::string dec_str = nb::cast<std::string>(py_str);
 
-                DynSigned temp(width, dec_str);
+                DynSigned temp(dec_str, width);
 
                 if (width > 0) {
                     bool str_is_negative = (!dec_str.empty() && dec_str[0] == '-');
@@ -415,7 +415,7 @@ void register_signed(nb::module_& m) {
             "__eq__",
             [](DynSigned const& self, nb::int_ other) {
                 try {
-                    return self == DynSigned(self.width(), nb::cast<int64_t>(other));
+                    return self == DynSigned(nb::cast<int64_t>(other), self.width());
                 } catch (...) {
                     return false;
                 }
@@ -595,7 +595,7 @@ void register_signed(nb::module_& m) {
         .def(
             "__imod__",
             [](DynSigned& self, int64_t const& other) {
-                return python_imod(self, DynSigned(64, other));
+                return python_imod(self, DynSigned(other, 64));
             }
         )
         .def(

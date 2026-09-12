@@ -6,39 +6,39 @@ from coconext.types import Signed, Unsigned
 
 
 def test_constructors():
-    a = Unsigned(4, 15)
+    a = Unsigned(15, 4)
     assert int(a) == 15
     assert len(a) == 4
 
     # Out of range / overflow checks
     with pytest.raises(OverflowError):
-        Unsigned(4, 16)
+        Unsigned(16, 4)
     with pytest.raises(OverflowError):
-        Unsigned(4, -1)
+        Unsigned(-1, 4)
 
-    large_val = Unsigned(8, 200)
-    small_val = Unsigned(8, 10)
+    large_val = Unsigned(200, 8)
+    small_val = Unsigned(10, 8)
 
-    narrow_fit = Unsigned(4, int(small_val))
+    narrow_fit = Unsigned(int(small_val), 4)
     assert int(narrow_fit) == 10
 
     with pytest.raises(OverflowError):
-        Unsigned(4, int(large_val))
+        Unsigned(int(large_val), 4)
 
 
 def test_explicit_native_casts():
-    a = Unsigned(16, 42000)
+    a = Unsigned(42000, 16)
 
     assert bool(a) is True
-    assert bool(Unsigned(16, 0)) is False
+    assert bool(Unsigned(0, 16)) is False
 
     assert int(a) == 42000
 
 
 def test_arithmetic_operators():
-    a = Unsigned(8, 150)
+    a = Unsigned(150, 8)
 
-    b = Unsigned(8, 50)
+    b = Unsigned(50, 8)
     sum_res = a + b
 
     assert type(sum_res) is Unsigned
@@ -53,14 +53,14 @@ def test_arithmetic_operators():
     div_res = a / b
     assert int(div_res) == 3
 
-    mod_res = a % Unsigned(4, 7)
+    mod_res = a % Unsigned(7, 4)
     assert int(mod_res) == 150 % 7
 
     with pytest.raises(ValueError):
-        _ = a // Unsigned(4, 0)
+        _ = a // Unsigned(0, 4)
 
     with pytest.raises(ValueError):
-        _ = a % Unsigned(8, 0)
+        _ = a % Unsigned(0, 8)
 
     sub_pos = a - b
     sub_neg = b - a
@@ -72,8 +72,8 @@ def test_arithmetic_operators():
 
 
 def test_arithmetic_operators_edge_cases():
-    u_narrow = Unsigned(4, 15)  # Max 4-bit (1111)
-    u_wide = Unsigned(32, 1000000)  # 32-bit
+    u_narrow = Unsigned(15, 4)  # Max 4-bit (1111)
+    u_wide = Unsigned(1000000, 32)  # 32-bit
 
     sum_nw = u_narrow + u_wide
     assert len(sum_nw) == 33  # max(4, 32) + 1
@@ -83,7 +83,7 @@ def test_arithmetic_operators_edge_cases():
     assert len(sum_wn) == 33
     assert int(sum_wn) == 1000015
 
-    sub_zero = u_narrow - Unsigned(8, 15)
+    sub_zero = u_narrow - Unsigned(15, 8)
     assert len(sub_zero) == 9  # max(4, 8) + 1
     assert int(sub_zero) == 0
 
@@ -95,7 +95,7 @@ def test_arithmetic_operators_edge_cases():
     assert len(sub_nw) == 33
     assert int(sub_nw) == 15 - 1000000
 
-    u_zero = Unsigned(8, 0)
+    u_zero = Unsigned(0, 8)
     u_one = Unsigned(1, 1)
 
     prod_zero = u_narrow * u_zero
@@ -121,10 +121,10 @@ def test_arithmetic_operators_edge_cases():
 
 
 def test_comparisons():
-    a = Unsigned(8, 10)
-    b = Unsigned(8, 10)
-    c = Unsigned(8, 20)
-    d = Unsigned(8, 5)
+    a = Unsigned(10, 8)
+    b = Unsigned(10, 8)
+    c = Unsigned(20, 8)
+    d = Unsigned(5, 8)
 
     assert a == b
     assert not (a == c)
@@ -150,13 +150,13 @@ def test_comparisons():
 
 
 def test_compound_assignment():
-    a = Unsigned(8, 10)
+    a = Unsigned(10, 8)
 
-    a += Unsigned(4, 5)
+    a += Unsigned(5, 4)
     assert len(a) == 8
     assert int(a) == 15
 
-    a -= Unsigned(5, 3)
+    a -= Unsigned(3, 5)
     assert len(a) == 8
     assert int(a) == 12
 
@@ -164,7 +164,7 @@ def test_compound_assignment():
     assert len(a) == 8
     assert int(a) == 24
 
-    a -= Unsigned(9, 32)
+    a -= Unsigned(32, 9)
     assert len(a) == 8
     assert int(a) == 248
 
@@ -172,7 +172,7 @@ def test_compound_assignment():
     assert len(a) == 8
     assert int(a) == 62
 
-    a //= Unsigned(4, 2)
+    a //= Unsigned(2, 4)
     assert len(a) == 8
     assert int(a) == 31
 
@@ -182,40 +182,40 @@ def test_compound_assignment():
 
 
 def test_compound_assignment_harsh():
-    a = Unsigned(4, 15)
-    a += Unsigned(8, 2)  # 15 + 2 = 17 % 16 = 1
+    a = Unsigned(15, 4)
+    a += Unsigned(2, 8)  # 15 + 2 = 17 % 16 = 1
     assert int(a) == 1
     assert len(a) == 4
 
-    b = Unsigned(8, 5)
-    b -= Unsigned(16, 10)  # 5 - 10 = -5
+    b = Unsigned(5, 8)
+    b -= Unsigned(10, 16)  # 5 - 10 = -5
     assert int(b) == 251  # -5 in 8-bit unsigned = 251
     assert len(b) == 8
 
-    c = Unsigned(4, 5)
-    c *= Unsigned(16, 1000)  # 5 * 1000 = 5000
+    c = Unsigned(5, 4)
+    c *= Unsigned(1000, 16)  # 5 * 1000 = 5000
     assert int(c) == 8  # 5000 % 16 = 8
     assert len(c) == 4
 
-    d = Unsigned(32, 100)
-    d += Unsigned(4, 15)
+    d = Unsigned(100, 32)
+    d += Unsigned(15, 4)
     assert int(d) == 115
     assert len(d) == 32
 
-    e = Unsigned(8, 128)
-    e *= Unsigned(4, 0)
+    e = Unsigned(128, 8)
+    e *= Unsigned(0, 4)
     assert int(e) == 0
 
-    e += Unsigned(8, 255)  # 0 + 255
+    e += Unsigned(255, 8)  # 0 + 255
     assert int(e) == 255
 
-    e /= Unsigned(2, 1)
+    e /= Unsigned(1, 2)
     assert int(e) == 255
 
-    e %= Unsigned(8, 255)
+    e %= Unsigned(255, 8)
     assert int(e) == 0
 
-    f = Unsigned(8, 250)
+    f = Unsigned(250, 8)
     f += 10  # 260
     assert int(f) == 4  # 260 % 256 = 4
 
@@ -242,72 +242,72 @@ def test_compound_assignment_harsh():
 
 
 def test_compound_assignment_operators_mixed_signedness():
-    u1 = Unsigned(8, 15)
-    u1 += Signed(8, -5)
-    assert u1 == Unsigned(8, 10)
+    u1 = Unsigned(15, 8)
+    u1 += Signed(-5, 8)
+    assert u1 == Unsigned(10, 8)
 
-    u2 = Unsigned(8, 250)
-    u2 += Signed(8, 10)
-    assert u2 == Unsigned(8, 4)
+    u2 = Unsigned(250, 8)
+    u2 += Signed(10, 8)
+    assert u2 == Unsigned(4, 8)
 
-    u3 = Unsigned(8, 5)
-    u3 -= Signed(8, 10)
-    assert u3 == Unsigned(8, 251)
+    u3 = Unsigned(5, 8)
+    u3 -= Signed(10, 8)
+    assert u3 == Unsigned(251, 8)
 
-    u4 = Unsigned(8, 10)
-    u4 *= Signed(8, -3)
-    assert u4 == Unsigned(8, 226)
+    u4 = Unsigned(10, 8)
+    u4 *= Signed(-3, 8)
+    assert u4 == Unsigned(226, 8)
 
-    u5 = Unsigned(8, 20)
-    u5 //= Signed(8, -4)
-    assert u5 == Unsigned(8, 251)
+    u5 = Unsigned(20, 8)
+    u5 //= Signed(-4, 8)
+    assert u5 == Unsigned(251, 8)
 
-    u6 = Unsigned(8, 23)
-    u6 %= Signed(8, -7)
-    assert u6 == Unsigned(8, 2)
+    u6 = Unsigned(23, 8)
+    u6 %= Signed(-7, 8)
+    assert u6 == Unsigned(2, 8)
 
-    u7 = Unsigned(8, 50)
+    u7 = Unsigned(50, 8)
     with pytest.raises(ValueError):
-        u7 //= Signed(8, 0)
+        u7 //= Signed(0, 8)
     with pytest.raises(ValueError):
-        u7 %= Signed(8, 0)
+        u7 %= Signed(0, 8)
 
 
 def test_compound_assignment_mixed_signedness_harsh():
-    u_narrow = Unsigned(4, 5)
-    u_narrow += Signed(32, -20)  # 5 + (-20) = -15
+    u_narrow = Unsigned(5, 4)
+    u_narrow += Signed(-20, 32)  # 5 + (-20) = -15
     assert int(u_narrow) == 1  # 4-bit unsigned wrap: 16 - 15 = 1
     assert len(u_narrow) == 4
 
-    u_wide = Unsigned(32, 10)
-    u_wide -= Signed(4, -8)  # 10 - (-8) = 18
+    u_wide = Unsigned(10, 32)
+    u_wide -= Signed(-8, 4)  # 10 - (-8) = 18
     assert int(u_wide) == 18
     assert len(u_wide) == 32
 
-    u_mult = Unsigned(8, 10)
+    u_mult = Unsigned(10, 8)
     # 10 * -500 = -5000. In 8-bit unsigned: -5000 % 256 = 120
-    u_mult *= Signed(32, -500)
+    u_mult *= Signed(-500, 32)
     assert int(u_mult) == 120
 
-    u_div = Unsigned(8, 250)
+    u_div = Unsigned(250, 8)
     # 250 / -60 = -4. Wrap to 8-bit unsigned: 256 - 4 = 252
-    u_div //= Signed(16, -60)
+    u_div //= Signed(-60, 16)
     assert int(u_div) == 252
 
-    u_mod = Unsigned(8, 250)
+    u_mod = Unsigned(250, 8)
     # Dividend is positive -> Remainder is positive (250 = -4 * -60 + 10)
-    u_mod %= Signed(16, -60)
+    u_mod %= Signed(-60, 16)
     assert int(u_mod) == 10
 
-    u_zero = Unsigned(8, 100)
+    u_zero = Unsigned(100, 8)
     with pytest.raises(ValueError):
-        u_zero //= Signed(32, 0)
+        u_zero //= Signed(0, 32)
     with pytest.raises(ValueError):
-        u_zero %= Signed(32, 0)
+        u_zero %= Signed(0, 32)
 
 
 def test_shift_operators():
-    a = Unsigned(8, 5)
+    a = Unsigned(5, 8)
 
     sl = a << 2
     assert int(sl) == 20
@@ -328,15 +328,15 @@ def test_shift_operators():
     with pytest.raises(TypeError):
         _ = a >> -2
 
-    shift_amt = Unsigned(4, 2)
+    shift_amt = Unsigned(2, 4)
     assert int(a << shift_amt) == 40
 
 
 def test_shift_operators_harsh_edge_cases():
-    u_8 = Unsigned(8, 0b10101010)  # 170 in decimal
+    u_8 = Unsigned(0b10101010, 8)  # 170 in decimal
 
     assert int(u_8 << 7) == 0  # LSB was 0 -> shifted to MSB -> 0
-    u_8_b = Unsigned(8, 1)
+    u_8_b = Unsigned(1, 8)
     assert int(u_8_b << 7) == 128  # LSB was 1 -> shifted to MSB -> 128
 
     assert int(u_8 << 8) == 0
@@ -345,49 +345,49 @@ def test_shift_operators_harsh_edge_cases():
     assert int(u_8 << 1000) == 0
     assert int(u_8 >> 1000) == 0
 
-    shift_s_pos = Signed(8, 3)
+    shift_s_pos = Signed(3, 8)
     assert int(u_8 << shift_s_pos) == 80
     assert int(u_8 >> shift_s_pos) == 21  # 170 >> 3 = 21
 
-    shift_s_huge = Signed(32, 50000)
+    shift_s_huge = Signed(50000, 32)
     assert int(u_8 << shift_s_huge) == 0
 
-    shift_s_neg = Signed(8, -2)
+    shift_s_neg = Signed(-2, 8)
     with pytest.raises(ValueError, match="Negative shift amount"):
         _ = u_8 << shift_s_neg
     with pytest.raises(ValueError, match="Negative shift amount"):
         _ = u_8 >> shift_s_neg
 
     with pytest.raises(ValueError, match="Negative shift amount"):
-        _ = u_8 << Signed(32, -100)
+        _ = u_8 << Signed(-100, 32)
 
-    shift_u_huge = Unsigned(64, 9999999)
+    shift_u_huge = Unsigned(9999999, 64)
     assert int(u_8 << shift_u_huge) == 0
     assert int(u_8 >> shift_u_huge) == 0
 
-    shift_u_zero = Unsigned(4, 0)
-    shift_s_zero = Signed(4, 0)
+    shift_u_zero = Unsigned(0, 4)
+    shift_s_zero = Signed(0, 4)
     assert int(u_8 << shift_u_zero) == 170
     assert int(u_8 >> shift_s_zero) == 170
     assert int(u_8 << 0) == 170
 
-    u_comp = Unsigned(4, 15)  # 1111 (binary)
+    u_comp = Unsigned(15, 4)  # 1111 (binary)
     u_comp <<= 2  # 111100 -> truncated to 4 bits -> 1100 (12)
     assert int(u_comp) == 12
     assert len(u_comp) == 4  # Width MUST NOT grow
 
-    u_comp <<= Signed(16, 2)  # 110000 -> truncated to 4 bits -> 0000 (0)
+    u_comp <<= Signed(2, 16)  # 110000 -> truncated to 4 bits -> 0000 (0)
     assert int(u_comp) == 0
     assert len(u_comp) == 4
 
-    u_comp2 = Unsigned(8, 255)
-    u_comp2 >>= Unsigned(8, 4)  # 00001111 (15)
+    u_comp2 = Unsigned(255, 8)
+    u_comp2 >>= Unsigned(4, 8)  # 00001111 (15)
     assert int(u_comp2) == 15
     assert len(u_comp2) == 8
 
-    u_128 = Unsigned(128, 550059)
+    u_128 = Unsigned(550059, 128)
 
-    u_128 >>= Unsigned(40, 500)
+    u_128 >>= Unsigned(500, 40)
     assert int(u_128) == 0
 
     with pytest.raises(TypeError):
@@ -397,7 +397,7 @@ def test_shift_operators_harsh_edge_cases():
 
 
 def test_index_operator():
-    a = Unsigned(4, 2)  # 0010
+    a = Unsigned(2, 4)  # 0010
 
     assert not bool(a[3])
     assert not bool(a[2])
@@ -409,8 +409,8 @@ def test_index_operator():
 
 
 def test_formatter():
-    small = Unsigned(10, 102)
-    mid = Unsigned(39, 0x0AFFFE9001)
+    small = Unsigned(102, 10)
+    mid = Unsigned(0x0AFFFE9001, 39)
 
     assert format(small, "b") == "Unsigned[9 downto 0]{0001100110}"
     assert (
@@ -429,14 +429,14 @@ def test_formatter():
 
 
 def test_unary_ops():
-    a = Unsigned(8, 150)
+    a = Unsigned(150, 8)
     neg_a = -a
 
     assert type(neg_a) is Signed
     assert len(neg_a) == 9
     assert int(neg_a) == -150
 
-    b = Unsigned(4, 5)
+    b = Unsigned(5, 4)
     neg_b = -b
     assert type(neg_b) is Signed
     assert len(neg_b) == 5
@@ -457,33 +457,33 @@ def test_constructors_big():
     # 150-bit Unsigned range: 0 to 2**150 - 1
     max_val = (1 << 150) - 1
 
-    a = Unsigned(150, max_val)
+    a = Unsigned(max_val, 150)
     assert int(a) == max_val
     assert len(a) == 150
 
-    b = Unsigned(150, 0)
+    b = Unsigned(0, 150)
     assert int(b) == 0
     assert len(b) == 150
 
     with pytest.raises(IndexError):
-        Unsigned(150, max_val + 1)
+        Unsigned(max_val + 1, 150)
     with pytest.raises(OverflowError):
-        Unsigned(150, -1)
+        Unsigned(-1, 150)
 
 
 def test_explicit_native_casts_big():
     big_val = (1 << 200) + 500
-    a = Unsigned(250, big_val)
+    a = Unsigned(big_val, 250)
     assert bool(a) is True
     assert int(a) == big_val
 
-    assert bool(Unsigned(250, 0)) is False
-    assert bool(Unsigned(250, 1 << 240)) is True
+    assert bool(Unsigned(0, 250)) is False
+    assert bool(Unsigned(1 << 240, 250)) is True
 
 
 def test_arithmetic_operators_edge_cases_big():
-    u_narrow = Unsigned(4, 15)
-    u_wide = Unsigned(200, (1 << 190))
+    u_narrow = Unsigned(15, 4)
+    u_wide = Unsigned(1 << 190, (200))
 
     sum_nw = u_narrow + u_wide
     assert len(sum_nw) == 201
@@ -514,13 +514,13 @@ def test_arithmetic_operators_edge_cases_big():
 
 def test_compound_assignment_big():
     val = 1 << 180
-    a = Unsigned(200, val)
+    a = Unsigned(val, 200)
 
-    a += Unsigned(100, (1 << 90))
+    a += Unsigned(1 << 90, (100))
     assert len(a) == 200
     assert int(a) == val + (1 << 90)
 
-    a -= Unsigned(10, 500)
+    a -= Unsigned(500, 10)
     assert len(a) == 200
     assert int(a) == val + (1 << 90) - 500
 
@@ -532,18 +532,18 @@ def test_compound_assignment_big():
 def test_compound_assignment_harsh_big():
     max_val = (1 << 150) - 1
 
-    a = Unsigned(150, max_val)
-    a += Unsigned(10, 2)
+    a = Unsigned(max_val, 150)
+    a += Unsigned(2, 10)
     assert len(a) == 150
     assert int(a) == 1  # Unsigned wrap around
 
-    b = Unsigned(150, 2)
-    b -= Unsigned(10, 5)
+    b = Unsigned(2, 150)
+    b -= Unsigned(5, 10)
     assert len(b) == 150
     assert int(b) == max_val - 2  # Unsigned underflow wrap
 
-    c = Unsigned(100, 500)
-    c *= Unsigned(150, (1 << 95) + 7)
+    c = Unsigned(500, 100)
+    c *= Unsigned((1 << 95) + 7, 150)
     assert len(c) == 100
     # Calculate exact wrap around for 100-bit unsigned integer
     expected = 500 * ((1 << 95) + 7)
@@ -552,12 +552,12 @@ def test_compound_assignment_harsh_big():
 
 
 def test_compound_assignment_operators_mixed_signedness_big():
-    u1 = Unsigned(200, 1 << 180)
-    u1 += Signed(150, -(1 << 140))
-    assert u1 == Unsigned(200, (1 << 180) - (1 << 140))
+    u1 = Unsigned(1 << 180, 200)
+    u1 += Signed(-(1 << 140), 150)
+    assert u1 == Unsigned((1 << 180) - (1 << 140), 200)
 
-    u2 = Unsigned(200, 1 << 190)
-    u2 -= Signed(200, (1 << 195))
+    u2 = Unsigned(1 << 190, 200)
+    u2 -= Signed(1 << 195, (200))
     assert len(u2) == 200
     expected = (1 << 190) - (1 << 195)
     expected_wrapped = expected % (1 << 200)
@@ -565,15 +565,15 @@ def test_compound_assignment_operators_mixed_signedness_big():
 
 
 def test_compound_assignment_mixed_signedness_harsh_big():
-    u_narrow = Unsigned(4, 5)
-    u_narrow += Signed(200, -(1 << 190) + 20)
+    u_narrow = Unsigned(5, 4)
+    u_narrow += Signed(-(1 << 190) + 20, 200)
     assert len(u_narrow) == 4
     # Check width truncation down to 4 bits
     expected_wrapped = (5 - (1 << 190) + 20) % 16
     assert int(u_narrow) == expected_wrapped
 
-    u_div = Unsigned(150, (1 << 140))
-    u_div //= Signed(100, -(1 << 90))
+    u_div = Unsigned(1 << 140, (150))
+    u_div //= Signed(-(1 << 90), 100)
     expected_wrapped = (-(1 << 50)) % (1 << 150)
     assert int(u_div) == expected_wrapped
 
@@ -582,10 +582,10 @@ def test_comparisons_big():
     v1 = 1 << 200
     v2 = (1 << 200) - 100
 
-    a = Unsigned(250, v1)
-    b = Unsigned(250, v1)
-    c = Unsigned(250, v2)
-    d = Unsigned(250, v2)
+    a = Unsigned(v1, 250)
+    b = Unsigned(v1, 250)
+    c = Unsigned(v2, 250)
+    d = Unsigned(v2, 250)
 
     assert a == b
     assert c == d
@@ -600,7 +600,7 @@ def test_comparisons_big():
 
 def test_shift_operators_big():
     val = (1 << 150) + 999
-    a = Unsigned(200, val)
+    a = Unsigned(val, 200)
 
     sl = a << 10
     assert int(sl) == val * (1 << 10)
@@ -616,17 +616,17 @@ def test_shift_operators_big():
 
 
 def test_shift_operators_harsh_edge_cases_big():
-    u_big = Unsigned(200, (1 << 190) + 12345)
+    u_big = Unsigned((1 << 190) + 12345, 200)
 
     assert int(u_big << 200) == 0
     assert int(u_big >> 200) == 0
     assert int(u_big >> 10000) == 0
 
-    shift_s_pos = Signed(100, 50)
+    shift_s_pos = Signed(50, 100)
     expected = (((1 << 190) + 12345) << 50) % (1 << 200)
     assert int(u_big << shift_s_pos) == expected
 
-    u_comp = Unsigned(150, (1 << 140))
+    u_comp = Unsigned(1 << 140, (150))
     u_comp <<= 20
     assert len(u_comp) == 150
     expected_comp = (1 << 140) << 20
@@ -636,7 +636,7 @@ def test_shift_operators_harsh_edge_cases_big():
 
 def test_index_operator_big():
     val = (1 << 150) | (1 << 75) | 1
-    a = Unsigned(200, val)
+    a = Unsigned(val, 200)
 
     assert not bool(a[199])
     assert bool(a[150])
@@ -651,7 +651,7 @@ def test_index_operator_big():
 
 def test_formatter_big():
     val = (1 << 140) + 0xABCDEF
-    u = Unsigned(150, val)
+    u = Unsigned(val, 150)
 
     assert format(u, "b") == f"Unsigned[149 downto 0]{{{val:0150b}}}"
     assert format(u) == f"Unsigned[149 downto 0]{{{val}}}"
@@ -661,7 +661,7 @@ def test_formatter_big():
 
 def test_unary_ops_big():
     val = (1 << 190) + 123456789
-    a = Unsigned(200, val)
+    a = Unsigned(val, 200)
 
     neg_a = -a
     assert type(neg_a) is Signed
@@ -675,8 +675,8 @@ def test_unary_ops_big():
 
 
 def test_bitwise_operators():
-    a = Unsigned(8, 12)  # 00001100
-    b = Unsigned(8, 10)  # 00001010
+    a = Unsigned(12, 8)  # 00001100
+    b = Unsigned(10, 8)  # 00001010
 
     assert int(a & b) == 8
     assert int(a | b) == 14
@@ -689,8 +689,8 @@ def test_bitwise_operators_big():
     val_a = 0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
     val_b = 0x55555555555555555555555555555555
 
-    a = Unsigned(150, val_a)
-    b = Unsigned(150, val_b)
+    a = Unsigned(val_a, 150)
+    b = Unsigned(val_b, 150)
 
     assert int(a & b) == 0
     assert int(a | b) == val_a | val_b

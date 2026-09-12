@@ -855,6 +855,19 @@ TEST(TestBitArray, BitVectorUsesPackedDynUIntStorage) {
     EXPECT_EQ(detail::storage(a).to_binary_string(), "10100101");
 }
 
+TEST(TestBitArray, BitVectorPackedValueWithRange) {
+    Range const range{-4, Direction::TO, 3};
+    BitVector unsigned_bits(detail::DynUInt(0xA5, 8), range);
+    BitVector signed_bits(detail::DynSInt(-91, 8), range);
+    EXPECT_EQ(unsigned_bits.range(), range);
+    EXPECT_EQ(to_string(unsigned_bits), "10100101");
+    EXPECT_EQ(signed_bits, unsigned_bits);
+    EXPECT_EQ(unsigned_bits[-4], '1'_b);
+    EXPECT_EQ(unsigned_bits[3], '1'_b);
+    EXPECT_THROW(BitVector(detail::DynUInt(0xA5, 9), range), std::invalid_argument);
+    EXPECT_THROW(BitVector(detail::DynSInt(-91, 9), range), std::invalid_argument);
+}
+
 TEST(TestBitArray, WideBitVectorPackedStorageAndMutation) {
     BitVector a(129);
     a[128] = '1'_b;

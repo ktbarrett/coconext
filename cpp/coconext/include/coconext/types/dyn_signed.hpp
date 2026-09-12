@@ -19,20 +19,20 @@ class DynSigned {
   public:
     explicit DynSigned(DynSInt val) : value_(std::move(val)) {}
     explicit DynSigned(DynUInt val) : value_(std::move(val)) {}
-    explicit DynSigned(size_t width, std::string_view str) : value_(width, str) {}
+    explicit DynSigned(std::string_view str, size_t width) : value_(str, width) {}
 
     size_t width() const { return value_.width(); }
 
     // Construct from a native integer.
     template <NativeInteger T>
-    DynSigned(size_t width, T v) : value_(width) {
+    DynSigned(T v, size_t width) : value_(width) {
         if (width == 0) {
             throw std::invalid_argument("DynSigned(0) has no integer representation");
         }
         if (!native_value_fits<true>(width, v)) {
             throw std::overflow_error("value does not fit in Signed width");
         }
-        value_ = DynSInt(width, v);
+        value_ = DynSInt(v, width);
     }
 
     template <HasDynamicStorage Target>
@@ -101,7 +101,7 @@ class DynSigned {
         }
 
         if (safe_shift >= width()) {
-            return DynSigned(width(), 0);
+            return DynSigned(0, width());
         }
 
         return DynSigned(value_ << safe_shift);
@@ -147,9 +147,9 @@ class DynSigned {
 
         if (safe_shift >= width()) {
             if (safe_shift > 0) {
-                return DynSigned(width(), -1);
+                return DynSigned(-1, width());
             } else {
-                return DynSigned(width(), 0);
+                return DynSigned(0, width());
             }
         }
 
@@ -207,17 +207,17 @@ class DynSigned {
     }
 
     auto operator+=(DynSigned const& rhs) {
-        value_ = DynSInt(width(), value_ + rhs.value_);
+        value_ = DynSInt(value_ + rhs.value_, width());
         return *this;
     }
 
     auto operator-=(DynSigned const& rhs) {
-        value_ = DynSInt(width(), value_ - rhs.value_);
+        value_ = DynSInt(value_ - rhs.value_, width());
         return *this;
     }
 
     auto operator*=(DynSigned const& rhs) {
-        value_ = DynSInt(width(), value_ * rhs.value_);
+        value_ = DynSInt(value_ * rhs.value_, width());
         return *this;
     }
 
@@ -226,7 +226,7 @@ class DynSigned {
             throw std::domain_error("Division by zero");
         }
 
-        value_ = DynSInt(width(), value_ / rhs.value_);
+        value_ = DynSInt(value_ / rhs.value_, width());
         return *this;
     }
 
@@ -235,37 +235,37 @@ class DynSigned {
             throw std::domain_error("Division by zero");
         }
 
-        value_ = DynSInt(width(), value_ % rhs.value_);
+        value_ = DynSInt(value_ % rhs.value_, width());
         return *this;
     }
 
     template <NativeInteger T>
     auto operator+=(T const& rhs) {
-        *this += DynSigned(std::numeric_limits<T>::digits, rhs);
+        *this += DynSigned(rhs, std::numeric_limits<T>::digits);
         return *this;
     }
 
     template <NativeInteger T>
     auto operator-=(T const& rhs) {
-        *this -= DynSigned(std::numeric_limits<T>::digits, rhs);
+        *this -= DynSigned(rhs, std::numeric_limits<T>::digits);
         return *this;
     }
 
     template <NativeInteger T>
     auto operator*=(T const& rhs) {
-        *this *= DynSigned(std::numeric_limits<T>::digits, rhs);
+        *this *= DynSigned(rhs, std::numeric_limits<T>::digits);
         return *this;
     }
 
     template <NativeInteger T>
     auto operator/=(T const& rhs) {
-        *this /= DynSigned(std::numeric_limits<T>::digits, rhs);
+        *this /= DynSigned(rhs, std::numeric_limits<T>::digits);
         return *this;
     }
 
     template <NativeInteger T>
     auto operator%=(T const& rhs) {
-        *this %= DynSigned(std::numeric_limits<T>::digits, rhs);
+        *this %= DynSigned(rhs, std::numeric_limits<T>::digits);
         return *this;
     }
 
@@ -285,8 +285,8 @@ class DynSigned {
   private:
     int compare_value(DynSigned const& rhs) const {
         size_t const compare_width = std::max(width(), rhs.width());
-        auto lhs_value = DynSInt(compare_width, value_);
-        auto rhs_value = DynSInt(compare_width, rhs.value_);
+        auto lhs_value = DynSInt(value_, compare_width);
+        auto rhs_value = DynSInt(rhs.value_, compare_width);
         return lhs_value < rhs_value ? -1 : rhs_value < lhs_value ? 1 : 0;
     }
 
@@ -305,7 +305,7 @@ inline DynSigned mod(DynSigned const& lhs, DynSigned const& rhs) {
 
 // DynUnsigned Unary operators
 inline DynSigned operator+(DynUnsigned const& lhs) {
-    return DynSigned(DynSInt(lhs.width() + 1, storage(lhs)));
+    return DynSigned(DynSInt(storage(lhs), lhs.width() + 1));
 }
 
 inline DynSigned operator-(DynUnsigned const& lhs) { return DynSigned(-storage(lhs)); }
@@ -317,20 +317,20 @@ inline DynSigned operator-(DynUnsigned const& lhs, DynUnsigned const& rhs) {
 
 // DynUnsigned X DynSigned compound operators
 inline DynUnsigned& operator+=(DynUnsigned& lhs, DynSigned const& rhs) {
-    auto result = DynSInt(lhs.width(), storage(lhs)) + storage(rhs);
-    lhs.value_ = DynUInt(lhs.width(), result);
+    auto result = DynSInt(storage(lhs), lhs.width()) + storage(rhs);
+    lhs.value_ = DynUInt(result, lhs.width());
     return lhs;
 }
 
 inline DynUnsigned& operator-=(DynUnsigned& lhs, DynSigned const& rhs) {
-    auto result = DynSInt(lhs.width(), storage(lhs)) - storage(rhs);
-    lhs.value_ = DynUInt(lhs.width(), result);
+    auto result = DynSInt(storage(lhs), lhs.width()) - storage(rhs);
+    lhs.value_ = DynUInt(result, lhs.width());
     return lhs;
 }
 
 inline DynUnsigned& operator*=(DynUnsigned& lhs, DynSigned const& rhs) {
-    auto result = DynSInt(lhs.width(), storage(lhs)) * storage(rhs);
-    lhs.value_ = DynUInt(lhs.width(), result);
+    auto result = DynSInt(storage(lhs), lhs.width()) * storage(rhs);
+    lhs.value_ = DynUInt(result, lhs.width());
     return lhs;
 }
 
@@ -340,10 +340,10 @@ inline DynUnsigned& operator/=(DynUnsigned& lhs, DynSigned const& rhs) {
     }
 
     size_t safe_width = std::max(lhs.width() + 1, rhs.width());
-    auto lhs_positive = DynSInt(safe_width, storage(lhs));
+    auto lhs_positive = DynSInt(storage(lhs), safe_width);
 
     auto quotient = lhs_positive / storage(rhs);
-    lhs.value_ = DynUInt(lhs.width(), quotient);
+    lhs.value_ = DynUInt(quotient, lhs.width());
 
     return lhs;
 }
@@ -354,33 +354,33 @@ inline DynUnsigned& operator%=(DynUnsigned& lhs, DynSigned const& rhs) {
     }
 
     size_t safe_width = std::max(lhs.width() + 1, rhs.width());
-    auto lhs_positive = DynSInt(safe_width, storage(lhs));
+    auto lhs_positive = DynSInt(storage(lhs), safe_width);
 
     auto remainder = lhs_positive % storage(rhs);
-    lhs.value_ = DynUInt(lhs.width(), remainder);
+    lhs.value_ = DynUInt(remainder, lhs.width());
 
     return lhs;
 }
 
 // DynSigned X DynUnsigned compound operators
 inline DynSigned& operator+=(DynSigned& lhs, DynUnsigned const& rhs) {
-    auto rhs_positive = DynSInt(rhs.width() + 1, storage(rhs));
+    auto rhs_positive = DynSInt(storage(rhs), rhs.width() + 1);
     auto result = storage(lhs) + rhs_positive;
-    lhs.value_ = DynSInt(lhs.width(), result);
+    lhs.value_ = DynSInt(result, lhs.width());
     return lhs;
 }
 
 inline DynSigned& operator-=(DynSigned& lhs, DynUnsigned const& rhs) {
-    auto rhs_positive = DynSInt(rhs.width() + 1, storage(rhs));
+    auto rhs_positive = DynSInt(storage(rhs), rhs.width() + 1);
     auto result = storage(lhs) - rhs_positive;
-    lhs.value_ = DynSInt(lhs.width(), result);
+    lhs.value_ = DynSInt(result, lhs.width());
     return lhs;
 }
 
 inline DynSigned& operator*=(DynSigned& lhs, DynUnsigned const& rhs) {
-    auto rhs_positive = DynSInt(rhs.width() + 1, storage(rhs));
+    auto rhs_positive = DynSInt(storage(rhs), rhs.width() + 1);
     auto result = storage(lhs) * rhs_positive;
-    lhs.value_ = DynSInt(lhs.width(), result);
+    lhs.value_ = DynSInt(result, lhs.width());
     return lhs;
 }
 
@@ -390,11 +390,11 @@ inline DynSigned& operator/=(DynSigned& lhs, DynUnsigned const& rhs) {
     }
 
     size_t safe_width = std::max(lhs.width() + 1, rhs.width());
-    auto lhs_ext = DynSInt(safe_width, storage(lhs));
-    auto rhs_positive = DynSInt(rhs.width() + 1, storage(rhs));
+    auto lhs_ext = DynSInt(storage(lhs), safe_width);
+    auto rhs_positive = DynSInt(storage(rhs), rhs.width() + 1);
 
     auto quotient = lhs_ext / rhs_positive;
-    lhs.value_ = DynSInt(lhs.width(), quotient);
+    lhs.value_ = DynSInt(quotient, lhs.width());
 
     return lhs;
 }
@@ -406,11 +406,11 @@ inline DynSigned& operator%=(DynSigned& lhs, DynUnsigned const& rhs) {
 
     size_t safe_width = std::max(lhs.width(), rhs.width()) + 1;
 
-    auto lhs_ext = DynSInt(safe_width, storage(lhs));
-    auto rhs_positive = DynSInt(safe_width, storage(rhs));
+    auto lhs_ext = DynSInt(storage(lhs), safe_width);
+    auto rhs_positive = DynSInt(storage(rhs), safe_width);
 
     auto remainder = lhs_ext % rhs_positive;
-    lhs.value_ = DynSInt(lhs.width(), remainder);
+    lhs.value_ = DynSInt(remainder, lhs.width());
 
     return lhs;
 }

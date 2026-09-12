@@ -27,20 +27,20 @@ class DynUnsigned {
   public:
     explicit DynUnsigned(DynUInt val) : value_(std::move(val)) {}
     explicit DynUnsigned(DynSInt val) : value_(std::move(val)) {}
-    explicit DynUnsigned(size_t width, std::string_view str) : value_(width, str) {}
+    explicit DynUnsigned(std::string_view str, size_t width) : value_(str, width) {}
 
     size_t width() const { return value_.width(); }
 
     // Construct from a native integer.
     template <NativeInteger T>
-    DynUnsigned(size_t width, T v) : value_(width) {
+    DynUnsigned(T v, size_t width) : value_(width) {
         if (width == 0) {
             throw std::invalid_argument("DynUnsigned(0) has no integer representation");
         }
         if (!native_value_fits<false>(width, v)) {
             throw std::overflow_error("value does not fit in Unsigned width");
         }
-        value_ = DynUInt(width, v);
+        value_ = DynUInt(v, width);
     }
 
     template <HasDynamicStorage Target>
@@ -110,7 +110,7 @@ class DynUnsigned {
         }
 
         if (safe_shift >= width()) {
-            return DynUnsigned(width(), 0);
+            return DynUnsigned(0, width());
         }
 
         return DynUnsigned(value_ << safe_shift);
@@ -155,7 +155,7 @@ class DynUnsigned {
         }
 
         if (safe_shift >= width()) {
-            return DynUnsigned(width(), 0);
+            return DynUnsigned(0, width());
         }
 
         return DynUnsigned(value_ >> safe_shift);
@@ -210,17 +210,17 @@ class DynUnsigned {
     }
 
     auto operator+=(DynUnsigned const& rhs) {
-        value_ = DynUInt(width(), value_ + rhs.value_);
+        value_ = DynUInt(value_ + rhs.value_, width());
         return *this;
     }
 
     auto operator-=(DynUnsigned const& rhs) {
-        value_ = DynUInt(width(), value_ - rhs.value_);
+        value_ = DynUInt(value_ - rhs.value_, width());
         return *this;
     }
 
     auto operator*=(DynUnsigned const& rhs) {
-        value_ = DynUInt(width(), value_ * rhs.value_);
+        value_ = DynUInt(value_ * rhs.value_, width());
         return *this;
     }
 
@@ -228,7 +228,7 @@ class DynUnsigned {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        value_ = DynUInt(width(), value_ / rhs.value_);
+        value_ = DynUInt(value_ / rhs.value_, width());
         return *this;
     }
 
@@ -236,37 +236,37 @@ class DynUnsigned {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        value_ = DynUInt(width(), value_ % rhs.value_);
+        value_ = DynUInt(value_ % rhs.value_, width());
         return *this;
     }
 
     template <NativeInteger T>
     auto operator+=(T const& rhs) {
-        *this += DynUnsigned(std::numeric_limits<T>::digits, rhs);
+        *this += DynUnsigned(rhs, std::numeric_limits<T>::digits);
         return *this;
     }
 
     template <NativeInteger T>
     auto operator-=(T const& rhs) {
-        *this -= DynUnsigned(std::numeric_limits<T>::digits, rhs);
+        *this -= DynUnsigned(rhs, std::numeric_limits<T>::digits);
         return *this;
     }
 
     template <NativeInteger T>
     auto operator*=(T const& rhs) {
-        *this *= DynUnsigned(std::numeric_limits<T>::digits, rhs);
+        *this *= DynUnsigned(rhs, std::numeric_limits<T>::digits);
         return *this;
     }
 
     template <NativeInteger T>
     auto operator/=(T const& rhs) {
-        *this /= DynUnsigned(std::numeric_limits<T>::digits, rhs);
+        *this /= DynUnsigned(rhs, std::numeric_limits<T>::digits);
         return *this;
     }
 
     template <NativeInteger T>
     auto operator%=(T const& rhs) {
-        *this %= DynUnsigned(std::numeric_limits<T>::digits, rhs);
+        *this %= DynUnsigned(rhs, std::numeric_limits<T>::digits);
         return *this;
     }
 
@@ -286,8 +286,8 @@ class DynUnsigned {
   private:
     int compare_value(DynUnsigned const& rhs) const {
         size_t const compare_width = std::max(width(), rhs.width());
-        auto lhs_value = DynUInt(compare_width, value_);
-        auto rhs_value = DynUInt(compare_width, rhs.value_);
+        auto lhs_value = DynUInt(value_, compare_width);
+        auto rhs_value = DynUInt(rhs.value_, compare_width);
         return lhs_value < rhs_value ? -1 : rhs_value < lhs_value ? 1 : 0;
     }
 
