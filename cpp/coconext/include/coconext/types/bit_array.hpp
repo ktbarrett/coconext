@@ -4,6 +4,7 @@
 #include <coconext/types/array.hpp>
 #include <coconext/types/int_base.hpp>
 #include <coconext/types/logic.hpp>
+#include <coconext/types/logic_array.hpp>
 #include <coconext/types/range.hpp>
 #include <coconext/types/string_literal.hpp>
 
