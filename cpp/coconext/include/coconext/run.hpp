@@ -7,7 +7,6 @@
 #include <coconext/task_manager.hpp>
 
 #include <condition_variable>
-#include <exception>
 #include <utility>
 
 namespace coconext {
