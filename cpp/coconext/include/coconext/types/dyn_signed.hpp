@@ -2,7 +2,7 @@
 #define COCONEXT_DYN_SIGNED_HPP
 
 #include <algorithm>
-#include <coconext/types/dyn_int_base.hpp>
+#include <coconext/types/dyn_bigint.hpp>
 #include <coconext/types/dyn_unsigned.hpp>
 #include <utility>
 

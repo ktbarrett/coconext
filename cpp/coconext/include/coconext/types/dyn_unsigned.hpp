@@ -3,7 +3,7 @@
 
 #include <algorithm>
 #include <coconext/types/concepts.hpp>
-#include <coconext/types/dyn_int_base.hpp>
+#include <coconext/types/dyn_bigint.hpp>
 #include <coconext/types/hash.hpp>
 #include <coconext/types/logic_array.hpp>
 #include <coconext/types/range.hpp>
