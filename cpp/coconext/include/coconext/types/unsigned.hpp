@@ -1,10 +1,10 @@
 #ifndef COCONEXT_UNSIGNED_HPP
 #define COCONEXT_UNSIGNED_HPP
 
+#include <coconext/types/bigint.hpp>
 #include <coconext/types/common_math.hpp>
 #include <coconext/types/concepts.hpp>
 #include <coconext/types/hash.hpp>
-#include <coconext/types/int_base.hpp>
 #include <coconext/types/logic_array.hpp>
 #include <coconext/types/range.hpp>
 #include <cstddef>

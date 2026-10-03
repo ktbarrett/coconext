@@ -5,7 +5,7 @@
 #include <cassert>
 #include <cmath>
 #include <coconext/types/common_math.hpp>
-#include <coconext/types/dyn_int_base.hpp>
+#include <coconext/types/dyn_bigint.hpp>
 #include <coconext/types/dyn_signed.hpp>
 #include <coconext/types/range.hpp>
 #include <coconext/types/resize_mode.hpp>

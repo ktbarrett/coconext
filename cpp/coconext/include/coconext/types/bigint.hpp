@@ -1,5 +1,5 @@
-#ifndef COCONEXT_INT_BASE_HPP
-#define COCONEXT_INT_BASE_HPP
+#ifndef COCONEXT_BIGINT_HPP
+#define COCONEXT_BIGINT_HPP
 
 #include <algorithm>
 #include <array>
@@ -1745,4 +1745,4 @@ template <typename X>
 
 }  // namespace coconext::types
 
-#endif  // COCONEXT_INT_BASE_HPP
+#endif  // COCONEXT_BIGINT_HPP

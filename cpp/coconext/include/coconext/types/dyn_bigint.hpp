@@ -1,11 +1,11 @@
-#ifndef COCONEXT_DYN_INT_BASE_HPP
-#define COCONEXT_DYN_INT_BASE_HPP
+#ifndef COCONEXT_DYN_BIGINT_HPP
+#define COCONEXT_DYN_BIGINT_HPP
 
 #include <algorithm>
 #include <array>
 #include <climits>
+#include <coconext/types/bigint.hpp>
 #include <coconext/types/bigint_common.hpp>
-#include <coconext/types/int_base.hpp>
 #include <compare>
 #include <cstddef>
 #include <cstdint>
@@ -1218,4 +1218,4 @@ inline DynSInt abs(DynSInt const& a) {
 
 }  // namespace coconext::types::detail
 
-#endif  // COCONEXT_DYN_INT_BASE_HPP
+#endif  // COCONEXT_DYN_BIGINT_HPP
