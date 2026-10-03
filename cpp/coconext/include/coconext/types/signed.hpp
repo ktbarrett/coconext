@@ -9,7 +9,6 @@
 #include <coconext/types/logic_array.hpp>
 #include <coconext/types/range.hpp>
 #include <cstddef>
-#include <cstdint>
 #include <format>
 #include <functional>
 #include <limits>
