@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <coconext/types/array.hpp>
 #include <coconext/types/bit_array.hpp>
-#include <coconext/types/dyn_int_base.hpp>
+#include <coconext/types/dyn_bigint.hpp>
 #include <coconext/types/logic.hpp>
 #include <coconext/types/string_literal.hpp>
 #include <coconext/types/vector.hpp>
