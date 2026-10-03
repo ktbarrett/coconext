@@ -7,7 +7,7 @@
 #include <cassert>
 #include <climits>
 #include <coconext/types/array_base.hpp>
-#include <coconext/types/bigint.hpp>
+#include <coconext/types/bigint_common.hpp>
 #include <coconext/types/direction.hpp>
 #include <coconext/types/hash.hpp>
 #include <coconext/types/logic.hpp>

@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <climits>
-#include <coconext/types/bigint.hpp>
+#include <coconext/types/bigint_common.hpp>
 #include <coconext/types/int_base.hpp>
 #include <compare>
 #include <cstddef>
