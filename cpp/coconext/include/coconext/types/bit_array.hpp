@@ -4,15 +4,11 @@
 #include <coconext/types/array.hpp>
 #include <coconext/types/bigint.hpp>
 #include <coconext/types/logic.hpp>
+#include <coconext/types/logic_array_common.hpp>
 #include <coconext/types/range.hpp>
 #include <coconext/types/string_literal.hpp>
 
 namespace coconext::types {
-
-namespace detail {
-template <typename T, Range R>
-class Array;
-}
 
 // all reductions are better off without a loop
 // All bits set iff every one of the R.length() bits is counted.
@@ -139,6 +135,9 @@ class Array<Bit, R> {
 
     UInt<R.length()> value_;
 };
+
+template <auto... Args>
+using BitArray = detail::Array<Bit, detail::make_logic_static_range<Args...>()>;
 
 constexpr Range::value_type offset_to_hdl_coord(
     Range r, size_t offset_from_begin
