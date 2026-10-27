@@ -95,14 +95,7 @@ class Bit:
     def __copy__(self) -> Bit: ...
     def __deepcopy__(self, arg: dict, /) -> Bit: ...
 
-class Direction(enum.Enum):
-    TO = 0
-
-    DOWNTO = 1
-
 class Range:
-    @overload
-    def __init__(self, left: int, direction: Direction, right: int) -> None: ...
     @overload
     def __init__(self, left: int, direction: str, right: int) -> None: ...
     @overload

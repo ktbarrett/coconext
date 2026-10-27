@@ -12,21 +12,18 @@ from pygments.token import Token
 
 import cocotb
 import cocotb._bridge
+import cocotb.simtime
+from cocotb.simtime import get_sim_time
 from cocotb.task import bridge
-from cocotb.utils import get_sim_time
 
 T = TypeVar("T")
 
 
-def _check_ipython_version() -> None:
-    if IPython.version_info[:2] >= (9, 17):
-        raise ImportError(
-            "cocotb_tools.ipython_support requires IPython<9.17; "
-            f"found IPython {IPython.__version__}"
-        )
-
-
-_check_ipython_version()
+if IPython.version_info[:2] >= (9, 17):
+    raise ImportError(
+        "cocotb_tools.ipython_support requires IPython<9.17; "
+        f"found IPython {IPython.__version__}"
+    )
 
 
 class SimTimePrompt(Prompts):
@@ -37,8 +34,9 @@ class SimTimePrompt(Prompts):
     def in_prompt_tokens(self):
         tokens = super().in_prompt_tokens()
         if self._show_time == self.shell.execution_count:
+            unit = cocotb.simtime.report_precision
             tokens = [
-                (Token.Comment, f"sim time: {get_sim_time()}"),
+                (Token.Comment, f"sim time: {get_sim_time(unit):.2f}{unit}"),
                 (Token.Text, "\n"),
                 *tokens,
             ]

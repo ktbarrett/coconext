@@ -29,6 +29,7 @@ alternative Python implementations like PyPy or Jython are not supported.
 * CPython 3.12
 * CPython 3.13
 * CPython 3.14
+* CPython 3.15
 
 .. _supported-linux-distributions:
 
@@ -45,18 +46,22 @@ Linux distributions typically ship a default version of Python called "system Py
 This version of Python can be used with cocotb unless noted otherwise.
 
 * **Red Hat Enterprise Linux (RHEL) 8 amd64**,
-  shipping with Python 3.6 (newer versions of Python are available), pip 9, and glibc 2.28.
   `Upstream support until May 2029 <https://access.redhat.com/support/policy/updates/errata#Life_Cycle_Dates>`_.
 * **Red Hat Enterprise Linux (RHEL) 9 amd64**,
-  shipping with Python 3.9 (newer versions of Python are available), pip 21, and glibc 2.34.
   `Upstream support until May 2032 <https://access.redhat.com/support/policy/updates/errata#Life_Cycle_Dates>`_.
 * **Red Hat Enterprise Linux (RHEL) 10 amd64**,
-  shipping with Python 3.12, pip 23.3, and glibc 2.39.
   `Upstream support until May 2035 <https://access.redhat.com/support/policy/updates/errata#Life_Cycle_Dates>`_.
-* **Ubuntu 22.04 LTS amd64**, shipping with Python 3.10, pip 22, glibc 2.35.
+* **Ubuntu 22.04 LTS amd64**.
   `Upstream support until April 2027 <https://wiki.ubuntu.com/Releases>`_.
-* **Ubuntu 24.04 LTS amd64**, shipping with Python 3.12, pip 24, glibc 2.39.
+* **Ubuntu 24.04 LTS amd64**.
   `Upstream support until June 2029 <https://wiki.ubuntu.com/Releases>`_.
+* **Ubuntu 26.04 LTS amd64**.
+  `Upstream support until April 2031 <https://wiki.ubuntu.com/Releases>`_.
+* **Debian 12 (Bookworm) amd64**.
+  `Upstream support until July 2026 <https://www.debian.org/releases/>`_.
+* **Debian 13 (Trixie) amd64**.
+  `Upstream support until August 2028 <https://www.debian.org/releases/>`_.
+
 
 .. note::
 
@@ -73,10 +78,8 @@ Supported Windows Versions
 Supported macOS Versions
 ========================
 
-* **macOS 14 (Sonoma) x86_64**
-* **macOS 15 (Sequoia) x86_64**
-* **macOS 14 (Sonoma) ARM64**
-* **macOS 15 (Sequoia) ARM64**
+* **macOS 11+ x86_64**
+* **macOS 11+ ARM64**
 
 .. _platform-support-policy:
 

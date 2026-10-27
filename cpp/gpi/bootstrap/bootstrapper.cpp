@@ -19,6 +19,16 @@ static const char entry_point_separator = ',';
 
 typedef int (*bootstrap_entry_func)();
 
+static std::string trim_whitespace(const std::string &value) {
+    const char *whitespace = " \t\n\r\f\v";
+    const auto first = value.find_first_not_of(whitespace);
+    if (first == std::string::npos) {
+        return "";
+    }
+    const auto last = value.find_last_not_of(whitespace);
+    return value.substr(first, last - first + 1);
+}
+
 static int load_bootstrap() {
     const char *bootstrap_env = getenv("COCOTB_BOOTSTRAP");
     if (!bootstrap_env || !bootstrap_env[0]) {
@@ -33,54 +43,57 @@ static int load_bootstrap() {
         const auto next_separator = entries.find(entry_separator, start);
         const auto end = next_separator == std::string::npos ? entries.size()
                                                              : next_separator;
-        const std::string entry = entries.substr(start, end - start);
-        if (entry.empty()) {
-            fprintf(stderr, "[%s:%d]: Empty entry in COCOTB_BOOTSTRAP '%s'\n",
-                    __FILE__, __LINE__, bootstrap_env);
-            return -1;
-        }
+        const std::string entry =
+            trim_whitespace(entries.substr(start, end - start));
 
-        const auto function_separator = entry.rfind(entry_point_separator);
-        const bool has_entry_point = function_separator != std::string::npos;
-        const std::string library =
-            has_entry_point ? entry.substr(0, function_separator) : entry;
-        const std::string function =
-            has_entry_point ? entry.substr(function_separator + 1) : "";
-        if (library.empty() || (has_entry_point && function.empty())) {
-            fprintf(stderr, "[%s:%d]: Invalid entry '%s' in COCOTB_BOOTSTRAP\n",
-                    __FILE__, __LINE__, entry.c_str());
-            return -1;
-        }
-
-        void *library_handle = utils_dyn_open(library.c_str());
-        if (!library_handle) {
-            fprintf(stderr, "[%s:%d]: Unable to load library '%s'\n", __FILE__,
-                    __LINE__, library.c_str());
-            return -1;
-        }
-
-        if (has_entry_point) {
-            void *function_handle =
-                utils_dyn_sym(library_handle, function.c_str());
-            if (!function_handle) {
+        if (!entry.empty()) {
+            const auto function_separator = entry.rfind(entry_point_separator);
+            const bool has_entry_point =
+                function_separator != std::string::npos;
+            const std::string library =
+                has_entry_point
+                    ? trim_whitespace(entry.substr(0, function_separator))
+                    : entry;
+            const std::string function =
+                has_entry_point
+                    ? trim_whitespace(entry.substr(function_separator + 1))
+                    : "";
+            if (library.empty() || (has_entry_point && function.empty())) {
                 fprintf(stderr,
+                        "[%s:%d]: Invalid entry '%s' in COCOTB_BOOTSTRAP\n",
+                        __FILE__, __LINE__, entry.c_str());
+                return -1;
+            }
+
+            void *library_handle = utils_dyn_open(library.c_str());
+            if (!library_handle) {
+                fprintf(stderr, "[%s:%d]: Unable to load library '%s'\n",
+                        __FILE__, __LINE__, library.c_str());
+                return -1;
+            }
+
+            if (has_entry_point) {
+                void *function_handle =
+                    utils_dyn_sym(library_handle, function.c_str());
+                if (!function_handle) {
+                    fprintf(
+                        stderr,
                         "[%s:%d]: Unable to find entry point '%s' in library "
                         "'%s'\n",
                         __FILE__, __LINE__, function.c_str(), library.c_str());
-                return -1;
-            }
+                    return -1;
+                }
 
-            auto entry_func =
-                reinterpret_cast<bootstrap_entry_func>(function_handle);
-            const int result = entry_func();
-            if (result < 0) {
-                fprintf(stderr,
+                auto entry_func =
+                    reinterpret_cast<bootstrap_entry_func>(function_handle);
+                const int error = entry_func();
+                if (error) {
+                    fprintf(
+                        stderr,
                         "[%s:%d]: Entry point '%s' in library '%s' failed\n",
                         __FILE__, __LINE__, function.c_str(), library.c_str());
-                return -1;
-            }
-            if (result > 0) {
-                return 0;
+                    return -1;
+                }
             }
         }
 

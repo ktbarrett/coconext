@@ -24,8 +24,11 @@ import cocotb
 import cocotb._init
 import cocotb._profiling
 import cocotb.regression
+import cocotb.simtime
+import cocotb.simulator
 import cocotb.types._resolve
 from cocotb.handle import SimHandleBase
+from cocotb.preview import Feature, disable, enable
 from cocotb.types import Logic, LogicArray
 from cocotb.types._resolve import ResolverLiteral
 from cocotb_tools import _env
@@ -335,6 +338,47 @@ def test_env_cocotb_enable_profiling(monkeypatch: MonkeyPatch) -> None:
             pass
 
 
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("error", "error"),
+        ("ceil", "ceil"),
+        ("round", "round"),
+        ("floor", "floor"),
+        (" \tRoUnD\n", "round"),
+    ],
+)
+def test_env_cocotb_simtime_default_round_mode(
+    monkeypatch: MonkeyPatch, value: str, expected: str
+) -> None:
+    monkeypatch.setenv("COCOTB_SIMTIME_DEFAULT_ROUND_MODE", value)
+    monkeypatch.delenv("COCOTB_SIMTIME_REPORT_PRECISION", raising=False)
+    monkeypatch.setattr(
+        cocotb.simulator, "get_precision", lambda: cocotb.simtime.time_precision
+    )
+    monkeypatch.setattr(cocotb.simtime, "default_round_mode", "error")
+
+    cocotb.simtime._init()
+
+    assert cocotb.simtime.default_round_mode == expected
+
+
+@pytest.mark.parametrize("value", ["invalid", "", " \tINVALID\n"])
+def test_env_cocotb_simtime_default_round_mode_invalid(
+    monkeypatch: MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("COCOTB_SIMTIME_DEFAULT_ROUND_MODE", value)
+    monkeypatch.setattr(
+        cocotb.simulator, "get_precision", lambda: cocotb.simtime.time_precision
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="^Invalid round mode specified in COCOTB_SIMTIME_DEFAULT_ROUND_MODE:",
+    ):
+        cocotb.simtime._init()
+
+
 def test_env_cocotb_resolve_x_weak(monkeypatch: MonkeyPatch) -> None:
     """Test setting :envvar:`COCOTB_RESOLVE_X` environment variable to ``weak`` value."""
     monkeypatch.setenv("COCOTB_RESOLVE_X", "weak")
@@ -347,6 +391,23 @@ def test_env_cocotb_resolve_x_weak(monkeypatch: MonkeyPatch) -> None:
     assert resolve("L") == "0"
     assert resolve("H") == "1"
     assert resolve("W") == "X"
+
+
+def test_env_cocotb_resolve_preview() -> None:
+    enable(Feature.STRICT_RESOLVE)
+
+    for inp in "UXZW-":
+        with pytest.raises(ValueError):
+            Logic(inp).resolve("weak")
+
+    for inp, exp in zip("01LH", "0101"):
+        assert Logic(inp).resolve("weak") == Logic(exp)
+
+    assert LogicArray("01LH").resolve("weak") == LogicArray("0101")
+    with pytest.raises(ValueError):
+        LogicArray("01U").resolve("weak")
+
+    disable(Feature.STRICT_RESOLVE)
 
 
 def test_env_cocotb_resolve_x_value_error(monkeypatch: MonkeyPatch) -> None:

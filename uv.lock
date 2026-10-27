@@ -735,7 +735,7 @@ dev = [
     { name = "ruff" },
     { name = "scikit-build-core" },
     { name = "setuptools" },
-    { name = "setuptools-git-versioning", specifier = ">=3.0,<4" },
+    { name = "setuptools-git-versioning", specifier = ">=3.2,<4" },
 ]
 dev-tests = [
     { name = "cmake", specifier = ">=3.20" },
@@ -750,7 +750,7 @@ dev-tests = [
     { name = "ruff" },
     { name = "scikit-build-core" },
     { name = "setuptools" },
-    { name = "setuptools-git-versioning", specifier = ">=3.0,<4" },
+    { name = "setuptools-git-versioning", specifier = ">=3.2,<4" },
 ]
 docs = [
     { name = "breathe", marker = "python_full_version >= '3.11'" },

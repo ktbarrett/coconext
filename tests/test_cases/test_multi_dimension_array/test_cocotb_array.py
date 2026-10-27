@@ -4,7 +4,7 @@ import os
 from typing import Any
 
 import cocotb
-from cocotb.handle import ArrayObject, LogicArrayObject, LogicObject
+from cocotb.handle import ArrayObject, LogicObject, PackedObject
 from cocotb.triggers import Timer
 
 SIM_NAME = cocotb.SIM_NAME.lower()
@@ -19,7 +19,7 @@ questa_vpi_compat = (
 
 @cocotb.test()
 async def test_in_vect_packed(dut):
-    assert isinstance(dut.in_vect_packed, LogicArrayObject)
+    assert isinstance(dut.in_vect_packed, PackedObject)
     assert len(dut.in_vect_packed) == 3
 
     test_value = 0x5
@@ -44,7 +44,7 @@ async def test_in_vect_unpacked(dut):
 
 @cocotb.test()
 async def test_in_arr(dut):
-    assert isinstance(dut.in_arr, LogicArrayObject)
+    assert isinstance(dut.in_arr, PackedObject)
     assert len(dut.in_arr) == 3
 
     test_value = 0x5
@@ -55,8 +55,8 @@ async def test_in_arr(dut):
 
 @cocotb.test()
 async def test_in_2d_vect_packed_packed(dut):
-    assert isinstance(dut.in_2d_vect_packed_packed, LogicArrayObject)
-    assert len(dut.in_2d_vect_packed_packed) == 9
+    assert isinstance(dut.in_2d_vect_packed_packed, PackedObject)
+    assert dut.in_2d_vect_packed_packed.size == 9
 
     test_value = (0x5 << 6) | (0x5 << 3) | 0x5
     dut.in_2d_vect_packed_packed.value = test_value
@@ -70,7 +70,7 @@ async def test_in_2d_vect_packed_unpacked(dut):
     assert len(dut.in_2d_vect_packed_unpacked) == 3
 
     dut.in_2d_vect_packed_unpacked[0]
-    assert isinstance(dut.in_2d_vect_packed_unpacked[0], LogicArrayObject)
+    assert isinstance(dut.in_2d_vect_packed_unpacked[0], PackedObject)
     assert len(dut.in_2d_vect_packed_unpacked[0]) == 3
 
     test_value = [0x5, 0x5, 0x5]
@@ -103,8 +103,8 @@ async def test_in_2d_vect_unpacked_unpacked(dut):
 
 @cocotb.test()
 async def test_in_arr_packed(dut):
-    assert isinstance(dut.in_arr_packed, LogicArrayObject)
-    assert len(dut.in_arr_packed) == 9
+    assert isinstance(dut.in_arr_packed, PackedObject)
+    assert dut.in_arr_packed.size == 9
 
     test_value = 365
     dut.in_arr_packed.value = test_value
@@ -118,7 +118,7 @@ async def test_in_arr_unpacked(dut):
     assert len(dut.in_arr_unpacked) == 3
 
     dut.in_arr_unpacked[0]
-    assert isinstance(dut.in_arr_unpacked[0], LogicArrayObject)
+    assert isinstance(dut.in_arr_unpacked[0], PackedObject)
     assert len(dut.in_arr_unpacked[0]) == 3
 
     test_value = [0x5, 0x5, 0x5]
@@ -129,8 +129,8 @@ async def test_in_arr_unpacked(dut):
 
 @cocotb.test()
 async def test_in_2d_arr(dut):
-    assert isinstance(dut.in_2d_arr, LogicArrayObject)
-    assert len(dut.in_2d_arr) == 9
+    assert isinstance(dut.in_2d_arr, PackedObject)
+    assert dut.in_2d_arr.size == 9
 
     test_value = 365
     dut.in_2d_arr.value = test_value
@@ -140,8 +140,8 @@ async def test_in_2d_arr(dut):
 
 @cocotb.test()
 async def test_in_vect_packed_packed_packed(dut):
-    assert isinstance(dut.in_vect_packed_packed_packed, LogicArrayObject)
-    assert len(dut.in_vect_packed_packed_packed) == 27
+    assert isinstance(dut.in_vect_packed_packed_packed, PackedObject)
+    assert dut.in_vect_packed_packed_packed.size == 27
 
     test_value = 95869805
     dut.in_vect_packed_packed_packed.value = test_value
@@ -157,8 +157,8 @@ async def test_in_vect_packed_packed_unpacked(dut):
     assert len(dut.in_vect_packed_packed_unpacked) == 3
 
     dut.in_vect_packed_packed_unpacked[0]
-    assert isinstance(dut.in_vect_packed_packed_unpacked[0], LogicArrayObject)
-    assert len(dut.in_vect_packed_packed_unpacked[0]) == 9
+    assert isinstance(dut.in_vect_packed_packed_unpacked[0], PackedObject)
+    assert dut.in_vect_packed_packed_unpacked[0].size == 9
 
     test_value = [365, 365, 365]
     dut.in_vect_packed_packed_unpacked.value = test_value
@@ -179,7 +179,7 @@ async def test_in_vect_packed_unpacked_unpacked(dut):
     assert len(dut.in_vect_packed_unpacked_unpacked[0]) == 3
 
     dut.in_vect_packed_unpacked_unpacked[0][0]
-    assert isinstance(dut.in_vect_packed_unpacked_unpacked[0][0], LogicArrayObject)
+    assert isinstance(dut.in_vect_packed_unpacked_unpacked[0][0], PackedObject)
     assert len(dut.in_vect_packed_unpacked_unpacked[0][0]) == 3
 
     test_value = 3 * [3 * [5]]
@@ -215,8 +215,8 @@ async def test_in_vect_unpacked_unpacked_unpacked(dut):
 
 @cocotb.test()
 async def test_in_arr_packed_packed(dut):
-    assert isinstance(dut.in_arr_packed_packed, LogicArrayObject)
-    assert len(dut.in_arr_packed_packed) == 27
+    assert isinstance(dut.in_arr_packed_packed, PackedObject)
+    assert dut.in_arr_packed_packed.size == 27
 
     test_value = (365 << 18) | (365 << 9) | (365)
     dut.in_arr_packed_packed.value = test_value
@@ -231,8 +231,8 @@ async def test_in_arr_packed_unpacked(dut):
     assert len(dut.in_arr_packed_unpacked) == 3
 
     dut.in_arr_packed_unpacked[0]
-    assert isinstance(dut.in_arr_packed_unpacked[0], LogicArrayObject)
-    assert len(dut.in_arr_packed_unpacked[0]) == 9
+    assert isinstance(dut.in_arr_packed_unpacked[0], PackedObject)
+    assert dut.in_arr_packed_unpacked[0].size == 9
 
     test_value = [365, 365, 365]
     dut.in_arr_packed_unpacked.value = test_value
@@ -253,7 +253,7 @@ async def test_in_arr_unpacked_unpacked(dut):
     assert len(dut.in_arr_unpacked_unpacked[0]) == 3
 
     dut.in_arr_unpacked_unpacked[0][0]
-    assert isinstance(dut.in_arr_unpacked_unpacked[0][0], LogicArrayObject)
+    assert isinstance(dut.in_arr_unpacked_unpacked[0][0], PackedObject)
     assert len(dut.in_arr_unpacked_unpacked[0][0]) == 3
 
     test_value = 3 * [3 * [5]]
@@ -264,8 +264,8 @@ async def test_in_arr_unpacked_unpacked(dut):
 
 @cocotb.test()
 async def test_in_2d_arr_packed(dut):
-    assert isinstance(dut.in_2d_arr_packed, LogicArrayObject)
-    assert len(dut.in_2d_arr_packed) == 27
+    assert isinstance(dut.in_2d_arr_packed, PackedObject)
+    assert dut.in_2d_arr_packed.size == 27
 
     test_value = (365 << 18) | (365 << 9) | (365)
     dut.in_2d_arr_packed.value = test_value
@@ -280,8 +280,8 @@ async def test_in_2d_arr_unpacked(dut):
     assert len(dut.in_2d_arr_unpacked) == 3
 
     dut.in_2d_arr_unpacked[0]
-    assert isinstance(dut.in_2d_arr_unpacked[0], LogicArrayObject)
-    assert len(dut.in_2d_arr_unpacked[0]) == 9
+    assert isinstance(dut.in_2d_arr_unpacked[0], PackedObject)
+    assert dut.in_2d_arr_unpacked[0].size == 9
 
     test_value = [365, 365, 365]
     dut.in_2d_arr_unpacked.value = test_value
@@ -291,8 +291,8 @@ async def test_in_2d_arr_unpacked(dut):
 
 @cocotb.test()
 async def test_in_3d_arr(dut):
-    assert isinstance(dut.in_3d_arr, LogicArrayObject)
-    assert len(dut.in_3d_arr) == 27
+    assert isinstance(dut.in_3d_arr, PackedObject)
+    assert dut.in_3d_arr.size == 27
 
     test_value = (365 << 18) | (365 << 9) | (365)
     dut.in_3d_arr.value = test_value
@@ -303,8 +303,8 @@ async def test_in_3d_arr(dut):
 # Riviera fails when trying to access packed structs (gh-4753)
 @cocotb.test(skip=cocotb.SIM_NAME.lower().startswith("riviera"))
 async def test_struct(dut: Any) -> None:
-    assert isinstance(dut.in_struct_packed, LogicArrayObject)
-    assert len(dut.in_struct_packed) == 24
+    assert isinstance(dut.in_struct_packed, PackedObject)
+    assert dut.in_struct_packed.size == 24
 
     dut.in_struct_packed.value = 123
     await Timer(1)
@@ -314,8 +314,8 @@ async def test_struct(dut: Any) -> None:
 # Riviera crashes when trying to access packed structs (gh-4753)
 @cocotb.test(skip=cocotb.SIM_NAME.lower().startswith("riviera"))
 async def test_struct_1d_arr_packed(dut: Any) -> None:
-    assert isinstance(dut.in_struct_packed_array_packed, LogicArrayObject)
-    assert len(dut.in_struct_packed_array_packed) == 72
+    assert isinstance(dut.in_struct_packed_array_packed, PackedObject)
+    assert dut.in_struct_packed_array_packed.size == 72
 
     dut.in_struct_packed_array_packed.value = 123456
     await Timer(1)
@@ -328,8 +328,8 @@ async def test_struct_1d_arr_unpacked(dut: Any) -> None:
     assert isinstance(dut.in_struct_packed_array_unpacked, ArrayObject)
     assert len(dut.in_struct_packed_array_unpacked) == 3
 
-    assert isinstance(dut.in_struct_packed_array_unpacked[0], LogicArrayObject)
-    assert len(dut.in_struct_packed_array_unpacked[0]) == 24
+    assert isinstance(dut.in_struct_packed_array_unpacked[0], PackedObject)
+    assert dut.in_struct_packed_array_unpacked[0].size == 24
 
     dut.in_struct_packed_array_unpacked.value = [6798, 2000, 3000]
     await Timer(1)
@@ -340,8 +340,8 @@ async def test_struct_1d_arr_unpacked(dut: Any) -> None:
 # Riviera crashes when trying to access packed structs (gh-4753)
 @cocotb.test(skip=cocotb.SIM_NAME.lower().startswith("riviera"))
 async def test_struct_2d_arr_packed_packed(dut: Any) -> None:
-    assert isinstance(dut.in_struct_packed_arr_packed_packed, LogicArrayObject)
-    assert len(dut.in_struct_packed_arr_packed_packed) == 216
+    assert isinstance(dut.in_struct_packed_arr_packed_packed, PackedObject)
+    assert dut.in_struct_packed_arr_packed_packed.size == 216
 
     dut.in_struct_packed_arr_packed_packed.value = 123458123456123
     await Timer(1)
@@ -353,8 +353,8 @@ async def test_struct_2d_arr_packed_packed(dut: Any) -> None:
 async def test_struct_2d_arr_packed_unpacked(dut: Any) -> None:
     assert isinstance(dut.in_struct_packed_arr_packed_unpacked, ArrayObject)
     assert len(dut.in_struct_packed_arr_packed_unpacked) == 3
-    assert isinstance(dut.in_struct_packed_arr_packed_unpacked[0], LogicArrayObject)
-    assert len(dut.in_struct_packed_arr_packed_unpacked[0]) == 72
+    assert isinstance(dut.in_struct_packed_arr_packed_unpacked[0], PackedObject)
+    assert dut.in_struct_packed_arr_packed_unpacked[0].size == 72
 
 
 # Icarus flattens multi-dimensional unpacked arrays (gh-2595)
@@ -368,7 +368,5 @@ async def test_struct_2d_arr_unpacked_unpacked(dut: Any) -> None:
     assert len(dut.in_struct_packed_arr_unpacked_unpacked) == 3
     assert isinstance(dut.in_struct_packed_arr_unpacked_unpacked[0], ArrayObject)
     assert len(dut.in_struct_packed_arr_unpacked_unpacked[0]) == 3
-    assert isinstance(
-        dut.in_struct_packed_arr_unpacked_unpacked[0][2], LogicArrayObject
-    )
-    assert len(dut.in_struct_packed_arr_unpacked_unpacked[0][2]) == 24
+    assert isinstance(dut.in_struct_packed_arr_unpacked_unpacked[0][2], PackedObject)
+    assert dut.in_struct_packed_arr_unpacked_unpacked[0][2].size == 24

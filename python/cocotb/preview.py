@@ -20,7 +20,15 @@ class Feature(DocStrEnum):
 
     XFAIL_IN_RESULTS = (
         "xfail_in_results",
-        "Use the XFAIL status in the terminal results summary for xfailed tests",
+        "Use the ``XFAIL`` status in the terminal results summary and the ``skipped`` XML element in the generated JUnit XML file for xfailed tests",
+    )
+    STRICT_RESOLVE = (
+        "strict_resolve",
+        "`Logic.resolve()` and `LogicArray.resolve()` return `Bit` or 0/1-only `LogicArray`, respectively",
+    )
+    HANDLE_LEN_IS_SUBELEMENTS = (
+        "handle_len_is_subelements",
+        "Make ``len()`` on packed objects return the number of elements in the outermost dimension instead of the number of bits",
     )
 
 

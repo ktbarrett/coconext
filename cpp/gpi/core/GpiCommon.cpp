@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "./dynload.hpp"
 #include "./gpi_priv.hpp"
 #include "./intrusive_deque.hpp"
 #include "./logging.hpp"
@@ -213,9 +214,7 @@ int gpi_initialize() {
     gpi_init_logging_and_debug();
     gpi_entry_point();
 
-    // Some simulators load their interface library during compilation or
-    // elaboration. In that case no implementation is registered so we exit
-    // gracefully.
+    // Initialization requires at least one GPI implementation.
     return gpi_has_registered_impl() ? 0 : 1;
 }
 
@@ -509,6 +508,15 @@ const char *gpi_get_signal_name_str(gpi_sim_hdl sig_hdl) {
     return obj_hdl->get_name_str();
 }
 
+const char *gpi_get_signal_fullname_str(gpi_sim_hdl sig_hdl) {
+    return sig_hdl->get_fullname_str();
+}
+
+const char *gpi_get_concrete_path_str(gpi_sim_hdl obj_hdl) {
+    if (!obj_hdl->is_resolved_reference()) return NULL;
+    return obj_hdl->get_fullname_str();
+}
+
 const char *gpi_get_signal_type_str(gpi_sim_hdl sig_hdl) {
     return sig_hdl->get_type_str();
 }
@@ -673,11 +681,6 @@ class InternalCbHdl : public GpiCbHdl, public detail::IntrusiveDequeNode {
         return error;
     }
 
-    void set_cb_info(int (*cb_func)(void *), void *cb_data) noexcept override {
-        this->m_cb_func = cb_func;
-        this->m_cb_data = cb_data;
-    }
-
     void get_cb_info(int (**cb_func)(void *),
                      void **cb_data) const noexcept override {
         if (cb_func) {
@@ -715,10 +718,12 @@ gpi_cb_hdl gpi_register_start_of_sim_time_callback(int (*cb_func)(void *),
         GpiCbHdl *cb_hdl =
             registered_impls[0]->register_start_of_sim_time_callback(
                 run_startup_callbacks, nullptr);
+        // LCOV_EXCL_START
         if (!cb_hdl) {
             LOG_ERROR("Failed to register a start of sim time callback");
             return nullptr;
         }
+        // LCOV_EXCL_STOP
         start_of_sim_time_underlying_cb_hdl = cb_hdl;
     }
     auto cb_hdl = new InternalCbHdl(cb_func, cb_data);
@@ -750,10 +755,12 @@ gpi_cb_hdl gpi_register_end_of_sim_time_callback(int (*cb_func)(void *),
         GpiCbHdl *cb_hdl =
             registered_impls[0]->register_end_of_sim_time_callback(
                 run_end_of_sim_callbacks, nullptr);
+        // LCOV_EXCL_START
         if (!cb_hdl) {
             LOG_ERROR("Failed to register an end of sim time callback");
             return nullptr;
         }
+        // LCOV_EXCL_STOP
         end_of_sim_time_underlying_cb_hdl = cb_hdl;
     }
     auto cb_hdl = new InternalCbHdl(cb_func, cb_data);

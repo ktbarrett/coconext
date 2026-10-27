@@ -5,13 +5,21 @@ from __future__ import annotations
 from _pycoconext import (
     Bit,
     BitArray,
-    Direction,
     Logic,
     LogicArray,
     Range,
     Signed,
     Unsigned,
 )
+from cocotb._py_compat import StrEnum
+
+
+class Direction(StrEnum):
+    """Direction of a :class:`Range`."""
+
+    TO = "to"
+    DOWNTO = "downto"
+
 
 __all__ = (
     "Bit",

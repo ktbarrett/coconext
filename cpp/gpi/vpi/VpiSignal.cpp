@@ -12,9 +12,27 @@
 #include "./VpiImpl.hpp"
 #include "logging.hpp"
 
+VpiSignalObjHdl::~VpiSignalObjHdl() {
+    vpi_free_object(get_handle<vpiHandle>());
+}
+
+static bool may_lack_range(int32_t type) {
+    switch (type) {
+        case vpiStructVar:
+        case vpiStructNet:
+        case vpiUnionVar:
+        case vpiUnionNet:
+            return true;
+        default:
+            return false;
+    }
+}
+
 int VpiSignalObjHdl::initialise(const std::string &name,
                                 const std::string &fq_name) {
     int32_t type = vpi_get(vpiType, GpiObjHdl::get_handle<vpiHandle>());
+    bool rangeless_ok = may_lack_range(type);
+    bool unknown_range = false;
     if ((vpiIntVar == type) || (vpiIntegerVar == type) ||
         (vpiIntegerNet == type)) {
         m_num_elems = vpi_get(vpiSize, GpiObjHdl::get_handle<vpiHandle>());
@@ -29,52 +47,56 @@ int VpiSignalObjHdl::initialise(const std::string &name,
             m_range_left = 0;
             m_range_right = m_num_elems - 1;
         } else if (GpiObjHdl::get_type() == GPI_LOGIC ||
-                   GpiObjHdl::get_type() == GPI_LOGIC_ARRAY) {
+                   GpiObjHdl::get_type() == GPI_LOGIC_ARRAY ||
+                   GpiObjHdl::get_type() == GPI_PACKED) {
             vpiHandle hdl = GpiObjHdl::get_handle<vpiHandle>();
             m_indexable = vpi_get(vpiVector, hdl);
 
             if (m_indexable) {
-                s_vpi_value val;
-                vpiHandle iter;
-
-                val.format = vpiIntVal;
-
-                iter = vpi_iterate(vpiRange, hdl);
+                vpiHandle iter = vpi_iterate(vpiRange, hdl);
 
                 /* Only ever need the first "range" */
                 if (iter != NULL) {
                     vpiHandle rangeHdl = vpi_scan(iter);
 
-                    vpi_free_object(iter);
-
                     if (rangeHdl != NULL) {
-                        vpi_get_value(vpi_handle(vpiLeftRange, rangeHdl), &val);
-                        check_vpi_error();
-                        m_range_left = val.value.integer;
+                        DEFER(vpi_free_object(iter));
+                        DEFER(vpi_free_object(rangeHdl));
 
-                        vpi_get_value(vpi_handle(vpiRightRange, rangeHdl),
-                                      &val);
-                        check_vpi_error();
-                        m_range_right = val.value.integer;
-                    } else {
+                        int res = get_range_bounds(rangeHdl, m_range_left,
+                                                   m_range_right);
+                        if (res) {
+                            // LCOV_EXCL_START
+                            if (!rangeless_ok) {
+                                LOG_ERROR(
+                                    "VPI: Unable to get range bounds for %s of "
+                                    "type %s (%d)",
+                                    name.c_str(), vpi_get_str(vpiType, hdl),
+                                    type);
+                                check_vpi_error();
+                                return -1;
+                            }
+                            // LCOV_EXCL_STOP
+                            unknown_range = true;
+                        }
+                    } else if (rangeless_ok) {
+                        unknown_range = true;
+                    }
+                    // LCOV_EXCL_START
+                    else {
                         LOG_ERROR(
                             "VPI: Unable to get range for %s of type %s (%d)",
                             name.c_str(), vpi_get_str(vpiType, hdl), type);
                         return -1;
                     }
-                } else {
-                    vpiHandle leftRange = vpi_handle(vpiLeftRange, hdl);
-                    check_vpi_error();
-                    vpiHandle rightRange = vpi_handle(vpiRightRange, hdl);
-                    check_vpi_error();
-
-                    if (leftRange != NULL and rightRange != NULL) {
-                        vpi_get_value(leftRange, &val);
-                        m_range_left = val.value.integer;
-
-                        vpi_get_value(rightRange, &val);
-                        m_range_right = val.value.integer;
+                    // LCOV_EXCL_STOP
+                } else if (get_range_bounds(hdl, m_range_left, m_range_right) <
+                           0) {
+                    if (rangeless_ok) {
+                        unknown_range = true;
                     } else {
+                        // TODO is this the best behavior? Do simulators
+                        // actually hit this case?
                         LOG_WARN(
                             "VPI: Cannot discover range bounds, guessing based "
                             "on elements");
@@ -83,17 +105,32 @@ int VpiSignalObjHdl::initialise(const std::string &name,
                     }
                 }
 
-                LOG_DEBUG(
-                    "VPI: Indexable object initialized with range [%d:%d] and "
-                    "length >%d<",
-                    m_range_left, m_range_right, m_num_elems);
+                if (unknown_range) {
+                    // A packed struct or union is a vector (vpiVector is
+                    // TRUE) but has no range. Do not treat it as indexable,
+                    // so it is not mistaken for a packed array.
+                    m_indexable = false;
+                    m_range_left = -1;
+                    m_range_right = -1;
+                    LOG_DEBUG("VPI: %s has no range, it is a %s of %d elements",
+                              name.c_str(), vpi_get_str(vpiType, hdl),
+                              m_num_elems);
+                } else {
+                    LOG_DEBUG(
+                        "VPI: Indexable object initialized with range [%d:%d] "
+                        "and length >%d<",
+                        m_range_left, m_range_right, m_num_elems);
+                }
             } else {
                 m_range_left = 0;
                 m_range_right = m_num_elems - 1;
             }
         }
     }
-    m_range_dir = m_range_left > m_range_right ? GPI_RANGE_DOWN : GPI_RANGE_UP;
+    if (!unknown_range) {
+        m_range_dir =
+            m_range_left > m_range_right ? GPI_RANGE_DOWN : GPI_RANGE_UP;
+    }
     LOG_DEBUG("VPI: %s initialized with %d elements", name.c_str(),
               m_num_elems);
     return GpiObjHdl::initialise(name, fq_name);

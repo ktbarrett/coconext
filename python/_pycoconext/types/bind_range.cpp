@@ -27,17 +27,7 @@ Range slice_range(Range const& r, size_t start, size_t stop) {
 void register_range(nb::module_& m) {
     nb::object range_func = nb::module_::import_("builtins").attr("range");
 
-    nb::enum_<Direction>(m, "Direction")
-        .value("TO", Direction::TO)
-        .value("DOWNTO", Direction::DOWNTO);
-
     nb::class_<Range>(m, "Range")
-        .def(
-            nb::init<int32_t, Direction, int32_t>(),
-            "left"_a.noconvert(),
-            "direction"_a,
-            "right"_a.noconvert()
-        )
         .def(
             "__init__",
             [](Range* self, int32_t left, std::string_view direction, int32_t right) {

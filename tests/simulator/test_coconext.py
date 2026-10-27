@@ -33,6 +33,7 @@ def runner() -> Runner:
 
 
 def test_triggers(runner: Runner) -> None:
+    assert runner.build_dir is not None
     runner.test(
         test_module="trigger_tests",
         hdl_toplevel="top",
@@ -41,6 +42,7 @@ def test_triggers(runner: Runner) -> None:
 
 
 def test_simtime(runner: Runner) -> None:
+    assert runner.build_dir is not None
     runner.test(
         test_module="simtime_tests",
         hdl_toplevel="top",
@@ -49,6 +51,7 @@ def test_simtime(runner: Runner) -> None:
 
 
 def test_queues(runner: Runner) -> None:
+    assert runner.build_dir is not None
     runner.test(
         test_module="queue_tests",
         hdl_toplevel="top",

@@ -13,19 +13,26 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 from cocotb_tools.runner import get_runner
-from cocotb_tools.sim_versions import RivieraVersion
+from cocotb_tools.sim_versions import NvcVersion, RivieraVersion
 
 LANGUAGE = os.environ["TOPLEVEL_LANG"].lower().strip()
 
 
-# Riviera < 2024.10 fails to find dut.i_swapper_sv (gh-2921)
-@cocotb.test(
-    expect_error=AttributeError
-    if cocotb.simulator.is_running()
-    and cocotb.SIM_NAME.lower().startswith("riviera")
+@cocotb.skipif(
+    cocotb.SIM_NAME.lower().startswith("nvc")
+    and NvcVersion(cocotb.SIM_VERSION) < "1.20",
+    reason="NVC versions prior to 1.20 abort when accessing a Verilog instance through VHPI",
+)
+@cocotb.xfail(
+    cocotb.SIM_NAME.lower().startswith("nvc"),
+    reason="NVC's VHPI exposes only the ports of Verilog instances, with NVC-internal types (nickg/nvc#1618)",
+)
+@cocotb.xfail(
+    cocotb.SIM_NAME.lower().startswith("riviera")
     and RivieraVersion(cocotb.SIM_VERSION) < "2024.10"
-    and LANGUAGE == "vhdl"
-    else ()
+    and LANGUAGE == "vhdl",
+    reason="Riviera < 2024.10 fails to find dut.i_swapper_sv (gh-2921)",
+    raises=AttributeError,
 )
 async def mixed_language_accessing_test(dut):
     """Try accessing handles and setting values in a mixed language environment."""
@@ -55,14 +62,17 @@ async def mixed_language_accessing_test(dut):
     vhdl.flush_pipe.value  # noqa: B018
 
 
-# Riviera < 2024.10 fails to find dut.i_swapper_sv (gh-2921)
-@cocotb.test(
-    expect_error=AttributeError
-    if cocotb.simulator.is_running()
-    and cocotb.SIM_NAME.lower().startswith("riviera")
+@cocotb.skipif(
+    cocotb.SIM_NAME.lower().startswith("nvc")
+    and NvcVersion(cocotb.SIM_VERSION) < "1.20",
+    reason="NVC versions prior to 1.20 abort when accessing a Verilog instance through VHPI",
+)
+@cocotb.xfail(
+    cocotb.SIM_NAME.lower().startswith("riviera")
     and RivieraVersion(cocotb.SIM_VERSION) < "2024.10"
-    and LANGUAGE == "vhdl"
-    else ()
+    and LANGUAGE == "vhdl",
+    reason="Riviera < 2024.10 fails to find dut.i_swapper_sv (gh-2921)",
+    raises=AttributeError,
 )
 async def mixed_language_functional_test(dut):
     """Try concurrent simulation of VHDL and Verilog and check the output."""
@@ -125,7 +135,7 @@ sim = os.getenv("SIM", "icarus")
 
 
 @pytest.mark.skipif(
-    sim not in ["questa", "riviera", "xcelium"],
+    sim not in ["questa", "riviera", "xcelium", "nvc"],
     reason=f"Skipping example mixed_language since {sim} doesn't support this",
 )
 def test_mixed_language_runner():

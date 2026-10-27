@@ -102,9 +102,10 @@ GPI_EXPORT bool gpi_has_registered_impl(void);
 
 /** Initialize the GPI and load the implementations listed in GPI_IMPL.
  *
- * This is an entry point for libcocotb_bootstrap.
+ * This is an entry point for `libcocotb_bootstrap`.
  *
- * @return `0` if initialization completed successfully.
+ * @return `0` if initialization completed successfully, or `1` if no GPI
+ * implementation was registered.
  */
 GPI_EXPORT int gpi_initialize(void);
 
@@ -217,7 +218,7 @@ typedef enum gpi_objtype_e {
     GPI_FIXED_STRING = 12,
     GPI_GENARRAY = 13,
     GPI_PACKAGE = 14,
-    GPI_PACKED_STRUCTURE = 15,
+    GPI_PACKED = 15,
     GPI_LOGIC = 16,
     GPI_LOGIC_ARRAY = 17,
 } gpi_objtype;
@@ -317,6 +318,28 @@ GPI_EXPORT long gpi_get_signal_value_long(gpi_sim_hdl sig_hdl);
  * @return          Object name.
  */
 GPI_EXPORT const char *gpi_get_signal_name_str(gpi_sim_hdl sig_hdl);
+
+/** Get signal object's fully-qualified name.
+ * @param sig_hdl   Signal object handle.
+ * @return          Fully-qualified object name.
+ */
+GPI_EXPORT const char *gpi_get_signal_fullname_str(gpi_sim_hdl sig_hdl);
+
+/** Get the concrete full path of an object.
+ *
+ * If the object was created by resolving a reference (e.g. an interface
+ * passed through a module port), this is the full path of the referenced
+ * object rather than the path used to reach it.
+ *
+ * Objects are shared by full name, so the referenced object reports its
+ * concrete path even when later reached directly. This function therefore
+ * cannot be used to deduce whether a handle was obtained through a reference.
+ *
+ * @param obj_hdl   Object handle.
+ * @return          Concrete full path, or NULL if the object has no path
+ *                  other than the one used to reach it.
+ */
+GPI_EXPORT const char *gpi_get_concrete_path_str(gpi_sim_hdl obj_hdl);
 
 /** Get signal object type as a string.
  * @param sig_hdl   Signal object handle.

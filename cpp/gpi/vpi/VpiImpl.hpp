@@ -68,6 +68,10 @@ static inline void __check_vpi_error(const char *file, const char *func,
 gpi_objtype to_gpi_objtype(int32_t vpitype, int num_elements = 0,
                            bool is_vector = false);
 
+// Borrows obj and releases the bound handles.
+// Returns 0 on success, -1 on failure.
+int get_range_bounds(vpiHandle obj, int &left, int &right);
+
 #define check_vpi_error()                                \
     do {                                                 \
         __check_vpi_error(__FILE__, __func__, __LINE__); \
@@ -172,17 +176,23 @@ class VpiShutdownCbHdl : public VpiCbHdl {
 
 class VpiArrayObjHdl : public GpiObjHdl {
   public:
-    VpiArrayObjHdl(GpiImplInterface *impl, vpiHandle hdl, gpi_objtype objtype)
-        : GpiObjHdl(impl, hdl, objtype) {}
+    VpiArrayObjHdl(GpiImplInterface *impl, vpiHandle hdl, gpi_objtype objtype,
+                   bool owns_handle = true)
+        : GpiObjHdl(impl, hdl, objtype), m_owns_handle(owns_handle) {}
+    ~VpiArrayObjHdl() override;
 
     int initialise(const std::string &name,
                    const std::string &fq_name) override;
+
+  private:
+    bool m_owns_handle;
 };
 
 class VpiObjHdl : public GpiObjHdl {
   public:
     VpiObjHdl(GpiImplInterface *impl, vpiHandle hdl, gpi_objtype objtype)
         : GpiObjHdl(impl, hdl, objtype) {}
+    ~VpiObjHdl() override;
 
     const char *get_definition_name() override;
     const char *get_definition_file() override;
@@ -193,6 +203,7 @@ class VpiSignalObjHdl : public GpiSignalObjHdl {
     VpiSignalObjHdl(GpiImplInterface *impl, vpiHandle hdl, gpi_objtype objtype,
                     bool is_const)
         : GpiSignalObjHdl(impl, hdl, objtype, is_const) {}
+    ~VpiSignalObjHdl() override;
 
     const char *get_signal_value_binstr() override;
     const char *get_signal_value_str() override;
@@ -339,7 +350,8 @@ class VpiImpl : public GpiImplInterface {
     static const char *reason_to_string(int reason);
     GpiObjHdl *create_gpi_obj_from_handle(vpiHandle new_hdl,
                                           const std::string &name,
-                                          const std::string &fq_name);
+                                          const std::string &fq_name,
+                                          bool owns_handle = true);
 
     static bool compare_generate_labels(const std::string &a,
                                         const std::string &b);

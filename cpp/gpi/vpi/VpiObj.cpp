@@ -7,7 +7,44 @@
 #include <algorithm>
 
 #include "./VpiImpl.hpp"
+#include "_vendor/vpi/sv_vpi_user.h"
 #include "logging.hpp"
+
+VpiArrayObjHdl::~VpiArrayObjHdl() {
+    if (m_owns_handle) vpi_free_object(get_handle<vpiHandle>());
+}
+
+VpiObjHdl::~VpiObjHdl() {
+    // Generate pseudo-regions borrow their containing region's handle.
+    if (m_type != GPI_GENARRAY) vpi_free_object(get_handle<vpiHandle>());
+}
+
+int get_range_bounds(vpiHandle obj, int &left, int &right) {
+    s_vpi_value val;
+    val.format = vpiIntVal;
+
+    vpiHandle leftRange = vpi_handle(vpiLeftRange, obj);
+    // LCOV_EXCL_START
+    if (leftRange == NULL) {
+        return -1;
+    }
+    // LCOV_EXCL_STOP
+    vpi_get_value(leftRange, &val);
+    left = val.value.integer;
+    vpi_free_object(leftRange);
+
+    vpiHandle rightRange = vpi_handle(vpiRightRange, obj);
+    // LCOV_EXCL_START
+    if (rightRange == NULL) {
+        return -1;
+    }
+    // LCOV_EXCL_STOP
+    vpi_get_value(rightRange, &val);
+    right = val.value.integer;
+    vpi_free_object(rightRange);
+
+    return 0;
+}
 
 int VpiArrayObjHdl::initialise(const std::string &name,
                                const std::string &fq_name) {
@@ -38,41 +75,53 @@ int VpiArrayObjHdl::initialise(const std::string &name,
 
     /* After determining the range_idx, get the range and set the limits */
     vpiHandle iter = vpi_iterate(vpiRange, hdl);
-    vpiHandle rangeHdl;
 
     if (iter != NULL) {
-        rangeHdl = vpi_scan(iter);
+        vpiHandle rangeHdl = vpi_scan(iter);
 
 // Questa and VCS vpiRange iter always starts from the first index of the array.
 #if defined(MODELSIM) || defined(VCS)
-        for (int i = 0; i < range_idx; ++i) {
+        for (int i = 0; rangeHdl != NULL && i < range_idx; ++i) {
+            vpi_free_object(rangeHdl);
             rangeHdl = vpi_scan(iter);
-            if (rangeHdl == NULL) {
-                break;
-            }
         }
 #endif
         if (rangeHdl == NULL) {
+            // vpi_scan has already freed the exhausted iterator.
             LOG_ERROR("Unable to get range for indexable array");
             return -1;
         }
-        vpi_free_object(iter);  // Need to free iterator since exited early
+        DEFER(vpi_free_object(iter));
+        DEFER(vpi_free_object(rangeHdl));
+
+        int res = get_range_bounds(rangeHdl, m_range_left, m_range_right);
+        // LCOV_EXCL_START
+        if (res) {
+            LOG_ERROR("Unable to get range bounds for indexable array: %s",
+                      name.c_str());
+            check_vpi_error();
+            return -1;
+        }
+        // LCOV_EXCL_STOP
     } else if (range_idx == 0) {
-        rangeHdl = hdl;
-    } else {
+        // iter == NULL, so no looking through multiple dimensions is possible,
+        // but perhaps we can get the first dimension.
+        int res = get_range_bounds(hdl, m_range_left, m_range_right);
+        // LCOV_EXCL_START
+        if (res) {
+            LOG_ERROR("Unable to get range bounds for indexable array: %s",
+                      name.c_str());
+            check_vpi_error();
+            return -1;
+        }
+        // LCOV_EXCL_STOP
+    }
+    // LCOV_EXCL_START
+    else {
         LOG_ERROR("Unable to get range for indexable array or memory");
         return -1;
     }
-
-    s_vpi_value val;
-    val.format = vpiIntVal;
-    vpi_get_value(vpi_handle(vpiLeftRange, rangeHdl), &val);
-    check_vpi_error();
-    m_range_left = val.value.integer;
-
-    vpi_get_value(vpi_handle(vpiRightRange, rangeHdl), &val);
-    check_vpi_error();
-    m_range_right = val.value.integer;
+    // LCOV_EXCL_STOP
 
     /* vpiSize will return a size that is incorrect for multi-dimensional arrays
      * so use the range to calculate the m_num_elems.

@@ -219,7 +219,7 @@ class Runner(ABC):
         self.env: dict[str, str] = {}
 
         # for running test() independently of build()
-        self.build_dir: Path = get_abs_path("sim_build")
+        self.build_dir: Path | None = None
         self.parameters: Mapping[str, object] = {}
 
         self.log = logging.getLogger(type(self).__qualname__)
@@ -233,50 +233,44 @@ class Runner(ABC):
             SystemExit: Simulator executable does not exist in :envvar:`PATH`.
         """
 
-    def _check_hdl_toplevel_lang(self, hdl_toplevel_lang: str | None) -> str:
-        """Return *hdl_toplevel_lang* if supported by simulator, raise exception otherwise.
-
-        Returns:
-            *hdl_toplevel_lang* if supported by the simulator.
+    def _check_hdl_toplevel_lang(
+        self, hdl_toplevel_lang: str | None
+    ) -> tuple[str, set[str]]:
+        """Return *hdl_toplevel_lang* and remaining languages required by the sources if supported by the simulator.
 
         Raises:
             ValueError: *hdl_toplevel_lang* is not supported by the simulator.
         """
+        source_langs: set[str] = set()
+        for source in chain(self._sources, self._vhdl_sources, self._verilog_sources):
+            if source.tag is VHDL:
+                source_langs.add("vhdl")
+            elif source.tag is Verilog:
+                source_langs.add("verilog")
+
         if hdl_toplevel_lang is None:
-            if self._vhdl_sources and not self._verilog_sources and not self._sources:
-                lang = "vhdl"
-            elif self._verilog_sources and not self._vhdl_sources and not self._sources:
-                lang = "verilog"
-            elif self._sources and not self._vhdl_sources and not self._verilog_sources:
-                top_source = self._sources[-1]
-                if top_source.tag is VHDL:
-                    lang = "vhdl"
-                elif top_source.tag is Verilog:
-                    lang = "verilog"
-                else:
-                    raise ValueError(
-                        "First argument to *sources* must be a VHDL or Verilog file. "
-                        f"Got a {top_source.tag.__qualname__} file: {top_source.value}"
-                    )
+            if len(source_langs) == 1:
+                (hdl_toplevel_lang,) = source_langs
             else:
                 raise ValueError(
-                    f"{type(self).__qualname__}: Must specify a hdl_toplevel_lang in a mixed-language design"
+                    "Must specify 'hdl_toplevel_lang' in mixed-language simulation"
                 )
-        else:
-            lang = hdl_toplevel_lang
-
-        if lang in self.supported_gpi_interfaces:
-            return lang
-        else:
+        elif hdl_toplevel_lang not in type(self).supported_gpi_interfaces:
             raise ValueError(
-                f"{type(self).__qualname__}: hdl_toplevel_lang {hdl_toplevel_lang!r} is not "
-                f"in supported list: {', '.join(self.supported_gpi_interfaces)}"
+                f"{type(self).__qualname__} does not support {hdl_toplevel_lang!r}."
             )
 
-    def _set_env_common(self) -> None:
-        # We have to set all environment variables before building because Xcelium and VCS load VPI for some reason.
-        # TODO: Remove this. Why are Xcelium and VCS loading VPI during build?
+        for lang in source_langs:
+            if lang not in type(self).supported_gpi_interfaces:
+                raise ValueError(
+                    f"{type(self).__qualname__} does not support {lang!r}."
+                )
 
+        source_langs.remove(hdl_toplevel_lang)
+
+        return hdl_toplevel_lang, source_langs
+
+    def _set_env_common(self) -> None:
         self.env.update(os.environ)
 
         bootstrap_entries: list[str] = []
@@ -350,7 +344,7 @@ class Runner(ABC):
         build_args: Sequence[str | VHDL | Verilog] = [],
         hdl_toplevel: str | None = None,
         always: bool = False,
-        build_dir: PathLike = "sim_build",
+        build_dir: PathLike | None = None,
         cwd: PathLike | None = None,
         clean: bool = False,
         verbose: bool = False,
@@ -424,12 +418,16 @@ class Runner(ABC):
             *defines* are no longer implicitly converted to HDL literals.
             Users must explicitly call :func:`~cocotb_tools.runner.as_vhdl_literal` or
             :func:`~cocotb_tools.runner.as_sv_literal` to convert Python values to HDL literals.
+
+        .. versionchanged:: 2.2
+            :meth:`~cocotb_tools.runner.Runner.build` now creates a new, uniquely named temporary directory with the
+            prefix ``sim_build_`` in the default temporary directory (see :func:`tempfile.gettempdir`) when the
+            ``build_dir`` parameter is not set. To restore the previous behavior, pass ``build_dir="sim_build"``.
         """
         # We don't get anything by printing this if the build fails
         __tracebackhide__ = True
 
         self.clean: bool = clean
-        self.build_dir = get_abs_path(build_dir)
 
         # note: to avoid mutating argument defaults, we ensure that no value
         # is written without a copy. This is much more concise and leads to
@@ -462,17 +460,22 @@ class Runner(ABC):
         self.verbose: bool = verbose
         self.timescale: tuple[str, str] | None = timescale
         self.log_file: PathLike | None = log_file
-        self.cwd = self.build_dir if cwd is None else cwd
-
         self.waves = _env.get_bool("WAVES", waves)
 
         self._set_env_build()
 
-        if self.clean:
-            self.rm_build_folder(self.build_dir)
-            self.always = True
-        self.build_dir.mkdir(parents=True, exist_ok=True)
+        if build_dir is not None:
+            self.build_dir = get_abs_path(build_dir)
 
+        if self.build_dir is not None:
+            if self.clean:
+                self.rm_build_folder(self.build_dir)
+                self.always = True
+            self.build_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            self.build_dir = Path(tempfile.mkdtemp(prefix="sim_build_"))
+
+        self.cwd = self.build_dir if cwd is None else cwd
         cmds: Sequence[_Command] = self._build_command()
         self._execute(cmds, cwd=self.cwd)
 
@@ -482,7 +485,7 @@ class Runner(ABC):
         hdl_toplevel: str,
         hdl_toplevel_library: str = "top",
         hdl_toplevel_lang: str | None = None,
-        gpi_interfaces: list[str] | None = None,
+        gpi_interfaces: Sequence[str] | None = None,
         testcase: str | Sequence[str] | None = None,
         seed: str | int | None = None,
         elab_args: Sequence[str] = [],
@@ -495,7 +498,7 @@ class Runner(ABC):
         build_dir: PathLike | None = None,
         test_dir: PathLike | None = None,
         results_xml: str | None = None,
-        pre_cmd: list[str] | None = None,
+        pre_cmd: Sequence[str] | None = None,
         verbose: bool = False,
         timescale: tuple[str, str] | None = None,
         log_file: PathLike | None = None,
@@ -543,8 +546,17 @@ class Runner(ABC):
         """
         __tracebackhide__ = True  # Hide the traceback when using pytest
 
+        # note: to avoid mutating argument defaults, we ensure that no value
+        # is written without a copy. This is much more concise and leads to
+        # a better docstring than using `None` as a default in the parameters
+        # list.
+
         if build_dir is not None:
             self.build_dir = get_abs_path(build_dir)
+        elif self.build_dir is None:
+            raise RuntimeError(
+                "Cannot run test(). Either run the build step first or set the *build_dir* parameter."
+            )
 
         if parameters is not None:
             self.parameters = dict(parameters)
@@ -560,19 +572,35 @@ class Runner(ABC):
         else:
             self.test_module = ",".join(test_module)
 
-        # note: to avoid mutating argument defaults, we ensure that no value
-        # is written without a copy. This is much more concise and leads to
-        # a better docstring than using `None` as a default in the parameters
-        # list.
         self.sim_hdl_toplevel = hdl_toplevel
         self.hdl_toplevel_library: str = hdl_toplevel_library
-        self.hdl_toplevel_lang = self._check_hdl_toplevel_lang(hdl_toplevel_lang)
-        if gpi_interfaces:
+        self.hdl_toplevel_lang, other_langs = self._check_hdl_toplevel_lang(
+            hdl_toplevel_lang
+        )
+        if gpi_interfaces is not None:
+            if isinstance(gpi_interfaces, str):
+                raise TypeError(
+                    f"Expected a Sequence for argument *gpi_interfaces*, got {type(gpi_interfaces).__qualname__}"
+                )
+            for intf in gpi_interfaces:
+                if not any(
+                    intf in supported_intfs
+                    for supported_intfs in self.supported_gpi_interfaces.values()
+                ):
+                    raise ValueError(
+                        f"gpi_interface {intf!r} is not supported by {type(self).__qualname__}"
+                    )
             self.gpi_interfaces = gpi_interfaces
         else:
-            self.gpi_interfaces = []
-            for gpi_if in self.supported_gpi_interfaces.values():
-                self.gpi_interfaces.append(gpi_if[0])
+            # Force language of toplevel to be first in GPI Impl load order.
+            self.gpi_interfaces = [
+                self.supported_gpi_interfaces[self.hdl_toplevel_lang][0]
+            ]
+            # Add remaining languages GPI Impls in any order.
+            for lang in other_langs:
+                gpi_if = self.supported_gpi_interfaces[lang][0]
+                if gpi_if not in self.gpi_interfaces:
+                    self.gpi_interfaces.append(gpi_if)
 
         self.pre_cmd = pre_cmd
 
@@ -1189,6 +1217,11 @@ class Questa(Runner):
             "questa", *self.gpi_interfaces
         )
 
+        # Must add library for mixed language to work correctly
+        self.env["COCOTB_TOPLEVEL"] = (
+            f"{self.hdl_toplevel_library}.{self.sim_hdl_toplevel}"
+        )
+
         return cmds
 
 
@@ -1535,9 +1568,13 @@ class Nvc(Runner):
        * Supports specifying a particular entity architecture by setting hdl_toplevel to {entity}-{arch}.
        * Does not support the ``pre_cmd`` argument to :meth:`~Runner.test`.
        * Does not support the ``timescale`` argument to :meth:`~Runner.build` or :meth:`~Runner.test`.
+       * Verilog sources must end in ``.v`` or ``.sv``, even when tagged with :class:`Verilog`.
     """
 
-    supported_gpi_interfaces: ClassVar[dict[str, list[str]]] = {"vhdl": ["vhpi"]}
+    supported_gpi_interfaces: ClassVar[dict[str, list[str]]] = {
+        "vhdl": ["vhpi"],
+        "verilog": ["vhpi"],
+    }
 
     def __init__(self) -> None:
         super().__init__()
@@ -1565,10 +1602,10 @@ class Nvc(Runner):
             raise SystemExit("ERROR: nvc executable not found!")
 
     def _get_include_options(self, includes: Sequence[PathLike]) -> _Command:
-        raise RuntimeError
+        return [f"-I{include}" for include in includes]
 
     def _get_define_options(self, defines: Mapping[str, object]) -> _Command:
-        raise RuntimeError
+        return [f"-D{name}={value}" for name, value in defines.items()]
 
     def _get_parameter_options(self, parameters: Mapping[str, object]) -> _Command:
         return [f"-g{name}={value}" for name, value in parameters.items()]
@@ -1580,19 +1617,24 @@ class Nvc(Runner):
         return f"{self.sim_hdl_toplevel}.fst"
 
     def _build_command(self) -> list[_Command]:
-        sources = self._sources + self._vhdl_sources
+        sources = self._sources + self._vhdl_sources + self._verilog_sources
 
         for source in sources:
-            if source.tag is not VHDL:
+            if source.tag not in (VHDL, Verilog):
                 raise ValueError(
-                    f"{type(self).__qualname__} only supports VHDL. {str(source.value)!r} cannot be compiled."
+                    f"{type(self).__qualname__} only supports VHDL and Verilog. {str(source.value)!r} cannot be compiled."
                 )
 
         for arg in self._build_args:
             if arg.tag not in (VHDL, None):
                 raise ValueError(
-                    f"{type(self).__qualname__} only supports VHDL. build_args {arg.value!r} will not be applied."
+                    f"{type(self).__qualname__} only supports VHDL build_args. {arg.value!r} will not be applied."
                 )
+
+        verilog_args: _Command = []
+        if any(source.tag is Verilog for source in sources):
+            verilog_args += self._get_include_options(self.includes)
+            verilog_args += self._get_define_options(self.defines)
 
         cmds = [
             [
@@ -1604,6 +1646,7 @@ class Nvc(Runner):
             + [arg.value for arg in self._build_args]
             + ["-a"]
             + [str(source.value) for source in sources]
+            + verilog_args
             + self._preserve_case
         ]
 
@@ -1650,6 +1693,12 @@ class AldecBase(Runner):
     def _simulator_in_path(self) -> None:
         if shutil.which("vsimsa") is None:
             raise SystemExit("ERROR: vsimsa executable not found!")
+
+    def _set_env_build(self) -> None:
+        super()._set_env_build()
+        # Load the VPI implementation so it can register system functions.
+        self.env["COCOTB_BOOTSTRAP"] = cocotb_tools.config.gpi_entry_point()
+        self.env["GPI_IMPL"] = cocotb_tools.config.gpi_impl("riviera", "vpi")
 
     def _get_include_options(self, includes: Sequence[PathLike]) -> _Command:
         return [f"+incdir+{_as_tcl_value(str(include))}" for include in includes]
@@ -2180,6 +2229,12 @@ class Vcs(Runner):
     def _simulator_in_path(self) -> None:
         if shutil.which("vcs") is None:
             raise SystemExit("ERROR: vcs executable not found!")
+
+    def _set_env_build(self) -> None:
+        super()._set_env_build()
+        # Load the VPI implementation so it can register system functions.
+        self.env["COCOTB_BOOTSTRAP"] = cocotb_tools.config.gpi_entry_point()
+        self.env["GPI_IMPL"] = cocotb_tools.config.gpi_impl("vcs", "vpi")
 
     def _set_env_test(self) -> None:
         super()._set_env_test()

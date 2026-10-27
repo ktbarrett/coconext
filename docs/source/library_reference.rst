@@ -591,6 +591,28 @@ Simulation Time Utilities
     :member-order: bysource
     :synopsis: Tools for dealing with simulated time.
 
+.. envvar:: COCOTB_SIMTIME_DEFAULT_ROUND_MODE
+
+    Type: :ref:`env-string`
+
+    Sets :data:`cocotb.simtime.default_round_mode`, the default rounding mode for simulation time conversions.
+    Defaults to ``error``.
+    Valid values are ``error``, ``ceil``, ``round``, and ``floor``.
+
+    .. versionadded:: 2.2
+
+.. envvar:: COCOTB_SIMTIME_REPORT_PRECISION
+
+    Type: :ref:`env-string`
+
+    Sets :data:`cocotb.simtime.report_precision`, the unit used for reporting simulation time.
+    Defaults to ``ns``.
+    Valid values are ``fs``, ``ps``, ``ns``, ``us``, ``ms``, and ``sec``.
+
+    When using the pytest plugin, ``--cocotb-sim-time-unit`` takes precedence over this environment variable.
+
+    .. versionadded:: 2.2
+
 .. automodule:: cocotb.utils
     :members:
     :member-order: bysource
@@ -1021,8 +1043,31 @@ Debugging
 
     Default: :data:`False`
 
-    If defined, cocotb will drop into the Python debugger (:mod:`pdb`) if a test fails with an exception.
+    If set to a true value, cocotb will drop into the Python debugger (:mod:`pdb`) if a test fails with an exception.
     See also the :ref:`troubleshooting-attaching-debugger-python` subsection of :ref:`troubleshooting-attaching-debugger`.
+
+    .. note::
+        To drop into a debugger at a specific line instead of only on test failure,
+        add a call to the built-in function :func:`breakpoint` to the line where you wish to pause.
+
+        By default this uses :mod:`pdb` for debugging;
+        however, because some simulators take control of ``stdin``,
+        the plain :mod:`!pdb` is often unusable there
+        (it typically works in terminal-based simulators such as Icarus Verilog, Verilator, GHDL, and NVC,
+        see :ref:`troubleshooting-attaching-debugger-python`).
+        The ``remote_pdb`` package is a drop-in replacement that listens on a TCP socket instead.
+        To use it, add :func:`breakpoint` where you want to stop and
+        and point the ``PYTHONBREAKPOINT`` environment variable
+        at ``remote_pdb``:
+
+        .. code-block:: shell
+
+            PYTHONBREAKPOINT=remote_pdb.set_trace
+
+        The listening port is printed to the log; connect to it with :command:`telnet` as described in
+        :ref:`Attaching a Debugger <troubleshooting-attaching-debugger-python>`.
+
+        See :func:`sys.breakpointhook` for more details on Python's built-in debugging functionality and :envvar:`!PYTHONBREAKPOINT`.
 
     .. note::
         Prior to Python 3.14 running the ``(q)uit`` command in the debugger would not exit the simulator process,
@@ -1168,6 +1213,16 @@ The PyGPI is a Python wrapper around the :term:`GPI` (Generic Procedural Interfa
     The entry function must be a callable matching this form:
 
     * ``entry_function() -> None``
+
+    When using the :ref:`building` or :ref:`api-runner` the behavior defaults conceptually to the following.
+
+    1. Start collecting coverage on ``cocotb`` sources.
+    2. Configure logging and ``cocotb``, ``gpi`` and related loggers.
+    3. Initialize ``cocotb`` namespace variables (:data:`cocotb.top`, :data:`cocotb.packages`, :data:`cocotb.RANDOM_SEED`, etc.)
+       and other internal state like the scheduler, debugging, profiling, previews, etc.
+    4. Start the regression manager, which discovers and starts the first test.
+
+    You can get the GPI entry points used in these flows by calling ``cocotb-config --pygpi-entry-point``.
 
     .. versionchanged:: 1.8
         ``level`` argument to ``_sim_event`` is no longer passed, it is assumed to be ``SIM_FAIL`` (2).

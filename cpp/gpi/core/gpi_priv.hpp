@@ -33,14 +33,6 @@ class GpiCbHdl {
      */
     virtual int remove() = 0;
 
-    /** Set user callback info
-     *
-     * Not on init to prevent having to pass around the arguments everywhere.
-     * Secondary initialization routine. ONLY CALL ONCE!
-     */
-    virtual void set_cb_info(int (*cb_func)(void *),
-                             void *cb_data) noexcept = 0;
-
     /** Get the current user callback function and data. */
     virtual void get_cb_info(int (**cb_func)(void *),
                              void **cb_data) const noexcept = 0;
@@ -113,8 +105,14 @@ class GPI_EXPORT GpiObjHdl : public GpiHdl {
     virtual int initialise(const std::string &name,
                            const std::string &full_name);
 
+    bool is_resolved_reference() const { return m_is_resolved_reference; }
+    void set_is_resolved_reference(bool resolved) {
+        m_is_resolved_reference = resolved;
+    }
+
   protected:
     int m_num_elems = 0;
+    bool m_is_resolved_reference = false;
     bool m_indexable = false;
     int m_range_left = -1;
     int m_range_right = -1;
@@ -169,7 +167,12 @@ class GPI_EXPORT GpiCbHdlBase : public GpiHdl, public GpiCbHdl {
     GpiCbHdlBase() = delete;
     GpiCbHdlBase(GpiImplInterface *impl) : GpiHdl(impl) {}
 
-    void set_cb_info(int (*cb_func)(void *), void *cb_data) noexcept override {
+    /** Set user callback info
+     *
+     * Not on init to prevent having to pass around the arguments everywhere.
+     * Secondary initialization routine. ONLY CALL ONCE!
+     */
+    void set_cb_info(int (*cb_func)(void *), void *cb_data) noexcept {
         this->m_cb_func = cb_func;
         this->m_cb_data = cb_data;
     }

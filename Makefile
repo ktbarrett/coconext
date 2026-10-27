@@ -6,11 +6,12 @@ DEV_BUILD_DEP_GROUP ?= dev
 
 SIM ?= nvc
 TOPLEVEL_LANG ?= vhdl
+VHDL_GPI_INTERFACE ?= vhpi
 CXX_STANDARD ?= 20
 GCOV_EXECUTABLE ?= gcov
 COCONEXT_DEVELOPER_MODE ?= ON
 
-export SIM TOPLEVEL_LANG
+export SIM TOPLEVEL_LANG VHDL_GPI_INTERFACE
 
 PYTEST_COVERAGE_ARGS ?= --cov --cov-append --cov-report=
 
@@ -91,7 +92,7 @@ integration_tests:
 
 .PHONY: cocotb_tests
 cocotb_tests: dev_build
-	$(MAKE) -C tests
+	python3 run_tests.py tests
 
 .PHONY: coverage_reset
 coverage_reset:

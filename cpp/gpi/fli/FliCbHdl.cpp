@@ -25,8 +25,11 @@ void handle_fli_callback(void *data) {
     }
     // LCOV_EXCL_STOP
 
+    // Ignore callbacks that fire after finalizing. Since we have to finalize on
+    // the way out of the last callback where gpi_finish was called, we can end
+    // up with end of simulation callbacks even after finishing.
     if (gpi_is_finalizing()) {
-        LOG_DEBUG("VPI: Callback fired while finalizing, ignoring");
+        LOG_DEBUG("FLI: Callback fired while finalizing, ignoring");
         return;
     }
 

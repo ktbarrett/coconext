@@ -50,7 +50,7 @@ extensions = [
     "sphinx_codeautolink",
     "sphinxarg.ext",
     "sphinx_autofixture",
-    "sphinxcontrib.yowasp_wavedrom"
+    "sphinxcontrib.yowasp_wavedrom",
 ]
 
 intersphinx_mapping = {
@@ -60,6 +60,7 @@ intersphinx_mapping = {
     "pytest": ("https://docs.pytest.org/en/latest/", None),
     "coverage": ("https://coverage.readthedocs.io/en/latest/", None),
     "remote_pdb": ("https://python-remote-pdb.readthedocs.io/en/latest/", None),
+    "cocotb21": ("https://docs.cocotb.org/en/v2.1.0/", None),
     "cocotb20": ("https://docs.cocotb.org/en/v2.0.1/", None),
     "cocotb19": ("https://docs.cocotb.org/en/v1.9.2/", None),
     "cocotb18": ("https://docs.cocotb.org/en/v1.8.1/", None),
@@ -79,9 +80,7 @@ issues_github_path = "cocotb/cocotb"
 templates_path = ["_templates"]
 
 # The suffix of source filenames.
-source_suffix = {
-    '.rst': 'restructuredtext'
-}
+source_suffix = {".rst": "restructuredtext"}
 
 # The master toctree document.
 master_doc = "index"
@@ -113,10 +112,13 @@ except subprocess.CalledProcessError:
 # release? Set the 'is_release_build' tag then, which can be used by the
 # '.. only::' directive.
 # https://docs.readthedocs.io/en/stable/reference/environment-variables.html
-is_rtd_tag = 'READTHEDOCS' in os.environ and os.environ.get('READTHEDOCS_VERSION_TYPE', 'unknown') == 'tag'
+is_rtd_tag = (
+    "READTHEDOCS" in os.environ
+    and os.environ.get("READTHEDOCS_VERSION_TYPE", "unknown") == "tag"
+)
 
 if is_rtd_tag:
-    tags.add('is_release_build')
+    tags.add("is_release_build")
 
 autoclass_content = "class"
 
@@ -131,7 +133,9 @@ python_display_short_literal_types = True
 # (https://sphinx-codeautolink.readthedocs.io/)
 codeautolink_warn_on_missing_inventory = True
 codeautolink_warn_on_failed_resolve = True
-codeautolink_autodoc_inject = True  # Inject an autolink-examples table to the end of all autodoc definitions
+codeautolink_autodoc_inject = (
+    True  # Inject an autolink-examples table to the end of all autodoc definitions
+)
 # import statements that are often used in code examples
 codeautolink_global_preface = textwrap.dedent("""\
     import random
@@ -145,8 +149,7 @@ codeautolink_global_preface = textwrap.dedent("""\
     from cocotb.task import *
     from cocotb.triggers import *
     from cocotb.utils import *
-    """
-)
+    """)
 
 codeautolink_custom_blocks = {
     # https://sphinx-codeautolink.readthedocs.io/en/latest/examples.html#doctest-code-blocks
@@ -256,7 +259,7 @@ html_favicon = "_static/cocotb-favicon.svg"
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+html_static_path = ["_static"]
 html_css_files = ["cocotb.css"]
 html_js_files = ["cocotb.js"]
 
@@ -425,6 +428,14 @@ in_progress_notes = subprocess.check_output(
     cwd="../..",
     universal_newlines=True,
 )
+# Right after a release, there are no newsfragments left to draft. Rather
+# than show an empty "No significant changes." placeholder entry next to
+# the real one for the release just made, show nothing at all. Only the
+# body is checked, so that a newsfragment merely mentioning that phrase
+# doesn't hide the whole draft.
+_, _, draft_body = in_progress_notes.partition("\n\n")
+if draft_body.strip() == "No significant changes.":
+    in_progress_notes = ""
 with open("master-notes.rst", "w") as f:
     f.write(in_progress_notes)
 
@@ -443,14 +454,16 @@ extlinks = {
 from sphinx.errors import NoUri
 from sphinx.util.logging import getLogger
 
+
 def block_gpi_links(app, env, node, contnode):
-    target = node.get('reftarget', '')
+    target = node.get("reftarget", "")
 
     # Stop intersphinx from linking to old GPI docs
-    if target in ('GpiObjHdl', 'GpiIterator', 'GpiCbHdl'):
+    if target in ("GpiObjHdl", "GpiIterator", "GpiCbHdl"):
         getLogger("cocotb.conf").info(f"Stopping intersphinx link for {target}")
         raise NoUri
 
+
 # -- Custom setup function -----------------------------------------------------
 def setup(app):
-    app.connect('missing-reference', block_gpi_links)
+    app.connect("missing-reference", block_gpi_links)

@@ -64,7 +64,7 @@ There are several issues with using Makefiles as a build system:
 * Limited built-in functionality, requires shelling out.
 * Shell features are not consistent between different OSes.
 
-To address these issues and others, cocotb developed a Python-based build and test runner system known as the `Python Runners <howto-python-runner>`_.
+To address these issues and others, cocotb developed a Python-based build and test runner system known as the :ref:`Python Runners <howto-python-runner>`.
 This system does the exact same job as the Makefile-based system, but is implemented in Python.
 Instead of writing a declarative Makefile, users write a Python script that uses the Python Runners API to configure and run their tests.
 
@@ -135,6 +135,6 @@ Then it uses the Python Runners to build and run the simulations necessary for e
 
 This means that you can use pytest features directly on cocotb tests.
 For example, parametrizing tests with :ref:`@pytest.mark.parametrize <@pytest.mark.parametrize>`
-and marking tests as expected to fail with :any:`@pytest.mark.xfail <pytest.mark.xfail>`.
+and marking tests as expected to fail with :func:`@pytest.mark.xfail <pytest.mark.xfail>`.
 
 .. note:: The ``pytest`` plugin is still in development and is not yet recommended for general use.

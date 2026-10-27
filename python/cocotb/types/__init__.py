@@ -7,13 +7,14 @@ from ._abstract_array import AbstractArray, AbstractMutableArray
 from ._array import Array
 from ._logic import Bit, Logic
 from ._logic_array import LogicArray
-from ._range import Range
+from ._range import Direction, Range
 
 __all__ = (
     "AbstractArray",
     "AbstractMutableArray",
     "Array",
     "Bit",
+    "Direction",
     "Logic",
     "LogicArray",
     "Range",

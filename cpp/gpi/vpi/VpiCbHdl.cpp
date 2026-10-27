@@ -23,6 +23,9 @@ static int32_t handle_vpi_callback_(VpiCbHdl *cb_hdl, bool &is_shutdown_cb) {
     }
     // LCOV_EXCL_STOP
 
+    // Ignore callbacks that fire after finalizing. Since we have to finalize on
+    // the way out of the last callback where gpi_finish was called, we can end
+    // up with end of simulation callbacks even after finishing.
     if (gpi_is_finalizing()) {
         LOG_DEBUG("VPI: Callback fired while finalizing, ignoring");
         return 0;
