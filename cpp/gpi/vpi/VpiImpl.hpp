@@ -59,10 +59,9 @@ static inline void __check_vpi_error(const char *file, const char *func,
             loglevel = GPI_WARNING;
     }
 
-    LOG_EXPLICIT("gpi", GPI_DEBUG, file, func, line,
-                 "VPI Internal Error: %s @ %s:%d: %s",
-                 gpi_log_level_to_str(loglevel), info.file, info.line,
-                 info.message);
+    LOG_EXPLICIT(
+        "gpi", loglevel, file, func, line, "VPI Internal Error: %s @ %s:%d: %s",
+        gpi_log_level_to_str(loglevel), info.file, info.line, info.message);
 }
 
 gpi_objtype to_gpi_objtype(int32_t vpitype, int num_elements = 0,
@@ -88,6 +87,22 @@ class VpiCbHdl : public GpiCbHdlBase {
   protected:
     s_vpi_time vpi_time;
     bool m_removed = false;
+
+    /** Release the handle of a one-shot callback that has fired.
+     *
+     * IEEE 1800-2023 37.2.2 lists no automatic release for a fired callback,
+     * so on a conforming simulator the handle stays valid (and allocated)
+     * until it is released. Icarus deletes the callback object as soon as it
+     * fires (vvp/vpi_callback.cc sync_cb::run_run), so releasing there is a
+     * use-after-free, and Questa's behavior changed between releases (see
+     * test_trigger_memory_leak). Only simulators known to keep the handle
+     * alive release it here.
+     */
+    void release_fired_handle() {
+#if defined(IUS) || defined(VCS) || defined(ALDEC)
+        vpi_release_handle(get_handle<vpiHandle>());
+#endif
+    }
 
   public:
     s_cb_data cb_data;
@@ -140,6 +155,7 @@ class VpiStartupCbHdl : public VpiCbHdl {
         } else {
             LOG_TRACE("[ VPI (startup) ] callback is removed");
         }
+        release_fired_handle();
         delete this;
         return res;
     }
@@ -164,6 +180,7 @@ class VpiShutdownCbHdl : public VpiCbHdl {
         } else {
             LOG_TRACE("[ VPI (shutdown) ] callback is removed");
         }
+        release_fired_handle();
         delete this;
         return res;
     }
@@ -178,20 +195,18 @@ class VpiArrayObjHdl : public GpiObjHdl {
   public:
     VpiArrayObjHdl(GpiImplInterface *impl, vpiHandle hdl, gpi_objtype objtype,
                    bool owns_handle = true)
-        : GpiObjHdl(impl, hdl, objtype), m_owns_handle(owns_handle) {}
+        : GpiObjHdl(impl, hdl, objtype, false, owns_handle) {}
     ~VpiArrayObjHdl() override;
 
     int initialise(const std::string &name,
                    const std::string &fq_name) override;
-
-  private:
-    bool m_owns_handle;
 };
 
 class VpiObjHdl : public GpiObjHdl {
   public:
-    VpiObjHdl(GpiImplInterface *impl, vpiHandle hdl, gpi_objtype objtype)
-        : GpiObjHdl(impl, hdl, objtype) {}
+    VpiObjHdl(GpiImplInterface *impl, vpiHandle hdl, gpi_objtype objtype,
+              bool owns_handle = true)
+        : GpiObjHdl(impl, hdl, objtype, false, owns_handle) {}
     ~VpiObjHdl() override;
 
     const char *get_definition_name() override;
@@ -201,8 +216,8 @@ class VpiObjHdl : public GpiObjHdl {
 class VpiSignalObjHdl : public GpiSignalObjHdl {
   public:
     VpiSignalObjHdl(GpiImplInterface *impl, vpiHandle hdl, gpi_objtype objtype,
-                    bool is_const)
-        : GpiSignalObjHdl(impl, hdl, objtype, is_const) {}
+                    bool is_const, bool owns_handle = true)
+        : GpiSignalObjHdl(impl, hdl, objtype, is_const, owns_handle) {}
     ~VpiSignalObjHdl() override;
 
     const char *get_signal_value_binstr() override;
@@ -263,6 +278,12 @@ class VpiSingleIterator : public GpiIterator {
         }
     }
 
+    ~VpiSingleIterator() override {
+        // Non-NULL only if iteration was abandoned before vpi_scan() returned
+        // NULL and freed it.
+        if (m_iterator) vpi_free_object(m_iterator);
+    }
+
     Status next_handle(std::string &name, GpiObjHdl **hdl,
                        void **raw_hdl) override;
 
@@ -287,6 +308,12 @@ class VpiPackageIterator : public GpiIterator {
         }
     }
 
+    ~VpiPackageIterator() override {
+        // Non-NULL only if iteration was abandoned before vpi_scan() returned
+        // NULL and freed it.
+        if (m_iterator) vpi_free_object(m_iterator);
+    }
+
     Status next_handle(std::string &name, GpiObjHdl **hdl,
                        void **raw_hdl) override;
 
@@ -306,6 +333,12 @@ class VpiRootIterator : public GpiIterator {
         if (!m_iterator) {
             LOG_INFO("No root handle visible via VPI");
         }
+    }
+
+    ~VpiRootIterator() override {
+        // Non-NULL only if iteration was abandoned before vpi_scan() returned
+        // NULL and freed it.
+        if (m_iterator) vpi_free_object(m_iterator);
     }
 
     Status next_handle(std::string &name, GpiObjHdl **hdl,
@@ -348,6 +381,12 @@ class VpiImpl : public GpiImplInterface {
     GpiObjHdl *get_child_by_index(int32_t index, GpiObjHdl *parent) override;
     GpiObjHdl *get_child_from_handle(void *raw_hdl, GpiObjHdl *parent) override;
     static const char *reason_to_string(int reason);
+    /** Wrap a VPI handle in a GPI object.
+     *
+     * On success the returned object takes ownership of new_hdl when
+     * owns_handle is true. On failure (NULL return) the caller still owns
+     * new_hdl.
+     */
     GpiObjHdl *create_gpi_obj_from_handle(vpiHandle new_hdl,
                                           const std::string &name,
                                           const std::string &fq_name,

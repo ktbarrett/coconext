@@ -1,15 +1,16 @@
 // Python bindings for coconext range types.
 #include <nanobind/nanobind.h>
+#include <nanobind/stl/optional.h>     // IWYU pragma: keep -- std::optional caster
 #include <nanobind/stl/string.h>       // IWYU pragma: keep -- std::string caster
 #include <nanobind/stl/string_view.h>  // IWYU pragma: keep -- std::string_view caster
 
-#include <algorithm>
 #include <coconext/types/direction.hpp>
 #include <coconext/types/hash.hpp>
 #include <coconext/types/range.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <format>
+#include <optional>
 #include <stdexcept>
 #include <string_view>
 
@@ -164,62 +165,22 @@ void register_range(nb::module_& m) {
         )
         .def(
             "index",
-            [](Range const& self, int32_t value) {
+            [](Range const& self,
+               int32_t value,
+               std::optional<int32_t> start,
+               std::optional<int32_t> stop) {
                 auto offset = detail::offset_of(self, value);
-                if (!offset.has_value()) {
+                if (!offset.has_value()
+                    || (start.has_value() && offset.value() < start.value())
+                    || (stop.has_value() && offset.value() >= stop.value()))
+                {
                     throw nb::value_error("Value not found in range");
                 }
                 return offset.value();
             },
-            nb::arg().noconvert()
-        )
-        .def(
-            "index",
-            [](Range const& self, int32_t value, int32_t start) {
-                auto len = static_cast<int32_t>(self.length());
-
-                start = std::clamp(start, int32_t(0), len);
-
-                if (start >= len) {
-                    throw nb::value_error("Value not found in range");
-                }
-
-                auto sliced = slice_range(self, start, len);
-
-                auto offset = detail::offset_of(sliced, value);
-                if (!offset.has_value()) {
-                    throw nb::value_error("Value not found in range");
-                }
-                return start + offset.value();
-            },
             nb::arg().noconvert(),
-            nb::arg().noconvert()
-        )
-        .def(
-            "index",
-            [](Range const& self, int32_t value, int32_t start, int32_t stop) {
-                auto len = static_cast<int32_t>(self.length());
-
-                // Python-compatible clamping
-                start = std::clamp(start, int32_t(0), len);
-                stop = std::clamp(stop, int32_t(0), len);
-
-                // Empty search region
-                if (start >= stop) {
-                    throw nb::value_error("Value not found in range");
-                }
-
-                auto sliced = slice_range(self, start, stop);
-
-                auto offset = detail::offset_of(sliced, value);
-                if (!offset.has_value()) {
-                    throw nb::value_error("Value not found in range");
-                }
-                return start + offset.value();
-            },
-            nb::arg().noconvert(),
-            nb::arg().noconvert(),
-            nb::arg().noconvert()
+            nb::arg().noconvert() = nb::none(),
+            nb::arg().noconvert() = nb::none()
         )
         .def(
             "count",

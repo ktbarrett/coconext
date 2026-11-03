@@ -135,6 +135,7 @@ GpiIterator::Status VhpiIterator::next_handle(std::string &name,
                                               GpiObjHdl **hdl, void **raw_hdl) {
     vhpiHandleT obj;
     GpiObjHdl *new_obj;
+    bool owns_handle = true;
 
     if (!selected) return GpiIterator::END;
 
@@ -155,14 +156,14 @@ GpiIterator::Status VhpiIterator::next_handle(std::string &name,
              * match the name of the generate block.
              */
             if (obj != NULL && obj_type == GPI_GENARRAY) {
+                bool match = false;
                 if (vhpi_get(vhpiKindP, obj) == vhpiForGenerateK) {
                     std::string rgn_name = vhpi_get_str(vhpiCaseNameP, obj);
-                    if (!VhpiImpl::compare_generate_labels(rgn_name,
-                                                           parent_name)) {
-                        obj = NULL;
-                        continue;
-                    }
-                } else {
+                    match = VhpiImpl::compare_generate_labels(rgn_name,
+                                                              parent_name);
+                }
+                if (!match) {
+                    vhpi_release_handle(obj);
                     obj = NULL;
                     continue;
                 }
@@ -176,6 +177,7 @@ GpiIterator::Status VhpiIterator::next_handle(std::string &name,
                 LOG_DEBUG("VHPI: Skipping %s (%s)",
                           vhpi_get_str(vhpiFullNameP, obj),
                           vhpi_get_str(vhpiKindStrP, obj));
+                vhpi_release_handle(obj);
                 obj = NULL;
                 continue;
             }
@@ -232,6 +234,7 @@ GpiIterator::Status VhpiIterator::next_handle(std::string &name,
             "VHPI: Unable to get the name for this object of type " PRIu32,
             type);
 
+        vhpi_release_handle(obj);
         return GpiIterator::NATIVE_NO_NAME;
     }
 
@@ -249,7 +252,11 @@ GpiIterator::Status VhpiIterator::next_handle(std::string &name,
 
         if (found != std::string::npos && found != 0) {
             name = idx_str.substr(0, found);
+            /* Pseudo-region: borrow the parent's handle. The scanned generate
+             * iteration itself is not wrapped. */
+            vhpi_release_handle(obj);
             obj = m_parent->get_handle<vhpiHandleT>();
+            owns_handle = false;
         } else {
             LOG_WARN("VHPI: Unhandled Generate Loop Format - %s", name.c_str());
             name = c_name;
@@ -291,10 +298,14 @@ GpiIterator::Status VhpiIterator::next_handle(std::string &name,
         fq_name += "." + name;
     }
     VhpiImpl *vhpi_impl = reinterpret_cast<VhpiImpl *>(m_impl);
-    new_obj = vhpi_impl->create_gpi_obj_from_handle(obj, name, fq_name);
+    new_obj =
+        vhpi_impl->create_gpi_obj_from_handle(obj, name, fq_name, owns_handle);
     if (new_obj) {
         *hdl = new_obj;
         return GpiIterator::NATIVE;
-    } else
+    } else {
+        /* Other implementations look the object up by name. */
+        if (owns_handle) vhpi_release_handle(obj);
         return GpiIterator::NOT_NATIVE;
+    }
 }

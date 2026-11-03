@@ -1,10 +1,10 @@
 [build-system]
 requires = [
-    "scikit-build-core>=0.4.3",
-    "find_libpython",
+    "scikit-build-core>=1.0",
     "nanobind>=2,<3; python_version < '3.10'",
     "nanobind>=2; python_version >= '3.10'",
-    "setuptools-git-versioning>=3.2,<4",
+    "packaging",
+    "dynamic-metadata",
 ]
 build-backend = "scikit_build_core.build"
 
@@ -57,13 +57,8 @@ Issues = "https://github.com/ktbarrett/coconext/issues"
 # "packages" like `cocotb._vendor` which we don't want to be found.
 include-package-data = false
 
-[tool.setuptools-git-versioning]
-enabled = true
-version_file = "VERSION"
-count_commits_from_version_file = true
-dev_template = "{tag}.dev{ccount}+r{sha}"
-dirty_template = "{tag}.dev{ccount}+r{sha}.dirty"
-prefer_tag = true
+[[tool.dynamic-metadata]]
+provider = {path = "scripts", module = "cocotb_version"}
 
 [tool.scikit-build]
 experimental = true
@@ -82,9 +77,6 @@ wheel.packages = [
 
 [tool.scikit-build.cmake.define]
 CMAKE_EXPORT_COMPILE_COMMANDS = true
-
-[tool.scikit-build.metadata.version]
-provider = "setuptools_git_versioning.scikit_metadata"
 
 [tool.towncrier]
     package = "cocotb"

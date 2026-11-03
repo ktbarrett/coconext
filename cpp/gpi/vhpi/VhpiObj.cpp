@@ -8,19 +8,21 @@
 #include "logging.hpp"
 
 VhpiArrayObjHdl::~VhpiArrayObjHdl() {
+    /* Pseudo-handles into multi-dimensional arrays borrow the handle of the
+     * real array object and must not release it. */
+    if (!m_owns_handle) return;
     LOG_DEBUG("VHPI: Releasing VhpiArrayObjHdl handle for %s at %p",
               get_fullname_str(), (void *)get_handle<vhpiHandleT>());
     if (vhpi_release_handle(get_handle<vhpiHandleT>())) check_vhpi_error();
 }
 
 VhpiObjHdl::~VhpiObjHdl() {
-    /* Don't release handles for pseudo-regions, as they borrow the handle of
-     * the containing region */
-    if (m_type != GPI_GENARRAY) {
-        LOG_DEBUG("VHPI: Releasing VhpiObjHdl handle for %s at %p",
-                  get_fullname_str(), (void *)get_handle<vhpiHandleT>());
-        if (vhpi_release_handle(get_handle<vhpiHandleT>())) check_vhpi_error();
-    }
+    /* Pseudo-regions borrow the handle of the containing region and must not
+     * release it. */
+    if (!m_owns_handle) return;
+    LOG_DEBUG("VHPI: Releasing VhpiObjHdl handle for %s at %p",
+              get_fullname_str(), (void *)get_handle<vhpiHandleT>());
+    if (vhpi_release_handle(get_handle<vhpiHandleT>())) check_vhpi_error();
 }
 
 bool get_range(vhpiHandleT hdl, vhpiIntT dim, int *left, int *right,
@@ -57,6 +59,7 @@ bool get_range(vhpiHandleT hdl, vhpiIntT dim, int *left, int *right,
                     vhpi_release_handle(it);
                     vhpiIntT l_rng = vhpi_get(vhpiLeftBoundP, constraint);
                     vhpiIntT r_rng = vhpi_get(vhpiRightBoundP, constraint);
+                    DEFER(vhpi_release_handle(constraint));
 #ifdef IUS
                     if (l_rng != UNCONSTRAINED && r_rng != UNCONSTRAINED) {
 #else
@@ -81,6 +84,7 @@ bool get_range(vhpiHandleT hdl, vhpiIntT dim, int *left, int *right,
                     }
                     break;
                 }
+                vhpi_release_handle(constraint);
                 ++curr_idx;
             }
         }
@@ -99,6 +103,7 @@ bool get_range(vhpiHandleT hdl, vhpiIntT dim, int *left, int *right,
                 while ((constraint = vhpi_scan(it)) != NULL) {
                     if (curr_idx == dim) {
                         vhpi_release_handle(it);
+                        DEFER(vhpi_release_handle(constraint));
 
                         /* IUS/Xcelium only sets the vhpiIsUnconstrainedP
                          * incorrectly on the base type */
@@ -121,6 +126,7 @@ bool get_range(vhpiHandleT hdl, vhpiIntT dim, int *left, int *right,
                         }
                         break;
                     }
+                    vhpi_release_handle(constraint);
                     ++curr_idx;
                 }
             }
@@ -154,6 +160,7 @@ int VhpiArrayObjHdl::initialise(const std::string &name,
     }
 
     vhpiIntT num_dim = vhpi_get(vhpiNumDimensionsP, type);
+    vhpi_release_handle(type);
     vhpiIntT dim_idx = 0;
 
     /* Need to determine which dimension constraint is needed */
@@ -212,7 +219,9 @@ int VhpiObjHdl::initialise(const std::string &name,
 
                 str = vhpi_get_str(vhpiFileNameP, pu_handle);
                 if (str != NULL) m_definition_file = str;
+                vhpi_release_handle(pu_handle);
             }
+            vhpi_release_handle(du_handle);
         }
     }
 

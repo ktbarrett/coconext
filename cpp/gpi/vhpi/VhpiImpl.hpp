@@ -69,7 +69,7 @@ static inline void __check_vhpi_error(const char *file, const char *func,
             break;
     }
 
-    LOG_EXPLICIT("gpi", GPI_DEBUG, file, func, line,
+    LOG_EXPLICIT("gpi", loglevel, file, func, line,
                  "VHPI Internal Error: %s @ %s:%d: %s",
                  gpi_log_level_to_str(loglevel), info.file, info.line,
                  info.message);
@@ -138,6 +138,9 @@ class VhpiStartupCbHdl : public VhpiCbHdl {
         } else {
             LOG_TRACE("[ VHPI (startup) ] callback is removed");
         }
+        // The callback is mature (IEEE 1076-2019 21.1) and will never fire
+        // again, but its handle stays valid until released.
+        if (vhpi_release_handle(get_handle<vhpiHandleT>())) check_vhpi_error();
         delete this;
         return res;
     }
@@ -162,6 +165,9 @@ class VhpiShutdownCbHdl : public VhpiCbHdl {
         } else {
             LOG_TRACE("[ VHPI (shutdown) ] callback is removed");
         }
+        // The callback is mature (IEEE 1076-2019 21.1) and will never fire
+        // again, but its handle stays valid until released.
+        if (vhpi_release_handle(get_handle<vhpiHandleT>())) check_vhpi_error();
         delete this;
         return res;
     }
@@ -180,8 +186,8 @@ class VhpiReadWriteCbHdl : public VhpiCbHdl {
 class VhpiArrayObjHdl : public GpiObjHdl {
   public:
     VhpiArrayObjHdl(GpiImplInterface *impl, vhpiHandleT hdl,
-                    gpi_objtype objtype)
-        : GpiObjHdl(impl, hdl, objtype) {}
+                    gpi_objtype objtype, bool owns_handle = true)
+        : GpiObjHdl(impl, hdl, objtype, false, owns_handle) {}
     ~VhpiArrayObjHdl() override;
 
     int initialise(const std::string &name,
@@ -190,8 +196,9 @@ class VhpiArrayObjHdl : public GpiObjHdl {
 
 class VhpiObjHdl : public GpiObjHdl {
   public:
-    VhpiObjHdl(GpiImplInterface *impl, vhpiHandleT hdl, gpi_objtype objtype)
-        : GpiObjHdl(impl, hdl, objtype) {}
+    VhpiObjHdl(GpiImplInterface *impl, vhpiHandleT hdl, gpi_objtype objtype,
+               bool owns_handle = true)
+        : GpiObjHdl(impl, hdl, objtype, false, owns_handle) {}
     ~VhpiObjHdl() override;
 
     int initialise(const std::string &name,
@@ -201,8 +208,9 @@ class VhpiObjHdl : public GpiObjHdl {
 class VhpiSignalObjHdl : public GpiSignalObjHdl {
   public:
     VhpiSignalObjHdl(GpiImplInterface *impl, vhpiHandleT hdl,
-                     gpi_objtype objtype, bool is_const)
-        : GpiSignalObjHdl(impl, hdl, objtype, is_const) {}
+                     gpi_objtype objtype, bool is_const,
+                     bool owns_handle = true)
+        : GpiSignalObjHdl(impl, hdl, objtype, is_const, owns_handle) {}
     ~VhpiSignalObjHdl() override;
 
     int get_signed() override;
@@ -236,8 +244,9 @@ class VhpiSignalObjHdl : public GpiSignalObjHdl {
 class VhpiLogicSignalObjHdl : public VhpiSignalObjHdl {
   public:
     VhpiLogicSignalObjHdl(GpiImplInterface *impl, vhpiHandleT hdl,
-                          gpi_objtype objtype, bool is_const)
-        : VhpiSignalObjHdl(impl, hdl, objtype, is_const) {}
+                          gpi_objtype objtype, bool is_const,
+                          bool owns_handle = true)
+        : VhpiSignalObjHdl(impl, hdl, objtype, is_const, owns_handle) {}
 
     using GpiSignalObjHdl::set_signal_value;
     int set_signal_value(int32_t value, gpi_set_action action) override;
@@ -304,9 +313,16 @@ class VhpiImpl : public GpiImplInterface {
     static const char *reason_to_string(int reason);
     static const char *format_to_string(int format);
 
+    /** Wrap a VHPI handle in a GPI object.
+     *
+     * On success the returned object takes ownership of new_hdl when
+     * owns_handle is true. On failure (NULL return) the caller still owns
+     * new_hdl.
+     */
     GpiObjHdl *create_gpi_obj_from_handle(vhpiHandleT new_hdl,
                                           const std::string &name,
-                                          const std::string &fq_name);
+                                          const std::string &fq_name,
+                                          bool owns_handle = true);
 
     static bool compare_generate_labels(const std::string &a,
                                         const std::string &b);

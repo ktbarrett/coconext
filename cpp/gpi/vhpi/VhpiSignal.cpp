@@ -27,6 +27,7 @@ VhpiSignalObjHdl::~VhpiSignalObjHdl() {
 
     if (m_binvalue.value.str) delete[] m_binvalue.value.str;
 
+    if (!m_owns_handle) return;
     LOG_DEBUG("VHPI: Releasing VhpiSignalObjHdl handle for %s at %p",
               get_fullname_str(), (void *)get_handle<vhpiHandleT>());
     if (vhpi_release_handle(get_handle<vhpiHandleT>())) check_vhpi_error();
@@ -169,6 +170,7 @@ int VhpiLogicSignalObjHdl::initialise(const std::string &name,
         m_value.bufSize = static_cast<bufSize_type>(bufSize);
         m_value.value.enumvs = new vhpiEnumT[static_cast<size_t>(bufSize)];
     }
+    if (base_hdl != NULL) vhpi_release_handle(base_hdl);
 
     if (m_indexable &&
         get_range(handle, 0, &m_range_left, &m_range_right, &m_range_dir)) {

@@ -153,7 +153,11 @@ GpiIterator::Status VpiSingleIterator::next_handle(std::string &name,
     if (NULL == m_iterator) return GpiIterator::END;
 
     obj = vpi_scan(m_iterator);
-    if (NULL == obj) return GpiIterator::END;
+    if (NULL == obj) {
+        // vpi_scan() freed the exhausted iterator.
+        m_iterator = NULL;
+        return GpiIterator::END;
+    }
 
     const char *c_name = vpi_get_str(vpiName, obj);
     if (!c_name) {
@@ -166,6 +170,7 @@ GpiIterator::Status VpiSingleIterator::next_handle(std::string &name,
 
         LOG_DEBUG("Unable to get the name for this object of type %d", type);
 
+        vpi_free_object(obj);
         return GpiIterator::NATIVE_NO_NAME;
     }
 
@@ -178,8 +183,11 @@ GpiIterator::Status VpiSingleIterator::next_handle(std::string &name,
     if (new_obj) {
         *hdl = new_obj;
         return GpiIterator::NATIVE;
-    } else
+    } else {
+        // Other implementations look the object up by name.
+        vpi_free_object(obj);
         return GpiIterator::NOT_NATIVE;
+    }
 }
 
 GpiIterator::Status VpiRootIterator::next_handle(std::string &, GpiObjHdl **hdl,
@@ -192,12 +200,14 @@ GpiIterator::Status VpiRootIterator::next_handle(std::string &, GpiObjHdl **hdl,
 
         auto gpi_module = to_gpi_objtype(vpi_get(vpiType, root));
         if (gpi_module != GPI_MODULE) {
+            vpi_free_object(root);
             continue;
         }
 
         const char *obj_name = vpi_get_str(vpiFullName, root);
         check_vpi_error();
         if (!obj_name) {
+            vpi_free_object(root);
             continue;
         }
 
@@ -212,6 +222,8 @@ GpiIterator::Status VpiRootIterator::next_handle(std::string &, GpiObjHdl **hdl,
         return GpiIterator::NATIVE;
     }
 
+    // vpi_scan() freed the exhausted iterator.
+    m_iterator = NULL;
     return GpiIterator::END;
 }
 
@@ -231,7 +243,11 @@ GpiIterator::Status VpiPackageIterator::next_handle(std::string &,
     while (true) {
         obj = vpi_scan(m_iterator);
         check_vpi_error();
-        if (obj == nullptr) return GpiIterator::END;
+        if (obj == nullptr) {
+            // vpi_scan() freed the exhausted iterator.
+            m_iterator = nullptr;
+            return GpiIterator::END;
+        }
 
         PLI_INT32 type = vpi_get(vpiType, obj);
         check_vpi_error();
@@ -243,6 +259,7 @@ GpiIterator::Status VpiPackageIterator::next_handle(std::string &,
                 break;
             }
         }
+        vpi_free_object(obj);
     }
 
     VpiImpl *vpi_impl = reinterpret_cast<VpiImpl *>(m_impl);
@@ -265,6 +282,7 @@ GpiIterator::Status VpiIterator::next_handle(std::string &name, GpiObjHdl **hdl,
     GpiObjHdl *new_obj;
     vpiHandle obj;
     vpiHandle iter_obj = m_parent->get_handle<vpiHandle>();
+    bool owns_handle = true;
 
     if (!selected) return GpiIterator::END;
 
@@ -284,15 +302,15 @@ GpiIterator::Status VpiIterator::next_handle(std::string &name, GpiObjHdl **hdl,
              */
             if (obj != NULL && obj_type == GPI_GENARRAY) {
                 auto rgn_type = vpi_get(vpiType, obj);
+                bool match = false;
                 if (rgn_type == vpiGenScope || rgn_type == vpiModule ||
                     rgn_type == vpiInterface || rgn_type == vpiRefObj) {
                     std::string rgn_name = vpi_get_str(vpiName, obj);
-                    if (!VpiImpl::compare_generate_labels(rgn_name,
-                                                          parent_name)) {
-                        obj = NULL;
-                        continue;
-                    }
-                } else {
+                    match =
+                        VpiImpl::compare_generate_labels(rgn_name, parent_name);
+                }
+                if (!match) {
+                    vpi_free_object(obj);
                     obj = NULL;
                     continue;
                 }
@@ -351,6 +369,7 @@ GpiIterator::Status VpiIterator::next_handle(std::string &name, GpiObjHdl **hdl,
 
         LOG_DEBUG("Unable to get the name for this object of type %d", type);
 
+        vpi_free_object(obj);
         return GpiIterator::NATIVE_NO_NAME;
     }
 
@@ -368,7 +387,11 @@ GpiIterator::Status VpiIterator::next_handle(std::string &name, GpiObjHdl **hdl,
 
         if (found != std::string::npos && found != 0) {
             name = idx_str.substr(0, found);
+            // Pseudo-region: borrow the parent's handle. The scanned generate
+            // scope itself is not wrapped.
+            vpi_free_object(obj);
             obj = m_parent->get_handle<vpiHandle>();
+            owns_handle = false;
         } else {
             name = c_name;
         }
@@ -407,10 +430,14 @@ GpiIterator::Status VpiIterator::next_handle(std::string &name, GpiObjHdl **hdl,
     }
 
     LOG_DEBUG("vpi_scan found '%s'", fq_name.c_str());
-    new_obj = vpi_impl->create_gpi_obj_from_handle(obj, name, fq_name);
+    new_obj =
+        vpi_impl->create_gpi_obj_from_handle(obj, name, fq_name, owns_handle);
     if (new_obj) {
         *hdl = new_obj;
         return GpiIterator::NATIVE;
-    } else
+    } else {
+        // Other implementations look the object up by name.
+        if (owns_handle) vpi_free_object(obj);
         return GpiIterator::NOT_NATIVE;
+    }
 }
