@@ -179,34 +179,52 @@ TEST(TestSigned, as_overloads) {
 TEST(TestSigned, resize_overloads) {
     Signed<8> small(-10);
 
-    auto wide_spelled = resize<16>(small);
+    auto wide_spelled = small.resize<16>();
     static_assert(std::is_same_v<decltype(wide_spelled), Signed<16>>);
     EXPECT_EQ(static_cast<int16_t>(wide_spelled), -10);
 
     Signed<16> wide_deduced;
-    wide_deduced = resize(small);
+    wide_deduced = small.resize();
     EXPECT_EQ(static_cast<int16_t>(wide_deduced), -10);
 
     Signed<16> wide(1000);
 
-    auto narrow_wrap_spelled = resize<8>(wide);
+    auto narrow_wrap_spelled = wide.resize<8>();
     static_assert(std::is_same_v<decltype(narrow_wrap_spelled), Signed<8>>);
     EXPECT_EQ(static_cast<int8_t>(narrow_wrap_spelled), static_cast<int8_t>(1000));
 
     Signed<8> narrow_wrap_deduced;
-    narrow_wrap_deduced = resize(wide);
+    narrow_wrap_deduced = wide.resize();
     EXPECT_EQ(static_cast<int8_t>(narrow_wrap_deduced), static_cast<int8_t>(1000));
 
-    auto narrow_sat_spelled = resize<8>(wide, overflow_mode::saturate);
+    auto narrow_sat_spelled = wide.resize<8>(overflow_mode::saturate);
     EXPECT_EQ(static_cast<int8_t>(narrow_sat_spelled), 127);
 
     Signed<16> wide_neg(-1000);
     Signed<8> narrow_sat_deduced;
-    narrow_sat_deduced = resize(wide_neg, overflow_mode::saturate);
+    narrow_sat_deduced = wide_neg.resize(overflow_mode::saturate);
     EXPECT_EQ(static_cast<int8_t>(narrow_sat_deduced), -128);
 
-    Signed<8> copy_init_deduced = resize(wide_neg, overflow_mode::saturate);
+    Signed<8> copy_init_deduced = wide_neg.resize(overflow_mode::saturate);
     EXPECT_EQ(static_cast<int8_t>(copy_init_deduced), -128);
+
+    auto temporary = Signed<16>(-1000).resize(overflow_mode::saturate);
+    Signed<8> from_temporary = std::move(temporary);
+    EXPECT_EQ(static_cast<int>(from_temporary), -128);
+
+    auto const_temporary = [] {
+        Signed<16> const source(-1000);
+        return std::move(source).resize(overflow_mode::saturate);
+    }();
+    Signed<8> from_const_temporary = std::move(const_temporary);
+    EXPECT_EQ(static_cast<int>(from_const_temporary), -128);
+
+    constexpr Signed<16> constant(-1000);
+    constexpr Signed<8> deferred = constant.resize(overflow_mode::saturate);
+    static_assert(static_cast<int>(deferred) == -128);
+    constexpr auto explicit_range =
+        constant.resize<Signed<8>::static_range>(overflow_mode::saturate);
+    static_assert(explicit_range == deferred);
 }
 
 TEST(TestSigned, CrossRangeConversion) {
@@ -550,29 +568,27 @@ TEST(TestSigned, zero_width) {
 
 TEST(TestSigned, sign_extension_across_the_tier_boundary) {
     Signed<8> neg(-1);
-    auto wide = resize<200>(neg);
+    auto wide = neg.resize<200>();
     EXPECT_EQ(std::format("{:d}", wide), "Signed[199 downto 0]{-1}");
 
     Signed<8> pos(127);
-    EXPECT_EQ(std::format("{:d}", resize<200>(pos)), "Signed[199 downto 0]{127}");
+    EXPECT_EQ(std::format("{:d}", pos.resize<200>()), "Signed[199 downto 0]{127}");
 
     // Round trip preserves the value and the sign.
-    EXPECT_EQ(static_cast<int>(resize<8>(resize<200>(neg))), -1);
-    EXPECT_EQ(static_cast<int>(resize<8>(resize<200>(Signed<8>(-100)))), -100);
+    EXPECT_EQ(static_cast<int>(neg.resize<200>().resize<8>()), -1);
+    EXPECT_EQ(static_cast<int>(Signed<8>(-100).resize<200>().resize<8>()), -100);
 }
 
 TEST(TestSigned, saturation_clamps_at_both_ends_from_wide) {
     Signed<200> big(5000);
-    EXPECT_EQ(static_cast<int>(resize<8>(big, overflow_mode::saturate)), 127);
+    EXPECT_EQ(static_cast<int>(big.resize<8>(overflow_mode::saturate)), 127);
 
     Signed<200> very_neg(-5000);
-    EXPECT_EQ(static_cast<int>(resize<8>(very_neg, overflow_mode::saturate)), -128);
+    EXPECT_EQ(static_cast<int>(very_neg.resize<8>(overflow_mode::saturate)), -128);
 
     // Values that fit are untouched, including negative ones.
-    EXPECT_EQ(
-        static_cast<int>(resize<8>(Signed<200>(-100), overflow_mode::saturate)), -100
-    );
-    EXPECT_EQ(static_cast<int>(resize<8>(Signed<200>(100), overflow_mode::saturate)), 100);
+    EXPECT_EQ(static_cast<int>(Signed<200>(-100).resize<8>(overflow_mode::saturate)), -100);
+    EXPECT_EQ(static_cast<int>(Signed<200>(100).resize<8>(overflow_mode::saturate)), 100);
 }
 
 TEST(TestSigned, wide_arithmetic_still_grows) {
