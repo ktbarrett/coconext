@@ -36,7 +36,7 @@ dependencies = [
     # Assertion rewriting interface changed in version 6.
     "pytest >= 6",
 ]
-requires-python = ">=3.9,<3.15"
+requires-python = ">=3.9,<3.16"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",

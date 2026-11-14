@@ -1,7 +1,8 @@
 // Exercise the coconext Vector caster from Python.
+#include <nanobind/nanobind.h>
+
 #include <coconext/types/vector.hpp>
 #include <coconext_nb/types/cast_vector.hpp>
-#include <nanobind/nanobind.h>
 
 namespace nb = nanobind;
 using namespace coconext::types;

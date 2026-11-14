@@ -1,7 +1,8 @@
 // Exercise the coconext Array caster from Python.
+#include <nanobind/nanobind.h>
+
 #include <coconext/types/array.hpp>
 #include <coconext_nb/types/cast_array.hpp>
-#include <nanobind/nanobind.h>
 
 namespace nb = nanobind;
 using namespace coconext::types;
