@@ -25,7 +25,7 @@ ENVS = [
     {
         # Test Linux with clang
         "python-version": "3.13",
-        "simulator-version": "1.20.1",
+        "simulator-version": "1.23.1",
         "os": "ubuntu-24.04",
         "simulator": "nvc",
         "toplevel_lang": "vhdl",
@@ -56,7 +56,7 @@ ENVS = [
     {
         # Test C++23
         "python-version": "3.13",
-        "simulator-version": "1.20.1",
+        "simulator-version": "1.23.1",
         "os": "ubuntu-24.04",
         "simulator": "nvc",
         "toplevel_lang": "vhdl",
@@ -72,7 +72,7 @@ for ver in python_versions:
             "python-version": ver,
             "simulator": "nvc",
             "os": "ubuntu-24.04",
-            "simulator-version": "1.20.1",
+            "simulator-version": "1.23.1",
             "toplevel_lang": "vhdl",
             "cxx-standard": "20",
             "make-targets": PYTHON_VERSION_TESTS,
