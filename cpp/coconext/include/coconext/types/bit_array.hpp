@@ -4,15 +4,11 @@
 #include <coconext/types/array.hpp>
 #include <coconext/types/bigint.hpp>
 #include <coconext/types/logic.hpp>
+#include <coconext/types/logic_array_common.hpp>
 #include <coconext/types/range.hpp>
 #include <coconext/types/string_literal.hpp>
 
 namespace coconext::types {
-
-namespace detail {
-template <typename T, Range R>
-class Array;
-}
 
 // all reductions are better off without a loop
 // All bits set iff every one of the R.length() bits is counted.
@@ -23,7 +19,7 @@ Bit and_reduce(detail::Array<Bit, R> const& s) {
 
 template <Range R>
 auto or_reduce(detail::Array<Bit, R> const& s) {
-    return (detail::storage(s) != detail::UInt<R.length()>{}) ? Bit::_1 : Bit::_0;
+    return (detail::storage(s).popcount() > 0) ? Bit::_1 : Bit::_0;
 }
 
 template <Range R>
@@ -103,7 +99,7 @@ class Array<Bit, R> {
 
     template <size_t N>
     constexpr auto index() const {
-        return value_.get_bit(N) ? Bit::_1 : Bit::_0;
+        return value_[N];
     }
 
     template <Range R2>
@@ -149,6 +145,9 @@ constexpr Range::value_type offset_to_hdl_coord(
 
 }  // namespace detail
 
+template <auto... Args>
+using BitArray = detail::Array<Bit, detail::make_logic_static_range<Args...>()>;
+
 // countl_zero and countr_zero also assembles to one
 // asm instruction on most of the architectures
 template <Range R>
@@ -187,6 +186,23 @@ constexpr std::optional<Range::value_type> rindex_of(
 }
 
 }  // namespace coconext::types
+
+template <coconext::types::Range R>
+struct std::formatter<coconext::types::detail::Array<coconext::types::Bit, R>> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        auto it = ctx.begin();
+        if (it != ctx.end() && *it != '}') {
+            throw std::format_error("BitArray formatter takes no format spec");
+        }
+        return it;
+    }
+    auto format(
+        coconext::types::detail::Array<coconext::types::Bit, R> const& v,
+        std::format_context& ctx
+    ) const {
+        return coconext::types::detail::format_logic_array("BitArray", v, ctx.out());
+    }
+};
 
 namespace coconext::literals {
 

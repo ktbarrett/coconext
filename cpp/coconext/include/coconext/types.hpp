@@ -4,6 +4,7 @@
 // NOLINTBEGIN(unused-includes)
 #include "./types/array.hpp"
 #include "./types/bit_array.hpp"
+#include "./types/bit_vector.hpp"
 #include "./types/concepts.hpp"
 #include "./types/direction.hpp"
 #include "./types/dyn_sfixed.hpp"
@@ -12,6 +13,7 @@
 #include "./types/dyn_unsigned.hpp"
 #include "./types/logic.hpp"
 #include "./types/logic_array.hpp"
+#include "./types/logic_vector.hpp"
 #include "./types/range.hpp"
 #include "./types/resize_mode.hpp"
 #include "./types/reverse.hpp"
