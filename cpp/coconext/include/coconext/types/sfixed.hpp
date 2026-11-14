@@ -3,6 +3,7 @@
 
 #include <coconext/types/signed.hpp>
 #include <coconext/types/ufixed.hpp>
+#include <optional>
 
 namespace coconext::types {
 
@@ -227,6 +228,12 @@ class Sfixed {
     static constexpr Range static_range = R;
     static constexpr Range range() noexcept { return R; }
     static constexpr size_t size() noexcept { return R.length(); }
+
+    constexpr std::optional<Array<Bit, R>> resolve(
+        ResolveMethod = ResolveMethod::WEAK
+    ) const {
+        return std::optional<Array<Bit, R>>{std::in_place, value_};
+    }
 
     constexpr Sfixed() noexcept = default;
 

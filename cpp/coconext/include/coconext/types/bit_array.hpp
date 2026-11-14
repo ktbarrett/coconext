@@ -6,6 +6,7 @@
 #include <coconext/types/logic.hpp>
 #include <coconext/types/range.hpp>
 #include <coconext/types/string_literal.hpp>
+#include <optional>
 
 namespace coconext::types {
 
@@ -55,6 +56,10 @@ class Array<Bit, R> {
     }
 
     explicit constexpr Array(char const* s) : Array(std::string_view(s)) {}
+
+    constexpr std::optional<Array> resolve(ResolveMethod = ResolveMethod::WEAK) const {
+        return *this;
+    }
 
     template <typename U>
         requires std::convertible_to<U, Bit>

@@ -81,6 +81,28 @@ constexpr Range make_logic_static_range() {
 
 }  // namespace detail
 
+template <typename ArrayT>
+    requires LogicType<std::ranges::range_value_t<ArrayT>>
+class ArraySlice<ArrayT> : public detail::ArraySliceImpl<ArrayT> {
+  public:
+    using detail::ArraySliceImpl<ArrayT>::ArraySliceImpl;
+    using detail::ArraySliceImpl<ArrayT>::operator=;
+
+    std::optional<Vector<Bit>> resolve(ResolveMethod method = ResolveMethod::WEAK) const;
+};
+
+template <typename ArrayT, Range R>
+    requires LogicType<std::ranges::range_value_t<ArrayT>>
+class StaticArraySlice<ArrayT, R> : public detail::StaticArraySliceImpl<ArrayT, R> {
+  public:
+    using detail::StaticArraySliceImpl<ArrayT, R>::StaticArraySliceImpl;
+    using detail::StaticArraySliceImpl<ArrayT, R>::operator=;
+
+    std::optional<detail::Array<Bit, R>> resolve(
+        ResolveMethod method = ResolveMethod::WEAK
+    ) const;
+};
+
 template <>
 class Vector<Logic> : public detail::VectorImpl<Logic> {
   public:
@@ -121,6 +143,8 @@ class Vector<Logic> : public detail::VectorImpl<Logic> {
     }
     COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR Vector(char const* s, Range r)
         : Vector(std::string_view(s), r) {}
+
+    std::optional<Vector<Bit>> resolve(ResolveMethod method = ResolveMethod::WEAK) const;
 };
 
 template <>
@@ -204,6 +228,10 @@ class Vector<Bit> {
         }
     }
     Vector(char const* s, Range r) : Vector(std::string_view(s), r) {}
+
+    std::optional<Vector> resolve(ResolveMethod = ResolveMethod::WEAK) const {
+        return *this;
+    }
 
     template <detail::HasDynamicStorage Target>
     [[nodiscard]] Target as() && {
@@ -293,6 +321,19 @@ class Vector<Bit> {
     Range range_;
 };
 
+inline std::optional<Vector<Bit>> Vector<Logic>::resolve(ResolveMethod method) const {
+    std::optional<Vector<Bit>> result{std::in_place, range()};
+    auto out = result->begin();
+    for (auto const& v : *this) {
+        auto r = v.resolve(method);
+        if (!r) {
+            return std::nullopt;
+        }
+        *out++ = *r;
+    }
+    return result;
+}
+
 namespace detail {
 
 template <Range R>
@@ -314,44 +355,57 @@ class Array<Logic, R> : public ArrayImpl<Logic, R> {
         }
     }
     explicit constexpr Array(char const* s) : Array(std::string_view(s)) {}
+
+    std::optional<Array<Bit, R>> resolve(ResolveMethod method = ResolveMethod::WEAK) const {
+        std::optional<Array<Bit, R>> result{std::in_place};
+        if constexpr (R.length() != 0) {
+            auto out = result->begin();
+            for (auto const& v : *this) {
+                auto r = v.resolve(method);
+                if (!r) {
+                    return std::nullopt;
+                }
+                *out++ = *r;
+            }
+        }
+        return result;
+    }
 };
 
 }  // namespace detail
 
-template <RangedSequence T>
-    requires LogicType<std::ranges::range_value_t<T>>
-auto resolve(T const& self, ResolveMethod method) {
-    if constexpr (StaticRangedSequence<T>) {
-        std::optional<detail::Array<Bit, std::remove_cvref_t<T>::static_range>> result{
-            std::in_place
-        };
-        auto out = result->begin();
-        for (auto const& v : self) {
-            auto r = v.resolve(method);
-            if (!r) {
-                return decltype(result){std::nullopt};
-            }
-            *out++ = *r;
+template <typename ArrayT>
+    requires LogicType<std::ranges::range_value_t<ArrayT>>
+std::optional<Vector<Bit>> ArraySlice<ArrayT>::resolve(ResolveMethod method) const {
+    std::optional<Vector<Bit>> result{std::in_place, this->range()};
+    auto out = result->begin();
+    for (std::ranges::range_value_t<ArrayT> v : *this) {
+        auto r = v.resolve(method);
+        if (!r) {
+            return std::nullopt;
         }
-        return result;
-    } else {
-        std::optional<Vector<Bit>> result{std::in_place, self.range()};
-        auto out = result->begin();
-        for (auto const& v : self) {
-            auto r = v.resolve(method);
-            if (!r) {
-                return decltype(result){std::nullopt};
-            }
-            *out++ = *r;
-        }
-        return result;
+        *out++ = *r;
     }
+    return result;
 }
 
-template <RangedSequence T>
-    requires LogicType<std::ranges::range_value_t<T>>
-auto resolve(T const& self) {
-    return resolve(self, ResolveMethod::WEAK);
+template <typename ArrayT, Range R>
+    requires LogicType<std::ranges::range_value_t<ArrayT>>
+std::optional<detail::Array<Bit, R>> StaticArraySlice<ArrayT, R>::resolve(
+    ResolveMethod method
+) const {
+    std::optional<detail::Array<Bit, R>> result{std::in_place};
+    if constexpr (R.length() != 0) {
+        auto out = result->begin();
+        for (std::ranges::range_value_t<ArrayT> v : *this) {
+            auto r = v.resolve(method);
+            if (!r) {
+                return std::nullopt;
+            }
+            *out++ = *r;
+        }
+    }
+    return result;
 }
 
 template <RangedSequence T>

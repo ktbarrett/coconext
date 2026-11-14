@@ -12,6 +12,7 @@
 #include <format>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <type_traits>
 
@@ -48,6 +49,12 @@ class Signed {
     static constexpr Range static_range = R;
     static constexpr Range range() noexcept { return R; }
     static constexpr size_t size() noexcept { return R.length(); }
+
+    constexpr std::optional<Array<Bit, R>> resolve(
+        ResolveMethod = ResolveMethod::WEAK
+    ) const {
+        return std::optional<Array<Bit, R>>{std::in_place, value_};
+    }
 
     template <Range R2>
     friend class Signed;
