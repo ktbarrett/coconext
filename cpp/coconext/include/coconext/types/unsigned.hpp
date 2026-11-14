@@ -21,12 +21,6 @@
 
 namespace coconext::types {
 
-template <auto... Args, typename X>
-    requires(sizeof...(Args) > 0 && detail::is_coconext_unsigned_v<std::remove_cvref_t<X>>)
-constexpr auto resize(
-    X&& x, overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
-);
-
 namespace detail {
 
 template <Range R>
@@ -89,7 +83,7 @@ class Unsigned {
         if constexpr (R.length() >= R2.length()) {
             value_ = UInt<R.length()>(other.value_);
         } else if (other.value_ <= UInt<R2.length()>(~UInt<R.length()>{})) {
-            value_ = coconext::types::resize<R.length()>(other).value_;
+            value_ = other.template resize<R.length()>().value_;
         } else {
             throw std::out_of_range("value does not fit in Unsigned width");
         }
@@ -137,6 +131,32 @@ class Unsigned {
 
     [[nodiscard]] constexpr auto as() && noexcept {
         return reinterpreted<Unsigned>(std::move(*this));
+    }
+
+    template <auto... Args>
+        requires(sizeof...(Args) > 0)
+    [[nodiscard]] constexpr auto resize(
+        overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
+    ) const {
+        return Unsigned<make_int_range<Args...>()>(resize(ovf, rnd));
+    }
+
+    [[nodiscard]] constexpr auto resize(
+        overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
+    ) const& noexcept {
+        return auto_resized<Unsigned const&>(*this, ovf, rnd);
+    }
+
+    [[nodiscard]] constexpr auto resize(
+        overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
+    ) && noexcept {
+        return auto_resized<Unsigned>(std::move(*this), ovf, rnd);
+    }
+
+    [[nodiscard]] constexpr auto resize(
+        overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
+    ) const&& noexcept {
+        return auto_resized<Unsigned>(*this, ovf, rnd);
     }
 
     template <typename SourceWrapper>
@@ -273,7 +293,7 @@ class Unsigned {
 
     constexpr auto operator+() const {
         constexpr Range R_res = detail::int_downto_range(R.length() + 1);
-        return coconext::types::resize<R_res.length()>(*this).template as<Signed<R_res>>();
+        return this->template resize<R_res.length()>().template as<Signed<R_res>>();
     }
 
     // The operand is unsigned, so it zero-extends into the wider result before
@@ -323,20 +343,20 @@ class Unsigned {
 
     template <Range R2>
     constexpr Unsigned& operator+=(Unsigned<R2> const& rhs) {
-        *this = coconext::types::resize<R.length()>(*this + rhs);
+        *this = (*this + rhs).template resize<R.length()>();
         return *this;
     }
 
     template <Range R2>
     constexpr Unsigned& operator-=(Unsigned<R2> const& rhs) {
-        auto res = coconext::types::resize<R.length()>(*this - rhs);
+        auto res = (*this - rhs).template resize<R.length()>();
         *this = std::move(res).template as<Unsigned<R>>();
         return *this;
     }
 
     template <Range R2>
     constexpr Unsigned& operator*=(Unsigned<R2> const& rhs) {
-        *this = coconext::types::resize<R.length()>(*this * rhs);
+        *this = (*this * rhs).template resize<R.length()>();
         return *this;
     }
 
@@ -345,7 +365,7 @@ class Unsigned {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        *this = coconext::types::resize<R.length()>(*this / rhs);
+        *this = (*this / rhs).template resize<R.length()>();
         return *this;
     }
 
@@ -354,16 +374,15 @@ class Unsigned {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        *this = coconext::types::resize<R.length()>(*this % rhs);
+        *this = (*this % rhs).template resize<R.length()>();
         return *this;
     }
 
     template <NativeInteger T>
     constexpr Unsigned& operator+=(T const& rhs) {
         if constexpr (R.length() > 0) {
-            *this = coconext::types::resize<R.length()>(
-                *this + Unsigned<make_int_range<R.length()>()>(rhs)
-            );
+            *this = (*this + Unsigned<make_int_range<R.length()>()>(rhs))
+                        .template resize<R.length()>();
         }
         return *this;
     }
@@ -371,9 +390,8 @@ class Unsigned {
     template <NativeInteger T>
     constexpr Unsigned& operator-=(T const& rhs) {
         if constexpr (R.length() > 0) {
-            auto res = coconext::types::resize<R.length()>(
-                *this - Unsigned<make_int_range<R.length()>()>(rhs)
-            );
+            auto res = (*this - Unsigned<make_int_range<R.length()>()>(rhs))
+                           .template resize<R.length()>();
             *this = std::move(res).template as<Unsigned<R>>();
         }
         return *this;
@@ -382,9 +400,8 @@ class Unsigned {
     template <NativeInteger T>
     constexpr Unsigned& operator*=(T const& rhs) {
         if constexpr (R.length() > 0) {
-            *this = coconext::types::resize<R.length()>(
-                *this * Unsigned<make_int_range<R.length()>()>(rhs)
-            );
+            *this = (*this * Unsigned<make_int_range<R.length()>()>(rhs))
+                        .template resize<R.length()>();
         }
         return *this;
     }
@@ -392,9 +409,8 @@ class Unsigned {
     template <NativeInteger T>
     constexpr Unsigned& operator/=(T const& rhs) {
         if constexpr (R.length() > 0) {
-            *this = coconext::types::resize<R.length()>(
-                *this / Unsigned<make_int_range<R.length()>()>(rhs)
-            );
+            *this = (*this / Unsigned<make_int_range<R.length()>()>(rhs))
+                        .template resize<R.length()>();
         }
         return *this;
     }
@@ -402,30 +418,29 @@ class Unsigned {
     template <NativeInteger T>
     constexpr Unsigned& operator%=(T const& rhs) {
         if constexpr (R.length() > 0) {
-            *this = coconext::types::resize<R.length()>(
-                *this % Unsigned<make_int_range<R.length()>()>(rhs)
-            );
+            *this = (*this % Unsigned<make_int_range<R.length()>()>(rhs))
+                        .template resize<R.length()>();
         }
         return *this;
     }
 
     template <Range R2>
     constexpr Unsigned& operator+=(Signed<R2> const& rhs) {
-        auto res = coconext::types::resize<R.length()>(+(*this) + rhs, overflow_mode::wrap);
+        auto res = (+(*this) + rhs).template resize<R.length()>(overflow_mode::wrap);
         *this = std::move(res).template as<Unsigned<R>>();
         return *this;
     }
 
     template <Range R2>
     constexpr Unsigned& operator-=(Signed<R2> const& rhs) {
-        auto res = coconext::types::resize<R.length()>(+(*this) - rhs, overflow_mode::wrap);
+        auto res = (+(*this) - rhs).template resize<R.length()>(overflow_mode::wrap);
         *this = std::move(res).template as<Unsigned<R>>();
         return *this;
     }
 
     template <Range R2>
     constexpr Unsigned& operator*=(Signed<R2> const& rhs) {
-        auto res = coconext::types::resize<R.length()>(+(*this) * rhs, overflow_mode::wrap);
+        auto res = (+(*this) * rhs).template resize<R.length()>(overflow_mode::wrap);
         *this = std::move(res).template as<Unsigned<R>>();
         return *this;
     }
@@ -435,7 +450,7 @@ class Unsigned {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        auto res = coconext::types::resize<R.length()>(+(*this) / rhs, overflow_mode::wrap);
+        auto res = (+(*this) / rhs).template resize<R.length()>(overflow_mode::wrap);
         *this = std::move(res).template as<Unsigned<R>>();
         return *this;
     }
@@ -445,7 +460,7 @@ class Unsigned {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        auto res = coconext::types::resize<R.length()>(+(*this) % rhs, overflow_mode::wrap);
+        auto res = (+(*this) % rhs).template resize<R.length()>(overflow_mode::wrap);
         *this = std::move(res).template as<Unsigned<R>>();
         return *this;
     }
@@ -537,13 +552,6 @@ inline constexpr bool is_coconext_unsigned_v<Unsigned<R>> = true;
 // DOWNTO defaulting (see detail::make_int_range for the rules).
 template <auto... Args>
 using Unsigned = detail::Unsigned<detail::make_int_range<Args...>()>;
-
-template <auto... Args, typename X>
-    requires(sizeof...(Args) > 0 && detail::is_coconext_unsigned_v<std::remove_cvref_t<X>>)
-constexpr auto resize(X&& x, overflow_mode ovf, round_mode rnd) {
-    constexpr Range TargetRange = detail::make_int_range<Args...>();
-    return Unsigned<TargetRange>(detail::resize(std::forward<X>(x), ovf, rnd));
-}
 
 consteval Unsigned<8> u8(unsigned long long v) { return Unsigned<8>(v); }
 consteval Unsigned<16> u16(unsigned long long v) { return Unsigned<16>(v); }

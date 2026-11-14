@@ -414,21 +414,6 @@ constexpr SInt<SourceW + Amount> shift_left_sign_extended(SInt<SourceW> const& s
     return source.template widening_shift_left<Amount>();
 }
 
-}  // namespace detail
-
-template <auto... Args, typename X>
-    requires(
-        sizeof...(Args) > 0 && sizeof...(Args) <= 3
-        && detail::is_coconext_ufixed_v<std::remove_cvref_t<X>>
-    )
-constexpr auto resize(
-    X&& x,
-    overflow_mode ovf = overflow_mode::saturate,
-    round_mode rnd = round_mode::round_to_even
-);
-
-namespace detail {
-
 template <Range R>
 class Ufixed {
     static constexpr size_t integer_source_bits() noexcept {
@@ -631,6 +616,10 @@ class Ufixed {
     explicit Ufixed(DynUfixed const& other);
     explicit Ufixed(DynSfixed const& other);
 
+    template <typename SourceWrapper>
+        requires std::same_as<std::remove_cvref_t<SourceWrapper>, DynUfixed>
+    Ufixed(detail::auto_resized<SourceWrapper>&& wrapper);
+
     // Construct from float
     template <std::floating_point FloatType>
     explicit constexpr Ufixed(
@@ -693,6 +682,36 @@ class Ufixed {
         requires(R.direction == Direction::DOWNTO)
     {
         assign_signed_integer(storage(v));
+    }
+
+    template <auto... Args>
+        requires(sizeof...(Args) > 0 && sizeof...(Args) <= 3)
+    [[nodiscard]] constexpr auto resize(
+        overflow_mode ovf = overflow_mode::saturate,
+        round_mode rnd = round_mode::round_to_even
+    ) const {
+        return Ufixed<make_fixed_range<Args...>()>(resize(ovf, rnd));
+    }
+
+    [[nodiscard]] constexpr auto resize(
+        overflow_mode ovf = overflow_mode::saturate,
+        round_mode rnd = round_mode::round_to_even
+    ) const& noexcept {
+        return auto_resized<Ufixed const&>(*this, ovf, rnd);
+    }
+
+    [[nodiscard]] constexpr auto resize(
+        overflow_mode ovf = overflow_mode::saturate,
+        round_mode rnd = round_mode::round_to_even
+    ) && noexcept {
+        return auto_resized<Ufixed>(std::move(*this), ovf, rnd);
+    }
+
+    [[nodiscard]] constexpr auto resize(
+        overflow_mode ovf = overflow_mode::saturate,
+        round_mode rnd = round_mode::round_to_even
+    ) const&& noexcept {
+        return auto_resized<Ufixed>(*this, ovf, rnd);
     }
 
     template <typename SourceWrapper>
@@ -1127,9 +1146,7 @@ class Ufixed {
         if constexpr (R.length() == 0) {
             return *this;
         }
-        *this = coconext::types::resize(
-            *this + rhs, overflow_mode::wrap, round_mode::round_to_zero
-        );
+        *this = (*this + rhs).resize(overflow_mode::wrap, round_mode::round_to_zero);
         return *this;
     }
     template <Range R2>
@@ -1150,8 +1167,8 @@ class Ufixed {
         }
 
         constexpr auto DiffRange = decltype(diff)::static_range;
-        *this = coconext::types::resize<R>(
-            Ufixed<DiffRange>(diff), overflow_mode::wrap, round_mode::round_to_zero
+        *this = Ufixed<DiffRange>(diff).template resize<R>(
+            overflow_mode::wrap, round_mode::round_to_zero
         );
         return *this;
     }
@@ -1164,9 +1181,7 @@ class Ufixed {
         if constexpr (R.length() == 0) {
             return *this;
         }
-        *this = coconext::types::resize(
-            *this * rhs, overflow_mode::wrap, round_mode::round_to_zero
-        );
+        *this = (*this * rhs).resize(overflow_mode::wrap, round_mode::round_to_zero);
         return *this;
     }
     template <Range R2>
@@ -1181,9 +1196,7 @@ class Ufixed {
         if constexpr (R.length() == 0) {
             return *this;
         }
-        *this = coconext::types::resize(
-            *this / rhs, overflow_mode::wrap, round_mode::round_to_zero
-        );
+        *this = (*this / rhs).resize(overflow_mode::wrap, round_mode::round_to_zero);
         return *this;
     }
     template <Range R2>
@@ -1198,9 +1211,7 @@ class Ufixed {
         if constexpr (R.length() == 0) {
             return *this;
         }
-        *this = coconext::types::resize(
-            *this % rhs, overflow_mode::wrap, round_mode::round_to_zero
-        );
+        *this = (*this % rhs).resize(overflow_mode::wrap, round_mode::round_to_zero);
         return *this;
     }
 
@@ -1501,16 +1512,6 @@ constexpr auto reciprocal(
     size_t guard_bits = fixed_guard_bits
 ) {
     return divide(Ufixed<0, 0>{1}, value, rounding, guard_bits);
-}
-
-template <auto... Args, typename X>
-    requires(
-        sizeof...(Args) > 0 && sizeof...(Args) <= 3
-        && detail::is_coconext_ufixed_v<std::remove_cvref_t<X>>
-    )
-constexpr auto resize(X&& x, overflow_mode ovf, round_mode rnd) {
-    constexpr Range TargetRange = detail::make_fixed_range<Args...>();
-    return Ufixed<TargetRange>(detail::resize(std::forward<X>(x), ovf, rnd));
 }
 
 template <Range R>

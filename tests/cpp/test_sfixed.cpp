@@ -14,7 +14,7 @@ template <typename T>
 concept HasSignedFixedOrdering = requires(T a, T b) { a <=> b; };
 
 TEST(TestSfixed, ReviewRegressions) {
-    Sfixed<3, 0> deduced_resize = resize(Sfixed<7, 0>(100));
+    Sfixed<3, 0> deduced_resize = Sfixed<7, 0>(100).resize();
     EXPECT_EQ(static_cast<int>(deduced_resize), 7);
 
     Sfixed<3, 0> converted(Ufixed<3, 0>(1));
@@ -102,7 +102,7 @@ TEST(TestSfixed, ZeroWidth) {
     NullSfixed from_signed(Signed<0>{});
     Sfixed<3, 0> widened = from_signed;
     EXPECT_EQ(static_cast<int>(widened), 0);
-    EXPECT_FALSE(static_cast<bool>(resize<NullRange>(Sfixed<3, 0>(7))));
+    EXPECT_FALSE(static_cast<bool>(Sfixed<3, 0>(7).resize<NullRange>()));
 
     EXPECT_THROW((a /= Sfixed<3, 0>(0)), std::domain_error);
     EXPECT_THROW((a %= Sfixed<3, 0>(0)), std::domain_error);
@@ -167,15 +167,15 @@ TEST(TestSfixed, SubnormalSupernormalInterfaces) {
     auto positive_tiny = BitArray<6>("000001").as<Sfixed<-95, -100>>();
     auto negative_tiny = BitArray<6>("111111").as<Sfixed<-95, -100>>();
     EXPECT_EQ(
-        (resize<10, 3>(positive_tiny, overflow_mode::saturate, round_mode::round_to_pos)),
+        (positive_tiny.resize<10, 3>(overflow_mode::saturate, round_mode::round_to_pos)),
         Supernormal(8)
     );
     EXPECT_EQ(
-        (resize<10, 3>(negative_tiny, overflow_mode::saturate, round_mode::truncate)),
+        (negative_tiny.resize<10, 3>(overflow_mode::saturate, round_mode::truncate)),
         Supernormal(-8)
     );
     EXPECT_EQ(
-        (resize<10, 3>(negative_tiny, overflow_mode::saturate, round_mode::round_to_zero)),
+        (negative_tiny.resize<10, 3>(overflow_mode::saturate, round_mode::round_to_zero)),
         Supernormal(0)
     );
 
@@ -346,9 +346,9 @@ TEST(TestSfixed, Constructors) {
 
     Sfixed<7, 0> wide(-100);
     EXPECT_THROW((Sfixed<3, 0>(wide)), std::out_of_range);
-    Sfixed<3, 0> narrow_saturated = resize<3, 0>(wide);
+    Sfixed<3, 0> narrow_saturated = wide.resize<3, 0>();
     Sfixed<3, 0> narrow_wrapped =
-        resize<3, 0>(wide, overflow_mode::wrap, round_mode::round_to_even);
+        wide.resize<3, 0>(overflow_mode::wrap, round_mode::round_to_even);
 
     EXPECT_EQ(static_cast<int>(narrow_saturated), -8);
     EXPECT_EQ(static_cast<int>(narrow_wrapped), -4);
@@ -380,28 +380,46 @@ TEST(TestSfixed, as_overloads) {
 
 TEST(TestSfixed, resize) {
     Sfixed<7, 0> large_neg_val(-100);
-    auto sat_res = resize<3, 0>(large_neg_val);
+    auto sat_res = large_neg_val.resize<3, 0>();
     EXPECT_EQ(static_cast<int>(sat_res), -8);
 
     Sfixed<3, -4> even_tie1(-2.5);
-    auto rnd_res1 = resize<3, 0>(even_tie1);
+    auto rnd_res1 = even_tie1.resize<3, 0>();
     EXPECT_DOUBLE_EQ(static_cast<double>(rnd_res1), -2.0);  // Ties to even
 
     Sfixed<3, -4> even_tie2(-3.5);
-    auto rnd_res2 = resize<3, 0>(even_tie2);
+    auto rnd_res2 = even_tie2.resize<3, 0>();
     EXPECT_DOUBLE_EQ(static_cast<double>(rnd_res2), -4.0);  // Ties to even
 
     Sfixed<3, 0> s_orig(-5);
-    auto s_wide = resize<7, -4>(s_orig);
+    auto s_wide = s_orig.resize<7, -4>();
     EXPECT_DOUBLE_EQ(static_cast<double>(s_wide), -5.0);
 
     Sfixed<7, 0> src(-100);
-    Sfixed<3, 0> dst = resize(src, overflow_mode::wrap);
+    Sfixed<3, 0> dst = src.resize(overflow_mode::wrap);
     EXPECT_EQ(static_cast<int>(dst), -4);
 
     Sfixed<100, -50> wide_orig_res(-5.5);
-    auto narrow_from_wide = resize<3, 0>(wide_orig_res);
+    auto narrow_from_wide = wide_orig_res.resize<3, 0>();
     EXPECT_EQ(static_cast<int>(narrow_from_wide), -6);
+
+    auto temporary = Sfixed<7, -4>(-30).resize(overflow_mode::saturate);
+    Sfixed<3, 0> from_temporary = std::move(temporary);
+    EXPECT_EQ(static_cast<int>(from_temporary), -8);
+
+    auto const_temporary = [] {
+        Sfixed<7, -4> const source(-30);
+        return std::move(source).resize(overflow_mode::saturate);
+    }();
+    Sfixed<3, 0> from_const_temporary = std::move(const_temporary);
+    EXPECT_EQ(static_cast<int>(from_const_temporary), -8);
+
+    constexpr Sfixed<7, -4> constant(-30);
+    constexpr Sfixed<3, 0> deferred = constant.resize(overflow_mode::saturate);
+    static_assert(static_cast<int>(deferred) == -8);
+    constexpr auto explicit_range =
+        constant.resize<Sfixed<3, 0>::static_range>(overflow_mode::saturate);
+    static_assert(explicit_range == deferred);
 }
 
 TEST(TestSfixed, ShiftOperators) {
@@ -531,39 +549,39 @@ TEST(TestSfixed, ResizeRoundingModes) {
     Sfixed<10, -10> negative(-9.5);
 
     EXPECT_EQ(
-        (resize<10, 0>(negative, overflow_mode::saturate, round_mode::truncate)),
+        (negative.resize<10, 0>(overflow_mode::saturate, round_mode::truncate)),
         (Sfixed<10, 0>(-10))
     );
     EXPECT_EQ(
-        (resize<10, 0>(negative, overflow_mode::saturate, round_mode::round_to_zero)),
+        (negative.resize<10, 0>(overflow_mode::saturate, round_mode::round_to_zero)),
         (Sfixed<10, 0>(-9))
     );
     EXPECT_EQ(
-        (resize<10, 0>(negative, overflow_mode::saturate, round_mode::round_to_pos)),
+        (negative.resize<10, 0>(overflow_mode::saturate, round_mode::round_to_pos)),
         (Sfixed<10, 0>(-9))
     );
     EXPECT_EQ(
-        (resize<10, 0>(negative, overflow_mode::saturate, round_mode::round)),
+        (negative.resize<10, 0>(overflow_mode::saturate, round_mode::round)),
         (Sfixed<10, 0>(-10))
     );
     EXPECT_EQ(
-        (resize<10, 0>(negative, overflow_mode::saturate, round_mode::round_to_even)),
+        (negative.resize<10, 0>(overflow_mode::saturate, round_mode::round_to_even)),
         (Sfixed<10, 0>(-10))
     );
 
     Sfixed<-1, -4> subnormal(-0.25);
     EXPECT_EQ(
-        (resize<0, 0>(subnormal, overflow_mode::saturate, round_mode::truncate)),
+        (subnormal.resize<0, 0>(overflow_mode::saturate, round_mode::truncate)),
         (Sfixed<0, 0>(-1))
     );
     EXPECT_EQ(
-        (resize<1, 0>(-subnormal, overflow_mode::saturate, round_mode::round_to_pos)),
+        ((-subnormal).resize<1, 0>(overflow_mode::saturate, round_mode::round_to_pos)),
         (Sfixed<1, 0>(1))
     );
 
     Sfixed<10, 3> supernormal(-16);
     EXPECT_EQ(
-        (resize<10, 0>(supernormal, overflow_mode::saturate, round_mode::round)),
+        (supernormal.resize<10, 0>(overflow_mode::saturate, round_mode::round)),
         (Sfixed<10, 0>(-16))
     );
 }

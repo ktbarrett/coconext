@@ -265,25 +265,59 @@ class DynSfixed {
         return reinterpreted<DynSfixed>(std::move(*this));
     }
 
-    static DynSfixed resized(
+    [[nodiscard]] DynSfixed resize(
         Range target,
-        DynSfixed const& source,
         overflow_mode overflow = overflow_mode::saturate,
         round_mode rounding = round_mode::round_to_even
-    ) {
-        dyn_fixed_detail::require_downto(source.range_);
-        bool const negative = source.value_.size() != 0 && source.value_.is_negative();
+    ) const {
+        dyn_fixed_detail::require_downto(range_);
+        bool const negative = value_.size() != 0 && value_.is_negative();
         return DynSfixed(
             dyn_fixed_detail::resize_signed_magnitude(
-                dyn_fixed_detail::unsigned_magnitude(source.value_),
+                dyn_fixed_detail::unsigned_magnitude(value_),
                 negative,
-                source.range_.right,
+                range_.right,
                 target,
                 overflow,
                 rounding
             ),
             target
         );
+    }
+
+    template <auto... Args>
+        requires(sizeof...(Args) > 0)
+    [[nodiscard]] auto resize(
+        overflow_mode overflow = overflow_mode::saturate,
+        round_mode rounding = round_mode::round_to_even
+    ) const {
+        constexpr Range target = make_fixed_range<Args...>();
+        static_assert(
+            target.direction == Direction::DOWNTO,
+            "resize requires DOWNTO direction for both source and destination."
+        );
+        return Sfixed<target>(resize(target, overflow, rounding));
+    }
+
+    [[nodiscard]] auto resize(
+        overflow_mode overflow = overflow_mode::saturate,
+        round_mode rounding = round_mode::round_to_even
+    ) const& noexcept {
+        return auto_resized<DynSfixed const&>(*this, overflow, rounding);
+    }
+
+    [[nodiscard]] auto resize(
+        overflow_mode overflow = overflow_mode::saturate,
+        round_mode rounding = round_mode::round_to_even
+    ) && noexcept {
+        return auto_resized<DynSfixed>(std::move(*this), overflow, rounding);
+    }
+
+    [[nodiscard]] auto resize(
+        overflow_mode overflow = overflow_mode::saturate,
+        round_mode rounding = round_mode::round_to_even
+    ) const&& {
+        return auto_resized<DynSfixed>(*this, overflow, rounding);
     }
 
     Range range() const noexcept { return range_; }
@@ -464,9 +498,8 @@ class DynSfixed {
         if (size() == 0) {
             return *this;
         }
-        return *this = resized(
-                   range_, *this + rhs, overflow_mode::wrap, round_mode::round_to_zero
-               );
+        return *this = (*this + rhs)
+                           .resize(range_, overflow_mode::wrap, round_mode::round_to_zero);
     }
     DynSfixed& operator-=(DynSfixed const& rhs) {
         dyn_fixed_detail::require_downto(range_);
@@ -474,9 +507,8 @@ class DynSfixed {
         if (size() == 0) {
             return *this;
         }
-        return *this = resized(
-                   range_, *this - rhs, overflow_mode::wrap, round_mode::round_to_zero
-               );
+        return *this = (*this - rhs)
+                           .resize(range_, overflow_mode::wrap, round_mode::round_to_zero);
     }
     DynSfixed& operator*=(DynSfixed const& rhs) {
         dyn_fixed_detail::require_downto(range_);
@@ -484,9 +516,8 @@ class DynSfixed {
         if (size() == 0) {
             return *this;
         }
-        return *this = resized(
-                   range_, *this * rhs, overflow_mode::wrap, round_mode::round_to_zero
-               );
+        return *this = (*this * rhs)
+                           .resize(range_, overflow_mode::wrap, round_mode::round_to_zero);
     }
     DynSfixed& operator/=(DynSfixed const& rhs) {
         dyn_fixed_detail::require_downto(range_);
@@ -497,9 +528,8 @@ class DynSfixed {
         if (size() == 0) {
             return *this;
         }
-        return *this = resized(
-                   range_, *this / rhs, overflow_mode::wrap, round_mode::round_to_zero
-               );
+        return *this = (*this / rhs)
+                           .resize(range_, overflow_mode::wrap, round_mode::round_to_zero);
     }
     DynSfixed& operator%=(DynSfixed const& rhs) {
         dyn_fixed_detail::require_downto(range_);
@@ -510,9 +540,8 @@ class DynSfixed {
         if (size() == 0) {
             return *this;
         }
-        return *this = resized(
-                   range_, *this % rhs, overflow_mode::wrap, round_mode::round_to_zero
-               );
+        return *this = (*this % rhs)
+                           .resize(range_, overflow_mode::wrap, round_mode::round_to_zero);
     }
 
     template <NativeInteger T>
@@ -602,6 +631,14 @@ class DynSfixed {
 };
 
 template <Range R>
+template <typename SourceWrapper>
+    requires std::same_as<std::remove_cvref_t<SourceWrapper>, DynUfixed>
+Ufixed<R>::Ufixed(detail::auto_resized<SourceWrapper>&& wrapper) {
+    auto [src, ovf, rnd] = std::move(wrapper).consume();
+    *this = src.template resize<R>(ovf, rnd);
+}
+
+template <Range R>
 Ufixed<R>::Ufixed(DynUfixed const& other) {
     static_assert(
         R.direction == Direction::DOWNTO,
@@ -643,6 +680,14 @@ Sfixed<R>::Sfixed(DynUfixed const& other) {
     );
     value_ =
         dyn_fixed_detail::copy_to_static_int<R.length(), true>(converted.logical_bits());
+}
+
+template <Range R>
+template <typename SourceWrapper>
+    requires std::same_as<std::remove_cvref_t<SourceWrapper>, DynSfixed>
+Sfixed<R>::Sfixed(detail::auto_resized<SourceWrapper>&& wrapper) {
+    auto [src, ovf, rnd] = std::move(wrapper).consume();
+    *this = src.template resize<R>(ovf, rnd);
 }
 
 template <Range R>
@@ -790,12 +835,8 @@ inline DynUfixed& operator+=(DynUfixed& lhs, DynSfixed const& rhs) {
             "Compound arithmetic does not allow a negative DynUfixed result"
         );
     }
-    lhs = DynUfixed::resized(
-        lhs.range(),
-        DynUfixed(result, result.range()),
-        overflow_mode::wrap,
-        round_mode::round_to_zero
-    );
+    lhs = DynUfixed(result, result.range())
+              .resize(lhs.range(), overflow_mode::wrap, round_mode::round_to_zero);
     return lhs;
 }
 inline DynUfixed& operator-=(DynUfixed& lhs, DynSfixed const& rhs) {
@@ -818,12 +859,8 @@ inline DynUfixed& operator*=(DynUfixed& lhs, DynSfixed const& rhs) {
             "Compound arithmetic does not allow a negative DynUfixed result"
         );
     }
-    lhs = DynUfixed::resized(
-        lhs.range(),
-        DynUfixed(result, result.range()),
-        overflow_mode::wrap,
-        round_mode::round_to_zero
-    );
+    lhs = DynUfixed(result, result.range())
+              .resize(lhs.range(), overflow_mode::wrap, round_mode::round_to_zero);
     return lhs;
 }
 inline DynUfixed& operator/=(DynUfixed& lhs, DynSfixed const& rhs) {
@@ -841,12 +878,8 @@ inline DynUfixed& operator/=(DynUfixed& lhs, DynSfixed const& rhs) {
             "Compound arithmetic does not allow a negative DynUfixed result"
         );
     }
-    lhs = DynUfixed::resized(
-        lhs.range(),
-        DynUfixed(result, result.range()),
-        overflow_mode::wrap,
-        round_mode::round_to_zero
-    );
+    lhs = DynUfixed(result, result.range())
+              .resize(lhs.range(), overflow_mode::wrap, round_mode::round_to_zero);
     return lhs;
 }
 inline DynUfixed& operator%=(DynUfixed& lhs, DynSfixed const& rhs) {
@@ -864,12 +897,8 @@ inline DynUfixed& operator%=(DynUfixed& lhs, DynSfixed const& rhs) {
             "Compound arithmetic does not allow a negative DynUfixed result"
         );
     }
-    lhs = DynUfixed::resized(
-        lhs.range(),
-        DynUfixed(result, result.range()),
-        overflow_mode::wrap,
-        round_mode::round_to_zero
-    );
+    lhs = DynUfixed(result, result.range())
+              .resize(lhs.range(), overflow_mode::wrap, round_mode::round_to_zero);
     return lhs;
 }
 
@@ -992,8 +1021,8 @@ LHS& assign_dynamic_fixed_result(LHS& lhs, Result const& result) {
         }
     }
 
-    auto resized = ResultType::resized(
-        LhsType::static_range, result, overflow_mode::wrap, round_mode::round_to_zero
+    auto resized = result.resize(
+        LhsType::static_range, overflow_mode::wrap, round_mode::round_to_zero
     );
     std::ranges::copy(resized, lhs.begin());
     return lhs;
@@ -1209,47 +1238,6 @@ using DynSfixed = detail::DynSfixed;
 
 template <>
 inline constexpr bool is_fixed<detail::DynSfixed> = true;
-
-inline detail::DynSfixed resize(
-    detail::DynSfixed const& source,
-    Range target,
-    overflow_mode overflow = overflow_mode::saturate,
-    round_mode rounding = round_mode::round_to_even
-) {
-    return detail::DynSfixed::resized(target, source, overflow, rounding);
-}
-
-template <auto... Args>
-detail::Ufixed<detail::make_fixed_range<Args...>()> resize(
-    detail::DynUfixed const& source,
-    overflow_mode overflow = overflow_mode::saturate,
-    round_mode rounding = round_mode::round_to_even
-) {
-    constexpr Range target = detail::make_fixed_range<Args...>();
-    static_assert(
-        target.direction == Direction::DOWNTO,
-        "resize requires DOWNTO direction for both source and destination."
-    );
-    return detail::Ufixed<target>(
-        detail::DynUfixed::resized(target, source, overflow, rounding)
-    );
-}
-
-template <auto... Args>
-detail::Sfixed<detail::make_fixed_range<Args...>()> resize(
-    detail::DynSfixed const& source,
-    overflow_mode overflow = overflow_mode::saturate,
-    round_mode rounding = round_mode::round_to_even
-) {
-    constexpr Range target = detail::make_fixed_range<Args...>();
-    static_assert(
-        target.direction == Direction::DOWNTO,
-        "resize requires DOWNTO direction for both source and destination."
-    );
-    return detail::Sfixed<target>(
-        detail::DynSfixed::resized(target, source, overflow, rounding)
-    );
-}
 
 inline detail::DynSfixed divide(
     detail::DynSfixed const& lhs,

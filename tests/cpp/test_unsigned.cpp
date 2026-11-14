@@ -176,33 +176,51 @@ TEST(TestUnsigned, as_overloads) {
 TEST(TestUnsigned, resize_overloads) {
     Unsigned<8> small(200);
 
-    auto wide_spelled = resize<16>(small);
+    auto wide_spelled = small.resize<16>();
     static_assert(std::is_same_v<decltype(wide_spelled), Unsigned<16>>);
     EXPECT_EQ(static_cast<uint16_t>(wide_spelled), 200U);
 
     Unsigned<16> wide_deduced;
-    wide_deduced = resize(small);
+    wide_deduced = small.resize();
     EXPECT_EQ(static_cast<uint16_t>(wide_deduced), 200U);
 
     Unsigned<16> wide(1000);
 
-    auto narrow_wrap_spelled = resize<8>(wide);
+    auto narrow_wrap_spelled = wide.resize<8>();
     static_assert(std::is_same_v<decltype(narrow_wrap_spelled), Unsigned<8>>);
     EXPECT_EQ(static_cast<uint8_t>(narrow_wrap_spelled), 232U);
 
     Unsigned<8> narrow_wrap_deduced;
-    narrow_wrap_deduced = resize(wide);
+    narrow_wrap_deduced = wide.resize();
     EXPECT_EQ(static_cast<uint8_t>(narrow_wrap_deduced), 232U);
 
-    auto narrow_sat_spelled = resize<8>(wide, overflow_mode::saturate);
+    auto narrow_sat_spelled = wide.resize<8>(overflow_mode::saturate);
     EXPECT_EQ(static_cast<uint8_t>(narrow_sat_spelled), 255U);
 
     Unsigned<8> narrow_sat_deduced;
-    narrow_sat_deduced = resize(wide, overflow_mode::saturate);
+    narrow_sat_deduced = wide.resize(overflow_mode::saturate);
     EXPECT_EQ(static_cast<uint8_t>(narrow_sat_deduced), 255U);
 
-    Unsigned<8> copy_init_deduced = resize(wide, overflow_mode::saturate);
+    Unsigned<8> copy_init_deduced = wide.resize(overflow_mode::saturate);
     EXPECT_EQ(static_cast<uint8_t>(copy_init_deduced), 255U);
+
+    auto temporary = Unsigned<16>(1000).resize(overflow_mode::saturate);
+    Unsigned<8> from_temporary = std::move(temporary);
+    EXPECT_EQ(static_cast<int>(from_temporary), 255);
+
+    auto const_temporary = [] {
+        Unsigned<16> const source(1000);
+        return std::move(source).resize(overflow_mode::saturate);
+    }();
+    Unsigned<8> from_const_temporary = std::move(const_temporary);
+    EXPECT_EQ(static_cast<int>(from_const_temporary), 255);
+
+    constexpr Unsigned<16> constant(1000);
+    constexpr Unsigned<8> deferred = constant.resize(overflow_mode::saturate);
+    static_assert(static_cast<int>(deferred) == 255);
+    constexpr auto explicit_range =
+        constant.resize<Unsigned<8>::static_range>(overflow_mode::saturate);
+    static_assert(explicit_range == deferred);
 }
 
 TEST(TestUnsigned, CrossRangeConversion) {
@@ -609,30 +627,30 @@ TEST(TestUnsigned, resize_across_the_tier_boundary) {
     Unsigned<200> wide(12345);
 
     // Wide -> native, both narrowing modes.
-    EXPECT_EQ(static_cast<int>(resize<32>(wide)), 12345);
-    EXPECT_EQ(static_cast<int>(resize<16>(wide, overflow_mode::wrap)), 12345);
+    EXPECT_EQ(static_cast<int>(wide.resize<32>()), 12345);
+    EXPECT_EQ(static_cast<int>(wide.resize<16>(overflow_mode::wrap)), 12345);
 
     // Native -> wide widens by zero-extension.
     Unsigned<8> narrow(200);
-    auto grown = resize<200>(narrow);
+    auto grown = narrow.resize<200>();
     EXPECT_EQ(std::format("{:d}", grown), "Unsigned[199 downto 0]{200}");
 
     // Round trip preserves the value.
-    EXPECT_EQ(static_cast<int>(resize<8>(resize<200>(narrow))), 200);
+    EXPECT_EQ(static_cast<int>(narrow.resize<200>().resize<8>()), 200);
 }
 
 TEST(TestUnsigned, saturation_clamps_from_the_wide_tier) {
     Unsigned<200> big{detail::UInt<200>("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFF")};
-    EXPECT_EQ(static_cast<int>(resize<8>(big, overflow_mode::saturate)), 255);
-    EXPECT_EQ(static_cast<int>(resize<16>(big, overflow_mode::saturate)), 65535);
+    EXPECT_EQ(static_cast<int>(big.resize<8>(overflow_mode::saturate)), 255);
+    EXPECT_EQ(static_cast<int>(big.resize<16>(overflow_mode::saturate)), 65535);
 
     // A value that fits is not clamped.
     Unsigned<200> small(42);
-    EXPECT_EQ(static_cast<int>(resize<8>(small, overflow_mode::saturate)), 42);
+    EXPECT_EQ(static_cast<int>(small.resize<8>(overflow_mode::saturate)), 42);
 
     // Wrapping truncates instead.
     Unsigned<200> v{detail::UInt<200>("0x123456789ABCDEF0123456789")};
-    EXPECT_EQ(static_cast<int>(resize<16>(v, overflow_mode::wrap)), 26505);
+    EXPECT_EQ(static_cast<int>(v.resize<16>(overflow_mode::wrap)), 26505);
 }
 
 TEST(TestUnsigned, wide_arithmetic_still_grows) {

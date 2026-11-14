@@ -1710,39 +1710,7 @@ class [[nodiscard]] auto_resized {
     }
 };
 
-template <typename T>
-[[nodiscard]] constexpr auto_resized<T const&> resize(
-    T const& x, overflow_mode ovf, round_mode rnd
-) noexcept {
-    return auto_resized<T const&>(x, ovf, rnd);
-}
-
-// Prvalue (temporary) overload
-template <typename T>
-    requires(!std::is_lvalue_reference_v<T>)
-[[nodiscard]] constexpr auto_resized<T> resize(
-    T&& x, overflow_mode ovf, round_mode rnd
-) noexcept {
-    return auto_resized<T>(std::move(x), ovf, rnd);
-}
-
 }  // namespace detail
-
-template <typename X>
-    requires(
-        detail::is_coconext_unsigned_v<std::remove_cvref_t<X>>
-        || detail::is_coconext_signed_v<std::remove_cvref_t<X>>
-        || is_fixed<std::remove_cvref_t<X>>
-    )
-[[nodiscard]] constexpr auto resize(
-    X&& x,
-    overflow_mode ovf = is_fixed<std::remove_cvref_t<X>> ? overflow_mode::saturate
-                                                         : overflow_mode::wrap,
-    round_mode rnd = is_fixed<std::remove_cvref_t<X>> ? round_mode::round_to_even
-                                                      : round_mode::truncate
-) noexcept {
-    return detail::resize(std::forward<X>(x), ovf, rnd);
-}
 
 }  // namespace coconext::types
 
