@@ -65,7 +65,7 @@ jobs:
         if: inputs.download_wheel_artifacts
         uses: actions/download-artifact@v8
         with:
-          name: wheels-${{ matrix.os }}
+          name: wheels-${{ runner.os }}-${{ runner.arch }}
           path: dist
 
       - name: Download Sdist Artifacts

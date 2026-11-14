@@ -1,5 +1,5 @@
 find_package(Python 3.9
-    REQUIRED COMPONENTS Interpreter Development Development.Module
+    REQUIRED COMPONENTS Interpreter Development.Module
     OPTIONAL_COMPONENTS Development.SABIModule)
 
 add_library(simulator SHARED
@@ -14,7 +14,7 @@ target_include_directories(simulator PRIVATE
     "${PROJECT_SOURCE_DIR}/cpp/gpi/common"
 )
 target_compile_definitions(simulator PRIVATE PYGPI_EXPORTS)
-target_link_libraries(simulator PRIVATE gpi Python::Python)
+target_link_libraries(simulator PRIVATE gpi Python::Module)
 
 if(SKBUILD_STATE STREQUAL "editable")
     set_target_properties(simulator PROPERTIES
