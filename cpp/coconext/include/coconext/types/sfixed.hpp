@@ -19,21 +19,6 @@ inline constexpr bool is_coconext_sfixed_v = false;
 template <Range R>
 inline constexpr bool is_coconext_sfixed_v<detail::Sfixed<R>> = true;
 
-}  // namespace detail
-
-template <auto... Args, typename X>
-    requires(
-        sizeof...(Args) > 0 && sizeof...(Args) <= 3
-        && detail::is_coconext_sfixed_v<std::remove_cvref_t<X>>
-    )
-constexpr auto resize(
-    X&& x,
-    overflow_mode ovf = overflow_mode::saturate,
-    round_mode rnd = round_mode::round_to_even
-);
-
-namespace detail {
-
 template <Range R>
 class Sfixed {
     template <size_t SourceW>
@@ -308,6 +293,10 @@ class Sfixed {
     explicit Sfixed(DynUfixed const& other);
     explicit Sfixed(DynSfixed const& other);
 
+    template <typename SourceWrapper>
+        requires std::same_as<std::remove_cvref_t<SourceWrapper>, DynSfixed>
+    Sfixed(detail::auto_resized<SourceWrapper>&& wrapper);
+
     // Construct from float
     template <std::floating_point FloatType>
     explicit Sfixed(
@@ -383,6 +372,36 @@ class Sfixed {
         requires(R.direction == Direction::DOWNTO && R2.direction == Direction::DOWNTO)
     {
         assign_unsigned_integer(storage(v));
+    }
+
+    template <auto... Args>
+        requires(sizeof...(Args) > 0 && sizeof...(Args) <= 3)
+    [[nodiscard]] constexpr auto resize(
+        overflow_mode ovf = overflow_mode::saturate,
+        round_mode rnd = round_mode::round_to_even
+    ) const {
+        return Sfixed<make_fixed_range<Args...>()>(resize(ovf, rnd));
+    }
+
+    [[nodiscard]] constexpr auto resize(
+        overflow_mode ovf = overflow_mode::saturate,
+        round_mode rnd = round_mode::round_to_even
+    ) const& noexcept {
+        return auto_resized<Sfixed const&>(*this, ovf, rnd);
+    }
+
+    [[nodiscard]] constexpr auto resize(
+        overflow_mode ovf = overflow_mode::saturate,
+        round_mode rnd = round_mode::round_to_even
+    ) && noexcept {
+        return auto_resized<Sfixed>(std::move(*this), ovf, rnd);
+    }
+
+    [[nodiscard]] constexpr auto resize(
+        overflow_mode ovf = overflow_mode::saturate,
+        round_mode rnd = round_mode::round_to_even
+    ) const&& noexcept {
+        return auto_resized<Sfixed>(*this, ovf, rnd);
     }
 
     template <typename SourceWrapper>
@@ -884,9 +903,7 @@ class Sfixed {
         if constexpr (R.length() == 0) {
             return *this;
         }
-        *this = coconext::types::resize(
-            *this + rhs, overflow_mode::wrap, round_mode::round_to_zero
-        );
+        *this = (*this + rhs).resize(overflow_mode::wrap, round_mode::round_to_zero);
         return *this;
     }
     template <Range R2>
@@ -898,9 +915,7 @@ class Sfixed {
         if constexpr (R.length() == 0) {
             return *this;
         }
-        *this = coconext::types::resize(
-            *this - rhs, overflow_mode::wrap, round_mode::round_to_zero
-        );
+        *this = (*this - rhs).resize(overflow_mode::wrap, round_mode::round_to_zero);
         return *this;
     }
     template <Range R2>
@@ -912,9 +927,7 @@ class Sfixed {
         if constexpr (R.length() == 0) {
             return *this;
         }
-        *this = coconext::types::resize(
-            *this * rhs, overflow_mode::wrap, round_mode::round_to_zero
-        );
+        *this = (*this * rhs).resize(overflow_mode::wrap, round_mode::round_to_zero);
         return *this;
     }
     template <Range R2>
@@ -929,9 +942,7 @@ class Sfixed {
         if constexpr (R.length() == 0) {
             return *this;
         }
-        *this = coconext::types::resize(
-            *this / rhs, overflow_mode::wrap, round_mode::round_to_zero
-        );
+        *this = (*this / rhs).resize(overflow_mode::wrap, round_mode::round_to_zero);
         return *this;
     }
     template <Range R2>
@@ -946,9 +957,7 @@ class Sfixed {
         if constexpr (R.length() == 0) {
             return *this;
         }
-        *this = coconext::types::resize(
-            *this % rhs, overflow_mode::wrap, round_mode::round_to_zero
-        );
+        *this = (*this % rhs).resize(overflow_mode::wrap, round_mode::round_to_zero);
         return *this;
     }
 
@@ -1358,8 +1367,8 @@ constexpr LHS& assign_mixed_fixed_result(LHS& lhs, Result&& result) {
         }
     }();
 
-    auto resized = coconext::types::resize<target_range>(
-        std::forward<Result>(result), overflow_mode::wrap, round_mode::round_to_zero
+    auto resized = std::forward<Result>(result).template resize<target_range>(
+        overflow_mode::wrap, round_mode::round_to_zero
     );
     lhs = std::move(resized).template as<LhsType>();
     return lhs;
@@ -1513,16 +1522,6 @@ constexpr auto reciprocal(
     return Sfixed<ResultRange>(quotient);
 }
 
-template <auto... Args, typename X>
-    requires(
-        sizeof...(Args) > 0 && sizeof...(Args) <= 3
-        && detail::is_coconext_sfixed_v<std::remove_cvref_t<X>>
-    )
-constexpr auto resize(X&& x, overflow_mode ovf, round_mode rnd) {
-    constexpr Range TargetRange = detail::make_fixed_range<Args...>();
-    return Sfixed<TargetRange>(detail::resize(std::forward<X>(x), ovf, rnd));
-}
-
 template <Range R>
 constexpr auto reverse(detail::Sfixed<R> const& v) noexcept {
     if constexpr (R.direction == Direction::TO) {
@@ -1542,7 +1541,7 @@ constexpr auto abs(detail::Sfixed<R> const& v) noexcept {
         return -v;
     }
     return detail::Sfixed<TargetRange>(
-        detail::resize(v, overflow_mode::saturate, round_mode::round)
+        v.resize(overflow_mode::saturate, round_mode::round)
     );
 }
 

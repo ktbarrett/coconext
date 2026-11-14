@@ -284,13 +284,13 @@ TEST(DynFixed, ConstructionConversionAndResizeParity) {
     DynUfixed positive(9.5, {10, Direction::DOWNTO, -10});
     EXPECT_EQ(
         static_cast<int>(
-            resize(positive, integer, overflow_mode::saturate, round_mode::truncate)
+            positive.resize(integer, overflow_mode::saturate, round_mode::truncate)
         ),
         9
     );
     EXPECT_EQ(
         static_cast<int>(
-            resize(positive, integer, overflow_mode::saturate, round_mode::round_to_even)
+            positive.resize(integer, overflow_mode::saturate, round_mode::round_to_even)
         ),
         10
     );
@@ -298,25 +298,22 @@ TEST(DynFixed, ConstructionConversionAndResizeParity) {
     DynSfixed negative(-9.5, {10, Direction::DOWNTO, -10});
     EXPECT_EQ(
         static_cast<int>(
-            resize(negative, integer, overflow_mode::saturate, round_mode::truncate)
+            negative.resize(integer, overflow_mode::saturate, round_mode::truncate)
         ),
         -10
     );
     EXPECT_EQ(
         static_cast<int>(
-            resize(negative, integer, overflow_mode::saturate, round_mode::round_to_zero)
+            negative.resize(integer, overflow_mode::saturate, round_mode::round_to_zero)
         ),
         -9
     );
 
     DynUfixed too_large(200, {7, Direction::DOWNTO, 0});
-    EXPECT_EQ(static_cast<int>(resize(too_large, Range{3, Direction::DOWNTO, 0})), 15);
+    EXPECT_EQ(static_cast<int>(too_large.resize(Range{3, Direction::DOWNTO, 0})), 15);
     EXPECT_EQ(
-        static_cast<int>(resize(
-            too_large,
-            {3, Direction::DOWNTO, 0},
-            overflow_mode::wrap,
-            round_mode::round_to_even
+        static_cast<int>(too_large.resize(
+            {3, Direction::DOWNTO, 0}, overflow_mode::wrap, round_mode::round_to_even
         )),
         8
     );
@@ -344,14 +341,12 @@ TEST(DynFixed, StaticConversionResizeAndReinterpretation) {
     static_assert(std::constructible_from<FractionalSfixed, DynSfixed const&>);
     static_assert(!std::convertible_to<DynUfixed const&, FractionalUfixed>);
     static_assert(!std::convertible_to<DynSfixed const&, FractionalSfixed>);
-    static_assert(
-        std::
-            same_as<decltype(resize<3, 0>(std::declval<DynUfixed const&>())), IntegerUfixed>
-    );
-    static_assert(
-        std::
-            same_as<decltype(resize<3, 0>(std::declval<DynSfixed const&>())), IntegerSfixed>
-    );
+    static_assert(std::same_as<
+                  decltype(std::declval<DynUfixed const&>().resize<3, 0>()),
+                  IntegerUfixed>);
+    static_assert(std::same_as<
+                  decltype(std::declval<DynSfixed const&>().resize<3, 0>()),
+                  IntegerSfixed>);
 
     Range const fractional{3, Direction::DOWNTO, -2};
     DynUfixed dynamic_unsigned(5.25, fractional);
@@ -372,13 +367,13 @@ TEST(DynFixed, StaticConversionResizeAndReinterpretation) {
     DynUfixed unsigned_half(9.5, {7, Direction::DOWNTO, -1});
     EXPECT_EQ(
         static_cast<int>(
-            resize<3, 0>(unsigned_half, overflow_mode::saturate, round_mode::truncate)
+            unsigned_half.resize<3, 0>(overflow_mode::saturate, round_mode::truncate)
         ),
         9
     );
     EXPECT_EQ(
         static_cast<int>(
-            resize<3, 0>(unsigned_half, overflow_mode::saturate, round_mode::round_to_even)
+            unsigned_half.resize<3, 0>(overflow_mode::saturate, round_mode::round_to_even)
         ),
         10
     );
@@ -386,25 +381,64 @@ TEST(DynFixed, StaticConversionResizeAndReinterpretation) {
     DynSfixed signed_half(-9.5, {7, Direction::DOWNTO, -1});
     EXPECT_EQ(
         static_cast<int>(
-            resize<4, 0>(signed_half, overflow_mode::saturate, round_mode::truncate)
+            signed_half.resize<4, 0>(overflow_mode::saturate, round_mode::truncate)
         ),
         -10
     );
     EXPECT_EQ(
         static_cast<int>(
-            resize<4, 0>(signed_half, overflow_mode::saturate, round_mode::round_to_zero)
+            signed_half.resize<4, 0>(overflow_mode::saturate, round_mode::round_to_zero)
         ),
         -9
     );
 
     DynUfixed too_large(200, {7, Direction::DOWNTO, 0});
-    EXPECT_EQ(static_cast<int>(resize<3, 0>(too_large)), 15);
+    EXPECT_EQ(static_cast<int>(too_large.resize<3, 0>()), 15);
     EXPECT_EQ(
         static_cast<int>(
-            resize<3, 0>(too_large, overflow_mode::wrap, round_mode::round_to_even)
+            too_large.resize<3, 0>(overflow_mode::wrap, round_mode::round_to_even)
         ),
         8
     );
+}
+
+TEST(DynFixed, DeferredResize) {
+    Range const fractional{7, Direction::DOWNTO, -1};
+    DynUfixed unsigned_source(9.5, fractional);
+    Ufixed<3, 0> rounded_unsigned = unsigned_source.resize();
+    EXPECT_EQ(static_cast<int>(rounded_unsigned), 10);
+    rounded_unsigned =
+        unsigned_source.resize(overflow_mode::saturate, round_mode::truncate);
+    EXPECT_EQ(static_cast<int>(rounded_unsigned), 9);
+
+    DynSfixed const signed_source(-9.5, fractional);
+    Sfixed<4, 0> rounded_signed = signed_source.resize();
+    EXPECT_EQ(static_cast<int>(rounded_signed), -10);
+    rounded_signed =
+        signed_source.resize(overflow_mode::saturate, round_mode::round_to_zero);
+    EXPECT_EQ(static_cast<int>(rounded_signed), -9);
+
+    auto unsigned_temporary = DynUfixed(200, fractional).resize(overflow_mode::wrap);
+    Ufixed<3, 0> wrapped_unsigned = std::move(unsigned_temporary);
+    EXPECT_EQ(static_cast<int>(wrapped_unsigned), 8);
+
+    auto signed_temporary = DynSfixed(-100, fractional).resize();
+    Sfixed<3, 0> saturated_signed = std::move(signed_temporary);
+    EXPECT_EQ(static_cast<int>(saturated_signed), -8);
+
+    auto unsigned_const_temporary = [] {
+        DynUfixed const source(200, {7, Direction::DOWNTO, 0});
+        return std::move(source).resize();
+    }();
+    Ufixed<3, 0> saturated_unsigned = std::move(unsigned_const_temporary);
+    EXPECT_EQ(static_cast<int>(saturated_unsigned), 15);
+
+    auto signed_const_temporary = [] {
+        DynSfixed const source(-100, {7, Direction::DOWNTO, 0});
+        return std::move(source).resize(overflow_mode::wrap);
+    }();
+    Sfixed<3, 0> wrapped_signed = std::move(signed_const_temporary);
+    EXPECT_EQ(static_cast<int>(wrapped_signed), -4);
 }
 
 TEST(DynFixed, DivisionFamilyAndRounding) {

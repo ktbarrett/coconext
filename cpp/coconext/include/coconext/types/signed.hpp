@@ -19,12 +19,6 @@
 
 namespace coconext::types {
 
-template <auto... Args, typename X>
-    requires(sizeof...(Args) > 0 && detail::is_coconext_signed_v<std::remove_cvref_t<X>>)
-constexpr auto resize(
-    X&& x, overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
-);
-
 namespace detail {
 
 // for cross type constructor
@@ -82,10 +76,10 @@ class Signed {
     template <Range R2>
     explicit(R.length() < R2.length()) constexpr Signed(Signed<R2> const& other) {
         if constexpr (R.length() >= R2.length()) {
-            value_ = coconext::types::resize<R.length()>(other).value_;
+            value_ = other.template resize<R.length()>().value_;
         } else {
-            value_ = coconext::types::resize<R.length()>(other).value_;
-            if (coconext::types::resize<R2.length()>(Signed<R>(value_)) != other) {
+            value_ = other.template resize<R.length()>().value_;
+            if (Signed<R>(value_).template resize<R2.length()>() != other) {
                 throw std::out_of_range(
                     "Value does not fit in narrowing Signed conversion"
                 );
@@ -137,6 +131,32 @@ class Signed {
 
     [[nodiscard]] constexpr auto as() && noexcept {
         return reinterpreted<Signed>(std::move(*this));
+    }
+
+    template <auto... Args>
+        requires(sizeof...(Args) > 0)
+    [[nodiscard]] constexpr auto resize(
+        overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
+    ) const {
+        return Signed<make_int_range<Args...>()>(resize(ovf, rnd));
+    }
+
+    [[nodiscard]] constexpr auto resize(
+        overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
+    ) const& noexcept {
+        return auto_resized<Signed const&>(*this, ovf, rnd);
+    }
+
+    [[nodiscard]] constexpr auto resize(
+        overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
+    ) && noexcept {
+        return auto_resized<Signed>(std::move(*this), ovf, rnd);
+    }
+
+    [[nodiscard]] constexpr auto resize(
+        overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
+    ) const&& noexcept {
+        return auto_resized<Signed>(*this, ovf, rnd);
     }
 
     template <typename SourceWrapper>
@@ -304,17 +324,17 @@ class Signed {
 
     template <Range R2>
     constexpr Signed& operator+=(Signed<R2> const& rhs) {
-        *this = coconext::types::resize<R.length()>(*this + rhs);
+        *this = (*this + rhs).template resize<R.length()>();
         return *this;
     }
     template <Range R2>
     constexpr Signed& operator-=(Signed<R2> const& rhs) {
-        *this = coconext::types::resize<R.length()>(*this - rhs);
+        *this = (*this - rhs).template resize<R.length()>();
         return *this;
     }
     template <Range R2>
     constexpr Signed& operator*=(Signed<R2> const& rhs) {
-        *this = coconext::types::resize<R.length()>(*this * rhs);
+        *this = (*this * rhs).template resize<R.length()>();
         return *this;
     }
     template <Range R2>
@@ -322,7 +342,7 @@ class Signed {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        *this = coconext::types::resize<R.length()>(*this / rhs);
+        *this = (*this / rhs).template resize<R.length()>();
         return *this;
     }
     template <Range R2>
@@ -330,16 +350,15 @@ class Signed {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        *this = coconext::types::resize<R.length()>(*this % rhs);
+        *this = (*this % rhs).template resize<R.length()>();
         return *this;
     }
 
     template <NativeInteger T>
     constexpr Signed& operator+=(T const& rhs) {
         if constexpr (R.length() > 0) {
-            *this = coconext::types::resize<R.length()>(
-                *this + Signed<make_int_range<R.length()>()>(rhs)
-            );
+            *this = (*this + Signed<make_int_range<R.length()>()>(rhs))
+                        .template resize<R.length()>();
         }
         return *this;
     }
@@ -347,9 +366,8 @@ class Signed {
     template <NativeInteger T>
     constexpr Signed& operator-=(T const& rhs) {
         if constexpr (R.length() > 0) {
-            *this = coconext::types::resize<R.length()>(
-                *this - Signed<make_int_range<R.length()>()>(rhs)
-            );
+            *this = (*this - Signed<make_int_range<R.length()>()>(rhs))
+                        .template resize<R.length()>();
         }
         return *this;
     }
@@ -357,9 +375,8 @@ class Signed {
     template <NativeInteger T>
     constexpr Signed& operator*=(T const& rhs) {
         if constexpr (R.length() > 0) {
-            *this = coconext::types::resize<R.length()>(
-                *this * Signed<make_int_range<R.length()>()>(rhs)
-            );
+            *this = (*this * Signed<make_int_range<R.length()>()>(rhs))
+                        .template resize<R.length()>();
         }
         return *this;
     }
@@ -367,9 +384,8 @@ class Signed {
     template <NativeInteger T>
     constexpr Signed& operator/=(T const& rhs) {
         if constexpr (R.length() > 0) {
-            *this = coconext::types::resize<R.length()>(
-                *this / Signed<make_int_range<R.length()>()>(rhs)
-            );
+            *this = (*this / Signed<make_int_range<R.length()>()>(rhs))
+                        .template resize<R.length()>();
         }
         return *this;
     }
@@ -377,30 +393,29 @@ class Signed {
     template <NativeInteger T>
     constexpr Signed& operator%=(T const& rhs) {
         if constexpr (R.length() > 0) {
-            *this = coconext::types::resize<R.length()>(
-                *this % Signed<make_int_range<R.length()>()>(rhs)
-            );
+            *this = (*this % Signed<make_int_range<R.length()>()>(rhs))
+                        .template resize<R.length()>();
         }
         return *this;
     }
 
     template <Range R2>
     constexpr Signed& operator+=(Unsigned<R2> const& rhs) {
-        auto res = coconext::types::resize<R.length()>(*this + (+rhs), overflow_mode::wrap);
+        auto res = (*this + (+rhs)).template resize<R.length()>(overflow_mode::wrap);
         *this = std::move(res).template as<Signed<R>>();
         return *this;
     }
 
     template <Range R2>
     constexpr Signed& operator-=(Unsigned<R2> const& rhs) {
-        auto res = coconext::types::resize<R.length()>(*this - (+rhs), overflow_mode::wrap);
+        auto res = (*this - (+rhs)).template resize<R.length()>(overflow_mode::wrap);
         *this = std::move(res).template as<Signed<R>>();
         return *this;
     }
 
     template <Range R2>
     constexpr Signed& operator*=(Unsigned<R2> const& rhs) {
-        auto res = coconext::types::resize<R.length()>(*this * (+rhs), overflow_mode::wrap);
+        auto res = (*this * (+rhs)).template resize<R.length()>(overflow_mode::wrap);
         *this = std::move(res).template as<Signed<R>>();
         return *this;
     }
@@ -410,7 +425,7 @@ class Signed {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        auto res = coconext::types::resize<R.length()>(*this / (+rhs), overflow_mode::wrap);
+        auto res = (*this / (+rhs)).template resize<R.length()>(overflow_mode::wrap);
         *this = std::move(res).template as<Signed<R>>();
         return *this;
     }
@@ -420,7 +435,7 @@ class Signed {
         if (!static_cast<bool>(rhs)) {
             throw std::domain_error("Division by zero");
         }
-        auto res = coconext::types::resize<R.length()>(*this % (+rhs), overflow_mode::wrap);
+        auto res = (*this % (+rhs)).template resize<R.length()>(overflow_mode::wrap);
         *this = std::move(res).template as<Signed<R>>();
         return *this;
     }
@@ -561,19 +576,12 @@ constexpr auto operator%(Signed<R1> const& lhs, Unsigned<R2> const& rhs) {
 template <auto... Args>
 using Signed = detail::Signed<detail::make_int_range<Args...>()>;
 
-template <auto... Args, typename X>
-    requires(sizeof...(Args) > 0 && detail::is_coconext_signed_v<std::remove_cvref_t<X>>)
-constexpr auto resize(X&& x, overflow_mode ovf, round_mode rnd) {
-    constexpr Range TargetRange = detail::make_int_range<Args...>();
-    return Signed<TargetRange>(detail::resize(std::forward<X>(x), ovf, rnd));
-}
-
 template <Range R>
 constexpr auto abs(detail::Signed<R> const& s) {
     if (s < detail::Signed<R>(0)) {
         return -s;
     }
-    return resize<R.length() + 1>(s);
+    return s.template resize<R.length() + 1>();
 }
 
 consteval Signed<8> s8(long long v) { return Signed<8>(v); }

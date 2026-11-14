@@ -212,19 +212,53 @@ class DynUfixed {
         return reinterpreted<DynUfixed>(std::move(*this));
     }
 
-    static DynUfixed resized(
+    [[nodiscard]] DynUfixed resize(
         Range target,
-        DynUfixed const& source,
         overflow_mode overflow = overflow_mode::saturate,
         round_mode rounding = round_mode::round_to_even
-    ) {
-        dyn_fixed_detail::require_downto(source.range_);
+    ) const {
+        dyn_fixed_detail::require_downto(range_);
         return DynUfixed(
             dyn_fixed_detail::resize_unsigned_magnitude(
-                source.value_, source.range_.right, target, overflow, rounding
+                value_, range_.right, target, overflow, rounding
             ),
             target
         );
+    }
+
+    template <auto... Args>
+        requires(sizeof...(Args) > 0)
+    [[nodiscard]] auto resize(
+        overflow_mode overflow = overflow_mode::saturate,
+        round_mode rounding = round_mode::round_to_even
+    ) const {
+        constexpr Range target = make_fixed_range<Args...>();
+        static_assert(
+            target.direction == Direction::DOWNTO,
+            "resize requires DOWNTO direction for both source and destination."
+        );
+        return Ufixed<target>(resize(target, overflow, rounding));
+    }
+
+    [[nodiscard]] auto resize(
+        overflow_mode overflow = overflow_mode::saturate,
+        round_mode rounding = round_mode::round_to_even
+    ) const& noexcept {
+        return auto_resized<DynUfixed const&>(*this, overflow, rounding);
+    }
+
+    [[nodiscard]] auto resize(
+        overflow_mode overflow = overflow_mode::saturate,
+        round_mode rounding = round_mode::round_to_even
+    ) && noexcept {
+        return auto_resized<DynUfixed>(std::move(*this), overflow, rounding);
+    }
+
+    [[nodiscard]] auto resize(
+        overflow_mode overflow = overflow_mode::saturate,
+        round_mode rounding = round_mode::round_to_even
+    ) const&& {
+        return auto_resized<DynUfixed>(*this, overflow, rounding);
     }
 
     Range range() const noexcept { return range_; }
@@ -402,9 +436,8 @@ class DynUfixed {
         if (size() == 0) {
             return *this;
         }
-        return *this = resized(
-                   range_, *this + rhs, overflow_mode::wrap, round_mode::round_to_zero
-               );
+        return *this = (*this + rhs)
+                           .resize(range_, overflow_mode::wrap, round_mode::round_to_zero);
     }
     DynUfixed& operator-=(DynUfixed const& rhs);
     DynUfixed& operator*=(DynUfixed const& rhs) {
@@ -413,9 +446,8 @@ class DynUfixed {
         if (size() == 0) {
             return *this;
         }
-        return *this = resized(
-                   range_, *this * rhs, overflow_mode::wrap, round_mode::round_to_zero
-               );
+        return *this = (*this * rhs)
+                           .resize(range_, overflow_mode::wrap, round_mode::round_to_zero);
     }
     DynUfixed& operator/=(DynUfixed const& rhs) {
         dyn_fixed_detail::require_downto(range_);
@@ -426,9 +458,8 @@ class DynUfixed {
         if (size() == 0) {
             return *this;
         }
-        return *this = resized(
-                   range_, *this / rhs, overflow_mode::wrap, round_mode::round_to_zero
-               );
+        return *this = (*this / rhs)
+                           .resize(range_, overflow_mode::wrap, round_mode::round_to_zero);
     }
     DynUfixed& operator%=(DynUfixed const& rhs) {
         dyn_fixed_detail::require_downto(range_);
@@ -439,9 +470,8 @@ class DynUfixed {
         if (size() == 0) {
             return *this;
         }
-        return *this = resized(
-                   range_, *this % rhs, overflow_mode::wrap, round_mode::round_to_zero
-               );
+        return *this = (*this % rhs)
+                           .resize(range_, overflow_mode::wrap, round_mode::round_to_zero);
     }
 
     template <NativeInteger T>
@@ -533,15 +563,6 @@ using DynUfixed = detail::DynUfixed;
 
 template <>
 inline constexpr bool is_fixed<detail::DynUfixed> = true;
-
-inline detail::DynUfixed resize(
-    detail::DynUfixed const& source,
-    Range target,
-    overflow_mode overflow = overflow_mode::saturate,
-    round_mode rounding = round_mode::round_to_even
-) {
-    return detail::DynUfixed::resized(target, source, overflow, rounding);
-}
 
 inline detail::DynUfixed divide(
     detail::DynUfixed const& lhs,
