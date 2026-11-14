@@ -43,6 +43,7 @@ jobs:
       timeout-minutes: 60
 
       env:
+        PYTHON_VERSION: ${{ matrix.python-version }}
         SIM: ${{ matrix.simulator }}
         TOPLEVEL_LANG: ${{ matrix.toplevel_lang }}
         CXX_STANDARD: ${{ matrix.cxx-standard }}

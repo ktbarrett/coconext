@@ -42,27 +42,23 @@ def main() -> int:
     if args.group in ("all", "tests"):
         suites.extend(
             makefile.parent
-            for makefile in sorted((repo_root / "tests/test_cases").glob("*/Makefile"))
+            for makefile in sorted((repo_root / "tests/test_cases").rglob("Makefile"))
         )
     if args.group in ("all", "examples"):
-        examples = [
-            "adder/tests",
-            "simple_dff",
-            "matrix_multiplier/tests",
-            "mixed_language/tests",
-        ]
-        if env["TOPLEVEL_LANG"] == "verilog":
-            if env["SIM"] not in ("ius", "xcelium"):
-                print("Skipping example mixed_signal since only Xcelium is supported")
-            elif shutil.which("spectre") is None:
-                print("Skipping example mixed_signal since Spectre is not available")
-            else:
-                examples.append("mixed_signal/tests")
-            examples.append("first_steps")
-        suites.extend(repo_root / "examples" / example for example in examples)
+        for makefile in sorted((repo_root / "examples").rglob("Makefile")):
+            example = makefile.relative_to(repo_root / "examples").parts[0]
+            if example in ("analog_model", "first_steps", "mixed_signal"):
+                if env["TOPLEVEL_LANG"] != "verilog":
+                    continue
+            if example == "mixed_signal":
+                if env["SIM"] not in ("ius", "xcelium"):
+                    continue
+                if shutil.which("spectre") is None:
+                    continue
+            suites.append(makefile.parent)
 
-    failed = 0
-    completed = 0
+    failed: int = 0
+    completed: list[Path] = []
     for suite in suites:
         name = suite.relative_to(repo_root).as_posix()
         command = ["make"]
@@ -83,7 +79,7 @@ def main() -> int:
         result = subprocess.run(
             command, cwd=suite, env={**env, "PWD": str(suite)}, check=False
         )
-        completed += 1
+        completed.append(suite)
         if result.returncode:
             failed += 1
             message = f"Failed regression suite {name} (make exited with status {result.returncode})"
@@ -95,18 +91,19 @@ def main() -> int:
             if args.fail_fast:
                 break
 
-    print(f"Ran {completed} suites: {failed} failed.", flush=True)
+    print(f"Ran {len(completed)} suites: {failed} failed.", flush=True)
     rc = int(failed != 0)
-    if not args.clean:
+    if not args.clean and completed:
         combined_rc = combine_results.main(
             [
-                str(repo_root),
+                *(str(suite) for suite in completed),
                 "--repo-root",
                 str(repo_root),
                 "--output-file",
                 str(repo_root / "combined_results.xml"),
             ]
         )
+        print(f"Combined results written to {repo_root / 'combined_results.xml'}")
         rc = rc or combined_rc
     return rc
 

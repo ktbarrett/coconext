@@ -25,6 +25,7 @@ dev_tests:
 	$(MAKE) python_tests
 	$(MAKE) integration_tests
 	$(MAKE) simulator_tests
+	$(MAKE) cocotb_tests
 	$(MAKE) generate_report
 
 .PHONY: release_test
@@ -34,6 +35,7 @@ release_test:
 	$(MAKE) python_tests COCONEXT_DEVELOPER_MODE=OFF PYTEST_COVERAGE_ARGS=
 	$(MAKE) integration_tests PYTEST_COVERAGE_ARGS=
 	$(MAKE) simulator_tests PYTEST_COVERAGE_ARGS=
+	$(MAKE) cocotb_tests
 
 .PHONY: dev_build
 dev_build:
@@ -91,8 +93,8 @@ integration_tests:
 	pytest $(PYTEST_COVERAGE_ARGS) tests/integration_tests tests/pytest/
 
 .PHONY: cocotb_tests
-cocotb_tests: dev_build
-	python3 run_tests.py tests
+cocotb_tests:
+	python3 run_tests.py all
 
 .PHONY: coverage_reset
 coverage_reset:
