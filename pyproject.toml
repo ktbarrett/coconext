@@ -349,15 +349,18 @@ dev_tests = [
     "nanobind",
     "cmake>=3.20",
     "scikit-build-core",
-    "setuptools",
-    "setuptools-git-versioning>=3.2,<4",
     "coverage[toml]>=7.10",
     "pytest-cov",
+    # >=8.4 needed for RaisesExc and RaisesGroup tests in tests/test_cases/test_xfail.
     "pytest>=8.4",
     "gcovr>=8.4,!=8.5",
+    # Needed for interactive shell tests in tests/pytest/test_ipython_support.py.
     "IPython<9.17",
     "pexpect",
+    # Needed for memory leak tests in tests/test_cases/test_trigger_memory_leak.
     "psutil",
+    # Needed for plotting in examples/mixed_signal.
+    "matplotlib",
 ]
 docs = [
     "Sphinx ~= 8.2.0",
@@ -385,4 +388,6 @@ docs_preview = [
     "sphinx-autobuild",
 ]
 [tool.uv.dependency-groups]
+dev = {requires-python = ">=3.11"}
 docs = {requires-python = ">=3.11"}
+docs_preview = {requires-python = ">=3.11"}
