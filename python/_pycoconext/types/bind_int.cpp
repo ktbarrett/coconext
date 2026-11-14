@@ -1,14 +1,14 @@
 // Python bindings for coconext unsigned dynamic type.
+#include <nanobind/make_iterator.h>
+#include <nanobind/nanobind.h>
+#include <nanobind/stl/string.h>       // IWYU pragma: keep
+#include <nanobind/stl/string_view.h>  // IWYU pragma: keep
+
 #include <coconext/types/concepts.hpp>
 #include <coconext/types/direction.hpp>
 #include <coconext/types/dyn_signed.hpp>
 #include <coconext/types/logic.hpp>
 #include <coconext/types/range.hpp>
-
-#include <nanobind/make_iterator.h>
-#include <nanobind/nanobind.h>
-#include <nanobind/stl/string.h>       // IWYU pragma: keep
-#include <nanobind/stl/string_view.h>  // IWYU pragma: keep
 
 #include <concepts>
 #include <cstddef>

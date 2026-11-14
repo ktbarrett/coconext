@@ -148,6 +148,10 @@ IfMacros:
   - KJ_IF_MAYBE
 IncludeBlocks: Preserve
 IncludeCategories:
+  # nanobind includes Python.h, which must precede system headers.
+  - Regex: '^[<"]nanobind/'
+    Priority: -1
+    SortPriority: -1
   - Regex: ^"(llvm|llvm-c|clang|clang-c)/
     Priority: 2
     SortPriority: 0

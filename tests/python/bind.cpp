@@ -1,7 +1,8 @@
 // Test-only bindings for the coconext_nb helpers.
+#include <nanobind/nanobind.h>
+
 #include <coconext/types/vector.hpp>
 #include <coconext_nb/types/bind_vector.hpp>
-#include <nanobind/nanobind.h>
 #include <string>
 
 namespace nb = nanobind;

@@ -1,12 +1,12 @@
 #ifndef COCONEXT_NB_TYPES_BIND_VECTOR_HPP
 #define COCONEXT_NB_TYPES_BIND_VECTOR_HPP
 
-#include <coconext/types/vector.hpp>
-
 #include <nanobind/make_iterator.h>
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
+
+#include <coconext/types/vector.hpp>
 
 #include <stdexcept>
 #include <vector>
