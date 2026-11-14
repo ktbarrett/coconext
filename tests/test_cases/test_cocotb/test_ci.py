@@ -11,4 +11,6 @@ import cocotb
 
 @cocotb.test(skip=os.getenv("GITHUB_ACTIONS") is None)
 async def test_python_version(_: object) -> None:
-    assert sys.version.startswith(os.environ["PYTHON_VERSION"].strip())
+    assert sys.version.startswith(
+        os.environ["PYTHON_VERSION"].strip().removesuffix("t")
+    )

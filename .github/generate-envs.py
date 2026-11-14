@@ -12,13 +12,11 @@ import argparse
 import json
 import sys
 
-ALL_TESTS = "dev_build coverage_reset cpp_tests python_tests integration_tests simulator_tests generate_report"
-OS_TESTS = (
-    "dev_build coverage_reset cpp_tests python_tests simulator_tests generate_report"
-)
+ALL_TESTS = "dev_build coverage_reset cpp_tests python_tests integration_tests simulator_tests cocotb_tests generate_report"
+OS_TESTS = "dev_build coverage_reset cpp_tests python_tests simulator_tests cocotb_tests generate_report"
 CXX_STANDARD_TESTS = "dev_build coverage_reset cpp_tests python_tests generate_report"
 PYTHON_VERSION_TESTS = (
-    "dev_build coverage_reset python_tests simulator_tests generate_report"
+    "dev_build coverage_reset python_tests simulator_tests cocotb_tests generate_report"
 )
 
 ENVS = [
