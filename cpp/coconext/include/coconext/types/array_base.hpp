@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cassert>
 #include <coconext/types/concepts.hpp>
+#include <coconext/types/logic.hpp>
 #include <coconext/types/range.hpp>
 #include <concepts>
 #include <format>
@@ -88,6 +89,13 @@ template <typename ArrayT>
 class ArraySlice;
 template <typename ArrayT, Range R>
 class StaticArraySlice;
+
+template <typename ArrayT>
+    requires LogicType<std::ranges::range_value_t<ArrayT>>
+class ArraySlice<ArrayT>;
+template <typename ArrayT, Range R>
+    requires LogicType<std::ranges::range_value_t<ArrayT>>
+class StaticArraySlice<ArrayT, R>;
 
 namespace detail {
 

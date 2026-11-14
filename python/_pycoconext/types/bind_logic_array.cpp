@@ -197,7 +197,7 @@ std::optional<DynUInt> bits_of(VectorT const& self) {
     if constexpr (std::is_same_v<VectorT, BitVector>) {
         return storage(self);
     } else {
-        auto resolved = resolve(self);
+        auto resolved = self.resolve();
         if (!resolved.has_value()) {
             return std::nullopt;
         }
@@ -489,7 +489,7 @@ void register_logic_array(nb::module_& m) {
         .def_prop_ro(
             "is_resolvable",
             [](LogicVector const& self) {
-                return resolve(self, ResolveMethod::ERROR).has_value();
+                return self.resolve(ResolveMethod::ERROR).has_value();
             }
         )
 
@@ -1073,8 +1073,7 @@ void register_logic_array(nb::module_& m) {
         .def(
             "resolve",
             [](BitVector const& self, std::string_view resolver) {
-                auto result =
-                    coconext::types::resolve(self, string_to_resolve_method(resolver));
+                auto result = self.resolve(string_to_resolve_method(resolver));
                 return result.value();
             },
             "resolver"_a

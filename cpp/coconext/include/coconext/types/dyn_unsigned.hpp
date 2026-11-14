@@ -9,6 +9,7 @@
 #include <coconext/types/range.hpp>
 #include <cstddef>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string_view>
 #include <type_traits>
@@ -46,6 +47,10 @@ class DynUnsigned {
 
     Range range() const noexcept { return range_; }
     size_t size() const noexcept { return range_.length(); }
+
+    std::optional<Vector<Bit>> resolve(ResolveMethod = ResolveMethod::WEAK) const {
+        return std::optional<Vector<Bit>>{std::in_place, value_, range_};
+    }
 
     // Construct from a native integer. Range coordinates label bits, not powers of two.
     template <NativeInteger T>

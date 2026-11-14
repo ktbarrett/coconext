@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <coconext/types/dyn_bigint.hpp>
 #include <coconext/types/dyn_unsigned.hpp>
+#include <optional>
 #include <utility>
 
 namespace coconext::types::detail {
@@ -38,6 +39,10 @@ class DynSigned {
 
     Range range() const noexcept { return range_; }
     size_t size() const noexcept { return range_.length(); }
+
+    std::optional<Vector<Bit>> resolve(ResolveMethod = ResolveMethod::WEAK) const {
+        return std::optional<Vector<Bit>>{std::in_place, value_, range_};
+    }
 
     // Construct from a native integer. Range coordinates label bits, not powers of two.
     template <NativeInteger T>
