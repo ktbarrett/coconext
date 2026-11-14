@@ -218,20 +218,27 @@ required-imports = ["from __future__ import annotations"]
 # - CPython on macOS x86_64 and arm64
 build = "cp*-manylinux_x86_64 cp*-macosx_x86_64 cp*-macosx_arm64"
 
-# cocotb preloads libraries rather than using RPATH or something similar.
-# This makes delocate/auditwheel very unhappy as they assume the RPATH approach.
-repair-wheel-command = ""
-
 # Build with optimizations and debugging
 # -O2   Enables reasonable optimizations. -O3 is unnecessary with the virtual-call-heavy code in the GPI and may bloat binary size.
 # -g    Generate standard debugging info.
 # -flto Enable LTO which can reduce binary size and improve inlining.
 environment = {CFLAGS = "-O2 -g -flto", CPPFLAGS = "-O2 -g -flto", LDFLAGS = "-O2 -g -flto"}
 
-# Build on a recent manylinux image with the toolchain needed by coconext.
+# Build against glibc 2.28 independently of the Ubuntu version hosting CI.
 manylinux-x86_64-image = "manylinux_2_28"
 build-frontend = "build[uv]"
 test-skip = "*"
+
+[tool.cibuildwheel.linux]
+# Check the manylinux baseline while preserving the bundled libraries we preload.
+# libpython is provided by the interpreter and must not be bundled into the wheel.
+repair-wheel-command = "auditwheel repair --plat manylinux_2_28_x86_64 --exclude libgpi.so --exclude libcoconext.so --exclude libcoconext_gpi.so --exclude 'libpython*.so*' --wheel-dir {dest_dir} {wheel}"
+
+[tool.cibuildwheel.macos]
+# Preserve the names and locations of preloaded libraries instead of running delocate.
+repair-wheel-command = ""
+# Support for C++20 on macOS was very poor until quite recently.
+environment = {CFLAGS = "-O2 -g -flto", CPPFLAGS = "-O2 -g -flto", LDFLAGS = "-O2 -g -flto", MACOSX_DEPLOYMENT_TARGET = "15.0"}
 
 [tool.pytest.ini_options]
 # Simulator-backed and coconext-specific suites are invoked explicitly by the

@@ -124,6 +124,7 @@ metrics.db
 
 # Build artifacts
 /dist/
+/wheelhouse/
 
 # clangd
 compile_commands.json

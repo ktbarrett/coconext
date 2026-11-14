@@ -43,11 +43,11 @@ ENVS = [
         "make-targets": OS_TESTS,
     },
     {
-        # Test macOS 15 (Intel)
+        # Test macOS 26 (Intel)
         "python-version": "3.13",
         "simulator": "icarus",
         "toplevel_lang": "verilog",
-        "os": "macos-15-intel",
+        "os": "macos-26-intel",
         "cxx-standard": "20",
         "make-targets": OS_TESTS,
     },
@@ -74,7 +74,7 @@ for ver in python_versions:
             "toplevel_lang": "vhdl",
             "cxx-standard": "20",
             "make-targets": PYTHON_VERSION_TESTS,
-            # Only check stubs on one version
+            # Skip checking stubs for Python 3.9
             "check_stubs": "true" if ver != "3.9" else "false",
         }
     ]
