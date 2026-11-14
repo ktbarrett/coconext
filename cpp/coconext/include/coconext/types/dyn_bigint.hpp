@@ -4,8 +4,6 @@
 #include <algorithm>
 #include <array>
 #include <climits>
-#include <coconext/types/bigint.hpp>
-#include <coconext/types/bigint_common.hpp>
 #include <compare>
 #include <cstddef>
 #include <cstdint>
@@ -19,6 +17,9 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
+
+#include <coconext/types/bigint.hpp>
+#include <coconext/types/bigint_common.hpp>
 
 namespace coconext::types::detail {
 

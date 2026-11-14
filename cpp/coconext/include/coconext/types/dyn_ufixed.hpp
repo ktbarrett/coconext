@@ -4,10 +4,6 @@
 #include <algorithm>
 #include <climits>
 #include <cmath>
-#include <coconext/types/dyn_fixed_base.hpp>
-#include <coconext/types/hash.hpp>
-#include <coconext/types/logic_array.hpp>
-#include <coconext/types/ufixed.hpp>
 #include <compare>
 #include <concepts>
 #include <cstddef>
@@ -20,6 +16,11 @@
 #include <string_view>
 #include <typeinfo>
 #include <utility>
+
+#include <coconext/types/dyn_fixed_base.hpp>
+#include <coconext/types/hash.hpp>
+#include <coconext/types/logic_array.hpp>
+#include <coconext/types/ufixed.hpp>
 
 namespace coconext::types::detail {
 

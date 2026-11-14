@@ -1,8 +1,6 @@
 #ifndef COCONEXT_FUTURE_HPP
 #define COCONEXT_FUTURE_HPP
 
-#include <coconext/task.hpp>
-
 #include <cassert>
 #include <cstddef>
 #include <exception>
@@ -12,6 +10,8 @@
 #include <utility>
 #include <variant>
 #include <vector>
+
+#include <coconext/task.hpp>
 
 namespace coconext {
 

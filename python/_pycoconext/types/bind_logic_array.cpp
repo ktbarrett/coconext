@@ -7,11 +7,6 @@
 #include <nanobind/stl/string_view.h>
 
 #include <algorithm>
-#include <coconext/types/direction.hpp>
-#include <coconext/types/dyn_signed.hpp>
-#include <coconext/types/logic.hpp>
-#include <coconext/types/logic_array.hpp>
-#include <coconext/types/range.hpp>
 #include <cstdint>
 #include <format>
 #include <iterator>
@@ -20,6 +15,12 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+
+#include <coconext/types/direction.hpp>
+#include <coconext/types/dyn_signed.hpp>
+#include <coconext/types/logic.hpp>
+#include <coconext/types/logic_array.hpp>
+#include <coconext/types/range.hpp>
 
 namespace nb = nanobind;
 using namespace nb::literals;

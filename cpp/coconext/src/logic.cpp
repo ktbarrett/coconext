@@ -1,6 +1,7 @@
-#include <coconext/types/logic.hpp>
 #include <optional>
 #include <random>
+
+#include <coconext/types/logic.hpp>
 
 #include "./random.hpp"
 

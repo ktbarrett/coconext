@@ -1,7 +1,6 @@
 #ifndef COCONEXT_LOGIC_HPP
 #define COCONEXT_LOGIC_HPP
 
-#include <coconext/types/concepts.hpp>
 #include <cstdint>
 #include <format>
 #include <optional>
@@ -9,6 +8,8 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+
+#include <coconext/types/concepts.hpp>
 
 namespace coconext::types {
 

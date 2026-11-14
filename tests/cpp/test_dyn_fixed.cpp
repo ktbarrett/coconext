@@ -1,10 +1,5 @@
 // LCOV_EXCL_BR_START -- gtest macros generate noisy uncovered branches
-#include <gtest/gtest.h>
-
 #include <algorithm>
-#include <coconext/types/dyn_sfixed.hpp>
-#include <coconext/types/sfixed.hpp>
-#include <coconext/types/ufixed.hpp>
 #include <format>
 #include <limits>
 #include <ranges>
@@ -12,6 +7,12 @@
 #include <type_traits>
 #include <unordered_set>
 #include <utility>
+
+#include <gtest/gtest.h>
+
+#include <coconext/types/dyn_sfixed.hpp>
+#include <coconext/types/sfixed.hpp>
+#include <coconext/types/ufixed.hpp>
 
 using coconext::types::BitVector;
 using coconext::types::Direction;

@@ -2,11 +2,6 @@
 #define COCONEXT_DYN_UNSIGNED_HPP
 
 #include <algorithm>
-#include <coconext/types/concepts.hpp>
-#include <coconext/types/dyn_bigint.hpp>
-#include <coconext/types/hash.hpp>
-#include <coconext/types/logic_array.hpp>
-#include <coconext/types/range.hpp>
 #include <cstddef>
 #include <limits>
 #include <optional>
@@ -14,6 +9,12 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
+
+#include <coconext/types/concepts.hpp>
+#include <coconext/types/dyn_bigint.hpp>
+#include <coconext/types/hash.hpp>
+#include <coconext/types/logic_array.hpp>
+#include <coconext/types/range.hpp>
 
 namespace coconext::types::detail {
 

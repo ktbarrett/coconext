@@ -1,11 +1,12 @@
 // LCOV_EXCL_BR_START -- gtest macros generate noisy uncovered branches
-#include <gtest/gtest.h>
-
 #include <cfenv>
-#include <coconext/types.hpp>
 #include <tuple>
 #include <type_traits>
 #include <utility>
+
+#include <gtest/gtest.h>
+
+#include <coconext/types.hpp>
 
 #include "force_runtime.hpp"
 

@@ -1,10 +1,11 @@
 // LCOV_EXCL_BR_START
-#include <gtest/gtest.h>
-
 #include <array>
-#include <coconext/types.hpp>
 #include <string>
 #include <type_traits>
+
+#include <gtest/gtest.h>
+
+#include <coconext/types.hpp>
 
 #include "force_runtime.hpp"
 

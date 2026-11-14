@@ -1,12 +1,13 @@
 #ifndef COCONEXT_BIT_ARRAY_HPP
 #define COCONEXT_BIT_ARRAY_HPP
 
+#include <optional>
+
 #include <coconext/types/array.hpp>
 #include <coconext/types/bigint.hpp>
 #include <coconext/types/logic.hpp>
 #include <coconext/types/range.hpp>
 #include <coconext/types/string_literal.hpp>
-#include <optional>
 
 namespace coconext::types {
 

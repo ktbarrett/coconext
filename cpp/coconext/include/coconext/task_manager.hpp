@@ -1,16 +1,16 @@
 #ifndef COCONEXT_TASK_MANAGER_HPP
 #define COCONEXT_TASK_MANAGER_HPP
 
-#include <coconext/coro.hpp>
-#include <coconext/future.hpp>
-#include <coconext/task.hpp>
-
 #include <cassert>
 #include <coroutine>
 #include <exception>
 #include <optional>
 #include <stdexcept>
 #include <utility>
+
+#include <coconext/coro.hpp>
+#include <coconext/future.hpp>
+#include <coconext/task.hpp>
 
 namespace coconext {
 

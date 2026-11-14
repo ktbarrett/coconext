@@ -1,10 +1,11 @@
 // LCOV_EXCL_BR_START
-#include <gtest/gtest.h>
-
 #include <cfenv>
-#include <coconext/types.hpp>
 #include <type_traits>
 #include <utility>
+
+#include <gtest/gtest.h>
+
+#include <coconext/types.hpp>
 
 using namespace coconext::types;
 using namespace coconext::literals;

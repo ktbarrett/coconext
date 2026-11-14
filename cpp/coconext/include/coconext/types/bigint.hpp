@@ -6,13 +6,6 @@
 #include <bit>
 #include <cassert>
 #include <climits>
-#include <coconext/types/array_base.hpp>
-#include <coconext/types/bigint_common.hpp>
-#include <coconext/types/direction.hpp>
-#include <coconext/types/hash.hpp>
-#include <coconext/types/logic.hpp>
-#include <coconext/types/range.hpp>
-#include <coconext/types/resize_mode.hpp>
 #include <compare>
 #include <cstddef>
 #include <cstdint>
@@ -25,6 +18,14 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
+
+#include <coconext/types/array_base.hpp>
+#include <coconext/types/bigint_common.hpp>
+#include <coconext/types/direction.hpp>
+#include <coconext/types/hash.hpp>
+#include <coconext/types/logic.hpp>
+#include <coconext/types/range.hpp>
+#include <coconext/types/resize_mode.hpp>
 
 namespace coconext::types {
 

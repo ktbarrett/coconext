@@ -1,5 +1,6 @@
-#include <coconext/sim_objects.hpp>
 #include <gpi.h>
+
+#include <coconext/sim_objects.hpp>
 
 namespace coconext::sim_objects {
 

@@ -2,10 +2,11 @@
 #define COCONEXT_DYN_SIGNED_HPP
 
 #include <algorithm>
-#include <coconext/types/dyn_bigint.hpp>
-#include <coconext/types/dyn_unsigned.hpp>
 #include <optional>
 #include <utility>
+
+#include <coconext/types/dyn_bigint.hpp>
+#include <coconext/types/dyn_unsigned.hpp>
 
 namespace coconext::types::detail {
 

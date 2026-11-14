@@ -1,12 +1,6 @@
 #ifndef COCONEXT_TASK_HPP
 #define COCONEXT_TASK_HPP
 
-#include <coconext/awaitable.hpp>
-#include <coconext/event_loop.hpp>
-#include <coconext/intrusive_deque.hpp>
-#include <coconext/not_null.hpp>
-#include <coconext/outcome.hpp>
-
 #include <coroutine>
 #include <cstddef>
 #include <exception>
@@ -17,6 +11,12 @@
 #include <utility>
 #include <variant>
 #include <vector>
+
+#include <coconext/awaitable.hpp>
+#include <coconext/event_loop.hpp>
+#include <coconext/intrusive_deque.hpp>
+#include <coconext/not_null.hpp>
+#include <coconext/outcome.hpp>
 
 namespace coconext {
 

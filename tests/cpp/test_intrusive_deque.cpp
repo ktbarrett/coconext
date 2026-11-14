@@ -1,10 +1,11 @@
 // LCOV_EXCL_BR_START -- gtest macros generate noisy uncovered branches
-#include <gtest/gtest.h>
-
-#include <coconext/intrusive_deque.hpp>
 #include <iterator>
 #include <type_traits>
 #include <vector>
+
+#include <gtest/gtest.h>
+
+#include <coconext/intrusive_deque.hpp>
 
 using coconext::detail::IntrusiveDeque;
 using coconext::detail::IntrusiveDequeNode;

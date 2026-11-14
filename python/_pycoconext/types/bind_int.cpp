@@ -4,12 +4,6 @@
 #include <nanobind/stl/string.h>       // IWYU pragma: keep
 #include <nanobind/stl/string_view.h>  // IWYU pragma: keep
 
-#include <coconext/types/concepts.hpp>
-#include <coconext/types/direction.hpp>
-#include <coconext/types/dyn_signed.hpp>
-#include <coconext/types/logic.hpp>
-#include <coconext/types/range.hpp>
-
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -17,6 +11,12 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+
+#include <coconext/types/concepts.hpp>
+#include <coconext/types/direction.hpp>
+#include <coconext/types/dyn_signed.hpp>
+#include <coconext/types/logic.hpp>
+#include <coconext/types/range.hpp>
 
 namespace nb = nanobind;
 using namespace nb::literals;

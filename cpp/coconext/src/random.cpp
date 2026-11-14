@@ -1,5 +1,6 @@
-#include <coconext/random.hpp>
 #include <random>
+
+#include <coconext/random.hpp>
 
 // TODO should we share the same rng between everything in coconext?
 static std::mt19937_64 rng;

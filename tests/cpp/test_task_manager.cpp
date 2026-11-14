@@ -1,4 +1,9 @@
 // LCOV_EXCL_BR_START -- gtest macros generate noisy uncovered branches
+#include <exception>
+#include <stdexcept>
+#include <type_traits>
+#include <vector>
+
 #include <gtest/gtest.h>
 
 #include <coconext/coro.hpp>
@@ -7,11 +12,6 @@
 #include <coconext/run.hpp>
 #include <coconext/task.hpp>
 #include <coconext/task_manager.hpp>
-
-#include <exception>
-#include <stdexcept>
-#include <type_traits>
-#include <vector>
 
 using coconext::CancelledError;
 using coconext::Coro;

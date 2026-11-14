@@ -2,13 +2,14 @@
 #define COCONEXT_UFIXED_HPP
 
 #include <cmath>
+#include <optional>
+
 #include <coconext/types/bigint.hpp>
 #include <coconext/types/concepts.hpp>
 #include <coconext/types/range.hpp>
 #include <coconext/types/resize_mode.hpp>
 #include <coconext/types/signed.hpp>
 #include <coconext/types/unsigned.hpp>
-#include <optional>
 
 namespace coconext::types {
 

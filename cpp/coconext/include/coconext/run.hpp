@@ -1,13 +1,13 @@
 #ifndef COCONEXT_RUN_HPP
 #define COCONEXT_RUN_HPP
 
+#include <condition_variable>
+#include <utility>
+
 #include <coconext/coro.hpp>
 #include <coconext/event_loop.hpp>
 #include <coconext/not_null.hpp>
 #include <coconext/task_manager.hpp>
-
-#include <condition_variable>
-#include <utility>
 
 namespace coconext {
 

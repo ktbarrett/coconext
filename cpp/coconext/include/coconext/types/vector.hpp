@@ -2,10 +2,6 @@
 #define COCONEXT_VECTOR_HPP
 
 #include <algorithm>
-#include <coconext/types/array_base.hpp>
-#include <coconext/types/concepts.hpp>
-#include <coconext/types/hash.hpp>
-#include <coconext/types/range.hpp>
 #include <concepts>
 #include <cstddef>
 #include <initializer_list>
@@ -16,6 +12,11 @@
 #include <string>
 #include <type_traits>
 #include <typeinfo>
+
+#include <coconext/types/array_base.hpp>
+#include <coconext/types/concepts.hpp>
+#include <coconext/types/hash.hpp>
+#include <coconext/types/range.hpp>
 
 // std::unique_ptr's constexpr support landed in C++23 (P2273R3).
 #if __cplusplus >= 202302L

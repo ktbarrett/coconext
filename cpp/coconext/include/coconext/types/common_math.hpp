@@ -1,11 +1,12 @@
 #ifndef COCONEXT_COMMON_MATH_HPP
 #define COCONEXT_COMMON_MATH_HPP
 
-#include <coconext/types/concepts.hpp>
 #include <cstddef>
 #include <limits>
 #include <stdexcept>
 #include <type_traits>
+
+#include <coconext/types/concepts.hpp>
 
 namespace coconext::types::detail {
 

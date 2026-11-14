@@ -2,11 +2,12 @@
 #define COCONEXT_EVENT_LOOP_HPP
 
 #include <cassert>
-#include <coconext/intrusive_deque.hpp>
-#include <coconext/not_null.hpp>
 #include <condition_variable>
 #include <mutex>
 #include <stdexcept>
+
+#include <coconext/intrusive_deque.hpp>
+#include <coconext/not_null.hpp>
 
 namespace coconext::detail {
 

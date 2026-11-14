@@ -3,9 +3,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <coconext/types/concepts.hpp>
-#include <coconext/types/logic.hpp>
-#include <coconext/types/range.hpp>
 #include <concepts>
 #include <format>
 #include <initializer_list>
@@ -15,6 +12,10 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+
+#include <coconext/types/concepts.hpp>
+#include <coconext/types/logic.hpp>
+#include <coconext/types/range.hpp>
 
 namespace coconext::types {
 

@@ -146,25 +146,29 @@ ForEachMacros:
   - BOOST_FOREACH
 IfMacros:
   - KJ_IF_MAYBE
-IncludeBlocks: Preserve
+IncludeBlocks: Regroup
 IncludeCategories:
   # nanobind includes Python.h, which must precede system headers.
   - Regex: '^[<"]nanobind/'
     Priority: -1
     SortPriority: -1
-  - Regex: ^"(llvm|llvm-c|clang|clang-c)/
-    Priority: 2
-    SortPriority: 0
-    CaseSensitive: false
-  - Regex: ^(<|"(gtest|gmock|isl|json)/)
-    Priority: 3
-    SortPriority: 0
-    CaseSensitive: false
-  - Regex: .*
+  # C++ standard library headers.
+  - Regex: '^<[[:alnum:]_]+>$'
     Priority: 1
-    SortPriority: 0
-    CaseSensitive: false
-IncludeIsMainRegex: (Test)?$
+  # C standard library headers.
+  - Regex: '^<(assert|complex|ctype|errno|fenv|float|inttypes|iso646|limits|locale|math|setjmp|signal|stdalign|stdarg|stdatomic|stdbit|stdbool|stdckdint|stddef|stdint|stdio|stdlib|stdnoreturn|string|tgmath|threads|time|uchar|wchar|wctype)\.h>$'
+    Priority: 1
+  # Match project headers before the general third-party category.
+  - Regex: '^[<"]coconext(_nb)?/'
+    Priority: 3
+  # Other third-party headers use angle brackets.
+  - Regex: '^<'
+    Priority: 2
+  # Relative headers use quotes.
+  - Regex: '^"'
+    Priority: 4
+# Keep main headers in their normal category.
+IncludeIsMainRegex: '$^'
 IncludeIsMainSourceRegex: ""
 IndentAccessModifiers: false
 IndentCaseBlocks: false

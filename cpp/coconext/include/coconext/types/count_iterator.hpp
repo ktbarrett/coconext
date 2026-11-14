@@ -2,9 +2,10 @@
 #define COCONEXT_COUNT_ITERATOR_HPP
 
 #include <cassert>
-#include <coconext/types/direction.hpp>
 #include <concepts>
 #include <iterator>
+
+#include <coconext/types/direction.hpp>
 
 namespace coconext::types {
 

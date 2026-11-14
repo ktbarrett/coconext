@@ -2,15 +2,16 @@
 #define COCONEXT_RANGE_HPP
 
 #include <cassert>
-#include <coconext/types/concepts.hpp>
-#include <coconext/types/count_iterator.hpp>
-#include <coconext/types/direction.hpp>
-#include <coconext/types/hash.hpp>
 #include <cstdint>
 #include <format>
 #include <limits>
 #include <ranges>
 #include <stdexcept>
+
+#include <coconext/types/concepts.hpp>
+#include <coconext/types/count_iterator.hpp>
+#include <coconext/types/direction.hpp>
+#include <coconext/types/hash.hpp>
 
 namespace coconext::types {
 

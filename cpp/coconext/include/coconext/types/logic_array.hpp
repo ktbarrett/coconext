@@ -2,12 +2,6 @@
 #define COCONEXT_LOGIC_ARRAY_HPP
 
 #include <algorithm>
-#include <coconext/types/array.hpp>
-#include <coconext/types/bit_array.hpp>
-#include <coconext/types/dyn_bigint.hpp>
-#include <coconext/types/logic.hpp>
-#include <coconext/types/string_literal.hpp>
-#include <coconext/types/vector.hpp>
 #include <cstddef>
 #include <format>
 #include <limits>
@@ -16,6 +10,13 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+
+#include <coconext/types/array.hpp>
+#include <coconext/types/bit_array.hpp>
+#include <coconext/types/dyn_bigint.hpp>
+#include <coconext/types/logic.hpp>
+#include <coconext/types/string_literal.hpp>
+#include <coconext/types/vector.hpp>
 
 // The LogicVector ctors below delegate to VectorImpl ctors that are only constexpr in
 // C++23. BitVector uses DynUInt storage instead.

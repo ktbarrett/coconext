@@ -1,4 +1,12 @@
 // LCOV_EXCL_BR_START -- gtest macros generate noisy uncovered branches
+#include <concepts>
+#include <coroutine>
+#include <exception>
+#include <optional>
+#include <stdexcept>
+#include <type_traits>
+#include <utility>
+
 #include <gtest/gtest.h>
 
 #include <coconext/awaitable.hpp>
@@ -8,14 +16,6 @@
 #include <coconext/run.hpp>
 #include <coconext/task.hpp>
 #include <coconext/task_manager.hpp>
-
-#include <concepts>
-#include <coroutine>
-#include <exception>
-#include <optional>
-#include <stdexcept>
-#include <type_traits>
-#include <utility>
 
 using coconext::await_result_t;
 using coconext::Awaitable;

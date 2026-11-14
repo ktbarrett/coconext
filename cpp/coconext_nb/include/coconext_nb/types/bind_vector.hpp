@@ -6,10 +6,10 @@
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 
-#include <coconext/types/vector.hpp>
-
 #include <stdexcept>
 #include <vector>
+
+#include <coconext/types/vector.hpp>
 
 namespace coconext_nb {
 

@@ -1,11 +1,12 @@
 // LCOV_EXCL_BR_START -- gtest macros generate noisy uncovered branches
-#include <gtest/gtest.h>
-
-#include <coconext/types.hpp>
 #include <format>
 #include <stdexcept>
 #include <unordered_set>
 #include <vector>
+
+#include <gtest/gtest.h>
+
+#include <coconext/types.hpp>
 
 using namespace coconext::types;
 using namespace coconext::literals;

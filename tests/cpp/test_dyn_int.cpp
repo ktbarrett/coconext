@@ -1,8 +1,5 @@
 // LCOV_EXCL_BR_START
-#include <gtest/gtest.h>
-
 #include <algorithm>
-#include <coconext/types/dyn_signed.hpp>
 #include <cstdint>
 #include <iterator>
 #include <limits>
@@ -12,6 +9,10 @@
 #include <type_traits>
 #include <unordered_set>
 #include <utility>
+
+#include <gtest/gtest.h>
+
+#include <coconext/types/dyn_signed.hpp>
 
 using coconext::types::Bit;
 using coconext::types::BitArray;

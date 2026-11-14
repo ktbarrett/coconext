@@ -3,10 +3,11 @@
 #include <nanobind/stl/string.h>       // IWYU pragma: keep -- std::string caster
 #include <nanobind/stl/string_view.h>  // IWYU pragma: keep -- std::string_view caster
 
-#include <coconext/types/logic.hpp>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+
+#include <coconext/types/logic.hpp>
 
 namespace nb = nanobind;
 using namespace nb::literals;

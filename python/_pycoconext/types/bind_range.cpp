@@ -4,15 +4,16 @@
 #include <nanobind/stl/string.h>       // IWYU pragma: keep -- std::string caster
 #include <nanobind/stl/string_view.h>  // IWYU pragma: keep -- std::string_view caster
 
-#include <coconext/types/direction.hpp>
-#include <coconext/types/hash.hpp>
-#include <coconext/types/range.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <format>
 #include <optional>
 #include <stdexcept>
 #include <string_view>
+
+#include <coconext/types/direction.hpp>
+#include <coconext/types/hash.hpp>
+#include <coconext/types/range.hpp>
 
 namespace nb = nanobind;
 using namespace nb::literals;

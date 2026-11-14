@@ -1,9 +1,10 @@
 #ifndef COCONEXT_SFIXED_HPP
 #define COCONEXT_SFIXED_HPP
 
+#include <optional>
+
 #include <coconext/types/signed.hpp>
 #include <coconext/types/ufixed.hpp>
-#include <optional>
 
 namespace coconext::types {
 

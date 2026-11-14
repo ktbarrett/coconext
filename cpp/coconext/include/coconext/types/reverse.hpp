@@ -2,11 +2,12 @@
 #define COCONEXT_REVERSE_HPP
 
 #include <algorithm>
+#include <ranges>
+
 #include <coconext/types/array.hpp>
 #include <coconext/types/array_base.hpp>
 #include <coconext/types/range.hpp>
 #include <coconext/types/vector.hpp>
-#include <ranges>
 
 namespace coconext::types {
 

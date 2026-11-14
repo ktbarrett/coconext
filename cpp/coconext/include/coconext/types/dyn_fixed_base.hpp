@@ -4,11 +4,6 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <coconext/types/common_math.hpp>
-#include <coconext/types/dyn_bigint.hpp>
-#include <coconext/types/dyn_signed.hpp>
-#include <coconext/types/range.hpp>
-#include <coconext/types/resize_mode.hpp>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -18,6 +13,12 @@
 #include <string>
 #include <type_traits>
 #include <utility>
+
+#include <coconext/types/common_math.hpp>
+#include <coconext/types/dyn_bigint.hpp>
+#include <coconext/types/dyn_signed.hpp>
+#include <coconext/types/range.hpp>
+#include <coconext/types/resize_mode.hpp>
 
 namespace coconext::types::detail {
 
