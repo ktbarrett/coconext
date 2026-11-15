@@ -3,7 +3,7 @@
 """Generate test environments and the suites relevant to each one.
 
 The primary environment runs every suite. Other environments exercise only
-the dimensions they vary: OS/compiler, C++ standard, or Python version.
+the dimensions they vary: simulator, OS/compiler, C++ standard, or Python version.
 """
 
 from __future__ import annotations
@@ -34,10 +34,39 @@ ENVS = [
         "make-targets": ALL_TESTS,
     },
     {
-        # Test macOS 26 (Apple Silicon)
+        # Retain Verilog coverage with Icarus.
         "python-version": "3.13",
         "simulator": "icarus",
         "toplevel_lang": "verilog",
+        "os": "ubuntu-24.04",
+        "cxx-standard": "20",
+        "make-targets": ALL_TESTS,
+    },
+    {
+        # Test VHDL with GHDL.
+        "python-version": "3.13",
+        "simulator": "ghdl",
+        "toplevel_lang": "vhdl",
+        "vhdl-gpi-interface": "vpi",
+        "os": "ubuntu-24.04",
+        "cxx-standard": "20",
+        "make-targets": ALL_TESTS,
+    },
+    {
+        # Test Verilog with Verilator.
+        "python-version": "3.13",
+        "simulator": "verilator",
+        "simulator-version": "v5.052",
+        "toplevel_lang": "verilog",
+        "os": "ubuntu-24.04",
+        "cxx-standard": "20",
+        "make-targets": ALL_TESTS,
+    },
+    {
+        # Test macOS 26 (Apple Silicon)
+        "python-version": "3.13",
+        "simulator": "nvc",
+        "toplevel_lang": "vhdl",
         "os": "macos-26",
         "cxx-standard": "20",
         "make-targets": OS_TESTS,
@@ -45,8 +74,8 @@ ENVS = [
     {
         # Test macOS 26 (Intel)
         "python-version": "3.13",
-        "simulator": "icarus",
-        "toplevel_lang": "verilog",
+        "simulator": "nvc",
+        "toplevel_lang": "vhdl",
         "os": "macos-26-intel",
         "cxx-standard": "20",
         "make-targets": OS_TESTS,
