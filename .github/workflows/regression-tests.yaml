@@ -68,17 +68,12 @@ jobs:
           name: wheels-${{ runner.os }}-${{ runner.arch }}
           path: dist
 
-      - name: Download Sdist Artifacts
+      - name: Download sdist Artifacts
         if: inputs.download_sdist_artifacts
         uses: actions/download-artifact@v8
         with:
           name: sdist
           path: dist
-
-      - uses: actions/setup-python@v7.1.0
-        with:
-          python-version: ${{matrix.python-version}}
-          allow-prereleases: true
 
       - name: Setup NVC
         uses: nickg/setup-nvc@v1
@@ -91,9 +86,10 @@ jobs:
         run: |
           brew install icarus-verilog
 
-      - name: Install uv
+      - name: Set up Python and uv
         uses: astral-sh/setup-uv@v10.3.3
         with:
+          python-version: ${{ matrix.python-version }}
           activate-environment: "true"
 
       - name: Install Testing Dependencies
