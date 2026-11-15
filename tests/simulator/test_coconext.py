@@ -24,7 +24,7 @@ def runner() -> Runner:
     else:
         sources = [pwd / "empty.sv"]
     addl_args: dict[str, Any] = {}
-    if sim == "icarus":
+    if sim in ("icarus", "verilator"):
         addl_args = {
             "timescale": ("1fs", "1fs"),
         }
@@ -33,27 +33,21 @@ def runner() -> Runner:
 
 
 def test_triggers(runner: Runner) -> None:
-    assert runner.build_dir is not None
     runner.test(
         test_module="trigger_tests",
         hdl_toplevel="top",
-        test_dir=runner.build_dir / "trigger_tests",
     )
 
 
 def test_simtime(runner: Runner) -> None:
-    assert runner.build_dir is not None
     runner.test(
         test_module="simtime_tests",
         hdl_toplevel="top",
-        test_dir=runner.build_dir / "simtime_tests",
     )
 
 
 def test_queues(runner: Runner) -> None:
-    assert runner.build_dir is not None
     runner.test(
         test_module="queue_tests",
         hdl_toplevel="top",
-        test_dir=runner.build_dir / "queue_tests",
     )

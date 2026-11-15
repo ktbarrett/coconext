@@ -46,6 +46,7 @@ jobs:
         PYTHON_VERSION: ${{ matrix.python-version }}
         SIM: ${{ matrix.simulator }}
         TOPLEVEL_LANG: ${{ matrix.toplevel_lang }}
+        VHDL_GPI_INTERFACE: ${{ matrix.vhdl-gpi-interface || 'vhpi' }}
         CXX_STANDARD: ${{ matrix.cxx-standard }}
 
       strategy:
@@ -75,16 +76,33 @@ jobs:
           name: sdist
           path: dist
 
-      - name: Setup NVC
+      - name: Setup NVC (Ubuntu)
         uses: nickg/setup-nvc@v1
-        if: matrix.simulator == 'nvc' && (contains(inputs.make_targets, 'release_test') || contains(matrix.make-targets, 'simulator_tests'))
+        if: matrix.simulator == 'nvc' && startsWith(matrix.os, 'ubuntu') && (contains(inputs.make_targets, 'release_test') || contains(matrix.make-targets, 'simulator_tests'))
         with:
           version: ${{matrix.simulator-version}}
 
-      - name: Setup Icarus (MacOS)
-        if: matrix.simulator == 'icarus' && startsWith(matrix.os, 'macos') && (contains(inputs.make_targets, 'release_test') || contains(matrix.make-targets, 'simulator_tests'))
+      - name: Setup Icarus (Ubuntu)
+        if: matrix.simulator == 'icarus' && startsWith(matrix.os, 'ubuntu') && (contains(inputs.make_targets, 'release_test') || contains(matrix.make-targets, 'simulator_tests'))
         run: |
-          brew install icarus-verilog
+          sudo apt install -y iverilog
+
+      - name: Setup GHDL (Ubuntu)
+        if: matrix.simulator == 'ghdl' && startsWith(matrix.os, 'ubuntu') && (contains(inputs.make_targets, 'release_test') || contains(matrix.make-targets, 'simulator_tests'))
+        run: |
+          sudo apt install -y ghdl
+
+      # This action selects its own Python, so run it before setup-uv.
+      - name: Setup Verilator (Ubuntu)
+        if: matrix.simulator == 'verilator' && startsWith(matrix.os, 'ubuntu') && (contains(inputs.make_targets, 'release_test') || contains(matrix.make-targets, 'simulator_tests'))
+        uses: ktbarrett/setup-verilator@v0.1.2
+        with:
+          version: ${{ matrix.simulator-version }}
+
+      - name: Setup NVC (MacOS)
+        if: matrix.simulator == 'nvc' && startsWith(matrix.os, 'macos') && (contains(inputs.make_targets, 'release_test') || contains(matrix.make-targets, 'simulator_tests'))
+        run: |
+          brew install nvc
 
       - name: Set up Python and uv
         uses: astral-sh/setup-uv@v10.3.3
