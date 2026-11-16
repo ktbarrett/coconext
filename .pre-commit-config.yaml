@@ -7,7 +7,7 @@ default_language_version:
 repos:
 # ruff with --fix should run before other formatting tools
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: "v0.17.4"
+  rev: "v0.17.5"
   hooks:
     - id: "ruff"
       args:
@@ -37,7 +37,7 @@ repos:
   - id: check-added-large-files
 
 - repo: https://github.com/henryiii/validate-pyproject-schema-store
-  rev: "2026.11.07"
+  rev: "2026.11.14"
   hooks:
     - id: validate-pyproject
 
@@ -58,7 +58,7 @@ repos:
     - sphinx
 
 - repo: https://github.com/astral-sh/uv-pre-commit
-  rev: 0.13.7
+  rev: 0.13.8
   hooks:
     - id: uv-lock
 
