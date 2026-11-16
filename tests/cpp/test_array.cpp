@@ -2,6 +2,7 @@
 #include <format>
 #include <functional>
 #include <numeric>
+#include <ranges>
 #include <stdexcept>
 #include <unordered_set>
 #include <vector>
@@ -949,6 +950,13 @@ static_assert(constexpr_vector_indexing() == 200);
 
 // One-arg form (default `Elem = void`) matches any element type.
 static_assert(RangedSequence<Vector<int>>);
+static_assert(RangedSequence<Vector<int> const>);
+static_assert(RangedSequence<ArraySlice<Vector<int>>>);
+static_assert(RangedSequence<ArraySlice<Vector<int> const>>);
+static_assert(RangedSequence<StaticArraySlice<Vector<int>, Range{0, Direction::TO, 3}>>);
+static_assert(
+    RangedSequence<StaticArraySlice<Vector<int> const, Range{0, Direction::TO, 3}>>
+);
 static_assert(RangedSequence<Vector<float>>);
 static_assert(!RangedSequence<int>);
 
@@ -963,7 +971,17 @@ static_assert(StaticRangedSequence<Array<int, Range{0, Direction::TO, 3}>>);
 static_assert(StaticRangedSequence<Array<int, Range{0, Direction::TO, 3}>, int>);
 static_assert(!StaticRangedSequence<Array<int, Range{0, Direction::TO, 3}>, float>);
 static_assert(!StaticRangedSequence<Vector<int>>);
+static_assert(!StaticRangedSequence<ArraySlice<Vector<int>>>);
+static_assert(
+    StaticRangedSequence<StaticArraySlice<Vector<int>, Range{0, Direction::TO, 3}>>
+);
 static_assert(!StaticRangedSequence<Vector<int>, int>);
+
+static_assert(std::ranges::sized_range<Vector<int>>);
+static_assert(std::ranges::sized_range<ArraySlice<Vector<int>>>);
+static_assert(
+    std::ranges::sized_range<StaticArraySlice<Vector<int>, Range{0, Direction::TO, 3}>>
+);
 
 // -- index<I>() on dynamic-range types -------------------------------------
 //

@@ -275,27 +275,6 @@ constexpr bool operator==(Vector<ValueT> const& lhs, Vector<ValueT> const& rhs) 
     return true;
 }
 
-static_assert(RangedSequence<Vector<int>>);
-static_assert(RangedSequence<Vector<int> const>);
-static_assert(RangedSequence<ArraySlice<Vector<int>>>);
-static_assert(RangedSequence<ArraySlice<Vector<int> const>>);
-static_assert(RangedSequence<StaticArraySlice<Vector<int>, Range{0, Direction::TO, 3}>>);
-static_assert(
-    RangedSequence<StaticArraySlice<Vector<int> const, Range{0, Direction::TO, 3}>>
-);
-
-static_assert(!StaticRangedSequence<Vector<int>>);
-static_assert(!StaticRangedSequence<ArraySlice<Vector<int>>>);
-static_assert(
-    StaticRangedSequence<StaticArraySlice<Vector<int>, Range{0, Direction::TO, 3}>>
-);
-
-static_assert(std::ranges::sized_range<Vector<int>>);
-static_assert(std::ranges::sized_range<ArraySlice<Vector<int>>>);
-static_assert(
-    std::ranges::sized_range<StaticArraySlice<Vector<int>, Range{0, Direction::TO, 3}>>
-);
-
 }  // namespace coconext::types
 
 template <typename T>
