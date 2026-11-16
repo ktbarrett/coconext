@@ -17,6 +17,7 @@
 #include <typeinfo>
 #include <utility>
 
+#include <coconext/types/common_math.hpp>
 #include <coconext/types/dyn_fixed_base.hpp>
 #include <coconext/types/hash.hpp>
 #include <coconext/types/logic_array.hpp>
@@ -387,23 +388,23 @@ class DynUfixed {
         return value_ <=> rhs.value_;
     }
 
-    template <typename ShiftType>
+    template <NativeInteger ShiftType>
     DynUfixed operator<<(ShiftType const& amount) const {
         dyn_fixed_detail::require_numeric_range(range_);
-        size_t const shift = dyn_fixed_detail::normalize_dynamic_shift(amount, size());
+        size_t const shift = normalize_shift_amount(amount, size());
         return DynUfixed(value_ << shift, range_);
     }
-    template <typename ShiftType>
+    template <NativeInteger ShiftType>
     DynUfixed operator>>(ShiftType const& amount) const {
         dyn_fixed_detail::require_numeric_range(range_);
-        size_t const shift = dyn_fixed_detail::normalize_dynamic_shift(amount, size());
+        size_t const shift = normalize_shift_amount(amount, size());
         return DynUfixed(value_ >> shift, range_);
     }
-    template <typename ShiftType>
+    template <NativeInteger ShiftType>
     DynUfixed& operator<<=(ShiftType const& amount) {
         return *this = *this << amount;
     }
-    template <typename ShiftType>
+    template <NativeInteger ShiftType>
     DynUfixed& operator>>=(ShiftType const& amount) {
         return *this = *this >> amount;
     }

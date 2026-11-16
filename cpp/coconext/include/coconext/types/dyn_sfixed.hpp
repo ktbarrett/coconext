@@ -17,6 +17,7 @@
 #include <typeinfo>
 #include <utility>
 
+#include <coconext/types/common_math.hpp>
 #include <coconext/types/dyn_ufixed.hpp>
 #include <coconext/types/sfixed.hpp>
 
@@ -444,23 +445,23 @@ class DynSfixed {
         return value_ <=> rhs.value_;
     }
 
-    template <typename ShiftType>
+    template <NativeInteger ShiftType>
     DynSfixed operator<<(ShiftType const& amount) const {
         dyn_fixed_detail::require_numeric_range(range_);
-        size_t const shift = dyn_fixed_detail::normalize_dynamic_shift(amount, size());
+        size_t const shift = normalize_shift_amount(amount, size());
         return DynSfixed(value_ << shift, range_);
     }
-    template <typename ShiftType>
+    template <NativeInteger ShiftType>
     DynSfixed operator>>(ShiftType const& amount) const {
         dyn_fixed_detail::require_numeric_range(range_);
-        size_t const shift = dyn_fixed_detail::normalize_dynamic_shift(amount, size());
+        size_t const shift = normalize_shift_amount(amount, size());
         return DynSfixed(value_ >> shift, range_);
     }
-    template <typename ShiftType>
+    template <NativeInteger ShiftType>
     DynSfixed& operator<<=(ShiftType const& amount) {
         return *this = *this << amount;
     }
-    template <typename ShiftType>
+    template <NativeInteger ShiftType>
     DynSfixed& operator>>=(ShiftType const& amount) {
         return *this = *this >> amount;
     }
@@ -1034,10 +1035,11 @@ concept MixedDynamicStaticFixed = (DynFixedOperand<LHS> && StaticFixedOperand<RH
                                || (StaticFixedOperand<LHS> && DynFixedOperand<RHS>);
 
 template <typename T>
-concept DynIntegerOperand = std::same_as<std::remove_cvref_t<T>, DynUnsigned>
-                         || std::same_as<std::remove_cvref_t<T>, DynSigned>
-                         || is_coconext_unsigned_v<std::remove_cvref_t<T>>
-                         || is_coconext_signed_v<std::remove_cvref_t<T>>;
+concept DynIntegerOperand =
+    std::same_as<std::remove_cvref_t<T>, DynUnsigned>
+    || std::same_as<std::remove_cvref_t<T>, DynSigned>
+    || std::same_as<std::remove_cvref_t<T>, Unsigned<std::remove_cvref_t<T>::static_range>>
+    || std::same_as<std::remove_cvref_t<T>, Signed<std::remove_cvref_t<T>::static_range>>;
 
 inline DynUfixed integer_as_fixed(DynUnsigned const& value) {
     return DynUfixed(DynUInt(storage(value), value.size()), int_downto_range(value.size()));

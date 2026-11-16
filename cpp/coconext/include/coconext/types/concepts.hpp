@@ -73,12 +73,6 @@ concept Hashable = requires(T a) {
     { std::hash<T>{}(a) } -> std::convertible_to<std::size_t>;
 };
 
-template <typename T>
-inline constexpr bool is_coconext_unsigned_v = false;
-
-template <typename T>
-inline constexpr bool is_coconext_signed_v = false;
-
 // Niebloid that reads a type's packed storage. Implementers declare
 // `friend struct detail::storage_fn;` and keep `value_` private; ADL cannot find
 // this call because `storage` is an object, so users can only reach it via the

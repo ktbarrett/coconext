@@ -2,9 +2,11 @@
 #define COCONEXT_UFIXED_HPP
 
 #include <cmath>
+#include <concepts>
 #include <optional>
 
 #include <coconext/types/bigint.hpp>
+#include <coconext/types/common_math.hpp>
 #include <coconext/types/concepts.hpp>
 #include <coconext/types/range.hpp>
 #include <coconext/types/resize_mode.hpp>
@@ -922,99 +924,47 @@ class Ufixed {
         return to_native_float<long double>();
     }
 
-    template <typename T>
+    template <NativeInteger T>
     constexpr Ufixed operator<<(T amount) const {
         static_assert(
             R.direction == Direction::DOWNTO, "Shift operation requires downto Direction"
         );
         static_assert(R.length() > 0, "shift on Ufixed with a null range is undefined");
-        static_assert(
-            std::is_integral_v<T> || is_coconext_unsigned_v<T> || is_coconext_signed_v<T>,
-            "Shift Amount can only be purely Integral"
-        );
-        if constexpr (std::is_signed_v<T> || is_coconext_signed_v<T>) {
-            if (static_cast<int64_t>(amount) < 0) {
-                throw std::invalid_argument("Negative shift amount");
-            }
-        }
-
-        uint64_t v = static_cast<unsigned long long>(amount);
-        if (v < 0) {
-            throw std::invalid_argument("Shift amount cannot be negative");
-        }
+        size_t const v = detail::normalize_shift_amount(amount, R.length());
 
         return Ufixed<R>(value_ << v);
     }
 
-    template <typename T>
+    template <NativeInteger T>
     constexpr Ufixed& operator<<=(T amount) {
         static_assert(
             R.direction == Direction::DOWNTO, "Shift operation requires downto Direction"
         );
         static_assert(R.length() > 0, "shift on Ufixed with a null range is undefined");
-        static_assert(
-            std::is_integral_v<T> || is_coconext_unsigned_v<T> || is_coconext_signed_v<T>,
-            "Shift Amount can only be purely Integral"
-        );
-        if constexpr (std::is_signed_v<T> || is_coconext_signed_v<T>) {
-            if (static_cast<int64_t>(amount) < 0) {
-                throw std::invalid_argument("Negative shift amount");
-            }
-        }
-
-        uint64_t v = static_cast<unsigned long long>(amount);
-        if (v < 0) {
-            throw std::invalid_argument("Shift amount cannot be negative");
-        }
+        size_t const v = detail::normalize_shift_amount(amount, R.length());
 
         value_ = value_ << v;
         return *this;
     }
 
-    template <typename T>
+    template <NativeInteger T>
     constexpr Ufixed operator>>(T amount) const {
         static_assert(
             R.direction == Direction::DOWNTO, "Shift operation requires downto Direction"
         );
         static_assert(R.length() > 0, "shift on Ufixed with a null range is undefined");
-        static_assert(
-            std::is_integral_v<T> || is_coconext_unsigned_v<T> || is_coconext_signed_v<T>,
-            "Shift Amount can only be purely Integral"
-        );
-        if constexpr (std::is_signed_v<T> || is_coconext_signed_v<T>) {
-            if (static_cast<int64_t>(amount) < 0) {
-                throw std::invalid_argument("Negative shift amount");
-            }
-        }
-
-        uint64_t v = static_cast<unsigned long long>(amount);
-        if (v < 0) {
-            throw std::invalid_argument("Shift amount cannot be negative");
-        }
+        size_t const v = detail::normalize_shift_amount(amount, R.length());
 
         return Ufixed<R>(value_ >> v);
     }
 
-    template <typename T>
+    template <NativeInteger T>
     constexpr Ufixed& operator>>=(T amount) {
         static_assert(
             R.direction == Direction::DOWNTO, "Shift operation requires downto Direction"
         );
         static_assert(R.length() > 0, "shift on Ufixed with a null range is undefined");
-        static_assert(
-            std::is_integral_v<T> || is_coconext_unsigned_v<T> || is_coconext_signed_v<T>,
-            "Shift Amount can only be purely Integral"
-        );
-        if constexpr (std::is_signed_v<T> || is_coconext_signed_v<T>) {
-            if (static_cast<int64_t>(amount) < 0) {
-                throw std::invalid_argument("Negative shift amount");
-            }
-        }
-
-        uint64_t v = static_cast<unsigned long long>(amount);
-        if (v < 0) {
-            throw std::invalid_argument("Shift amount cannot be negative");
-        }
+        size_t const v = detail::normalize_shift_amount(amount, R.length());
 
         value_ = value_ >> v;
         return *this;

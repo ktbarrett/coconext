@@ -2,6 +2,7 @@
 #define COCONEXT_SIGNED_HPP
 
 #include <algorithm>
+#include <concepts>
 #include <cstddef>
 #include <format>
 #include <functional>
@@ -197,15 +198,12 @@ class Signed {
     }
 
     template <typename SourceWrapper>
+        requires std::same_as<
+            std::remove_cvref_t<SourceWrapper>,
+            Signed<std::remove_cvref_t<SourceWrapper>::static_range>>
     constexpr Signed(detail::auto_resized<SourceWrapper>&& wrapper) {
         auto [src, ovf, rnd] = std::move(wrapper).consume();
         using ActualSource = std::remove_cvref_t<SourceWrapper>;
-
-        static_assert(
-            detail::is_coconext_signed_v<ActualSource>,
-            "resize() target and source must both be signed. Use as() for cross-type "
-            "conversions."
-        );
 
         constexpr size_t TargetW = R.length();
         constexpr size_t SourceW = ActualSource::size();
@@ -221,6 +219,9 @@ class Signed {
     }
 
     template <typename SourceWrapper>
+        requires std::same_as<
+            std::remove_cvref_t<SourceWrapper>,
+            Signed<std::remove_cvref_t<SourceWrapper>::static_range>>
     constexpr Signed& operator=(detail::auto_resized<SourceWrapper>&& wrapper) {
         *this = Signed(std::move(wrapper));
         return *this;
@@ -282,7 +283,7 @@ class Signed {
     }
 #endif
 
-    template <typename ShiftType>
+    template <NativeInteger ShiftType>
     constexpr Signed<R> operator<<(ShiftType const& shift_amount) const {
         size_t const safe_shift = detail::normalize_shift_amount(shift_amount, R.length());
 
@@ -293,7 +294,7 @@ class Signed {
         return Signed<R>(value_ << safe_shift);
     }
 
-    template <typename ShiftType>
+    template <NativeInteger ShiftType>
     constexpr Signed<R> operator>>(ShiftType const& shift_amount) const {
         size_t const safe_shift = detail::normalize_shift_amount(shift_amount, R.length());
 
@@ -304,12 +305,12 @@ class Signed {
         return Signed<R>(value_ >> safe_shift);
     }
 
-    template <typename ShiftType>
+    template <NativeInteger ShiftType>
     constexpr Signed<R>& operator<<=(ShiftType const& amt) {
         *this = *this << amt;
         return *this;
     }
-    template <typename ShiftType>
+    template <NativeInteger ShiftType>
     constexpr Signed<R>& operator>>=(ShiftType const& amt) {
         *this = *this >> amt;
         return *this;
@@ -554,9 +555,6 @@ template <Range R>
 constexpr auto operator<=>(Signed<R> const& lhs, Signed<R> const& rhs) noexcept {
     return storage(lhs) <=> storage(rhs);
 }
-
-template <Range R>
-inline constexpr bool is_coconext_signed_v<Signed<R>> = true;
 
 template <Range R1, Range R2>
 constexpr auto operator+(Unsigned<R1> const& lhs, Signed<R2> const& rhs) {

@@ -14,7 +14,6 @@
 #include <type_traits>
 #include <utility>
 
-#include <coconext/types/common_math.hpp>
 #include <coconext/types/dyn_bigint.hpp>
 #include <coconext/types/dyn_signed.hpp>
 #include <coconext/types/range.hpp>
@@ -587,52 +586,6 @@ inline DynUInt reverse_bits(DynUInt const& value) {
         result.set_bit(value.size() - 1 - i, value.get_bit(i));
     }
     return result;
-}
-
-template <typename ShiftType>
-inline size_t normalize_dynamic_shift(ShiftType const& amount, size_t limit) {
-    using Clean = std::remove_cvref_t<ShiftType>;
-    if constexpr (std::integral<Clean>) {
-        if constexpr (std::signed_integral<Clean>) {
-            if (amount < 0) {
-                throw std::invalid_argument("Negative shift amount");
-            }
-        }
-        if constexpr (
-            std::numeric_limits<Clean>::digits > std::numeric_limits<size_t>::digits
-        )
-        {
-            if (amount > static_cast<Clean>(std::numeric_limits<size_t>::max())) {
-                return limit;
-            }
-        }
-        size_t const value = static_cast<size_t>(amount);
-        return std::min(value, limit);
-    } else if constexpr (std::same_as<Clean, DynUnsigned> || std::same_as<Clean, DynSigned>)
-    {
-        if constexpr (std::same_as<Clean, DynSigned>) {
-            if (storage(amount).size() != 0 && storage(amount).is_negative()) {
-                throw std::invalid_argument("Negative shift amount");
-            }
-        }
-        auto const& raw = storage(amount);
-        size_t value = 0;
-        for (size_t bit = raw.size(); bit > 0; --bit) {
-            if (value > limit / 2) {
-                return limit;
-            }
-            value *= 2;
-            if (raw.get_bit(bit - 1)) {
-                if (value >= limit) {
-                    return limit;
-                }
-                ++value;
-            }
-        }
-        return std::min(value, limit);
-    } else {
-        return normalize_shift_amount(amount, limit);
-    }
 }
 
 }  // namespace dyn_fixed_detail

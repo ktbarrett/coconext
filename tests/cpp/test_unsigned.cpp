@@ -174,6 +174,16 @@ TEST(TestUnsigned, as_overloads) {
 }
 
 TEST(TestUnsigned, resize_overloads) {
+    using SignedResize = decltype(Signed<16>{}.resize());
+    using FixedResize = decltype(Ufixed<16, 0>{}.resize());
+    using DynamicResize = decltype(DynUfixed(Range{16, 0}).resize());
+    static_assert(!std::is_constructible_v<Unsigned<8>, SignedResize>);
+    static_assert(!std::is_assignable_v<Unsigned<8>&, SignedResize>);
+    static_assert(!std::is_constructible_v<Unsigned<8>, FixedResize>);
+    static_assert(!std::is_assignable_v<Unsigned<8>&, FixedResize>);
+    static_assert(!std::is_constructible_v<Unsigned<8>, DynamicResize>);
+    static_assert(!std::is_assignable_v<Unsigned<8>&, DynamicResize>);
+
     Unsigned<8> small(200);
 
     auto wide_spelled = small.resize<16>();
@@ -227,6 +237,9 @@ TEST(TestUnsigned, CrossRangeConversion) {
     Unsigned<7, 0> source(42);
     Unsigned<0, Direction::TO, 7> converted = source;
     EXPECT_EQ(static_cast<unsigned char>(converted), 42);
+
+    Unsigned<16> resized = converted.resize();
+    EXPECT_EQ(static_cast<unsigned>(resized), 42U);
 }
 
 TEST(TestUnsigned, Comparisons) {
@@ -315,6 +328,50 @@ TEST(TestUnsigned, IncrementDecrement) {
     EXPECT_EQ(static_cast<int>(min_val), 15);
 }
 
+TEST(TestUnsigned, NativeShiftAmounts) {
+    auto check = []<typename Value>() {
+        static_assert(requires(Value value, int amount) {
+            value << amount;
+            value >> amount;
+            value <<= amount;
+            value >>= amount;
+        });
+
+        auto reject = []<typename Amount>() {
+            static_assert(!requires(Value value, Amount amount) { value << amount; });
+            static_assert(!requires(Value value, Amount amount) { value >> amount; });
+            static_assert(!requires(Value value, Amount amount) { value <<= amount; });
+            static_assert(!requires(Value value, Amount amount) { value >>= amount; });
+        };
+        reject.template operator()<Unsigned<8>>();
+        reject.template operator()<Signed<8>>();
+        reject.template operator()<detail::DynUnsigned>();
+        reject.template operator()<detail::DynSigned>();
+        reject.template operator()<double>();
+        reject.template operator()<bool>();
+        reject.template operator()<char>();
+        reject.template operator()<wchar_t>();
+        reject.template operator()<char8_t>();
+        reject.template operator()<char16_t>();
+        reject.template operator()<char32_t>();
+    };
+    check.template operator()<Unsigned<8>>();
+    check.template operator()<Signed<8>>();
+    check.template operator()<Ufixed<7, 0>>();
+    check.template operator()<Sfixed<7, 0>>();
+    check.template operator()<detail::DynUnsigned>();
+    check.template operator()<detail::DynSigned>();
+    check.template operator()<DynUfixed>();
+    check.template operator()<DynSfixed>();
+
+#if defined(__SIZEOF_INT128__)
+    constexpr Unsigned<8> one(1);
+    static_assert(static_cast<int>(one << __uint128_t{1}) == 2);
+    static_assert(static_cast<int>(one << (__uint128_t{1} << 100)) == 0);
+    EXPECT_THROW(one << __int128_t{-1}, std::invalid_argument);
+#endif
+}
+
 TEST(TestUnsigned, ShiftOperators) {
     Unsigned<8> a(5);
 
@@ -336,20 +393,7 @@ TEST(TestUnsigned, ShiftOperators) {
     EXPECT_THROW(a >> -2, std::invalid_argument);
 
     Unsigned<4> shift_amt(2);
-    EXPECT_EQ(static_cast<int>(a << shift_amt), 40);
-
-    constexpr Unsigned<1000> wide_shift_amt(8);
-    constexpr Unsigned<16> one(1);
-    static_assert(static_cast<int>(one << wide_shift_amt) == 256);
-    auto runtime_one = force_runtime(one);
-    auto runtime_shift_amt = force_runtime(wide_shift_amt);
-    EXPECT_EQ(static_cast<int>(runtime_one << runtime_shift_amt), 256);
-    EXPECT_EQ(static_cast<int>(Unsigned<16>(force_runtime(256)) >> runtime_shift_amt), 1);
-
-    Unsigned<1000> huge_shift_amt;
-    huge_shift_amt[999] = Bit::_1;
-    EXPECT_EQ(static_cast<int>(a << huge_shift_amt), 0);
-    EXPECT_EQ(static_cast<int>(a >> huge_shift_amt), 0);
+    EXPECT_EQ(static_cast<int>(a << static_cast<int>(shift_amt)), 40);
 }
 
 TEST(TestUnsigned, Iterators) {
