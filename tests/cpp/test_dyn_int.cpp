@@ -873,10 +873,19 @@ TEST(DynInt, wrapper_construction_and_shift_errors) {
     EXPECT_THROW(DynSigned(128, 8), std::overflow_error);
     EXPECT_THROW(DynSigned(-129, 8), std::overflow_error);
     DynSigned negative(-16, 8);
-    EXPECT_EQ(static_cast<long long>(negative >> DynSigned(2, 65)), -4);
-    EXPECT_EQ(static_cast<long long>(negative >> DynUnsigned(2, 65)), -4);
+    EXPECT_EQ(
+        static_cast<long long>(negative >> static_cast<long long>(DynSigned(2, 65))), -4
+    );
+    EXPECT_EQ(
+        static_cast<long long>(
+            negative >> static_cast<unsigned long long>(DynUnsigned(2, 65))
+        ),
+        -4
+    );
     EXPECT_THROW(negative >> -1, std::invalid_argument);
-    EXPECT_THROW(negative >> DynSigned(-1, 65), std::invalid_argument);
+    EXPECT_THROW(
+        negative >> static_cast<long long>(DynSigned(-1, 65)), std::invalid_argument
+    );
     EXPECT_THROW(negative /= DynSigned(0, 8), std::domain_error);
 }
 

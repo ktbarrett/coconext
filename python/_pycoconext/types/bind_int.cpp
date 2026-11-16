@@ -199,34 +199,10 @@ void register_unsigned(nb::module_& m) {
                 return self << shift_amount;
             }
         )
-        .def(
-            "__lshift__",
-            [](DynUnsigned const& self, DynUnsigned const& shift_amount) {
-                return self << shift_amount;
-            }
-        )
-        .def(
-            "__lshift__",
-            [](DynUnsigned const& self, DynSigned const& shift_amount) {
-                return self << shift_amount;
-            }
-        )
 
         .def(
             "__ilshift__",
             [](DynUnsigned& self, size_t const& shift_amount) {
-                return self <<= shift_amount;
-            }
-        )
-        .def(
-            "__ilshift__",
-            [](DynUnsigned& self, DynUnsigned const& shift_amount) {
-                return self <<= shift_amount;
-            }
-        )
-        .def(
-            "__ilshift__",
-            [](DynUnsigned& self, DynSigned const& shift_amount) {
                 return self <<= shift_amount;
             }
         )
@@ -237,32 +213,10 @@ void register_unsigned(nb::module_& m) {
                 return self >> shift_amount;
             }
         )
-        .def(
-            "__rshift__",
-            [](DynUnsigned const& self, DynUnsigned shift_amount) {
-                return self >> shift_amount;
-            }
-        )
-        .def(
-            "__rshift__",
-            [](DynUnsigned const& self, DynSigned shift_amount) {
-                return self >> shift_amount;
-            }
-        )
 
         .def(
             "__irshift__",
             [](DynUnsigned& self, size_t shift_amount) { return self >>= shift_amount; }
-        )
-        .def(
-            "__irshift__",
-            [](DynUnsigned& self, DynUnsigned shift_amount) {
-                return self >>= shift_amount;
-            }
-        )
-        .def(
-            "__irshift__",
-            [](DynUnsigned& self, DynSigned shift_amount) { return self >>= shift_amount; }
         )
 
         .def(
@@ -544,34 +498,10 @@ void register_signed(nb::module_& m) {
                 return self << shift_amount;
             }
         )
-        .def(
-            "__lshift__",
-            [](DynSigned const& self, DynUnsigned const& shift_amount) {
-                return self << shift_amount;
-            }
-        )
-        .def(
-            "__lshift__",
-            [](DynSigned const& self, DynSigned const& shift_amount) {
-                return self << shift_amount;
-            }
-        )
 
         .def(
             "__ilshift__",
             [](DynSigned& self, size_t const& shift_amount) {
-                return self <<= shift_amount;
-            }
-        )
-        .def(
-            "__ilshift__",
-            [](DynSigned& self, DynUnsigned const& shift_amount) {
-                return self <<= shift_amount;
-            }
-        )
-        .def(
-            "__ilshift__",
-            [](DynSigned& self, DynSigned const& shift_amount) {
                 return self <<= shift_amount;
             }
         )
@@ -580,30 +510,10 @@ void register_signed(nb::module_& m) {
             "__rshift__",
             [](DynSigned const& self, size_t shift_amount) { return self >> shift_amount; }
         )
-        .def(
-            "__rshift__",
-            [](DynSigned const& self, DynUnsigned shift_amount) {
-                return self >> shift_amount;
-            }
-        )
-        .def(
-            "__rshift__",
-            [](DynSigned const& self, DynSigned shift_amount) {
-                return self >> shift_amount;
-            }
-        )
 
         .def(
             "__irshift__",
             [](DynSigned& self, size_t shift_amount) { return self >>= shift_amount; }
-        )
-        .def(
-            "__irshift__",
-            [](DynSigned& self, DynUnsigned shift_amount) { return self >>= shift_amount; }
-        )
-        .def(
-            "__irshift__",
-            [](DynSigned& self, DynSigned shift_amount) { return self >>= shift_amount; }
         )
 
         .def(

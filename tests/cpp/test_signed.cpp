@@ -177,6 +177,16 @@ TEST(TestSigned, as_overloads) {
 }
 
 TEST(TestSigned, resize_overloads) {
+    using UnsignedResize = decltype(Unsigned<16>{}.resize());
+    using FixedResize = decltype(Sfixed<16, 0>{}.resize());
+    using DynamicResize = decltype(DynSfixed(Range{16, 0}).resize());
+    static_assert(!std::is_constructible_v<Signed<8>, UnsignedResize>);
+    static_assert(!std::is_assignable_v<Signed<8>&, UnsignedResize>);
+    static_assert(!std::is_constructible_v<Signed<8>, FixedResize>);
+    static_assert(!std::is_assignable_v<Signed<8>&, FixedResize>);
+    static_assert(!std::is_constructible_v<Signed<8>, DynamicResize>);
+    static_assert(!std::is_assignable_v<Signed<8>&, DynamicResize>);
+
     Signed<8> small(-10);
 
     auto wide_spelled = small.resize<16>();
@@ -231,6 +241,9 @@ TEST(TestSigned, CrossRangeConversion) {
     Signed<7, 0> source(-42);
     Signed<0, Direction::TO, 7> converted = source;
     EXPECT_EQ(static_cast<signed char>(converted), -42);
+
+    Signed<16> resized = converted.resize();
+    EXPECT_EQ(static_cast<int>(resized), -42);
 }
 
 TEST(TestSigned, Comparisons) {
@@ -340,22 +353,7 @@ TEST(TestSigned, ShiftOperators) {
     EXPECT_THROW(a >> -2, std::invalid_argument);
 
     Signed<4> shift_amt(2);
-    EXPECT_EQ(static_cast<int>(a << shift_amt), -32);
-
-    constexpr Signed<1000> wide_shift_amt(2);
-    static_assert(static_cast<int>(Signed<8>(5) << wide_shift_amt) == 20);
-    auto runtime_shift_amt = force_runtime(wide_shift_amt);
-    EXPECT_EQ(static_cast<int>(Signed<8>(force_runtime(5)) << runtime_shift_amt), 20);
-    EXPECT_EQ(static_cast<int>(Signed<8>(force_runtime(-20)) >> runtime_shift_amt), -5);
-
-    Signed<1000> huge_shift_amt;
-    huge_shift_amt[998] = Bit::_1;
-    EXPECT_EQ(static_cast<int>(a << huge_shift_amt), 0);
-    EXPECT_EQ(static_cast<int>(a >> huge_shift_amt), -1);
-
-    Signed<1000> negative_shift_amt(-1);
-    EXPECT_THROW(a << negative_shift_amt, std::invalid_argument);
-    EXPECT_THROW(a >> negative_shift_amt, std::invalid_argument);
+    EXPECT_EQ(static_cast<int>(a << static_cast<int>(shift_amt)), -32);
 }
 
 TEST(TestSigned, Iterators) {

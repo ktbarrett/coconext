@@ -5,6 +5,7 @@
 #include <optional>
 #include <utility>
 
+#include <coconext/types/common_math.hpp>
 #include <coconext/types/dyn_bigint.hpp>
 #include <coconext/types/dyn_unsigned.hpp>
 
@@ -91,44 +92,9 @@ class DynSigned {
 
     explicit operator long long() const { return to_native_int<long long>(); }
 
-    template <typename ShiftType>
+    template <NativeInteger ShiftType>
     DynSigned operator<<(ShiftType const& shift_amount) const {
-        using CleanType = std::remove_cvref_t<ShiftType>;
-
-        static_assert(
-            std::is_integral_v<CleanType> || std::is_same_v<CleanType, DynUnsigned>
-                || std::is_same_v<CleanType, DynSigned>,
-            "Shift amount can only be a native integer, DynSigned, or Unsigned"
-        );
-
-        size_t safe_shift = 0;
-
-        if constexpr (std::is_integral_v<CleanType>) {
-            if constexpr (std::is_signed_v<CleanType>) {
-                if (shift_amount < 0) {
-                    throw std::invalid_argument("Negative shift amount");
-                }
-            }
-            safe_shift = static_cast<size_t>(shift_amount);
-        } else if constexpr (std::is_same_v<CleanType, DynUnsigned>) {
-            if (static_cast<unsigned long long>(shift_amount)
-                > std::numeric_limits<unsigned long long>::max())
-            {
-                throw std::out_of_range("Bit Width cap 2**64");
-            }
-            safe_shift = static_cast<size_t>(static_cast<unsigned long long>(shift_amount));
-        } else if constexpr (std::is_same_v<CleanType, DynSigned>) {
-            if (static_cast<long long>(shift_amount)
-                > std::numeric_limits<long long>::max())
-            {
-                throw std::out_of_range("Bit Width cap 2**64");
-            }
-            long long signed_val = static_cast<long long>(shift_amount);
-            if (signed_val < 0) {
-                throw std::invalid_argument("Negative shift amount");
-            }
-            safe_shift = static_cast<size_t>(signed_val);
-        }
+        size_t const safe_shift = normalize_shift_amount(shift_amount, size());
 
         if (safe_shift >= size()) {
             return DynSigned(0, range_);
@@ -137,43 +103,9 @@ class DynSigned {
         return DynSigned(value_ << safe_shift, range_);
     }
 
-    template <typename ShiftType>
+    template <NativeInteger ShiftType>
     DynSigned operator>>(ShiftType const& shift_amount) const {
-        using CleanType = std::remove_cvref_t<ShiftType>;
-        static_assert(
-            std::is_integral_v<CleanType> || std::is_same_v<CleanType, DynUnsigned>
-                || std::is_same_v<CleanType, DynSigned>,
-            "Shift amount can only be a native integer, DynSigned, or Unsigned"
-        );
-
-        size_t safe_shift = 0;
-
-        if constexpr (std::is_integral_v<CleanType>) {
-            if constexpr (std::is_signed_v<CleanType>) {
-                if (shift_amount < 0) {
-                    throw std::invalid_argument("Negative shift amount");
-                }
-            }
-            safe_shift = static_cast<size_t>(shift_amount);
-        } else if constexpr (std::is_same_v<CleanType, DynUnsigned>) {
-            if (static_cast<unsigned long long>(shift_amount)
-                > std::numeric_limits<unsigned long long>::max())
-            {
-                throw std::out_of_range("Bit Width cap 2**64");
-            }
-            safe_shift = static_cast<size_t>(static_cast<unsigned long long>(shift_amount));
-        } else if constexpr (std::is_same_v<CleanType, DynSigned>) {
-            if (static_cast<long long>(shift_amount)
-                > std::numeric_limits<long long>::max())
-            {
-                throw std::out_of_range("Bit Width cap 2**64");
-            }
-            long long signed_val = static_cast<long long>(shift_amount);
-            if (signed_val < 0) {
-                throw std::invalid_argument("Negative shift amount");
-            }
-            safe_shift = static_cast<size_t>(signed_val);
-        }
+        size_t const safe_shift = normalize_shift_amount(shift_amount, size());
 
         if (safe_shift >= size()) {
             if (safe_shift > 0) {
@@ -186,13 +118,13 @@ class DynSigned {
         return DynSigned(value_ >> safe_shift, range_);
     }
 
-    template <typename ShiftType>
+    template <NativeInteger ShiftType>
     constexpr DynSigned& operator<<=(ShiftType const& shift_amount) {
         *this = *this << shift_amount;
         return *this;
     }
 
-    template <typename ShiftType>
+    template <NativeInteger ShiftType>
     constexpr DynSigned& operator>>=(ShiftType const& shift_amount) {
         *this = *this >> shift_amount;
         return *this;

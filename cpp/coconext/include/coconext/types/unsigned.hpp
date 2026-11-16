@@ -1,6 +1,7 @@
 #ifndef COCONEXT_UNSIGNED_HPP
 #define COCONEXT_UNSIGNED_HPP
 
+#include <concepts>
 #include <cstddef>
 #include <format>
 #include <functional>
@@ -197,15 +198,12 @@ class Unsigned {
     }
 
     template <typename SourceWrapper>
+        requires std::same_as<
+            std::remove_cvref_t<SourceWrapper>,
+            Unsigned<std::remove_cvref_t<SourceWrapper>::static_range>>
     constexpr Unsigned(detail::auto_resized<SourceWrapper>&& wrapper) {
         auto [src, ovf, rnd] = std::move(wrapper).consume();
         using ActualSource = std::remove_cvref_t<SourceWrapper>;
-
-        static_assert(
-            detail::is_coconext_unsigned_v<ActualSource>,
-            "reR.length() target and source must both be Unsigned. Use as() for cross-type "
-            "conversions."
-        );
 
         constexpr size_t TargetW = R.length();
         constexpr size_t SourceW = ActualSource::size();
@@ -221,6 +219,9 @@ class Unsigned {
     }
 
     template <typename SourceWrapper>
+        requires std::same_as<
+            std::remove_cvref_t<SourceWrapper>,
+            Unsigned<std::remove_cvref_t<SourceWrapper>::static_range>>
     constexpr Unsigned& operator=(detail::auto_resized<SourceWrapper>&& wrapper) {
         *this = Unsigned(std::move(wrapper));
         return *this;
@@ -294,7 +295,7 @@ class Unsigned {
     }
 #endif
 
-    template <typename ShiftType>
+    template <NativeInteger ShiftType>
     constexpr Unsigned<R> operator<<(ShiftType const& shift_amount) const {
         size_t const safe_shift = detail::normalize_shift_amount(shift_amount, R.length());
 
@@ -305,7 +306,7 @@ class Unsigned {
         return Unsigned<R>(value_ << safe_shift);
     }
 
-    template <typename ShiftType>
+    template <NativeInteger ShiftType>
     constexpr Unsigned<R> operator>>(ShiftType const& shift_amount) const {
         size_t const safe_shift = detail::normalize_shift_amount(shift_amount, R.length());
 
@@ -316,13 +317,13 @@ class Unsigned {
         return Unsigned<R>(value_ >> safe_shift);
     }
 
-    template <typename ShiftType>
+    template <NativeInteger ShiftType>
     constexpr Unsigned<R>& operator<<=(ShiftType const& shift_amount) {
         *this = *this << shift_amount;
         return *this;
     }
 
-    template <typename ShiftType>
+    template <NativeInteger ShiftType>
     constexpr Unsigned<R>& operator>>=(ShiftType const& shift_amount) {
         *this = *this >> shift_amount;
         return *this;
@@ -579,9 +580,6 @@ template <Range R>
 constexpr auto operator<=>(Unsigned<R> const& lhs, Unsigned<R> const& rhs) noexcept {
     return storage(lhs) <=> storage(rhs);
 }
-
-template <Range R>
-inline constexpr bool is_coconext_unsigned_v<Unsigned<R>> = true;
 
 }  // namespace detail
 

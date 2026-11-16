@@ -81,11 +81,11 @@ def test_operations_keep_ranges(integer_type):
         operator.imul,
         operator.ifloordiv,
         operator.imod,
-        operator.ilshift,
-        operator.irshift,
     ):
         assert operation(integer_type(10, bounds), 1).range == bounds
         assert operation(integer_type(10, bounds), integer_type(1, 8)).range == bounds
+    for operation in (operator.ilshift, operator.irshift):
+        assert operation(integer_type(10, bounds), 1).range == bounds
     assert number == 10
 
 

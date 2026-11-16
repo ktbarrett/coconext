@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import operator
+
 import pytest
 
 from coconext.types import Signed, Unsigned
@@ -306,6 +308,18 @@ def test_compound_assignment_mixed_signedness_harsh():
         u_zero %= Signed(0, 32)
 
 
+@pytest.mark.parametrize("integer_type", [Unsigned, Signed])
+@pytest.mark.parametrize("amount_type", [Unsigned, Signed])
+@pytest.mark.parametrize(
+    "shift", [operator.lshift, operator.rshift, operator.ilshift, operator.irshift]
+)
+def test_shift_amount_requires_explicit_conversion(integer_type, amount_type, shift):
+    amount = amount_type(1, 8)
+    with pytest.raises(TypeError):
+        shift(integer_type(8, 8), amount)
+    assert int(shift(integer_type(8, 8), int(amount))) == shift(8, 1)
+
+
 def test_shift_operators():
     a = Unsigned(5, 8)
 
@@ -329,7 +343,7 @@ def test_shift_operators():
         _ = a >> -2
 
     shift_amt = Unsigned(2, 4)
-    assert int(a << shift_amt) == 40
+    assert int(a << int(shift_amt)) == 40
 
 
 def test_shift_operators_harsh_edge_cases():
@@ -346,29 +360,29 @@ def test_shift_operators_harsh_edge_cases():
     assert int(u_8 >> 1000) == 0
 
     shift_s_pos = Signed(3, 8)
-    assert int(u_8 << shift_s_pos) == 80
-    assert int(u_8 >> shift_s_pos) == 21  # 170 >> 3 = 21
+    assert int(u_8 << int(shift_s_pos)) == 80
+    assert int(u_8 >> int(shift_s_pos)) == 21  # 170 >> 3 = 21
 
     shift_s_huge = Signed(50000, 32)
-    assert int(u_8 << shift_s_huge) == 0
+    assert int(u_8 << int(shift_s_huge)) == 0
 
     shift_s_neg = Signed(-2, 8)
-    with pytest.raises(ValueError, match="Negative shift amount"):
-        _ = u_8 << shift_s_neg
-    with pytest.raises(ValueError, match="Negative shift amount"):
-        _ = u_8 >> shift_s_neg
+    with pytest.raises(TypeError):
+        _ = u_8 << int(shift_s_neg)
+    with pytest.raises(TypeError):
+        _ = u_8 >> int(shift_s_neg)
 
-    with pytest.raises(ValueError, match="Negative shift amount"):
-        _ = u_8 << Signed(-100, 32)
+    with pytest.raises(TypeError):
+        _ = u_8 << int(Signed(-100, 32))
 
     shift_u_huge = Unsigned(9999999, 64)
-    assert int(u_8 << shift_u_huge) == 0
-    assert int(u_8 >> shift_u_huge) == 0
+    assert int(u_8 << int(shift_u_huge)) == 0
+    assert int(u_8 >> int(shift_u_huge)) == 0
 
     shift_u_zero = Unsigned(0, 4)
     shift_s_zero = Signed(0, 4)
-    assert int(u_8 << shift_u_zero) == 170
-    assert int(u_8 >> shift_s_zero) == 170
+    assert int(u_8 << int(shift_u_zero)) == 170
+    assert int(u_8 >> int(shift_s_zero)) == 170
     assert int(u_8 << 0) == 170
 
     u_comp = Unsigned(15, 4)  # 1111 (binary)
@@ -376,18 +390,18 @@ def test_shift_operators_harsh_edge_cases():
     assert int(u_comp) == 12
     assert len(u_comp) == 4  # Width MUST NOT grow
 
-    u_comp <<= Signed(2, 16)  # 110000 -> truncated to 4 bits -> 0000 (0)
+    u_comp <<= int(Signed(2, 16))  # 110000 -> truncated to 4 bits -> 0000 (0)
     assert int(u_comp) == 0
     assert len(u_comp) == 4
 
     u_comp2 = Unsigned(255, 8)
-    u_comp2 >>= Unsigned(4, 8)  # 00001111 (15)
+    u_comp2 >>= int(Unsigned(4, 8))  # 00001111 (15)
     assert int(u_comp2) == 15
     assert len(u_comp2) == 8
 
     u_128 = Unsigned(550059, 128)
 
-    u_128 >>= Unsigned(500, 40)
+    u_128 >>= int(Unsigned(500, 40))
     assert int(u_128) == 0
 
     with pytest.raises(TypeError):
@@ -624,7 +638,7 @@ def test_shift_operators_harsh_edge_cases_big():
 
     shift_s_pos = Signed(50, 100)
     expected = (((1 << 190) + 12345) << 50) % (1 << 200)
-    assert int(u_big << shift_s_pos) == expected
+    assert int(u_big << int(shift_s_pos)) == expected
 
     u_comp = Unsigned(1 << 140, (150))
     u_comp <<= 20
