@@ -42,7 +42,6 @@ dev_build:
 	uv sync --no-default-groups --group=$(DEV_BUILD_DEP_GROUP) --no-install-project
 
 	# Build the package with the requested standard, strict warnings, and coverage.
-	CCACHE_DISABLE=1 \
 	CMAKE_ARGS="$$CMAKE_ARGS -DCMAKE_CXX_STANDARD=$(CXX_STANDARD) -DCOCONEXT_DEVELOPER_MODE=$(COCONEXT_DEVELOPER_MODE)" \
 	uv pip install --no-build-isolation --no-deps --force-reinstall -e .
 
