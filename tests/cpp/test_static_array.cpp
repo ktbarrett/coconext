@@ -1,5 +1,6 @@
 // LCOV_EXCL_BR_START -- gtest macros generate noisy uncovered branches
 #include <format>
+#include <ranges>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -12,6 +13,30 @@
 
 using namespace coconext::types;
 using namespace coconext::literals;
+
+static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}>>);
+static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}> const>);
+static_assert(RangedSequence<ArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
+static_assert(RangedSequence<ArraySlice<Array<int, Range{0, Direction::TO, 7}> const>>);
+static_assert(RangedSequence<StaticArraySlice<
+                  Array<int, Range{0, Direction::TO, 7}>,
+                  Range{1, Direction::TO, 3}>>);
+static_assert(RangedSequence<StaticArraySlice<
+                  Array<int, Range{0, Direction::TO, 7}> const,
+                  Range{1, Direction::TO, 3}>>);
+
+static_assert(StaticRangedSequence<Array<int, Range{0, Direction::TO, 7}>>);
+static_assert(StaticRangedSequence<Array<int, Range{0, Direction::TO, 7}> const>);
+static_assert(!StaticRangedSequence<ArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
+static_assert(StaticRangedSequence<StaticArraySlice<
+                  Array<int, Range{0, Direction::TO, 7}>,
+                  Range{1, Direction::TO, 3}>>);
+
+static_assert(std::ranges::sized_range<Array<int, Range{0, Direction::TO, 7}>>);
+static_assert(std::ranges::sized_range<ArraySlice<Array<int, Range{0, Direction::TO, 7}>>>);
+static_assert(std::ranges::sized_range<StaticArraySlice<
+                  Array<int, Range{0, Direction::TO, 7}>,
+                  Range{1, Direction::TO, 3}>>);
 
 // -- Construction -----------------------------------------------------------
 

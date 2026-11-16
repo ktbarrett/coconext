@@ -168,8 +168,6 @@ struct Range {
     }
 };
 
-static_assert(std::ranges::random_access_range<Range>);
-
 }  // namespace coconext::types
 
 template <>

@@ -11,6 +11,10 @@
 using namespace coconext::types;
 using namespace coconext::literals;
 
+static_assert(LogicType<Logic>);
+static_assert(LogicType<Bit>);
+static_assert(!LogicType<int>);
+
 // Test Logic conversions from various types
 TEST(TestLogic, LogicConversions) {
     EXPECT_EQ('U'_l, 'u'_l);

@@ -129,8 +129,6 @@ class CountIterator {
     Direction direction_{Direction::TO};
 };
 
-static_assert(std::random_access_iterator<CountIterator<int>>);
-
 }  // namespace coconext::types
 
 #endif  // COCONEXT_COUNT_ITERATOR_HPP

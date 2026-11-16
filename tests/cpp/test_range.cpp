@@ -1,5 +1,7 @@
 // LCOV_EXCL_BR_START -- gtest macros generate noisy uncovered branches
 #include <format>
+#include <iterator>
+#include <ranges>
 #include <stdexcept>
 #include <unordered_set>
 #include <vector>
@@ -9,6 +11,9 @@
 #include <coconext/types.hpp>
 
 using namespace coconext::types;
+
+static_assert(std::random_access_iterator<CountIterator<int>>);
+static_assert(std::ranges::random_access_range<Range>);
 
 TEST(TestRange, ToRange) {
     Range const r(1, Direction::TO, 8);

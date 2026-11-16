@@ -372,10 +372,6 @@ struct is_logic<Bit> : std::true_type {};
 template <typename T>
 concept LogicType = is_logic<std::remove_cv_t<T>>::value;
 
-static_assert(LogicType<Logic>);
-static_assert(LogicType<Bit>);
-static_assert(!LogicType<int>);
-
 }  // namespace coconext::types
 
 namespace coconext::literals {
