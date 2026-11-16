@@ -58,12 +58,12 @@ nb::class_<VectorType> bind_vector(nb::handle scope, char const* name) {
         .def(
             "__contains__",
             [](VectorType const& a, ValueT const& val) {
-                return index_of(a, val).has_value();
+                return a.index_of(val).has_value();
             }
         )
 
         .def("index", [](VectorType const& a, ValueT const& val) {
-            auto idx = index_of(a, val);
+            auto idx = a.index_of(val);
             if (!idx.has_value()) {
                 throw nb::value_error("Value not found in array");
             }

@@ -7,6 +7,7 @@
 #include <initializer_list>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <ranges>
 #include <stdexcept>
 #include <string>
@@ -123,15 +124,42 @@ class VectorImpl {
     constexpr Range const& range() const noexcept { return range_; }
     constexpr size_t size() const noexcept { return range_.length(); }
 
+    auto reverse() const {
+        Vector<ValueT> result(range().reverse());
+        std::ranges::reverse_copy(*this, result.begin());
+        return result;
+    }
+
+    COCONEXT_VECTOR_CONSTEXPR std::optional<Range::value_type> index_of(
+        value_type const& v
+    ) const {
+        auto const it = std::ranges::find(*this, v);
+        if (it == end()) {
+            return std::nullopt;
+        }
+        return range()[static_cast<size_t>(std::ranges::distance(begin(), it))];
+    }
+
+    COCONEXT_VECTOR_CONSTEXPR std::optional<Range::value_type> rindex_of(
+        value_type const& v
+    ) const {
+        auto const it = std::find(rbegin(), rend(), v);
+        if (it == rend()) {
+            return std::nullopt;
+        }
+        return range()
+            [size() - 1 - static_cast<size_t>(std::ranges::distance(rbegin(), it))];
+    }
+
     COCONEXT_VECTOR_CONSTEXPR reference operator[](index_type idx) {
-        auto offset = offset_of(range_, idx);
+        auto offset = range_.offset_of(idx);
         if (!offset.has_value()) {
             throw std::out_of_range("Index out of bounds");
         }
         return *(data_.get() + offset.value());
     }
     COCONEXT_VECTOR_CONSTEXPR const_reference operator[](index_type idx) const {
-        auto offset = offset_of(range_, idx);
+        auto offset = range_.offset_of(idx);
         if (!offset.has_value()) {
             throw std::out_of_range("Index out of bounds");
         }

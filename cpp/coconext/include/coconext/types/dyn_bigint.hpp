@@ -796,6 +796,22 @@ class DynInt {
         return result;
     }
 
+    std::pair<DynInt, DynInt> divrem(DynInt const& rhs) const {
+        return divide(*this, rhs, false);
+    }
+
+    std::pair<DynInt, DynInt> divmod(DynInt const& rhs) const
+        requires SignedRepresentation
+    {
+        return divide(*this, rhs, true);
+    }
+
+    DynInt mod(DynInt const& rhs) const
+        requires SignedRepresentation
+    {
+        return divmod(rhs).second;
+    }
+
     static std::pair<DynInt, DynInt> divide(DynInt const& a, DynInt const& b, bool modulo) {
         if (a.is_native() && b.is_native()) {
             if constexpr (SignedRepresentation) {
@@ -1195,23 +1211,14 @@ inline DynSInt operator*(DynSInt const& a, DynSInt const& b) {
     return DynSInt::arithmetic(a, b, a.size() + b.size(), '*');
 }
 
-inline std::pair<DynUInt, DynUInt> divrem(DynUInt const& a, DynUInt const& b) {
-    return DynUInt::divide(a, b, false);
-}
-inline std::pair<DynSInt, DynSInt> divrem(DynSInt const& a, DynSInt const& b) {
-    return DynSInt::divide(a, b, false);
-}
-inline std::pair<DynSInt, DynSInt> divmod(DynSInt const& a, DynSInt const& b) {
-    return DynSInt::divide(a, b, true);
-}
-inline DynUInt operator/(DynUInt const& a, DynUInt const& b) { return divrem(a, b).first; }
-inline DynSInt operator/(DynSInt const& a, DynSInt const& b) { return divrem(a, b).first; }
-inline DynUInt operator%(DynUInt const& a, DynUInt const& b) { return divrem(a, b).second; }
-inline DynSInt operator%(DynSInt const& a, DynSInt const& b) { return divrem(a, b).second; }
-inline DynSInt mod(DynSInt const& a, DynSInt const& b) { return divmod(a, b).second; }
+inline DynUInt operator/(DynUInt const& a, DynUInt const& b) { return a.divrem(b).first; }
+inline DynSInt operator/(DynSInt const& a, DynSInt const& b) { return a.divrem(b).first; }
+inline DynUInt operator%(DynUInt const& a, DynUInt const& b) { return a.divrem(b).second; }
+inline DynSInt operator%(DynSInt const& a, DynSInt const& b) { return a.divrem(b).second; }
 
 inline DynSInt operator-(DynSInt const& a) { return DynSInt::growing_negate(a); }
 inline DynSInt operator-(DynUInt const& a) { return DynSInt::growing_negate(a); }
+
 inline DynSInt abs(DynSInt const& a) {
     DynSInt extended(a, a.size() + 1);
     return a.is_negative() ? -a : extended;

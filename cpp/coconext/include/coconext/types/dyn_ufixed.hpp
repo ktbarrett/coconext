@@ -264,6 +264,19 @@ class DynUfixed {
     Range range() const noexcept { return range_; }
     size_t size() const noexcept { return range_.length(); }
 
+    DynUfixed reverse() const {
+        auto raw = range().direction == Direction::TO
+                     ? detail::dyn_fixed_detail::reverse_bits(value_)
+                     : detail::DynUInt(value_, size());
+        return detail::DynUfixed(std::move(raw), range().reverse());
+    }
+
+    Bit and_reduce() const { return value_.popcount() == size() ? Bit::_1 : Bit::_0; }
+
+    Bit or_reduce() const { return value_.popcount() != 0 ? Bit::_1 : Bit::_0; }
+
+    Bit xor_reduce() const { return value_.popcount() % 2 == 1 ? Bit::_1 : Bit::_0; }
+
     std::optional<Vector<Bit>> resolve(ResolveMethod = ResolveMethod::WEAK) const {
         return std::optional<Vector<Bit>>{std::in_place, value_, range_};
     }
@@ -322,15 +335,44 @@ class DynUfixed {
     auto rend() noexcept { return value_.rend(); }
     auto rend() const noexcept { return value_.rend(); }
 
+    DynUfixed& inplace_not() & {
+        for (auto&& v : *this) {
+            v = ~v;
+        }
+        return *this;
+    }
+
+    DynUfixed&& inplace_not() && {
+        inplace_not();
+        return std::move(*this);
+    }
+
+    std::optional<Range::value_type> index_of(Bit const& v) const {
+        auto const it = std::ranges::find(*this, v);
+        if (it == end()) {
+            return std::nullopt;
+        }
+        return range()[static_cast<size_t>(std::ranges::distance(begin(), it))];
+    }
+
+    std::optional<Range::value_type> rindex_of(Bit const& v) const {
+        auto const it = std::find(rbegin(), rend(), v);
+        if (it == rend()) {
+            return std::nullopt;
+        }
+        return range()
+            [size() - 1 - static_cast<size_t>(std::ranges::distance(rbegin(), it))];
+    }
+
     auto operator[](Range::value_type index) {
-        auto offset = offset_of(range_, index);
+        auto offset = range_.offset_of(index);
         if (!offset) {
             throw std::out_of_range("DynUfixed index out of bounds");
         }
         return value_[size() - 1 - *offset];
     }
     auto operator[](Range::value_type index) const {
-        auto offset = offset_of(range_, index);
+        auto offset = range_.offset_of(index);
         if (!offset) {
             throw std::out_of_range("DynUfixed index out of bounds");
         }
@@ -417,6 +459,54 @@ class DynUfixed {
             DynUfixed(std::move(quotient), quotient_range),
             DynUfixed(DynUInt(remainder, remainder_range.length()), remainder_range)
         };
+    }
+
+    DynUfixed reciprocal(
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        Range const one_range{0, Direction::DOWNTO, 0};
+        return DynUfixed(1, one_range).divide(*this, rounding, guard_bits);
+    }
+
+    DynUfixed remainder(
+        DynUfixed const& rhs,
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        return divrem(rhs, rounding, guard_bits).second;
+    }
+
+    DynUfixed rem(
+        DynUfixed const& rhs,
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        return remainder(rhs, rounding, guard_bits);
+    }
+
+    DynUfixed modulo(
+        DynUfixed const& rhs,
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        return remainder(rhs, rounding, guard_bits);
+    }
+
+    DynUfixed mod(
+        DynUfixed const& rhs,
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        return remainder(rhs, rounding, guard_bits);
+    }
+
+    std::pair<DynUfixed, DynUfixed> divmod(
+        DynUfixed const& rhs,
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        return divrem(rhs, rounding, guard_bits);
     }
 
     DynUfixed divide(
@@ -563,85 +653,6 @@ using DynUfixed = detail::DynUfixed;
 
 template <>
 inline constexpr bool is_fixed<detail::DynUfixed> = true;
-
-inline detail::DynUfixed divide(
-    detail::DynUfixed const& lhs,
-    detail::DynUfixed const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return lhs.divide(rhs, rounding, guard_bits);
-}
-
-inline detail::DynUfixed remainder(
-    detail::DynUfixed const& lhs,
-    detail::DynUfixed const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return lhs.divrem(rhs, rounding, guard_bits).second;
-}
-
-inline detail::DynUfixed rem(
-    detail::DynUfixed const& lhs,
-    detail::DynUfixed const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return remainder(lhs, rhs, rounding, guard_bits);
-}
-
-inline detail::DynUfixed modulo(
-    detail::DynUfixed const& lhs,
-    detail::DynUfixed const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return remainder(lhs, rhs, rounding, guard_bits);
-}
-
-inline detail::DynUfixed mod(
-    detail::DynUfixed const& lhs,
-    detail::DynUfixed const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return remainder(lhs, rhs, rounding, guard_bits);
-}
-
-inline std::pair<detail::DynUfixed, detail::DynUfixed> divrem(
-    detail::DynUfixed const& lhs,
-    detail::DynUfixed const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return lhs.divrem(rhs, rounding, guard_bits);
-}
-
-inline std::pair<detail::DynUfixed, detail::DynUfixed> divmod(
-    detail::DynUfixed const& lhs,
-    detail::DynUfixed const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return lhs.divrem(rhs, rounding, guard_bits);
-}
-
-inline detail::DynUfixed reciprocal(
-    detail::DynUfixed const& value,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    Range const one_range{0, Direction::DOWNTO, 0};
-    return divide(detail::DynUfixed(1, one_range), value, rounding, guard_bits);
-}
-
-inline detail::DynUfixed reverse(detail::DynUfixed const& value) {
-    auto raw = value.range().direction == Direction::TO
-                 ? detail::dyn_fixed_detail::reverse_bits(detail::storage(value))
-                 : detail::DynUInt(detail::storage(value), value.size());
-    return detail::DynUfixed(std::move(raw), coconext::types::reverse(value.range()));
-}
 
 }  // namespace coconext::types
 

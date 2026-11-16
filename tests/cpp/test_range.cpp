@@ -252,46 +252,46 @@ TEST(TestRange, SizeAliasesLength) {
 
 TEST(TestRange, OffsetOfTO) {
     Range const r{1, Direction::TO, 8};
-    EXPECT_EQ(detail::offset_of(r, 1).value(), 0);
-    EXPECT_EQ(detail::offset_of(r, 8).value(), 7);
-    EXPECT_EQ(detail::offset_of(r, 5).value(), 4);
-    EXPECT_FALSE(detail::offset_of(r, 0).has_value());
-    EXPECT_FALSE(detail::offset_of(r, 9).has_value());
+    EXPECT_EQ(r.offset_of(1).value(), 0);
+    EXPECT_EQ(r.offset_of(8).value(), 7);
+    EXPECT_EQ(r.offset_of(5).value(), 4);
+    EXPECT_FALSE(r.offset_of(0).has_value());
+    EXPECT_FALSE(r.offset_of(9).has_value());
 }
 
 TEST(TestRange, OffsetOfDOWNTO) {
     Range const r{4, Direction::DOWNTO, -3};
-    EXPECT_EQ(detail::offset_of(r, 4).value(), 0);
-    EXPECT_EQ(detail::offset_of(r, -3).value(), 7);
-    EXPECT_EQ(detail::offset_of(r, 0).value(), 4);
-    EXPECT_FALSE(detail::offset_of(r, 5).has_value());
-    EXPECT_FALSE(detail::offset_of(r, -4).has_value());
+    EXPECT_EQ(r.offset_of(4).value(), 0);
+    EXPECT_EQ(r.offset_of(-3).value(), 7);
+    EXPECT_EQ(r.offset_of(0).value(), 4);
+    EXPECT_FALSE(r.offset_of(5).has_value());
+    EXPECT_FALSE(r.offset_of(-4).has_value());
 }
 
 TEST(TestRange, ContainsTO) {
     Range const r{1, Direction::TO, 8};
-    EXPECT_TRUE(detail::contains(r, 1));
-    EXPECT_TRUE(detail::contains(r, 8));
-    EXPECT_TRUE(detail::contains(r, 5));
-    EXPECT_FALSE(detail::contains(r, 0));
-    EXPECT_FALSE(detail::contains(r, 9));
+    EXPECT_TRUE(r.contains(1));
+    EXPECT_TRUE(r.contains(8));
+    EXPECT_TRUE(r.contains(5));
+    EXPECT_FALSE(r.contains(0));
+    EXPECT_FALSE(r.contains(9));
 }
 
 TEST(TestRange, ContainsDOWNTO) {
     Range const r{4, Direction::DOWNTO, -3};
-    EXPECT_TRUE(detail::contains(r, 4));
-    EXPECT_TRUE(detail::contains(r, -3));
-    EXPECT_TRUE(detail::contains(r, 0));
-    EXPECT_FALSE(detail::contains(r, 5));
-    EXPECT_FALSE(detail::contains(r, -4));
+    EXPECT_TRUE(r.contains(4));
+    EXPECT_TRUE(r.contains(-3));
+    EXPECT_TRUE(r.contains(0));
+    EXPECT_FALSE(r.contains(5));
+    EXPECT_FALSE(r.contains(-4));
 }
 
 TEST(TestRange, ContainsConstexpr) {
     // `contains` is used in the compile-time index<I>() bounds check; verify
     // it's actually constexpr-evaluable at both directions.
-    static_assert(detail::contains(Range{0, Direction::TO, 4}, 2));
-    static_assert(!detail::contains(Range{0, Direction::TO, 4}, 99));
-    static_assert(detail::contains(Range{4, Direction::DOWNTO, 0}, 2));
-    static_assert(!detail::contains(Range{4, Direction::DOWNTO, 0}, -1));
+    static_assert(Range{0, Direction::TO, 4}.contains(2));
+    static_assert(!Range{0, Direction::TO, 4}.contains(99));
+    static_assert(Range{4, Direction::DOWNTO, 0}.contains(2));
+    static_assert(!Range{4, Direction::DOWNTO, 0}.contains(-1));
 }
 // LCOV_EXCL_BR_STOP

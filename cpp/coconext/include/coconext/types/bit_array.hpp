@@ -12,28 +12,6 @@
 namespace coconext::types {
 
 namespace detail {
-template <typename T, Range R>
-class Array;
-}
-
-// all reductions are better off without a loop
-// All bits set iff every one of the R.length() bits is counted.
-template <Range R>
-Bit and_reduce(detail::Array<Bit, R> const& s) {
-    return (detail::storage(s).popcount() == R.length()) ? Bit::_1 : Bit::_0;
-}
-
-template <Range R>
-auto or_reduce(detail::Array<Bit, R> const& s) {
-    return (detail::storage(s) != detail::UInt<R.length()>{}) ? Bit::_1 : Bit::_0;
-}
-
-template <Range R>
-Bit xor_reduce(detail::Array<Bit, R> const& s) {
-    return (detail::storage(s).popcount() % 2 == 1) ? Bit::_1 : Bit::_0;
-}
-
-namespace detail {
 
 template <Range R>
 class Array<Bit, R> {
@@ -58,6 +36,52 @@ class Array<Bit, R> {
 
     explicit constexpr Array(char const* s) : Array(std::string_view(s)) {}
 
+    constexpr auto reverse() const { return Array<Bit, R.reverse()>(value_.reverse()); }
+
+    constexpr Array& inplace_not() & {
+        value_ = ~value_;
+        return *this;
+    }
+
+    constexpr Array&& inplace_not() && {
+        inplace_not();
+        return std::move(*this);
+    }
+
+    constexpr std::optional<Range::value_type> index_of(Bit const& v) const {
+        auto packed = value_;
+        if (!static_cast<bool>(v)) {
+            packed = ~packed;
+        }
+        size_t const offset = packed.count_leading_zeros();
+        if (offset == range().length()) {
+            return std::nullopt;
+        }
+        return range()[offset];
+    }
+
+    constexpr std::optional<Range::value_type> rindex_of(Bit const& v) const {
+        auto packed = value_;
+        if (!static_cast<bool>(v)) {
+            packed = ~packed;
+        }
+        size_t const offset = packed.count_trailing_zeros();
+        if (offset == range().length()) {
+            return std::nullopt;
+        }
+        return range()[range().length() - 1 - offset];
+    }
+
+    constexpr Bit and_reduce() const {
+        return value_.popcount() == R.length() ? Bit::_1 : Bit::_0;
+    }
+
+    constexpr auto or_reduce() const { return value_.popcount() != 0 ? Bit::_1 : Bit::_0; }
+
+    constexpr Bit xor_reduce() const {
+        return value_.popcount() % 2 == 1 ? Bit::_1 : Bit::_0;
+    }
+
     constexpr std::optional<Array> resolve(ResolveMethod = ResolveMethod::WEAK) const {
         return *this;
     }
@@ -77,7 +101,7 @@ class Array<Bit, R> {
     constexpr auto rend() const { return value_.rend(); }
 
     constexpr auto operator[](Range::value_type idx) {
-        auto const offset = offset_of(R, idx);
+        auto const offset = R.offset_of(idx);
         if (!offset.has_value()) {
             throw std::out_of_range("Index out of bounds");
         }
@@ -87,7 +111,7 @@ class Array<Bit, R> {
     }
 
     constexpr auto operator[](Range::value_type idx) const {
-        auto const offset = offset_of(R, idx);
+        auto const offset = R.offset_of(idx);
         if (!offset.has_value()) {
             throw std::out_of_range("Index out of bounds");
         }
@@ -146,51 +170,7 @@ class Array<Bit, R> {
     UInt<R.length()> value_;
 };
 
-constexpr Range::value_type offset_to_hdl_coord(
-    Range r, size_t offset_from_begin
-) noexcept {
-    auto const off = static_cast<Range::value_type>(offset_from_begin);
-    return r.direction == Direction::TO ? r.left + off : r.left - off;
-}
-
 }  // namespace detail
-
-// countl_zero and countr_zero also assembles to one
-// asm instruction on most of the architectures
-template <Range R>
-constexpr std::optional<Range::value_type> index_of(
-    detail::Array<Bit, R> const& s, Bit const& v
-) {
-    auto packed = detail::storage(s);
-    if (!static_cast<bool>(v)) {
-        packed = ~packed;
-    }
-
-    size_t clz = packed.count_leading_zeros();
-    if (clz == R.length()) {
-        return std::nullopt;
-    }
-
-    return detail::offset_to_hdl_coord(R, clz);
-}
-
-template <Range R>
-constexpr std::optional<Range::value_type> rindex_of(
-    detail::Array<Bit, R> const& s, Bit const& v
-) {
-    auto packed = detail::storage(s);
-    if (!static_cast<bool>(v)) {
-        packed = ~packed;
-    }
-
-    size_t ctz = packed.count_trailing_zeros();
-    if (ctz == R.length()) {
-        return std::nullopt;
-    }
-    size_t offset_from_begin = R.length() - 1 - ctz;
-
-    return detail::offset_to_hdl_coord(R, offset_from_begin);
-}
 
 }  // namespace coconext::types
 

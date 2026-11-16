@@ -45,6 +45,43 @@ class Signed {
     static constexpr Range range() noexcept { return R; }
     static constexpr size_t size() noexcept { return R.length(); }
 
+    constexpr Signed& inplace_not() & {
+        value_ = ~value_;
+        return *this;
+    }
+
+    constexpr Signed&& inplace_not() && {
+        inplace_not();
+        return std::move(*this);
+    }
+
+    constexpr std::optional<Range::value_type> index_of(Bit const& v) const {
+        auto const it = std::ranges::find(*this, v);
+        if (it == end()) {
+            return std::nullopt;
+        }
+        return range()[static_cast<size_t>(std::ranges::distance(begin(), it))];
+    }
+
+    constexpr std::optional<Range::value_type> rindex_of(Bit const& v) const {
+        auto const it = std::find(rbegin(), rend(), v);
+        if (it == rend()) {
+            return std::nullopt;
+        }
+        return range()
+            [size() - 1 - static_cast<size_t>(std::ranges::distance(rbegin(), it))];
+    }
+
+    constexpr Bit and_reduce() const {
+        return value_.popcount() == size() ? Bit::_1 : Bit::_0;
+    }
+
+    constexpr Bit or_reduce() const { return value_.popcount() != 0 ? Bit::_1 : Bit::_0; }
+
+    constexpr Bit xor_reduce() const {
+        return value_.popcount() % 2 == 1 ? Bit::_1 : Bit::_0;
+    }
+
     constexpr std::optional<Array<Bit, R>> resolve(
         ResolveMethod = ResolveMethod::WEAK
     ) const {
@@ -473,7 +510,7 @@ class Signed {
     constexpr auto rend() const { return value_.rend(); }
 
     constexpr auto operator[](Range::value_type idx) {
-        auto const offset = offset_of(R, idx);
+        auto const offset = R.offset_of(idx);
         if (!offset.has_value()) {
             throw std::out_of_range("Index out of bounds");
         }
@@ -483,7 +520,7 @@ class Signed {
     }
 
     constexpr auto operator[](Range::value_type idx) const {
-        auto const offset = offset_of(R, idx);
+        auto const offset = R.offset_of(idx);
         if (!offset.has_value()) {
             throw std::out_of_range("Index out of bounds");
         }
@@ -571,18 +608,20 @@ constexpr auto operator%(Signed<R1> const& lhs, Unsigned<R2> const& rhs) {
     return lhs % (+rhs);
 }
 
+template <Range R>
+constexpr auto abs(Signed<R> const& s) {
+    if (s < Signed<R>(0)) {
+        return -s;
+    }
+    return s.template resize<R.length() + 1>();
+}
+
 }  // namespace detail
 
 template <auto... Args>
 using Signed = detail::Signed<detail::make_int_range<Args...>()>;
 
-template <Range R>
-constexpr auto abs(detail::Signed<R> const& s) {
-    if (s < detail::Signed<R>(0)) {
-        return -s;
-    }
-    return s.template resize<R.length() + 1>();
-}
+using detail::abs;
 
 consteval Signed<8> s8(long long v) { return Signed<8>(v); }
 consteval Signed<16> s16(long long v) { return Signed<16>(v); }

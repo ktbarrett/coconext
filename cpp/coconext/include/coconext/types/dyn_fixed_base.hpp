@@ -402,7 +402,7 @@ inline std::pair<DynUInt, DynUInt> divide_fixed_magnitudes(
         throw std::domain_error("Division by zero");
     }
 
-    auto [integer_quotient, remainder] = divrem(dividend, divisor);
+    auto [integer_quotient, remainder] = dividend.divrem(divisor);
     DynUInt const exact_remainder(remainder);
     aligned_magnitude rounded(checked_size_add(result_width, 1));
 

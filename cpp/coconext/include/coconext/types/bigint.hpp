@@ -1369,6 +1369,27 @@ class Int {
         return result;
     }
 
+    template <size_t Wb>
+    constexpr auto divrem(Int<Wb, SignedRepresentation> const& rhs) const {
+        return Int<W + 1, SignedRepresentation>::divide(*this, rhs, false);
+    }
+
+    template <size_t Wb>
+    constexpr auto divmod(Int<Wb, SignedRepresentation> const& rhs) const
+        requires SignedRepresentation
+    {
+        return Int<W + 1, SignedRepresentation>::divide(*this, rhs, true);
+    }
+
+    template <size_t Wb>
+    constexpr Int<Wb, SignedRepresentation> mod(
+        Int<Wb, SignedRepresentation> const& rhs
+    ) const
+        requires SignedRepresentation
+    {
+        return divmod(rhs).second;
+    }
+
     template <size_t Wa, bool Sa, size_t Wb, bool Sb>
     static constexpr std::pair<Int, Int<Wb, SignedRepresentation>> divide(
         Int<Wa, Sa> const& a, Int<Wb, Sb> const& b, bool modulo
@@ -1509,39 +1530,20 @@ constexpr SInt<Wa + Wb> operator*(SInt<Wa> const& a, SInt<Wb> const& b) {
 }
 
 template <size_t Wa, size_t Wb>
-constexpr std::pair<UInt<Wa + 1>, UInt<Wb>> divrem(UInt<Wa> const& a, UInt<Wb> const& b) {
-    return UInt<Wa + 1>::divide(a, b, false);
-}
-
-template <size_t Wa, size_t Wb>
-constexpr std::pair<SInt<Wa + 1>, SInt<Wb>> divrem(SInt<Wa> const& a, SInt<Wb> const& b) {
-    return SInt<Wa + 1>::divide(a, b, false);
-}
-
-template <size_t Wa, size_t Wb>
-constexpr std::pair<SInt<Wa + 1>, SInt<Wb>> divmod(SInt<Wa> const& a, SInt<Wb> const& b) {
-    return SInt<Wa + 1>::divide(a, b, true);
-}
-
-template <size_t Wa, size_t Wb>
 constexpr UInt<Wa + 1> operator/(UInt<Wa> const& a, UInt<Wb> const& b) {
-    return divrem(a, b).first;
+    return a.divrem(b).first;
 }
 template <size_t Wa, size_t Wb>
 constexpr SInt<Wa + 1> operator/(SInt<Wa> const& a, SInt<Wb> const& b) {
-    return divrem(a, b).first;
+    return a.divrem(b).first;
 }
 template <size_t Wa, size_t Wb>
 constexpr UInt<Wb> operator%(UInt<Wa> const& a, UInt<Wb> const& b) {
-    return divrem(a, b).second;
+    return a.divrem(b).second;
 }
 template <size_t Wa, size_t Wb>
 constexpr SInt<Wb> operator%(SInt<Wa> const& a, SInt<Wb> const& b) {
-    return divrem(a, b).second;
-}
-template <size_t Wa, size_t Wb>
-constexpr SInt<Wb> mod(SInt<Wa> const& a, SInt<Wb> const& b) {
-    return divmod(a, b).second;
+    return a.divrem(b).second;
 }
 
 template <size_t W>

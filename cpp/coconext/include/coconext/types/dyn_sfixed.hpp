@@ -323,6 +323,20 @@ class DynSfixed {
     Range range() const noexcept { return range_; }
     size_t size() const noexcept { return range_.length(); }
 
+    DynSfixed reverse() const {
+        auto logical = value_.logical_bits();
+        auto raw = range().direction == Direction::TO
+                     ? detail::dyn_fixed_detail::reverse_bits(logical)
+                     : std::move(logical);
+        return detail::DynSfixed(detail::DynSInt(raw), range().reverse());
+    }
+
+    Bit and_reduce() const { return value_.popcount() == size() ? Bit::_1 : Bit::_0; }
+
+    Bit or_reduce() const { return value_.popcount() != 0 ? Bit::_1 : Bit::_0; }
+
+    Bit xor_reduce() const { return value_.popcount() % 2 == 1 ? Bit::_1 : Bit::_0; }
+
     std::optional<Vector<Bit>> resolve(ResolveMethod = ResolveMethod::WEAK) const {
         return std::optional<Vector<Bit>>{std::in_place, value_, range_};
     }
@@ -378,15 +392,44 @@ class DynSfixed {
     auto rend() noexcept { return value_.rend(); }
     auto rend() const noexcept { return value_.rend(); }
 
+    DynSfixed& inplace_not() & {
+        for (auto&& v : *this) {
+            v = ~v;
+        }
+        return *this;
+    }
+
+    DynSfixed&& inplace_not() && {
+        inplace_not();
+        return std::move(*this);
+    }
+
+    std::optional<Range::value_type> index_of(Bit const& v) const {
+        auto const it = std::ranges::find(*this, v);
+        if (it == end()) {
+            return std::nullopt;
+        }
+        return range()[static_cast<size_t>(std::ranges::distance(begin(), it))];
+    }
+
+    std::optional<Range::value_type> rindex_of(Bit const& v) const {
+        auto const it = std::find(rbegin(), rend(), v);
+        if (it == rend()) {
+            return std::nullopt;
+        }
+        return range()
+            [size() - 1 - static_cast<size_t>(std::ranges::distance(rbegin(), it))];
+    }
+
     auto operator[](Range::value_type index) {
-        auto offset = offset_of(range_, index);
+        auto offset = range_.offset_of(index);
         if (!offset) {
             throw std::out_of_range("DynSfixed index out of bounds");
         }
         return value_[size() - 1 - *offset];
     }
     auto operator[](Range::value_type index) const {
-        auto offset = offset_of(range_, index);
+        auto offset = range_.offset_of(index);
         if (!offset) {
             throw std::out_of_range("DynSfixed index out of bounds");
         }
@@ -482,6 +525,56 @@ class DynSfixed {
     ) const {
         return divide_impl(rhs, true, rounding, guard_bits);
     }
+    DynSfixed reciprocal(
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        Range const one_range{1, Direction::DOWNTO, 0};
+        auto quotient = DynSfixed(1, one_range).divide(*this, rounding, guard_bits);
+        Range const result_range{
+            detail::dyn_fixed_detail::checked_add(
+                detail::dyn_fixed_detail::checked_sub(0, range().right), 1
+            ),
+            Direction::DOWNTO,
+            detail::dyn_fixed_detail::checked_sub(0, range().left)
+        };
+        return DynSfixed(quotient, result_range);
+    }
+
+    DynSfixed remainder(
+        DynSfixed const& rhs,
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        return divrem(rhs, rounding, guard_bits).second;
+    }
+
+    DynSfixed rem(
+        DynSfixed const& rhs,
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        return remainder(rhs, rounding, guard_bits);
+    }
+
+    DynSfixed modulo(
+        DynSfixed const& rhs,
+        overflow_mode overflow = overflow_mode::saturate,
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        return divmod(rhs, overflow, rounding, guard_bits).second;
+    }
+
+    DynSfixed mod(
+        DynSfixed const& rhs,
+        overflow_mode overflow = overflow_mode::saturate,
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        return modulo(rhs, overflow, rounding, guard_bits);
+    }
+
     DynSfixed divide(
         DynSfixed const& rhs,
         round_mode rounding = round_mode::round_to_even,
@@ -1230,107 +1323,18 @@ auto operator%(Integer lhs, Fixed const& rhs) {
     return native_as_fixed(lhs) % rhs;
 }
 
+inline DynSfixed abs(DynSfixed const& value) { return value.abs(); }
+
 }  // namespace coconext::types::detail
 
 namespace coconext::types {
 
 using DynSfixed = detail::DynSfixed;
 
+using detail::abs;
+
 template <>
 inline constexpr bool is_fixed<detail::DynSfixed> = true;
-
-inline detail::DynSfixed divide(
-    detail::DynSfixed const& lhs,
-    detail::DynSfixed const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return lhs.divide(rhs, rounding, guard_bits);
-}
-
-inline detail::DynSfixed remainder(
-    detail::DynSfixed const& lhs,
-    detail::DynSfixed const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return lhs.divrem(rhs, rounding, guard_bits).second;
-}
-
-inline detail::DynSfixed rem(
-    detail::DynSfixed const& lhs,
-    detail::DynSfixed const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return remainder(lhs, rhs, rounding, guard_bits);
-}
-
-inline detail::DynSfixed modulo(
-    detail::DynSfixed const& lhs,
-    detail::DynSfixed const& rhs,
-    overflow_mode overflow = overflow_mode::saturate,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return lhs.divmod(rhs, overflow, rounding, guard_bits).second;
-}
-
-inline detail::DynSfixed mod(
-    detail::DynSfixed const& lhs,
-    detail::DynSfixed const& rhs,
-    overflow_mode overflow = overflow_mode::saturate,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return modulo(lhs, rhs, overflow, rounding, guard_bits);
-}
-
-inline std::pair<detail::DynSfixed, detail::DynSfixed> divrem(
-    detail::DynSfixed const& lhs,
-    detail::DynSfixed const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return lhs.divrem(rhs, rounding, guard_bits);
-}
-
-inline std::pair<detail::DynSfixed, detail::DynSfixed> divmod(
-    detail::DynSfixed const& lhs,
-    detail::DynSfixed const& rhs,
-    overflow_mode overflow = overflow_mode::saturate,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return lhs.divmod(rhs, overflow, rounding, guard_bits);
-}
-
-inline detail::DynSfixed reciprocal(
-    detail::DynSfixed const& value,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    Range const one_range{1, Direction::DOWNTO, 0};
-    auto quotient = divide(detail::DynSfixed(1, one_range), value, rounding, guard_bits);
-    Range const result_range{
-        detail::dyn_fixed_detail::checked_add(
-            detail::dyn_fixed_detail::checked_sub(0, value.range().right), 1
-        ),
-        Direction::DOWNTO,
-        detail::dyn_fixed_detail::checked_sub(0, value.range().left)
-    };
-    return detail::DynSfixed(quotient, result_range);
-}
-
-inline detail::DynSfixed abs(detail::DynSfixed const& value) { return value.abs(); }
-
-inline detail::DynSfixed reverse(detail::DynSfixed const& value) {
-    auto logical = detail::storage(value).logical_bits();
-    auto raw = value.range().direction == Direction::TO
-                 ? detail::dyn_fixed_detail::reverse_bits(logical)
-                 : std::move(logical);
-    return detail::DynSfixed(detail::DynSInt(raw), coconext::types::reverse(value.range()));
-}
 
 }  // namespace coconext::types
 

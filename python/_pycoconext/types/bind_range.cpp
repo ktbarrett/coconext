@@ -170,7 +170,7 @@ void register_range(nb::module_& m) {
                int32_t value,
                std::optional<int32_t> start,
                std::optional<int32_t> stop) {
-                auto offset = detail::offset_of(self, value);
+                auto offset = self.offset_of(value);
                 if (!offset.has_value()
                     || (start.has_value() && offset.value() < start.value())
                     || (stop.has_value() && offset.value() >= stop.value()))

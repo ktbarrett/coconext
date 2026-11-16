@@ -686,14 +686,14 @@ TEST(TestUfixed, Reverse) {
     auto uf_down = "10010110"_b.as<Ufixed<3, -4>>();
     auto uf_to = "10010110"_b.as<Ufixed<-4, Direction::TO, 3>>();
 
-    auto r_to = reverse(uf_down);  // only direction changed
-    auto r_down = reverse(uf_to);  // bits also reversed
+    auto r_to = uf_down.reverse();  // only direction changed
+    auto r_down = uf_to.reverse();  // bits also reversed
 
     EXPECT_EQ(r_to, uf_to);
     EXPECT_EQ(r_down, ("01101001"_b.as<Ufixed<3, -4>>()));
 
     Ufixed<100, -50> w_rev_down(1);
-    auto w_rev_to = reverse(w_rev_down);
+    auto w_rev_to = w_rev_down.reverse();
     EXPECT_TRUE((std::is_same_v<decltype(w_rev_to), Ufixed<-50, Direction::TO, 100>>));
 }
 
@@ -711,7 +711,7 @@ TEST(TestUfixed, Formatter) {
     EXPECT_EQ(std::format("{:d}", frac_val), "Ufixed[-1 downto -4]{0.3125}");
 
     Ufixed<8, -3> val_downto(120);
-    auto val_to = reverse(val_downto);
+    auto val_to = val_downto.reverse();
     EXPECT_THROW(
         (void)std::vformat("{:d}", std::make_format_args(val_to)), std::format_error
     );
@@ -806,9 +806,9 @@ TEST(TestUfixed, BitwiseAndReduction) {
     auto not_res = ~a;
     EXPECT_EQ((std::move(not_res).as<Ufixed<3, 0>>()), (Ufixed<3, 0>(5)));  // 0101
 
-    EXPECT_FALSE(and_reduce(a));
-    EXPECT_TRUE(or_reduce(a));
-    EXPECT_FALSE(xor_reduce(a));
+    EXPECT_FALSE(a.and_reduce());
+    EXPECT_TRUE(a.or_reduce());
+    EXPECT_FALSE(a.xor_reduce());
 
     Ufixed<100, -50> w_bw_a(10), w_bw_b(12);
     EXPECT_EQ(((w_bw_a & w_bw_b).as<Ufixed<100, -50>>()), (Ufixed<100, -50>(8)));
@@ -972,35 +972,35 @@ TEST(TestUfixed, DivisionFamily) {
     auto quotient = two / three;
     static_assert(std::is_same_v<decltype(quotient), Ufixed<1, -2>>);
     EXPECT_DOUBLE_EQ(static_cast<double>(quotient), 0.75);
-    EXPECT_EQ(quotient, divide(two, three));
+    EXPECT_EQ(quotient, two.divide(three));
 
     // With one guard bit, 2/3 looks like an exact tie whose retained LSB is
     // even. Three guard bits expose another nonzero bit and round upward.
     EXPECT_DOUBLE_EQ(
-        static_cast<double>(divide(two, three, round_mode::round_to_even, 1)), 0.5
+        static_cast<double>(two.divide(three, round_mode::round_to_even, 1)), 0.5
     );
     EXPECT_DOUBLE_EQ(
-        static_cast<double>(divide(two, three, round_mode::round_to_even, 3)), 0.75
+        static_cast<double>(two.divide(three, round_mode::round_to_even, 3)), 0.75
     );
     EXPECT_DOUBLE_EQ(
-        static_cast<double>(divide(two, three, round_mode::round_to_zero, 3)), 0.5
+        static_cast<double>(two.divide(three, round_mode::round_to_zero, 3)), 0.5
     );
 
     Ufixed<2, 0> five(5);
-    auto remainder_result = remainder(five, three);
-    auto modulo_result = modulo(five, three);
+    auto remainder_result = five.remainder(three);
+    auto modulo_result = five.modulo(three);
     static_assert(std::is_same_v<decltype(remainder_result), Ufixed<1, 0>>);
     static_assert(std::is_same_v<decltype(modulo_result), Ufixed<1, 0>>);
     EXPECT_EQ(static_cast<unsigned>(remainder_result), 2U);
-    EXPECT_EQ(rem(five, three), remainder_result);
+    EXPECT_EQ(five.rem(three), remainder_result);
     EXPECT_EQ(modulo_result, remainder_result);
-    EXPECT_EQ(mod(five, three), modulo_result);
+    EXPECT_EQ(five.mod(three), modulo_result);
 
-    auto [divrem_quotient, divrem_remainder] = divrem(five, three);
-    EXPECT_EQ(divrem_quotient, divide(five, three));
+    auto [divrem_quotient, divrem_remainder] = five.divrem(three);
+    EXPECT_EQ(divrem_quotient, five.divide(three));
     EXPECT_EQ(divrem_remainder, remainder_result);
-    auto [divmod_quotient, divmod_modulo] = divmod(five, three);
-    EXPECT_EQ(divmod_quotient, divide(five, three));
+    auto [divmod_quotient, divmod_modulo] = five.divmod(three);
+    EXPECT_EQ(divmod_quotient, five.divide(three));
     EXPECT_EQ(divmod_modulo, modulo_result);
 
     // The combined operation aligns unlike binary-point locations before its
@@ -1009,7 +1009,7 @@ TEST(TestUfixed, DivisionFamily) {
     Ufixed<3, -2> fractional_dividend(5.25);
     Ufixed<2, -1> fractional_divisor(2.5);
     auto [fractional_quotient, fractional_remainder] =
-        divrem(fractional_dividend, fractional_divisor);
+        fractional_dividend.divrem(fractional_divisor);
     static_assert(std::is_same_v<decltype(fractional_quotient), Ufixed<4, -5>>);
     static_assert(std::is_same_v<decltype(fractional_remainder), Ufixed<2, -2>>);
     EXPECT_DOUBLE_EQ(static_cast<double>(fractional_quotient), 2.09375);
@@ -1022,25 +1022,25 @@ TEST(TestUfixed, DivisionFamily) {
     EXPECT_DOUBLE_EQ(static_cast<double>(coarse_dividend / one_and_a_half), 24.0);
     EXPECT_DOUBLE_EQ(
         static_cast<double>(
-            divide(coarse_dividend, one_and_a_half, round_mode::round_to_even, 1)
+            coarse_dividend.divide(one_and_a_half, round_mode::round_to_even, 1)
         ),
         16.0
     );
-    EXPECT_DOUBLE_EQ(static_cast<double>(remainder(coarse_dividend, one_and_a_half)), 0.5);
+    EXPECT_DOUBLE_EQ(static_cast<double>(coarse_dividend.remainder(one_and_a_half)), 0.5);
 
     constexpr Range NullRange{-1, Direction::DOWNTO, 0};
-    auto [zero_quotient, zero_remainder] = divrem(Ufixed<NullRange>{}, three);
+    auto [zero_quotient, zero_remainder] = Ufixed<NullRange>{}.divrem(three);
     EXPECT_FALSE(static_cast<bool>(zero_quotient));
     EXPECT_FALSE(static_cast<bool>(zero_remainder));
-    EXPECT_THROW((void)divide(three, Ufixed<NullRange>{}), std::domain_error);
+    EXPECT_THROW((void)three.divide(Ufixed<NullRange>{}), std::domain_error);
 
-    auto reciprocal_result = reciprocal(three);
+    auto reciprocal_result = three.reciprocal();
     static_assert(std::is_same_v<decltype(reciprocal_result), Ufixed<0, -2>>);
     EXPECT_DOUBLE_EQ(static_cast<double>(reciprocal_result), 0.25);
 
-    EXPECT_THROW((void)divide(two, Ufixed<1, 0>(0)), std::domain_error);
-    EXPECT_THROW((void)remainder(two, Ufixed<1, 0>(0)), std::domain_error);
-    EXPECT_THROW((void)modulo(two, Ufixed<1, 0>(0)), std::domain_error);
+    EXPECT_THROW((void)two.divide(Ufixed<1, 0>(0)), std::domain_error);
+    EXPECT_THROW((void)two.remainder(Ufixed<1, 0>(0)), std::domain_error);
+    EXPECT_THROW((void)two.modulo(Ufixed<1, 0>(0)), std::domain_error);
 }
 
 TEST(TestUfixed, CompoundArithmetic) {

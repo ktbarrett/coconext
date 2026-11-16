@@ -11,33 +11,17 @@
 
 namespace coconext::types {
 
-template <typename T, Range R>
-constexpr detail::Array<T, reverse(R)> reverse(detail::Array<T, R> const& a) {
-    detail::Array<T, reverse(R)> result;
-    std::ranges::reverse_copy(a, result.begin());
-    return result;
-}
-
-template <typename T>
-Vector<T> reverse(Vector<T> const& v) {
-    Vector<T> result(reverse(v.range()));
-    std::ranges::reverse_copy(v, result.begin());
-    return result;
-}
-
 template <typename ArrayT>
-Vector<std::ranges::range_value_t<ArrayT>> reverse(ArraySlice<ArrayT> const& s) {
-    Vector<std::ranges::range_value_t<ArrayT>> result(reverse(s.range()));
-    std::ranges::reverse_copy(s, result.begin());
+auto detail::ArraySliceImpl<ArrayT>::reverse() const {
+    Vector<std::ranges::range_value_t<ArrayT>> result(range().reverse());
+    std::ranges::reverse_copy(*this, result.begin());
     return result;
 }
 
 template <typename ArrayT, Range R>
-constexpr detail::Array<std::ranges::range_value_t<ArrayT>, reverse(R)> reverse(
-    StaticArraySlice<ArrayT, R> const& s
-) {
-    detail::Array<std::ranges::range_value_t<ArrayT>, reverse(R)> result;
-    std::ranges::reverse_copy(s, result.begin());
+constexpr auto detail::StaticArraySliceImpl<ArrayT, R>::reverse() const {
+    detail::Array<std::ranges::range_value_t<ArrayT>, R.reverse()> result;
+    std::ranges::reverse_copy(*this, result.begin());
     return result;
 }
 

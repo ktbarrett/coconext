@@ -60,7 +60,7 @@ auto python_div = [](DynSigned const& a, DynSigned const& b) {
 };
 
 auto python_imod = [](DynSigned& lhs, DynSigned const& rhs) -> DynSigned& {
-    auto result = mod(lhs, rhs);
+    auto result = lhs.mod(rhs);
     lhs = DynSigned(DynSInt(storage(result), lhs.size()), lhs.range());
     return lhs;
 };
@@ -702,7 +702,7 @@ void register_signed(nb::module_& m) {
         )
         .def(
             "__mod__",
-            [](DynSigned const& self, DynSigned const& other) { return mod(self, other); }
+            [](DynSigned const& self, DynSigned const& other) { return self.mod(other); }
         )
         .def("__imod__", python_imod)
         .def(

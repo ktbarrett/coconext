@@ -169,7 +169,7 @@ constexpr std::pair<UInt<ResultW>, UInt<DivisorW>> divide_fixed_magnitudes(
             throw std::domain_error("Division by zero");
         }
 
-        auto [integer_quotient, remainder] = divrem(dividend, divisor);
+        auto [integer_quotient, remainder] = dividend.divrem(divisor);
         UInt<DivisorW> const exact_remainder = remainder;
         aligned_magnitude<ResultW + 1> rounded;
 
@@ -537,6 +537,51 @@ class Ufixed {
     static constexpr Range static_range = R;
     static constexpr Range range() noexcept { return R; }
     static constexpr size_t size() noexcept { return R.length(); }
+
+    constexpr auto reverse() const noexcept {
+        if constexpr (R.direction == Direction::TO) {
+            return detail::Ufixed<R.reverse()>(value_.reverse());
+        } else {
+            return detail::Ufixed<R.reverse()>(value_);
+        }
+    }
+
+    constexpr Ufixed& inplace_not() & {
+        value_ = ~value_;
+        return *this;
+    }
+
+    constexpr Ufixed&& inplace_not() && {
+        inplace_not();
+        return std::move(*this);
+    }
+
+    constexpr std::optional<Range::value_type> index_of(Bit const& v) const {
+        auto const it = std::ranges::find(*this, v);
+        if (it == end()) {
+            return std::nullopt;
+        }
+        return range()[static_cast<size_t>(std::ranges::distance(begin(), it))];
+    }
+
+    constexpr std::optional<Range::value_type> rindex_of(Bit const& v) const {
+        auto const it = std::find(rbegin(), rend(), v);
+        if (it == rend()) {
+            return std::nullopt;
+        }
+        return range()
+            [size() - 1 - static_cast<size_t>(std::ranges::distance(rbegin(), it))];
+    }
+
+    constexpr Bit and_reduce() const {
+        return value_.popcount() == size() ? Bit::_1 : Bit::_0;
+    }
+
+    constexpr Bit or_reduce() const { return value_.popcount() != 0 ? Bit::_1 : Bit::_0; }
+
+    constexpr Bit xor_reduce() const {
+        return value_.popcount() % 2 == 1 ? Bit::_1 : Bit::_0;
+    }
 
     constexpr std::optional<Array<Bit, R>> resolve(
         ResolveMethod = ResolveMethod::WEAK
@@ -1077,6 +1122,60 @@ class Ufixed {
         return divide(rhs);
     }
 
+    constexpr auto reciprocal(
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        return Ufixed<Range{0, Direction::DOWNTO, 0}>{1}.divide(
+            *this, rounding, guard_bits
+        );
+    }
+
+    template <Range R2>
+    constexpr auto remainder(
+        Ufixed<R2> const& rhs,
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        return divrem(rhs, rounding, guard_bits).second;
+    }
+
+    template <Range R2>
+    constexpr auto rem(
+        Ufixed<R2> const& rhs,
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        return remainder(rhs, rounding, guard_bits);
+    }
+
+    template <Range R2>
+    constexpr auto modulo(
+        Ufixed<R2> const& rhs,
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        return remainder(rhs, rounding, guard_bits);
+    }
+
+    template <Range R2>
+    constexpr auto mod(
+        Ufixed<R2> const& rhs,
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        return modulo(rhs, rounding, guard_bits);
+    }
+
+    template <Range R2>
+    constexpr auto divmod(
+        Ufixed<R2> const& rhs,
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        return divrem(rhs, rounding, guard_bits);
+    }
+
     template <Range R2>
     constexpr auto divide(
         Ufixed<R2> const& rhs,
@@ -1320,7 +1419,7 @@ class Ufixed {
     constexpr auto rend() const { return value_.rend(); }
 
     constexpr auto operator[](Range::value_type idx) {
-        auto const offset = offset_of(R, idx);
+        auto const offset = R.offset_of(idx);
         if (!offset.has_value()) {
             throw std::out_of_range("Index out of bounds");
         }
@@ -1330,7 +1429,7 @@ class Ufixed {
     }
 
     constexpr auto operator[](Range::value_type idx) const {
-        auto const offset = offset_of(R, idx);
+        auto const offset = R.offset_of(idx);
         if (!offset.has_value()) {
             throw std::out_of_range("Index out of bounds");
         }
@@ -1435,93 +1534,6 @@ using Ufixed = detail::Ufixed<detail::make_fixed_range<Args...>()>;
 // VHDL fixed_pkg-style division helpers. The result ranges are the same as the
 // corresponding operators. Guard bits affect the quotient only; fixed-point
 // remainder and modulo are exactly representable at their prescribed range.
-template <Range R1, Range R2>
-constexpr auto divide(
-    detail::Ufixed<R1> const& lhs,
-    detail::Ufixed<R2> const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return lhs.divide(rhs, rounding, guard_bits);
-}
-
-template <Range R1, Range R2>
-constexpr auto remainder(
-    detail::Ufixed<R1> const& lhs,
-    detail::Ufixed<R2> const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return lhs.divrem(rhs, rounding, guard_bits).second;
-}
-
-template <Range R1, Range R2>
-constexpr auto rem(
-    detail::Ufixed<R1> const& lhs,
-    detail::Ufixed<R2> const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return remainder(lhs, rhs, rounding, guard_bits);
-}
-
-template <Range R1, Range R2>
-constexpr auto modulo(
-    detail::Ufixed<R1> const& lhs,
-    detail::Ufixed<R2> const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return remainder(lhs, rhs, rounding, guard_bits);
-}
-
-template <Range R1, Range R2>
-constexpr auto mod(
-    detail::Ufixed<R1> const& lhs,
-    detail::Ufixed<R2> const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return modulo(lhs, rhs, rounding, guard_bits);
-}
-
-template <Range R1, Range R2>
-constexpr auto divrem(
-    detail::Ufixed<R1> const& lhs,
-    detail::Ufixed<R2> const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return lhs.divrem(rhs, rounding, guard_bits);
-}
-
-template <Range R1, Range R2>
-constexpr auto divmod(
-    detail::Ufixed<R1> const& lhs,
-    detail::Ufixed<R2> const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return lhs.divrem(rhs, rounding, guard_bits);
-}
-
-template <Range R>
-constexpr auto reciprocal(
-    detail::Ufixed<R> const& value,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return divide(Ufixed<0, 0>{1}, value, rounding, guard_bits);
-}
-
-template <Range R>
-constexpr auto reverse(detail::Ufixed<R> const& v) noexcept {
-    if constexpr (R.direction == Direction::TO) {
-        return detail::Ufixed<reverse(R)>(detail::storage(v).reverse());
-    } else {
-        return detail::Ufixed<reverse(R)>(detail::storage(v));
-    }
-}
 
 }  // namespace coconext::types
 

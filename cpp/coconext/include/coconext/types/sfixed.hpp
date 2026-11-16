@@ -215,6 +215,51 @@ class Sfixed {
     static constexpr Range range() noexcept { return R; }
     static constexpr size_t size() noexcept { return R.length(); }
 
+    constexpr auto reverse() const noexcept {
+        if constexpr (R.direction == Direction::TO) {
+            return detail::Sfixed<R.reverse()>(value_.reverse());
+        } else {
+            return detail::Sfixed<R.reverse()>(value_);
+        }
+    }
+
+    constexpr Sfixed& inplace_not() & {
+        value_ = ~value_;
+        return *this;
+    }
+
+    constexpr Sfixed&& inplace_not() && {
+        inplace_not();
+        return std::move(*this);
+    }
+
+    constexpr std::optional<Range::value_type> index_of(Bit const& v) const {
+        auto const it = std::ranges::find(*this, v);
+        if (it == end()) {
+            return std::nullopt;
+        }
+        return range()[static_cast<size_t>(std::ranges::distance(begin(), it))];
+    }
+
+    constexpr std::optional<Range::value_type> rindex_of(Bit const& v) const {
+        auto const it = std::find(rbegin(), rend(), v);
+        if (it == rend()) {
+            return std::nullopt;
+        }
+        return range()
+            [size() - 1 - static_cast<size_t>(std::ranges::distance(rbegin(), it))];
+    }
+
+    constexpr Bit and_reduce() const {
+        return value_.popcount() == size() ? Bit::_1 : Bit::_0;
+    }
+
+    constexpr Bit or_reduce() const { return value_.popcount() != 0 ? Bit::_1 : Bit::_0; }
+
+    constexpr Bit xor_reduce() const {
+        return value_.popcount() % 2 == 1 ? Bit::_1 : Bit::_0;
+    }
+
     constexpr std::optional<Array<Bit, R>> resolve(
         ResolveMethod = ResolveMethod::WEAK
     ) const {
@@ -793,6 +838,54 @@ class Sfixed {
         return divide(rhs);
     }
 
+    constexpr auto reciprocal(
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        constexpr Range ResultRange{-R.right + 1, Direction::DOWNTO, -R.left};
+        auto quotient =
+            Sfixed<Range{1, Direction::DOWNTO, 0}>{1}.divide(*this, rounding, guard_bits);
+        return Sfixed<ResultRange>(quotient);
+    }
+
+    template <Range R2>
+    constexpr auto remainder(
+        Sfixed<R2> const& rhs,
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        return divrem(rhs, rounding, guard_bits).second;
+    }
+
+    template <Range R2>
+    constexpr auto rem(
+        Sfixed<R2> const& rhs,
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        return remainder(rhs, rounding, guard_bits);
+    }
+
+    template <Range R2>
+    constexpr auto modulo(
+        Sfixed<R2> const& rhs,
+        overflow_mode overflow = overflow_mode::saturate,
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        return divmod(rhs, overflow, rounding, guard_bits).second;
+    }
+
+    template <Range R2>
+    constexpr auto mod(
+        Sfixed<R2> const& rhs,
+        overflow_mode overflow = overflow_mode::saturate,
+        round_mode rounding = round_mode::round_to_even,
+        size_t guard_bits = fixed_guard_bits
+    ) const {
+        return modulo(rhs, overflow, rounding, guard_bits);
+    }
+
     template <Range R2>
     constexpr auto divide(
         Sfixed<R2> const& rhs,
@@ -1046,7 +1139,7 @@ class Sfixed {
     constexpr auto rend() const { return value_.rend(); }
 
     constexpr auto operator[](Range::value_type idx) {
-        auto const offset = offset_of(R, idx);
+        auto const offset = R.offset_of(idx);
         if (!offset.has_value()) {
             throw std::out_of_range("Index out of bounds");
         }
@@ -1056,7 +1149,7 @@ class Sfixed {
     }
 
     constexpr auto operator[](Range::value_type idx) const {
-        auto const offset = offset_of(R, idx);
+        auto const offset = R.offset_of(idx);
         if (!offset.has_value()) {
             throw std::out_of_range("Index out of bounds");
         }
@@ -1430,6 +1523,17 @@ constexpr LHS& operator%=(LHS& lhs, RHS const& rhs) {
     }
 }
 
+template <Range R>
+constexpr auto abs(Sfixed<R> const& v) noexcept {
+    static_assert(R.length() > 0, "abs on Sfixed with a null range is undefined");
+    constexpr auto TargetRange = Range{R.left + 1, R.direction, R.right};
+
+    if (v < Sfixed<R>{0}) {
+        return -v;
+    }
+    return Sfixed<TargetRange>(v.resize(overflow_mode::saturate, round_mode::round));
+}
+
 }  // namespace detail
 
 template <Range R>
@@ -1438,112 +1542,7 @@ inline constexpr bool is_fixed<detail::Sfixed<R>> = true;
 template <auto... Args>
 using Sfixed = detail::Sfixed<detail::make_fixed_range<Args...>()>;
 
-template <Range R1, Range R2>
-constexpr auto divide(
-    detail::Sfixed<R1> const& lhs,
-    detail::Sfixed<R2> const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return lhs.divide(rhs, rounding, guard_bits);
-}
-
-template <Range R1, Range R2>
-constexpr auto remainder(
-    detail::Sfixed<R1> const& lhs,
-    detail::Sfixed<R2> const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return lhs.divrem(rhs, rounding, guard_bits).second;
-}
-
-template <Range R1, Range R2>
-constexpr auto rem(
-    detail::Sfixed<R1> const& lhs,
-    detail::Sfixed<R2> const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return remainder(lhs, rhs, rounding, guard_bits);
-}
-
-template <Range R1, Range R2>
-constexpr auto modulo(
-    detail::Sfixed<R1> const& lhs,
-    detail::Sfixed<R2> const& rhs,
-    overflow_mode overflow = overflow_mode::saturate,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return lhs.divmod(rhs, overflow, rounding, guard_bits).second;
-}
-
-template <Range R1, Range R2>
-constexpr auto mod(
-    detail::Sfixed<R1> const& lhs,
-    detail::Sfixed<R2> const& rhs,
-    overflow_mode overflow = overflow_mode::saturate,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return modulo(lhs, rhs, overflow, rounding, guard_bits);
-}
-
-template <Range R1, Range R2>
-constexpr auto divrem(
-    detail::Sfixed<R1> const& lhs,
-    detail::Sfixed<R2> const& rhs,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return lhs.divrem(rhs, rounding, guard_bits);
-}
-
-template <Range R1, Range R2>
-constexpr auto divmod(
-    detail::Sfixed<R1> const& lhs,
-    detail::Sfixed<R2> const& rhs,
-    overflow_mode overflow = overflow_mode::saturate,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    return lhs.divmod(rhs, overflow, rounding, guard_bits);
-}
-
-template <Range R>
-constexpr auto reciprocal(
-    detail::Sfixed<R> const& value,
-    round_mode rounding = round_mode::round_to_even,
-    size_t guard_bits = fixed_guard_bits
-) {
-    constexpr Range ResultRange{-R.right + 1, Direction::DOWNTO, -R.left};
-    auto quotient = divide(Sfixed<1, 0>{1}, value, rounding, guard_bits);
-    return Sfixed<ResultRange>(quotient);
-}
-
-template <Range R>
-constexpr auto reverse(detail::Sfixed<R> const& v) noexcept {
-    if constexpr (R.direction == Direction::TO) {
-        return detail::Sfixed<reverse(R)>(detail::storage(v).reverse());
-    } else {
-        return detail::Sfixed<reverse(R)>(detail::storage(v));
-    }
-}
-
-// abs(s) free function for Sfixed<L, R> -> Sfixed<L+1, R>
-template <Range R>
-constexpr auto abs(detail::Sfixed<R> const& v) noexcept {
-    static_assert(R.length() > 0, "abs on Sfixed with a null range is undefined");
-    constexpr auto TargetRange = Range{R.left + 1, R.direction, R.right};
-
-    if (v < detail::Sfixed<R>{0}) {
-        return -v;
-    }
-    return detail::Sfixed<TargetRange>(
-        v.resize(overflow_mode::saturate, round_mode::round)
-    );
-}
+using detail::abs;
 
 }  // namespace coconext::types
 

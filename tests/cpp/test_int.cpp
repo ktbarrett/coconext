@@ -72,8 +72,8 @@ TEST(Int, runtime_edge_paths) {
         detail::UInt<129>::exact_add(wide_max, detail::UInt<129>(1)), detail::UInt<129>(0)
     );
 
-    EXPECT_THROW(detail::divrem(detail::UInt<8>(1), detail::UInt<8>(0)), std::domain_error);
-    EXPECT_THROW(detail::divrem(detail::SInt<8>(1), detail::SInt<8>(0)), std::domain_error);
+    EXPECT_THROW(detail::UInt<8>(1).divrem(detail::UInt<8>(0)), std::domain_error);
+    EXPECT_THROW(detail::SInt<8>(1).divrem(detail::SInt<8>(0)), std::domain_error);
 }
 
 TEST(Int, native_value_fit_predicate) {
@@ -401,40 +401,39 @@ TEST(IntGrowing, division_quotient_grows_by_one) {
 TEST(IntGrowing, mixed_width_division) {
     detail::UInt<8> dividend(uint8_t{200});
     detail::UInt<200> divisor(uint8_t{3});
-    auto [quotient, remainder] = detail::divrem(dividend, divisor);
+    auto [quotient, remainder] = dividend.divrem(divisor);
     EXPECT_EQ(quotient.to_decimal_string(), "66");
     EXPECT_EQ(remainder.to_decimal_string(), "2");
 
     detail::SInt<200> negative(int8_t{-17});
     detail::SInt<8> five(uint8_t{5});
-    auto [truncated, rem] = detail::divrem(negative, five);
-    auto [floored, mod] = detail::divmod(negative, five);
+    auto [truncated, rem] = negative.divrem(five);
+    auto [floored, mod] = negative.divmod(five);
     EXPECT_EQ(truncated.to_decimal_string(true), "-3");
     EXPECT_EQ(rem.to_decimal_string(true), "-2");
     EXPECT_EQ(floored.to_decimal_string(true), "-4");
     EXPECT_EQ(mod.to_decimal_string(true), "3");
 
     auto [narrow_negative_q, narrow_negative_r] =
-        detail::divrem(detail::SInt<8>(-17), detail::SInt<200>(5));
+        detail::SInt<8>(-17).divrem(detail::SInt<200>(5));
     EXPECT_EQ(narrow_negative_q.to_decimal_string(true), "-3");
     EXPECT_EQ(narrow_negative_r.to_decimal_string(true), "-2");
 
     auto [negative_divisor_q, negative_divisor_r] =
-        detail::divrem(detail::SInt<200>(17), detail::SInt<8>(-5));
+        detail::SInt<200>(17).divrem(detail::SInt<8>(-5));
     EXPECT_EQ(negative_divisor_q.to_decimal_string(true), "-3");
     EXPECT_EQ(negative_divisor_r.to_decimal_string(true), "2");
 
     auto [both_negative_q, both_negative_r] =
-        detail::divrem(detail::SInt<200>(-17), detail::SInt<8>(-5));
+        detail::SInt<200>(-17).divrem(detail::SInt<8>(-5));
     EXPECT_EQ(both_negative_q.to_decimal_string(true), "3");
     EXPECT_EQ(both_negative_r.to_decimal_string(true), "-2");
 
-    auto [smaller_q, smaller_r] =
-        detail::divrem(detail::SInt<8>(-5), detail::SInt<200>(-17));
+    auto [smaller_q, smaller_r] = detail::SInt<8>(-5).divrem(detail::SInt<200>(-17));
     EXPECT_EQ(smaller_q.to_decimal_string(true), "0");
     EXPECT_EQ(smaller_r.to_decimal_string(true), "-5");
 
-    auto [equal_q, equal_r] = detail::divrem(detail::SInt<8>(-5), detail::SInt<200>(-5));
+    auto [equal_q, equal_r] = detail::SInt<8>(-5).divrem(detail::SInt<200>(-5));
     EXPECT_EQ(equal_q.to_decimal_string(true), "1");
     EXPECT_EQ(equal_r.to_decimal_string(true), "0");
 }
@@ -455,14 +454,14 @@ TEST(IntGrowing, rem_and_mod_differ_on_mixed_signs) {
     detail::SInt<8> pos56(int8_t{56});
 
     EXPECT_EQ((neg56 % pos100).to_decimal_string(true), "-56");
-    EXPECT_EQ(detail::mod(neg56, pos100).to_decimal_string(true), "44");
+    EXPECT_EQ(neg56.mod(pos100).to_decimal_string(true), "44");
 
     EXPECT_EQ((pos56 % neg3).to_decimal_string(true), "2");
-    EXPECT_EQ(detail::mod(pos56, neg3).to_decimal_string(true), "-1");
+    EXPECT_EQ(pos56.mod(neg3).to_decimal_string(true), "-1");
 
     // Same signs: rem and mod agree.
     EXPECT_EQ((neg56 % neg3).to_decimal_string(true), "-2");
-    EXPECT_EQ(detail::mod(neg56, neg3).to_decimal_string(true), "-2");
+    EXPECT_EQ(neg56.mod(neg3).to_decimal_string(true), "-2");
 }
 
 TEST(IntGrowing, unary_negate_and_abs_grow_by_one) {
@@ -598,35 +597,30 @@ TEST(Int, conversion_and_parsing_preserve_values) {
 }
 
 TEST(Int, native_division_results_have_expected_values) {
-    constexpr auto unsigned_result =
-        detail::divrem(detail::UInt<8>(200), detail::UInt<8>(7));
+    constexpr auto unsigned_result = detail::UInt<8>(200).divrem(detail::UInt<8>(7));
     static_assert(unsigned_result.first == detail::UInt<9>(28));
     static_assert(unsigned_result.second == detail::UInt<8>(4));
 
-    constexpr auto signed_result = detail::divrem(detail::SInt<8>(-17), detail::SInt<8>(5));
+    constexpr auto signed_result = detail::SInt<8>(-17).divrem(detail::SInt<8>(5));
     static_assert(signed_result.first == detail::SInt<9>(-3));
     static_assert(signed_result.second == detail::SInt<8>(-2));
 
-    constexpr auto wide_result =
-        detail::divrem(detail::SInt<129>(-17), detail::SInt<8>(-5));
+    constexpr auto wide_result = detail::SInt<129>(-17).divrem(detail::SInt<8>(-5));
     static_assert(wide_result.first == detail::SInt<130>(3));
     static_assert(wide_result.second == detail::SInt<8>(-2));
 
-    auto runtime_unsigned_result = detail::divrem(
-        detail::UInt<8>(force_runtime(200)), detail::UInt<8>(force_runtime(7))
-    );
+    auto runtime_unsigned_result =
+        detail::UInt<8>(force_runtime(200)).divrem(detail::UInt<8>(force_runtime(7)));
     EXPECT_EQ(runtime_unsigned_result.first, detail::UInt<9>(28));
     EXPECT_EQ(runtime_unsigned_result.second, detail::UInt<8>(4));
 
-    auto runtime_signed_result = detail::divrem(
-        detail::SInt<8>(force_runtime(-17)), detail::SInt<8>(force_runtime(5))
-    );
+    auto runtime_signed_result =
+        detail::SInt<8>(force_runtime(-17)).divrem(detail::SInt<8>(force_runtime(5)));
     EXPECT_EQ(runtime_signed_result.first, detail::SInt<9>(-3));
     EXPECT_EQ(runtime_signed_result.second, detail::SInt<8>(-2));
 
-    auto runtime_wide_result = detail::divrem(
-        detail::SInt<129>(force_runtime(-17)), detail::SInt<8>(force_runtime(-5))
-    );
+    auto runtime_wide_result =
+        detail::SInt<129>(force_runtime(-17)).divrem(detail::SInt<8>(force_runtime(-5)));
     EXPECT_EQ(runtime_wide_result.first, detail::SInt<130>(3));
     EXPECT_EQ(runtime_wide_result.second, detail::SInt<8>(-2));
 }
@@ -670,9 +664,8 @@ TEST(Int, growing_arithmetic_preserves_the_result_invariant) {
         detail::SInt<16>(-21)
     );
 
-    auto [quotient, remainder] = detail::divrem(
-        detail::SInt<8>(force_runtime(-17)), detail::SInt<8>(force_runtime(5))
-    );
+    auto [quotient, remainder] =
+        detail::SInt<8>(force_runtime(-17)).divrem(detail::SInt<8>(force_runtime(5)));
     EXPECT_EQ(quotient.to_decimal_string(), "-3");
     EXPECT_EQ(remainder.to_decimal_string(), "-2");
 }

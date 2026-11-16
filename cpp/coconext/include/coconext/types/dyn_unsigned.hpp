@@ -49,6 +49,12 @@ class DynUnsigned {
     Range range() const noexcept { return range_; }
     size_t size() const noexcept { return range_.length(); }
 
+    Bit and_reduce() const { return value_.popcount() == size() ? Bit::_1 : Bit::_0; }
+
+    Bit or_reduce() const { return value_.popcount() != 0 ? Bit::_1 : Bit::_0; }
+
+    Bit xor_reduce() const { return value_.popcount() % 2 == 1 ? Bit::_1 : Bit::_0; }
+
     std::optional<Vector<Bit>> resolve(ResolveMethod = ResolveMethod::WEAK) const {
         return std::optional<Vector<Bit>>{std::in_place, value_, range_};
     }
@@ -309,8 +315,37 @@ class DynUnsigned {
     auto rend() noexcept { return value_.rend(); }
     auto rend() const noexcept { return value_.rend(); }
 
+    DynUnsigned& inplace_not() & {
+        for (auto&& v : *this) {
+            v = ~v;
+        }
+        return *this;
+    }
+
+    DynUnsigned&& inplace_not() && {
+        inplace_not();
+        return std::move(*this);
+    }
+
+    std::optional<Range::value_type> index_of(Bit const& v) const {
+        auto const it = std::ranges::find(*this, v);
+        if (it == end()) {
+            return std::nullopt;
+        }
+        return range()[static_cast<size_t>(std::ranges::distance(begin(), it))];
+    }
+
+    std::optional<Range::value_type> rindex_of(Bit const& v) const {
+        auto const it = std::find(rbegin(), rend(), v);
+        if (it == rend()) {
+            return std::nullopt;
+        }
+        return range()
+            [size() - 1 - static_cast<size_t>(std::ranges::distance(rbegin(), it))];
+    }
+
     auto operator[](Range::value_type index) {
-        auto const offset = offset_of(range_, index);
+        auto const offset = range_.offset_of(index);
         if (!offset) {
             throw std::out_of_range("DynUnsigned index out of bounds");
         }
@@ -318,7 +353,7 @@ class DynUnsigned {
     }
 
     auto operator[](Range::value_type index) const {
-        auto const offset = offset_of(range_, index);
+        auto const offset = range_.offset_of(index);
         if (!offset) {
             throw std::out_of_range("DynUnsigned index out of bounds");
         }
