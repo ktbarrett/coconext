@@ -18,12 +18,12 @@
 using coconext::types::BitVector;
 using coconext::types::Direction;
 using coconext::types::DynSfixed;
+using coconext::types::DynSigned;
 using coconext::types::DynUfixed;
+using coconext::types::DynUnsigned;
 using coconext::types::overflow_mode;
 using coconext::types::Range;
 using coconext::types::round_mode;
-using coconext::types::detail::DynSigned;
-using coconext::types::detail::DynUnsigned;
 using namespace coconext::types;
 
 template <typename LHS, typename RHS>

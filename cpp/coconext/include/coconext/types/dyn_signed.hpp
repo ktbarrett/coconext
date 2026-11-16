@@ -429,4 +429,10 @@ inline DynSigned& operator%=(DynSigned& lhs, DynUnsigned const& rhs) {
 
 }  // namespace coconext::types::detail
 
+namespace coconext::types {
+
+using DynSigned = detail::DynSigned;
+
+}  // namespace coconext::types
+
 #endif  // COCONEXT_DYN_SIGNED_HPP

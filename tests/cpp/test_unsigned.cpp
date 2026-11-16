@@ -345,8 +345,8 @@ TEST(TestUnsigned, NativeShiftAmounts) {
         };
         reject.template operator()<Unsigned<8>>();
         reject.template operator()<Signed<8>>();
-        reject.template operator()<detail::DynUnsigned>();
-        reject.template operator()<detail::DynSigned>();
+        reject.template operator()<DynUnsigned>();
+        reject.template operator()<DynSigned>();
         reject.template operator()<double>();
         reject.template operator()<bool>();
         reject.template operator()<char>();
@@ -359,8 +359,8 @@ TEST(TestUnsigned, NativeShiftAmounts) {
     check.template operator()<Signed<8>>();
     check.template operator()<Ufixed<7, 0>>();
     check.template operator()<Sfixed<7, 0>>();
-    check.template operator()<detail::DynUnsigned>();
-    check.template operator()<detail::DynSigned>();
+    check.template operator()<DynUnsigned>();
+    check.template operator()<DynSigned>();
     check.template operator()<DynUfixed>();
     check.template operator()<DynSfixed>();
 
