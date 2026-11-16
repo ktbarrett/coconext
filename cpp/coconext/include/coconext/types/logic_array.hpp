@@ -89,6 +89,63 @@ class ArraySlice<ArrayT> : public detail::ArraySliceImpl<ArrayT> {
     using detail::ArraySliceImpl<ArrayT>::ArraySliceImpl;
     using detail::ArraySliceImpl<ArrayT>::operator=;
 
+    constexpr ArraySlice& inplace_not() &
+        requires(!std::is_const_v<ArrayT>)
+    {
+        std::as_const(*this).inplace_not();
+        return *this;
+    }
+
+    constexpr ArraySlice&& inplace_not() &&
+        requires(!std::is_const_v<ArrayT>)
+    {
+        inplace_not();
+        return std::move(*this);
+    }
+
+    constexpr ArraySlice const& inplace_not() const&
+        requires(!std::is_const_v<ArrayT>)
+    {
+        for (auto&& v : *this) {
+            v = ~v;
+        }
+        return *this;
+    }
+
+    constexpr ArraySlice const&& inplace_not() const&&
+        requires(!std::is_const_v<ArrayT>)
+    {
+        inplace_not();
+        return std::move(*this);
+    }
+
+    constexpr auto and_reduce() const {
+        using Elem = std::ranges::range_value_t<ArrayT>;
+        Elem result{Elem::_1};
+        for (Elem v : *this) {
+            result = result & v;
+        }
+        return result;
+    }
+
+    constexpr auto or_reduce() const {
+        using Elem = std::ranges::range_value_t<ArrayT>;
+        Elem result{Elem::_0};
+        for (Elem v : *this) {
+            result = result | v;
+        }
+        return result;
+    }
+
+    constexpr auto xor_reduce() const {
+        using Elem = std::ranges::range_value_t<ArrayT>;
+        Elem result{Elem::_0};
+        for (Elem v : *this) {
+            result = result ^ v;
+        }
+        return result;
+    }
+
     std::optional<Vector<Bit>> resolve(ResolveMethod method = ResolveMethod::WEAK) const;
 };
 
@@ -98,6 +155,63 @@ class StaticArraySlice<ArrayT, R> : public detail::StaticArraySliceImpl<ArrayT, 
   public:
     using detail::StaticArraySliceImpl<ArrayT, R>::StaticArraySliceImpl;
     using detail::StaticArraySliceImpl<ArrayT, R>::operator=;
+
+    constexpr StaticArraySlice& inplace_not() &
+        requires(!std::is_const_v<ArrayT>)
+    {
+        std::as_const(*this).inplace_not();
+        return *this;
+    }
+
+    constexpr StaticArraySlice&& inplace_not() &&
+        requires(!std::is_const_v<ArrayT>)
+    {
+        inplace_not();
+        return std::move(*this);
+    }
+
+    constexpr StaticArraySlice const& inplace_not() const&
+        requires(!std::is_const_v<ArrayT>)
+    {
+        for (auto&& v : *this) {
+            v = ~v;
+        }
+        return *this;
+    }
+
+    constexpr StaticArraySlice const&& inplace_not() const&&
+        requires(!std::is_const_v<ArrayT>)
+    {
+        inplace_not();
+        return std::move(*this);
+    }
+
+    constexpr auto and_reduce() const {
+        using Elem = std::ranges::range_value_t<ArrayT>;
+        Elem result{Elem::_1};
+        for (Elem v : *this) {
+            result = result & v;
+        }
+        return result;
+    }
+
+    constexpr auto or_reduce() const {
+        using Elem = std::ranges::range_value_t<ArrayT>;
+        Elem result{Elem::_0};
+        for (Elem v : *this) {
+            result = result | v;
+        }
+        return result;
+    }
+
+    constexpr auto xor_reduce() const {
+        using Elem = std::ranges::range_value_t<ArrayT>;
+        Elem result{Elem::_0};
+        for (Elem v : *this) {
+            result = result ^ v;
+        }
+        return result;
+    }
 
     std::optional<detail::Array<Bit, R>> resolve(
         ResolveMethod method = ResolveMethod::WEAK
@@ -144,6 +258,45 @@ class Vector<Logic> : public detail::VectorImpl<Logic> {
     }
     COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR Vector(char const* s, Range r)
         : Vector(std::string_view(s), r) {}
+
+    COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR Vector& inplace_not() & {
+        for (auto&& v : *this) {
+            v = ~v;
+        }
+        return *this;
+    }
+
+    COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR Vector&& inplace_not() && {
+        inplace_not();
+        return std::move(*this);
+    }
+
+    COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR auto and_reduce() const {
+        using Elem = Logic;
+        Elem result{Elem::_1};
+        for (Elem v : *this) {
+            result = result & v;
+        }
+        return result;
+    }
+
+    COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR auto or_reduce() const {
+        using Elem = Logic;
+        Elem result{Elem::_0};
+        for (Elem v : *this) {
+            result = result | v;
+        }
+        return result;
+    }
+
+    COCONEXT_DYN_LOGIC_ARRAY_CONSTEXPR auto xor_reduce() const {
+        using Elem = Logic;
+        Elem result{Elem::_0};
+        for (Elem v : *this) {
+            result = result ^ v;
+        }
+        return result;
+    }
 
     std::optional<Vector<Bit>> resolve(ResolveMethod method = ResolveMethod::WEAK) const;
 };
@@ -230,6 +383,30 @@ class Vector<Bit> {
     }
     Vector(char const* s, Range r) : Vector(std::string_view(s), r) {}
 
+    Vector reverse() const {
+        Vector result(range().reverse());
+        std::ranges::reverse_copy(*this, result.begin());
+        return result;
+    }
+
+    Vector& inplace_not() & {
+        for (auto&& v : *this) {
+            v = ~v;
+        }
+        return *this;
+    }
+
+    Vector&& inplace_not() && {
+        inplace_not();
+        return std::move(*this);
+    }
+
+    Bit and_reduce() const { return value_.popcount() == size() ? Bit::_1 : Bit::_0; }
+
+    Bit or_reduce() const { return value_.popcount() != 0 ? Bit::_1 : Bit::_0; }
+
+    Bit xor_reduce() const { return value_.popcount() % 2 == 1 ? Bit::_1 : Bit::_0; }
+
     std::optional<Vector> resolve(ResolveMethod = ResolveMethod::WEAK) const {
         return *this;
     }
@@ -247,14 +424,14 @@ class Vector<Bit> {
     size_t size() const noexcept { return range_.length(); }
 
     reference operator[](index_type idx) {
-        auto const offset = detail::offset_of(range_, idx);
+        auto const offset = range_.offset_of(idx);
         if (!offset.has_value()) {
             throw std::out_of_range("Index out of bounds");
         }
         return value_[size() - 1 - offset.value()];
     }
     const_reference operator[](index_type idx) const {
-        auto const offset = detail::offset_of(range_, idx);
+        auto const offset = range_.offset_of(idx);
         if (!offset.has_value()) {
             throw std::out_of_range("Index out of bounds");
         }
@@ -315,6 +492,23 @@ class Vector<Bit> {
     auto rend() noexcept { return value_.rend(); }
     auto rend() const noexcept { return value_.rend(); }
 
+    std::optional<Range::value_type> index_of(Bit const& v) const {
+        auto const it = std::ranges::find(*this, v);
+        if (it == end()) {
+            return std::nullopt;
+        }
+        return range()[static_cast<size_t>(std::ranges::distance(begin(), it))];
+    }
+
+    std::optional<Range::value_type> rindex_of(Bit const& v) const {
+        auto const it = std::find(rbegin(), rend(), v);
+        if (it == rend()) {
+            return std::nullopt;
+        }
+        return range()
+            [size() - 1 - static_cast<size_t>(std::ranges::distance(rbegin(), it))];
+    }
+
   private:
     friend struct detail::storage_fn;
 
@@ -356,6 +550,45 @@ class Array<Logic, R> : public ArrayImpl<Logic, R> {
         }
     }
     explicit constexpr Array(char const* s) : Array(std::string_view(s)) {}
+
+    constexpr Array& inplace_not() & {
+        for (auto&& v : *this) {
+            v = ~v;
+        }
+        return *this;
+    }
+
+    constexpr Array&& inplace_not() && {
+        inplace_not();
+        return std::move(*this);
+    }
+
+    constexpr auto and_reduce() const {
+        using Elem = Logic;
+        Elem result{Elem::_1};
+        for (Elem v : *this) {
+            result = result & v;
+        }
+        return result;
+    }
+
+    constexpr auto or_reduce() const {
+        using Elem = Logic;
+        Elem result{Elem::_0};
+        for (Elem v : *this) {
+            result = result | v;
+        }
+        return result;
+    }
+
+    constexpr auto xor_reduce() const {
+        using Elem = Logic;
+        Elem result{Elem::_0};
+        for (Elem v : *this) {
+            result = result ^ v;
+        }
+        return result;
+    }
 
     std::optional<Array<Bit, R>> resolve(ResolveMethod method = ResolveMethod::WEAK) const {
         std::optional<Array<Bit, R>> result{std::in_place};
@@ -405,39 +638,6 @@ std::optional<detail::Array<Bit, R>> StaticArraySlice<ArrayT, R>::resolve(
             }
             *out++ = *r;
         }
-    }
-    return result;
-}
-
-template <RangedSequence T>
-    requires LogicType<std::ranges::range_value_t<T>>
-auto and_reduce(T const& self) {
-    using Elem = std::ranges::range_value_t<T>;
-    Elem result{Elem::_1};
-    for (auto const& v : self) {
-        result = result & v;
-    }
-    return result;
-}
-
-template <RangedSequence T>
-    requires LogicType<std::ranges::range_value_t<T>>
-auto or_reduce(T const& self) {
-    using Elem = std::ranges::range_value_t<T>;
-    Elem result{Elem::_0};
-    for (auto const& v : self) {
-        result = result | v;
-    }
-    return result;
-}
-
-template <RangedSequence T>
-    requires LogicType<std::ranges::range_value_t<T>>
-auto xor_reduce(T const& self) {
-    using Elem = std::ranges::range_value_t<T>;
-    Elem result{Elem::_0};
-    for (auto const& v : self) {
-        result = result ^ v;
     }
     return result;
 }
@@ -709,15 +909,6 @@ constexpr decltype(auto) operator^=(LHS&& lhs, RHS const& rhs) {
         return a ^ b;
     });
     return std::forward<LHS>(lhs);
-}
-
-template <typename Arr>
-    requires LogicArrayType<std::remove_cvref_t<Arr>>
-constexpr decltype(auto) inplace_not(Arr&& arr) {
-    for (auto&& v : arr) {
-        v = ~v;
-    }
-    return std::forward<Arr>(arr);
 }
 
 // -- Concatenation ---------------------------------------------------------

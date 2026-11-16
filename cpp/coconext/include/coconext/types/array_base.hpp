@@ -62,30 +62,6 @@ constexpr void subsequence_check(Range parent, Range child) {
 
 }  // namespace detail
 
-template <RangedSequence S>
-constexpr std::optional<Range::value_type> index_of(
-    S const& s, std::ranges::range_value_t<S> const& v
-) {
-    auto const it = std::ranges::find(s, v);
-    if (it == s.end()) {
-        return std::nullopt;
-    }
-    return s.range()[static_cast<size_t>(std::ranges::distance(s.begin(), it))];
-}
-
-template <RangedSequence S>
-constexpr std::optional<Range::value_type> rindex_of(
-    S const& s, std::ranges::range_value_t<S> const& v
-) {
-    auto const rit = std::find(s.rbegin(), s.rend(), v);
-    if (rit == s.rend()) {
-        return std::nullopt;
-    }
-    return s.range()
-        [s.range().length() - 1
-         - static_cast<size_t>(std::ranges::distance(s.rbegin(), rit))];
-}
-
 template <typename ArrayT>
 class ArraySlice;
 template <typename ArrayT, Range R>
@@ -107,6 +83,8 @@ namespace detail {
 template <typename ArrayT>
 class ArraySliceImpl {
   public:
+    auto reverse() const;
+
     using value_type = std::ranges::range_value_t<ArrayT>;
     using reference = std::ranges::range_reference_t<ArrayT>;
     using index_type = Range::value_type;
@@ -123,8 +101,25 @@ class ArraySliceImpl {
     constexpr size_t size() const noexcept { return range_.length(); }
 
     // Element access bounds-checks against this slice's range_, not the owner's range.
+    constexpr std::optional<Range::value_type> index_of(value_type const& v) const {
+        auto const it = std::ranges::find(*this, v);
+        if (it == end()) {
+            return std::nullopt;
+        }
+        return range()[static_cast<size_t>(std::ranges::distance(begin(), it))];
+    }
+
+    constexpr std::optional<Range::value_type> rindex_of(value_type const& v) const {
+        auto const it = std::find(rbegin(), rend(), v);
+        if (it == rend()) {
+            return std::nullopt;
+        }
+        return range()
+            [size() - 1 - static_cast<size_t>(std::ranges::distance(rbegin(), it))];
+    }
+
     constexpr reference operator[](index_type idx) const {
-        auto const offset = offset_of(range_, idx);
+        auto const offset = range_.offset_of(idx);
         if (!offset.has_value()) {
             throw std::out_of_range("Index out of bounds");
         }
@@ -212,13 +207,13 @@ class ArraySliceImpl {
         if (range_.length() == 0) {
             return arr_->begin();
         }
-        return arr_->begin() + offset_of(arr_->range(), range_.left).value();
+        return arr_->begin() + arr_->range().offset_of(range_.left).value();
     }
     constexpr iterator end() const noexcept {
         if (range_.length() == 0) {
             return arr_->begin();
         }
-        return arr_->begin() + offset_of(arr_->range(), range_.right).value() + 1;
+        return arr_->begin() + arr_->range().offset_of(range_.right).value() + 1;
     }
     constexpr auto rbegin() const noexcept { return std::reverse_iterator(end()); }
     constexpr auto rend() const noexcept { return std::reverse_iterator(begin()); }
@@ -231,6 +226,8 @@ class ArraySliceImpl {
 template <typename ArrayT, Range R>
 class StaticArraySliceImpl {
   public:
+    constexpr auto reverse() const;
+
     using value_type = std::ranges::range_value_t<ArrayT>;
     using reference = std::ranges::range_reference_t<ArrayT>;
     using index_type = Range::value_type;
@@ -246,8 +243,25 @@ class StaticArraySliceImpl {
     static constexpr Range range() noexcept { return static_range; }
     static constexpr size_t size() noexcept { return static_range.length(); }
 
+    constexpr std::optional<Range::value_type> index_of(value_type const& v) const {
+        auto const it = std::ranges::find(*this, v);
+        if (it == end()) {
+            return std::nullopt;
+        }
+        return range()[static_cast<size_t>(std::ranges::distance(begin(), it))];
+    }
+
+    constexpr std::optional<Range::value_type> rindex_of(value_type const& v) const {
+        auto const it = std::find(rbegin(), rend(), v);
+        if (it == rend()) {
+            return std::nullopt;
+        }
+        return range()
+            [size() - 1 - static_cast<size_t>(std::ranges::distance(rbegin(), it))];
+    }
+
     constexpr reference operator[](index_type idx) const {
-        auto const offset = offset_of(R, idx);
+        auto const offset = R.offset_of(idx);
         if (!offset.has_value()) {
             throw std::out_of_range("Index out of bounds");
         }
@@ -265,7 +279,7 @@ class StaticArraySliceImpl {
 
     template <index_type I>
     constexpr reference index() const {
-        static_assert(contains(R, I), "index is out of range");
+        static_assert(R.contains(I), "index is out of range");
         return (*this)[I];
     }
 
@@ -334,10 +348,10 @@ class StaticArraySliceImpl {
             return arr_->begin();
         } else if constexpr (StaticRangedSequence<ArrayT>) {
             constexpr auto parent = std::remove_cvref_t<ArrayT>::static_range;
-            constexpr auto offset = offset_of(parent, R.left).value();
+            constexpr auto offset = parent.offset_of(R.left).value();
             return arr_->begin() + offset;
         } else {
-            return arr_->begin() + offset_of(arr_->range(), R.left).value();
+            return arr_->begin() + arr_->range().offset_of(R.left).value();
         }
     }
     constexpr iterator end() const noexcept {
@@ -345,10 +359,10 @@ class StaticArraySliceImpl {
             return arr_->begin();
         } else if constexpr (StaticRangedSequence<ArrayT>) {
             constexpr auto parent = std::remove_cvref_t<ArrayT>::static_range;
-            constexpr auto offset = offset_of(parent, R.right).value();
+            constexpr auto offset = parent.offset_of(R.right).value();
             return arr_->begin() + offset + 1;
         } else {
-            return arr_->begin() + offset_of(arr_->range(), R.right).value() + 1;
+            return arr_->begin() + arr_->range().offset_of(R.right).value() + 1;
         }
     }
     constexpr auto rbegin() const noexcept { return std::reverse_iterator(end()); }

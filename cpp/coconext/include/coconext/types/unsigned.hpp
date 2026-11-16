@@ -46,6 +46,43 @@ class Unsigned {
     static constexpr Range range() noexcept { return R; }
     static constexpr size_t size() noexcept { return R.length(); }
 
+    constexpr Unsigned& inplace_not() & {
+        value_ = ~value_;
+        return *this;
+    }
+
+    constexpr Unsigned&& inplace_not() && {
+        inplace_not();
+        return std::move(*this);
+    }
+
+    constexpr std::optional<Range::value_type> index_of(Bit const& v) const {
+        auto const it = std::ranges::find(*this, v);
+        if (it == end()) {
+            return std::nullopt;
+        }
+        return range()[static_cast<size_t>(std::ranges::distance(begin(), it))];
+    }
+
+    constexpr std::optional<Range::value_type> rindex_of(Bit const& v) const {
+        auto const it = std::find(rbegin(), rend(), v);
+        if (it == rend()) {
+            return std::nullopt;
+        }
+        return range()
+            [size() - 1 - static_cast<size_t>(std::ranges::distance(rbegin(), it))];
+    }
+
+    constexpr Bit and_reduce() const {
+        return value_.popcount() == size() ? Bit::_1 : Bit::_0;
+    }
+
+    constexpr Bit or_reduce() const { return value_.popcount() != 0 ? Bit::_1 : Bit::_0; }
+
+    constexpr Bit xor_reduce() const {
+        return value_.popcount() % 2 == 1 ? Bit::_1 : Bit::_0;
+    }
+
     constexpr std::optional<Array<Bit, R>> resolve(
         ResolveMethod = ResolveMethod::WEAK
     ) const {
@@ -498,7 +535,7 @@ class Unsigned {
     constexpr auto rend() const { return value_.rend(); }
 
     constexpr auto operator[](Range::value_type idx) {
-        auto const offset = offset_of(R, idx);
+        auto const offset = R.offset_of(idx);
         if (!offset.has_value()) {
             throw std::out_of_range("Index out of bounds");
         }
@@ -508,7 +545,7 @@ class Unsigned {
     }
 
     constexpr auto operator[](Range::value_type idx) const {
-        auto const offset = offset_of(R, idx);
+        auto const offset = R.offset_of(idx);
         if (!offset.has_value()) {
             throw std::out_of_range("Index out of bounds");
         }

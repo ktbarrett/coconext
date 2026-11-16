@@ -497,22 +497,22 @@ TEST(TestBit, BitCompoundAssignXor) {
 
 TEST(TestLogic, InplaceNotLogic) {
     Logic v = '1'_l;
-    inplace_not(v);
+    v.inplace_not();
     EXPECT_EQ(v, '0'_l);
     v = 'X'_l;
-    inplace_not(v);
+    v.inplace_not();
     EXPECT_EQ(v, 'X'_l);  // ~X = X
 }
 
 TEST(TestBit, InplaceNotBit) {
     Bit v = '1'_b;
-    inplace_not(v);
+    v.inplace_not();
     EXPECT_EQ(v, '0'_b);
 }
 
 TEST(TestLogic, InplaceNotReturnsReference) {
     Logic v = '1'_l;
-    auto& ref = inplace_not(v);
+    auto& ref = v.inplace_not();
     EXPECT_EQ(&ref, &v);
 }
 

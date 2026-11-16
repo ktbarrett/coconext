@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <format>
 #include <limits>
+#include <optional>
 #include <ranges>
 #include <stdexcept>
 
@@ -104,6 +105,33 @@ struct Range {
         return left - index;
     }
 
+    constexpr Range reverse() const noexcept {
+        return Range{
+            right, direction == Direction::TO ? Direction::DOWNTO : Direction::TO, left
+        };
+    }
+
+    constexpr std::optional<value_type> offset_of(value_type value) const {
+        if (direction == Direction::TO) {
+            if (value < left || value > right) {
+                return std::nullopt;
+            }
+            return value - left;
+        } else {
+            if (value > left || value < right) {
+                return std::nullopt;
+            }
+            return left - value;
+        }
+    }
+
+    constexpr bool contains(value_type value) const {
+        if (direction == Direction::TO) {
+            return value >= left && value <= right;
+        }
+        return value <= left && value >= right;
+    }
+
     // This range is a valid subsequence of `parent` iff every value in this
     // range appears (in order) in parent. The rule collapses to:
     //   - length 0:   always a subsequence (any direction, any bounds)
@@ -118,17 +146,11 @@ struct Range {
     // constexpr-evaluable, so callers can static_assert it at compile time as
     // well as use it as a runtime predicate.
     constexpr bool is_subsequence_of(Range parent) const noexcept {
-        auto const in_parent = [&](value_type v) {
-            if (parent.direction == Direction::TO) {
-                return v >= parent.left && v <= parent.right;
-            }
-            return v <= parent.left && v >= parent.right;
-        };
         auto const len = length();
         if (len == 0) {
             return true;
         }
-        if (!in_parent(left)) {
+        if (!parent.contains(left)) {
             return false;
         }
         if (len == 1) {
@@ -137,7 +159,7 @@ struct Range {
         if (direction != parent.direction) {
             return false;
         }
-        return in_parent(right);
+        return parent.contains(right);
     }
 
     friend constexpr bool operator==(Range const& lhs, Range const& rhs) noexcept {
@@ -145,39 +167,6 @@ struct Range {
             && lhs.direction == rhs.direction;
     }
 };
-
-constexpr Range reverse(Range const& r) noexcept {
-    return Range{
-        r.right, r.direction == Direction::TO ? Direction::DOWNTO : Direction::TO, r.left
-    };
-}
-
-namespace detail {
-
-constexpr std::optional<Range::value_type> offset_of(
-    Range const& range, Range::value_type value
-) {
-    if (range.direction == Direction::TO) {
-        if (value < range.left || value > range.right) {
-            return std::nullopt;
-        }
-        return value - range.left;
-    } else {
-        if (value > range.left || value < range.right) {
-            return std::nullopt;
-        }
-        return range.left - value;
-    }
-}
-
-constexpr bool contains(Range const& range, Range::value_type value) {
-    if (range.direction == Direction::TO) {
-        return value >= range.left && value <= range.right;
-    }
-    return value <= range.left && value >= range.right;
-}
-
-}  // namespace detail
 
 static_assert(std::ranges::random_access_range<Range>);
 

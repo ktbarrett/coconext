@@ -9,11 +9,11 @@
 using namespace coconext::types;
 using namespace coconext::literals;
 
-// -- reverse(Range) ---------------------------------------------------------
+// -- Range.reverse() ---------------------------------------------------------
 
 TEST(TestReverseRange, FlipsDowntoToTo) {
     constexpr Range r{7, Direction::DOWNTO, 0};
-    constexpr Range rr = reverse(r);
+    constexpr Range rr = r.reverse();
     EXPECT_EQ(rr.left, 0);
     EXPECT_EQ(rr.right, 7);
     EXPECT_EQ(rr.direction, Direction::TO);
@@ -22,7 +22,7 @@ TEST(TestReverseRange, FlipsDowntoToTo) {
 
 TEST(TestReverseRange, FlipsToToDownto) {
     constexpr Range r{-4, Direction::TO, 3};
-    constexpr Range rr = reverse(r);
+    constexpr Range rr = r.reverse();
     EXPECT_EQ(rr.left, 3);
     EXPECT_EQ(rr.right, -4);
     EXPECT_EQ(rr.direction, Direction::DOWNTO);
@@ -31,7 +31,7 @@ TEST(TestReverseRange, FlipsToToDownto) {
 
 TEST(TestReverseRange, ReverseIsInvolutive) {
     constexpr Range r{3, Direction::DOWNTO, -4};
-    constexpr Range rrr = reverse(reverse(r));
+    constexpr Range rrr = r.reverse().reverse();
     EXPECT_EQ(rrr.left, r.left);
     EXPECT_EQ(rrr.right, r.right);
     EXPECT_EQ(rrr.direction, r.direction);
@@ -39,7 +39,7 @@ TEST(TestReverseRange, ReverseIsInvolutive) {
 
 TEST(TestReverseRange, LengthOne) {
     constexpr Range r{5, Direction::DOWNTO, 5};
-    constexpr Range rr = reverse(r);
+    constexpr Range rr = r.reverse();
     EXPECT_EQ(rr.left, 5);
     EXPECT_EQ(rr.right, 5);
     EXPECT_EQ(rr.direction, Direction::TO);
@@ -50,18 +50,18 @@ TEST(TestReverseRange, ZeroLength) {
     // A zero-length range has left/right in the "wrong" order relative to
     // direction; reverse still flips both endpoints and the direction.
     constexpr Range r{0, Direction::TO, -1};
-    constexpr Range rr = reverse(r);
+    constexpr Range rr = r.reverse();
     EXPECT_EQ(rr.left, -1);
     EXPECT_EQ(rr.right, 0);
     EXPECT_EQ(rr.direction, Direction::DOWNTO);
     EXPECT_EQ(rr.length(), 0U);
 }
 
-// -- reverse(Array) ---------------------------------------------------------
+// -- Array.reverse() ---------------------------------------------------------
 
 TEST(TestReverseArray, DowntoToTo) {
     Array<int, Range{3, Direction::DOWNTO, 0}> a{10, 20, 30, 40};
-    auto r = reverse(a);
+    auto r = a.reverse();
     static_assert(
         std::is_same_v<decltype(r), detail::Array<int, Range{0, Direction::TO, 3}>>
     );
@@ -74,7 +74,7 @@ TEST(TestReverseArray, DowntoToTo) {
 
 TEST(TestReverseArray, ToToDownto) {
     Array<int, Range{0, Direction::TO, 3}> a{1, 2, 3, 4};
-    auto r = reverse(a);
+    auto r = a.reverse();
     static_assert(
         std::is_same_v<decltype(r), detail::Array<int, Range{3, Direction::DOWNTO, 0}>>
     );
@@ -91,23 +91,23 @@ TEST(TestReverseArray, ToToDownto) {
 
 TEST(TestReverseArray, SingleElement) {
     Array<int, Range{5, Direction::DOWNTO, 5}> a{42};
-    auto r = reverse(a);
+    auto r = a.reverse();
     EXPECT_EQ(r.range().direction, Direction::TO);
     EXPECT_EQ(r[5], 42);
 }
 
 TEST(TestReverseArray, Involutive) {
     Array<int, Range{7, Direction::DOWNTO, 0}> a{1, 2, 3, 4, 5, 6, 7, 8};
-    auto rr = reverse(reverse(a));
+    auto rr = a.reverse().reverse();
     static_assert(std::is_same_v<decltype(rr), decltype(a)>);
     EXPECT_EQ(rr, a);
 }
 
-// -- reverse(Vector) --------------------------------------------------------
+// -- Vector.reverse() --------------------------------------------------------
 
 TEST(TestReverseVector, DowntoToTo) {
     Vector<int> v({10, 20, 30, 40}, Range{3, Direction::DOWNTO, 0});
-    auto r = reverse(v);
+    auto r = v.reverse();
     EXPECT_EQ(r.range(), (Range{0, Direction::TO, 3}));
     EXPECT_EQ(r[0], 40);
     EXPECT_EQ(r[3], 10);
@@ -115,7 +115,7 @@ TEST(TestReverseVector, DowntoToTo) {
 
 TEST(TestReverseVector, ToToDownto) {
     Vector<int> v({1, 2, 3, 4}, Range{0, Direction::TO, 3});
-    auto r = reverse(v);
+    auto r = v.reverse();
     EXPECT_EQ(r.range(), (Range{3, Direction::DOWNTO, 0}));
     // Value-at-HDL-position invariant; iteration order flipped.
     EXPECT_EQ(r[0], 1);
@@ -126,23 +126,23 @@ TEST(TestReverseVector, ToToDownto) {
 
 TEST(TestReverseVector, Involutive) {
     Vector<int> v({1, 2, 3, 4, 5}, Range{4, Direction::DOWNTO, 0});
-    auto rr = reverse(reverse(v));
+    auto rr = v.reverse().reverse();
     EXPECT_EQ(rr, v);
 }
 
 TEST(TestReverseVector, Empty) {
     Vector<int> v(Range{0, Direction::TO, -1});
-    auto r = reverse(v);
+    auto r = v.reverse();
     EXPECT_EQ(r.range().length(), 0U);
     EXPECT_EQ(r.range().direction, Direction::DOWNTO);
 }
 
-// -- reverse(ArraySlice) ----------------------------------------------------
+// -- ArraySlice.reverse() ----------------------------------------------------
 
 TEST(TestReverseArraySlice, ReturnsVector) {
     Array<int, Range{7, Direction::DOWNTO, 0}> a{1, 2, 3, 4, 5, 6, 7, 8};
     auto s = a[Range{5, Direction::DOWNTO, 2}];  // elements at HDL idx 5..2: {3,4,5,6}
-    auto r = reverse(s);
+    auto r = s.reverse();
     static_assert(std::is_same_v<decltype(r), Vector<int>>);
     EXPECT_EQ(r.range(), (Range{2, Direction::TO, 5}));
     EXPECT_EQ(r[2], 6);
@@ -154,18 +154,18 @@ TEST(TestReverseArraySlice, ReturnsVector) {
 TEST(TestReverseArraySlice, FromVectorSlice) {
     Vector<int> v({10, 20, 30, 40}, Range{0, Direction::TO, 3});
     auto s = v[Range{1, Direction::TO, 2}];
-    auto r = reverse(s);
+    auto r = s.reverse();
     EXPECT_EQ(r.range(), (Range{2, Direction::DOWNTO, 1}));
     EXPECT_EQ(r[2], 30);
     EXPECT_EQ(r[1], 20);
 }
 
-// -- reverse(StaticArraySlice) ----------------------------------------------
+// -- StaticArraySlice.reverse() ----------------------------------------------
 
 TEST(TestReverseStaticArraySlice, PreservesStaticRange) {
     Array<int, Range{7, Direction::DOWNTO, 0}> a{1, 2, 3, 4, 5, 6, 7, 8};
     auto s = a.slice<Range{5, Direction::DOWNTO, 2}>();
-    auto r = reverse(s);
+    auto r = s.reverse();
     static_assert(
         std::is_same_v<decltype(r), detail::Array<int, Range{2, Direction::TO, 5}>>
     );
@@ -177,11 +177,38 @@ TEST(TestReverseStaticArraySlice, PreservesStaticRange) {
 
 TEST(TestReverseArray, BitArray) {
     BitArray<4> a{'1'_b, '0'_b, '1'_b, '0'_b};
-    auto r = reverse(a);
+    auto r = a.reverse();
     // BitArray<4> is detail::Array<Bit, {3 DOWNTO 0}>; reverse -> {0 TO 3}.
     EXPECT_EQ(r.range().direction, Direction::TO);
     EXPECT_EQ(r[0], '0'_b);
     EXPECT_EQ(r[1], '1'_b);
     EXPECT_EQ(r[2], '0'_b);
     EXPECT_EQ(r[3], '1'_b);
+}
+
+TEST(TestReverseArray, LogicArray) {
+    constexpr auto a = "10XZ"_l;
+    constexpr auto r = a.reverse();
+    static_assert(r.range() == a.range().reverse());
+    EXPECT_EQ(to_string(r), "ZX01");
+}
+
+TEST(TestReverseVector, BitAndLogic) {
+    BitVector const bits("10010");
+    EXPECT_EQ(to_string(bits.reverse()), "01001");
+    EXPECT_EQ(bits.reverse().reverse(), bits);
+    LogicVector const logic("10XZ");
+    EXPECT_EQ(to_string(logic.reverse()), "ZX01");
+}
+
+TEST(TestReverseStaticArraySlice, LogicAndBit) {
+    constexpr auto bits = "01001"_b;
+    constexpr auto logic = "01XZ0"_l;
+    constexpr Range middle{3, Direction::DOWNTO, 1};
+    constexpr auto reversed = bits.slice<middle>().reverse();
+    static_assert(reversed.range() == middle.reverse());
+    EXPECT_EQ(to_string(reversed), "001");
+    EXPECT_EQ(to_string(bits[middle].reverse()), "001");
+    EXPECT_EQ(to_string(logic.slice<middle>().reverse()), "ZX1");
+    EXPECT_EQ(to_string(logic[middle].reverse()), "ZX1");
 }

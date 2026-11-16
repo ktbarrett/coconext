@@ -8,6 +8,7 @@
 #include <initializer_list>
 #include <iterator>
 #include <limits>
+#include <optional>
 #include <ranges>
 #include <stdexcept>
 #include <string>
@@ -80,15 +81,38 @@ class ArrayImpl {
     static constexpr Range range() noexcept { return static_range; }
     static constexpr size_t size() noexcept { return static_range.length(); }
 
+    constexpr auto reverse() const {
+        Array<T, R.reverse()> result;
+        std::ranges::reverse_copy(*this, result.begin());
+        return result;
+    }
+
+    constexpr std::optional<Range::value_type> index_of(value_type const& v) const {
+        auto const it = std::ranges::find(*this, v);
+        if (it == end()) {
+            return std::nullopt;
+        }
+        return range()[static_cast<size_t>(std::ranges::distance(begin(), it))];
+    }
+
+    constexpr std::optional<Range::value_type> rindex_of(value_type const& v) const {
+        auto const it = std::find(rbegin(), rend(), v);
+        if (it == rend()) {
+            return std::nullopt;
+        }
+        return range()
+            [size() - 1 - static_cast<size_t>(std::ranges::distance(rbegin(), it))];
+    }
+
     constexpr reference operator[](index_type idx) {
-        auto offset = offset_of(R, idx);
+        auto offset = R.offset_of(idx);
         if (!offset.has_value()) {
             throw std::out_of_range("Index out of bounds");
         }
         return data_[offset.value()];
     }
     constexpr const_reference operator[](index_type idx) const {
-        auto offset = offset_of(R, idx);
+        auto offset = R.offset_of(idx);
         if (!offset.has_value()) {
             throw std::out_of_range("Index out of bounds");
         }
@@ -147,12 +171,12 @@ class ArrayImpl {
 
     template <index_type I>
     constexpr reference index() {
-        static_assert(contains(R, I), "index is out of range");
+        static_assert(R.contains(I), "index is out of range");
         return (*this)[I];
     }
     template <index_type I>
     constexpr const_reference index() const {
-        static_assert(contains(R, I), "index is out of range");
+        static_assert(R.contains(I), "index is out of range");
         return (*this)[I];
     }
 

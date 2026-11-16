@@ -8,6 +8,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 
 #include <coconext/types/concepts.hpp>
 
@@ -137,6 +138,9 @@ class Logic {
     std::optional<Bit> resolve(ResolveMethod method) const noexcept;
     std::optional<Bit> resolve() const noexcept;
 
+    constexpr Logic& inplace_not() & noexcept;
+    constexpr Logic&& inplace_not() && noexcept;
+
   private:
     value_type value_ = _0;
 };
@@ -208,6 +212,9 @@ class Bit {
     }
 
     explicit constexpr operator bool() const noexcept { return value_ != _0; }
+
+    constexpr Bit& inplace_not() & noexcept;
+    constexpr Bit&& inplace_not() && noexcept;
 
   private:
     value_type value_ = _0;
@@ -342,8 +349,16 @@ constexpr Bit& operator&=(Bit& lhs, Bit const& rhs) noexcept { return lhs = lhs 
 constexpr Bit& operator|=(Bit& lhs, Bit const& rhs) noexcept { return lhs = lhs | rhs; }
 constexpr Bit& operator^=(Bit& lhs, Bit const& rhs) noexcept { return lhs = lhs ^ rhs; }
 
-constexpr Logic& inplace_not(Logic& v) noexcept { return v = ~v; }
-constexpr Bit& inplace_not(Bit& v) noexcept { return v = ~v; }
+constexpr Logic& Logic::inplace_not() & noexcept { return *this = ~*this; }
+constexpr Logic&& Logic::inplace_not() && noexcept {
+    inplace_not();
+    return std::move(*this);
+}
+constexpr Bit& Bit::inplace_not() & noexcept { return *this = ~*this; }
+constexpr Bit&& Bit::inplace_not() && noexcept {
+    inplace_not();
+    return std::move(*this);
+}
 
 template <typename T>
 struct is_logic : std::false_type {};

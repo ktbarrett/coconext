@@ -451,7 +451,7 @@ TEST(DynInt, growing_arithmetic_accepts_mixed_widths) {
     // Unsigned subtraction borrows into the extra bit instead of wrapping.
     EXPECT_EQ((a - b).to_decimal_string(true), "-800");
 
-    auto [quotient, remainder] = detail::divrem(a, DynUInt(uint64_t{3}, 200));
+    auto [quotient, remainder] = a.divrem(DynUInt(uint64_t{3}, 200));
     EXPECT_EQ(quotient.size(), 9u);
     EXPECT_EQ(remainder.size(), 200u);
     EXPECT_EQ(quotient.to_decimal_string(), "66");
@@ -471,33 +471,31 @@ TEST(DynInt, signed_growing_arithmetic) {
 
     // rem follows the dividend's sign, mod the divisor's.
     EXPECT_EQ((neg % pos).to_decimal_string(true), "-56");
-    EXPECT_EQ(detail::mod(neg, pos).to_decimal_string(true), "44");
+    EXPECT_EQ(neg.mod(pos).to_decimal_string(true), "44");
     EXPECT_EQ((pos56 % neg3).to_decimal_string(true), "2");
-    EXPECT_EQ(detail::mod(pos56, neg3).to_decimal_string(true), "-1");
+    EXPECT_EQ(pos56.mod(neg3).to_decimal_string(true), "-1");
 
     DynSInt wide_neg(int64_t{-17}, 200);
-    auto [truncated, rem] = detail::divrem(wide_neg, DynSInt(int64_t{5}, 8));
-    auto [floored, mod] = detail::divmod(wide_neg, DynSInt(int64_t{5}, 8));
+    auto [truncated, rem] = wide_neg.divrem(DynSInt(int64_t{5}, 8));
+    auto [floored, mod] = wide_neg.divmod(DynSInt(int64_t{5}, 8));
     EXPECT_EQ(truncated.to_decimal_string(true), "-3");
     EXPECT_EQ(rem.to_decimal_string(true), "-2");
     EXPECT_EQ(floored.to_decimal_string(true), "-4");
     EXPECT_EQ(mod.to_decimal_string(true), "3");
 
-    auto [negative_divisor_q, negative_divisor_r] =
-        detail::divrem(DynSInt(17, 200), DynSInt(-5, 8));
+    auto [negative_divisor_q, negative_divisor_r] = DynSInt(17, 200).divrem(DynSInt(-5, 8));
     EXPECT_EQ(negative_divisor_q.to_decimal_string(true), "-3");
     EXPECT_EQ(negative_divisor_r.to_decimal_string(true), "2");
 
-    auto [both_negative_q, both_negative_r] =
-        detail::divrem(DynSInt(-17, 200), DynSInt(-5, 8));
+    auto [both_negative_q, both_negative_r] = DynSInt(-17, 200).divrem(DynSInt(-5, 8));
     EXPECT_EQ(both_negative_q.to_decimal_string(true), "3");
     EXPECT_EQ(both_negative_r.to_decimal_string(true), "-2");
 
-    auto [smaller_q, smaller_r] = detail::divrem(DynSInt(-5, 8), DynSInt(-17, 200));
+    auto [smaller_q, smaller_r] = DynSInt(-5, 8).divrem(DynSInt(-17, 200));
     EXPECT_EQ(smaller_q.to_decimal_string(true), "0");
     EXPECT_EQ(smaller_r.to_decimal_string(true), "-5");
 
-    auto [equal_q, equal_r] = detail::divrem(DynSInt(-5, 8), DynSInt(-5, 200));
+    auto [equal_q, equal_r] = DynSInt(-5, 8).divrem(DynSInt(-5, 200));
     EXPECT_EQ(equal_q.to_decimal_string(true), "1");
     EXPECT_EQ(equal_r.to_decimal_string(true), "0");
 
@@ -637,7 +635,7 @@ TEST(DynInt, growing_arithmetic_preserves_the_result_invariant) {
     EXPECT_EQ(signed_sum.to_decimal_string(), "44");
     EXPECT_EQ(signed_product.to_decimal_string(), "-21");
 
-    auto [quotient, remainder] = detail::divrem(DynSInt(-17, 8), DynSInt(5, 8));
+    auto [quotient, remainder] = DynSInt(-17, 8).divrem(DynSInt(5, 8));
     EXPECT_EQ(quotient.to_decimal_string(), "-3");
     EXPECT_EQ(remainder.to_decimal_string(), "-2");
 }
@@ -648,23 +646,19 @@ TEST(DynSigned, remainder_and_modulo_are_distinct) {
     DynSigned negative_divisor(-5, 4);
 
     EXPECT_EQ(static_cast<long long>(negative % positive), -2);
-    EXPECT_EQ(static_cast<long long>(detail::rem(negative, positive)), -2);
-    EXPECT_EQ(static_cast<long long>(detail::mod(negative, positive)), 3);
+    EXPECT_EQ(static_cast<long long>(negative.rem(positive)), -2);
+    EXPECT_EQ(static_cast<long long>(negative.mod(positive)), 3);
 
     EXPECT_EQ(static_cast<long long>(DynSigned(17, 8) % negative_divisor), 2);
-    EXPECT_EQ(static_cast<long long>(detail::rem(DynSigned(17, 8), negative_divisor)), 2);
-    EXPECT_EQ(static_cast<long long>(detail::mod(DynSigned(17, 8), negative_divisor)), -3);
+    EXPECT_EQ(static_cast<long long>(DynSigned(17, 8).rem(negative_divisor)), 2);
+    EXPECT_EQ(static_cast<long long>(DynSigned(17, 8).mod(negative_divisor)), -3);
 
     negative %= positive;
     EXPECT_EQ(static_cast<long long>(negative), -2);
     EXPECT_EQ(negative.size(), 8u);
 
-    EXPECT_THROW(
-        static_cast<void>(detail::rem(negative, DynSigned(0, 4))), std::domain_error
-    );
-    EXPECT_THROW(
-        static_cast<void>(detail::mod(negative, DynSigned(0, 4))), std::domain_error
-    );
+    EXPECT_THROW(static_cast<void>(negative.rem(DynSigned(0, 4))), std::domain_error);
+    EXPECT_THROW(static_cast<void>(negative.mod(DynSigned(0, 4))), std::domain_error);
 }
 
 TEST(DynInt, bit_vector_reinterpretation) {
@@ -706,7 +700,7 @@ TYPED_TEST(DynIntStorage, arithmetic_across_storage_tiers) {
             auto sum = a + b;
             auto difference = a - b;
             auto product = a * b;
-            auto [quotient, remainder] = detail::divrem(a, b);
+            auto [quotient, remainder] = a.divrem(b);
             EXPECT_EQ(sum.size(), std::max(lhs_width, rhs_width) + 1);
             EXPECT_EQ(difference.size(), sum.size());
             EXPECT_EQ(product.size(), lhs_width + rhs_width);
@@ -825,7 +819,7 @@ TYPED_TEST(DynIntStorage, zero_width_and_division_errors) {
         SCOPED_TRACE(width);
         TypeParam one(1, width);
         TypeParam zero(width);
-        EXPECT_THROW(detail::divrem(one, zero), std::domain_error);
+        EXPECT_THROW(one.divrem(zero), std::domain_error);
         EXPECT_THROW(one / empty, std::domain_error);
     }
 }

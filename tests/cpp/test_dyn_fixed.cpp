@@ -1,5 +1,6 @@
 // LCOV_EXCL_BR_START -- gtest macros generate noisy uncovered branches
 #include <algorithm>
+#include <cmath>
 #include <format>
 #include <limits>
 #include <ranges>
@@ -190,6 +191,34 @@ TEST(DynFixed, SignedArithmetic) {
     auto remainder = BitVector("1011", Range{3, Direction::DOWNTO, 0}).as<DynSfixed>()
                    % BitVector("011", Range{2, Direction::DOWNTO, 0}).as<DynSfixed>();
     EXPECT_DOUBLE_EQ(static_cast<double>(remainder), -2.0);
+}
+
+TEST(DynFixed, AbsSupportsArgumentDependentLookup) {
+    auto magnitude = [](auto const& value) {
+        using std::abs;
+        return abs(value);
+    };
+
+    EXPECT_EQ(magnitude(-3), 3);
+    EXPECT_DOUBLE_EQ(magnitude(-1.5), 1.5);
+
+    Signed<8> const integer(-128);
+    static_assert(std::is_same_v<decltype(magnitude(integer)), Signed<9>>);
+    EXPECT_EQ(magnitude(integer), Signed<9>(128));
+    EXPECT_EQ(coconext::types::abs(integer), magnitude(integer));
+
+    Sfixed<3, -4> const fixed(-1.5);
+    EXPECT_DOUBLE_EQ(static_cast<double>(magnitude(fixed)), 1.5);
+    EXPECT_EQ(coconext::types::abs(fixed), magnitude(fixed));
+
+    auto dynamic = BitVector("11101000", Range{3, Direction::DOWNTO, -4}).as<DynSfixed>();
+    EXPECT_DOUBLE_EQ(static_cast<double>(magnitude(dynamic)), 1.5);
+    EXPECT_EQ(coconext::types::abs(dynamic), magnitude(dynamic));
+
+    EXPECT_EQ(magnitude(detail::SInt<8>(-128)), detail::SInt<9>(128));
+    auto packed = magnitude(detail::DynSInt(-128, 8));
+    EXPECT_EQ(packed.size(), 9U);
+    EXPECT_EQ(packed.to_decimal_string(), "128");
 }
 
 TEST(DynFixed, SignedUnaryShiftAndCompound) {
@@ -447,37 +476,37 @@ TEST(DynFixed, DivisionFamilyAndRounding) {
 
     EXPECT_DOUBLE_EQ(static_cast<double>(two / three), 0.75);
     EXPECT_DOUBLE_EQ(
-        static_cast<double>(divide(two, three, round_mode::round_to_even, 1)), 0.5
+        static_cast<double>(two.divide(three, round_mode::round_to_even, 1)), 0.5
     );
     EXPECT_DOUBLE_EQ(
-        static_cast<double>(divide(two, three, round_mode::round_to_zero, 3)), 0.5
+        static_cast<double>(two.divide(three, round_mode::round_to_zero, 3)), 0.5
     );
 
     DynUfixed five(5, {2, Direction::DOWNTO, 0});
-    auto [unsigned_quotient, unsigned_remainder] = divrem(five, three);
-    EXPECT_EQ(unsigned_quotient, divide(five, three));
+    auto [unsigned_quotient, unsigned_remainder] = five.divrem(three);
+    EXPECT_EQ(unsigned_quotient, five.divide(three));
     EXPECT_EQ(static_cast<unsigned>(unsigned_remainder), 2U);
-    EXPECT_EQ(rem(five, three), unsigned_remainder);
-    EXPECT_EQ(mod(five, three), unsigned_remainder);
+    EXPECT_EQ(five.rem(three), unsigned_remainder);
+    EXPECT_EQ(five.mod(three), unsigned_remainder);
 
     DynSfixed negative_two(-2, {2, Direction::DOWNTO, 0});
     DynSfixed signed_three(3, {2, Direction::DOWNTO, 0});
     EXPECT_DOUBLE_EQ(static_cast<double>(negative_two / signed_three), -0.75);
     EXPECT_DOUBLE_EQ(
         static_cast<double>(
-            divide(negative_two, signed_three, round_mode::round_to_zero, 3)
+            negative_two.divide(signed_three, round_mode::round_to_zero, 3)
         ),
         -0.5
     );
 
     DynSfixed negative_five(-5, {3, Direction::DOWNTO, 0});
-    EXPECT_EQ(static_cast<int>(remainder(negative_five, signed_three)), -2);
-    EXPECT_EQ(static_cast<int>(modulo(negative_five, signed_three)), 1);
+    EXPECT_EQ(static_cast<int>(negative_five.remainder(signed_three)), -2);
+    EXPECT_EQ(static_cast<int>(negative_five.modulo(signed_three)), 1);
 
-    EXPECT_DOUBLE_EQ(static_cast<double>(reciprocal(three)), 0.25);
-    EXPECT_DOUBLE_EQ(static_cast<double>(reciprocal(signed_three)), 0.25);
+    EXPECT_DOUBLE_EQ(static_cast<double>(three.reciprocal()), 0.25);
+    EXPECT_DOUBLE_EQ(static_cast<double>(signed_three.reciprocal()), 0.25);
     EXPECT_THROW(
-        static_cast<void>(divide(two, DynUfixed(0, {1, Direction::DOWNTO, 0}))),
+        static_cast<void>(two.divide(DynUfixed(0, {1, Direction::DOWNTO, 0}))),
         std::domain_error
     );
 }
@@ -609,9 +638,9 @@ TEST(DynFixed, BitSurfaceReverseFormattingAndHash) {
     EXPECT_EQ(
         std::ranges::count_if(value, [](auto bit) { return static_cast<bool>(bit); }), 3
     );
-    EXPECT_FALSE(static_cast<bool>(and_reduce(value)));
-    EXPECT_TRUE(static_cast<bool>(or_reduce(value)));
-    EXPECT_TRUE(static_cast<bool>(xor_reduce(value)));
+    EXPECT_FALSE(static_cast<bool>(value.and_reduce()));
+    EXPECT_TRUE(static_cast<bool>(value.or_reduce()));
+    EXPECT_TRUE(static_cast<bool>(value.xor_reduce()));
 
     static_assert(ExplicitAsAvailable<BitVector, DynUfixed>);
     static_assert(ExplicitAsAvailable<BitVector, DynSfixed>);
@@ -629,9 +658,9 @@ TEST(DynFixed, BitSurfaceReverseFormattingAndHash) {
     auto concatenated = concat(value, inverted);
     EXPECT_EQ(concatenated.size(), 16);
 
-    auto to_value = reverse(value);
+    auto to_value = value.reverse();
     EXPECT_EQ(to_value.range(), (Range{-4, Direction::TO, 3}));
-    auto round_trip = reverse(to_value);
+    auto round_trip = to_value.reverse();
     EXPECT_EQ(round_trip.raw_binary(), "10001010");
 
     EXPECT_EQ(std::format("{}", value), "DynUfixed[3 downto -4]{5.0625}");

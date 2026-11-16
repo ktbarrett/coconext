@@ -602,134 +602,179 @@ TEST(TestResolve, DynamicNumericTypesPreserveBitsAndRange) {
     }
 }
 
-namespace {
-
-struct LogicSpanAdapter {
-    std::vector<Logic> data;
-    Range range_;
-    using value_type = Logic;
-    auto begin() const { return data.begin(); }
-    auto end() const { return data.end(); }
-    auto begin() { return data.begin(); }
-    auto end() { return data.end(); }
-    Range range() const noexcept { return range_; }
-};
-static_assert(RangedSequence<LogicSpanAdapter>);
-static_assert(!StaticRangedSequence<LogicSpanAdapter>);
-
-}  // namespace
-
-TEST(TestLogicArray, ReductionsOnForeignRangedSequence) {
-    LogicSpanAdapter a{
-        {'0'_l, '1'_l, 'L'_l, 'H'_l},
-        Range{3, Direction::DOWNTO, 0}
-    };
-    EXPECT_EQ(and_reduce(a), '0'_l);
-    EXPECT_EQ(or_reduce(a), '1'_l);
-    EXPECT_EQ(xor_reduce(a), '0'_l);
+TEST(TestLogicArray, ReductionsOnWeakValues) {
+    LogicVector a({'0'_l, '1'_l, 'L'_l, 'H'_l});
+    EXPECT_EQ(a.and_reduce(), '0'_l);
+    EXPECT_EQ(a.or_reduce(), '1'_l);
+    EXPECT_EQ(a.xor_reduce(), '0'_l);
 }
 
 // -- index_of / rindex_of on Logic/Bit arrays --------------------------------
 
 TEST(TestLogicArray, IndexOfOnLogicVector) {
     auto a = "10X10"_l;  // DOWNTO {4..0}: a[4]=1, a[3]=0, a[2]=X, a[1]=1, a[0]=0
-    auto first_one = index_of(a, '1'_l);
-    auto last_one = rindex_of(a, '1'_l);
+    auto first_one = a.index_of('1'_l);
+    auto last_one = a.rindex_of('1'_l);
     ASSERT_TRUE(first_one.has_value() && last_one.has_value());
     EXPECT_EQ(*first_one, 4);  // first '1' in iteration -> highest HDL coord
     EXPECT_EQ(*last_one, 1);
-    EXPECT_FALSE(index_of(a, 'U'_l).has_value());
+    EXPECT_FALSE(a.index_of('U'_l).has_value());
 }
 
 TEST(TestBitArray, IndexOfOnStaticBitArray) {
     BitArray<4> a({'1'_b, '0'_b, '1'_b, '0'_b});
-    EXPECT_EQ(*index_of(a, '1'_b), 3);   // DOWNTO {3..0}, first '1' is a[3]
-    EXPECT_EQ(*rindex_of(a, '1'_b), 1);  // last '1' is a[1]
+    EXPECT_EQ(*a.index_of('1'_b), 3);   // DOWNTO {3..0}, first '1' is a[3]
+    EXPECT_EQ(*a.rindex_of('1'_b), 1);  // last '1' is a[1]
+}
+
+TEST(TestBitArray, IndexOfOnPackedSequences) {
+    auto check = [](auto value) {
+        std::fill(value.begin(), value.end(), Bit::_1);
+        EXPECT_FALSE(value.index_of(Bit::_0).has_value());
+        EXPECT_FALSE(value.rindex_of(Bit::_0).has_value());
+        *value.begin() = Bit::_0;
+        *value.rbegin() = Bit::_0;
+        EXPECT_EQ(value.index_of(Bit::_0), value.range().left);
+        EXPECT_EQ(value.rindex_of(Bit::_0), value.range().right);
+        EXPECT_EQ(value.index_of(Bit::_1), value.range()[1]);
+        EXPECT_EQ(value.rindex_of(Bit::_1), value.range()[127]);
+    };
+    constexpr Range ascending{-64, Direction::TO, 64};
+    check(BitArray<ascending>{});
+    check(BitVector(ascending));
+    check(Unsigned<129>{});
+    check(Signed<129>{});
+    check(Ufixed<128, 0>{});
+    check(Sfixed<128, 0>{});
+    check(detail::DynUnsigned(ascending));
+    check(detail::DynSigned(ascending));
+    check(DynUfixed(ascending));
+    check(DynSfixed(ascending));
+    EXPECT_FALSE(BitArray<0>{}.index_of(Bit::_0).has_value());
+    EXPECT_FALSE(BitVector(size_t{0}).rindex_of(Bit::_1).has_value());
 }
 
 // -- Reductions: and_reduce / or_reduce / xor_reduce -----------------------
 
 TEST(TestLogicArray, AndReduceAllOnes) {
     auto a = "1111"_l;
-    EXPECT_EQ(and_reduce(a), '1'_l);
+    EXPECT_EQ(a.and_reduce(), '1'_l);
 }
 
 TEST(TestLogicArray, AndReduceWithZero) {
     auto a = "1101"_l;
-    EXPECT_EQ(and_reduce(a), '0'_l);
+    EXPECT_EQ(a.and_reduce(), '0'_l);
 }
 
 TEST(TestLogicArray, AndReduceWithX) {
     auto a = "11X1"_l;
-    EXPECT_EQ(and_reduce(a), 'X'_l);
+    EXPECT_EQ(a.and_reduce(), 'X'_l);
 }
 
 TEST(TestLogicArray, AndReduceEmpty) {
     Vector<Logic> a({});
-    EXPECT_EQ(and_reduce(a), '1'_l);  // identity for AND
+    EXPECT_EQ(a.and_reduce(), '1'_l);  // identity for AND
 }
 
 TEST(TestLogicArray, OrReduceAllZeros) {
     auto a = "0000"_l;
-    EXPECT_EQ(or_reduce(a), '0'_l);
+    EXPECT_EQ(a.or_reduce(), '0'_l);
 }
 
 TEST(TestLogicArray, OrReduceWithOne) {
     auto a = "0010"_l;
-    EXPECT_EQ(or_reduce(a), '1'_l);
+    EXPECT_EQ(a.or_reduce(), '1'_l);
 }
 
 TEST(TestLogicArray, OrReduceWithX) {
     auto a = "00X0"_l;
-    EXPECT_EQ(or_reduce(a), 'X'_l);
+    EXPECT_EQ(a.or_reduce(), 'X'_l);
 }
 
 TEST(TestLogicArray, OrReduceEmpty) {
     Vector<Logic> a({});
-    EXPECT_EQ(or_reduce(a), '0'_l);  // identity for OR
+    EXPECT_EQ(a.or_reduce(), '0'_l);  // identity for OR
 }
 
 TEST(TestLogicArray, XorReduceEvenOnes) {
     auto a = "1100"_l;
-    EXPECT_EQ(xor_reduce(a), '0'_l);
+    EXPECT_EQ(a.xor_reduce(), '0'_l);
 }
 
 TEST(TestLogicArray, XorReduceOddOnes) {
     auto a = "1110"_l;
-    EXPECT_EQ(xor_reduce(a), '1'_l);
+    EXPECT_EQ(a.xor_reduce(), '1'_l);
 }
 
 TEST(TestLogicArray, XorReduceWithX) {
     auto a = "1X1"_l;
-    EXPECT_EQ(xor_reduce(a), 'X'_l);
+    EXPECT_EQ(a.xor_reduce(), 'X'_l);
 }
 
 TEST(TestLogicArray, XorReduceEmpty) {
     Vector<Logic> a({});
-    EXPECT_EQ(xor_reduce(a), '0'_l);  // identity for XOR
+    EXPECT_EQ(a.xor_reduce(), '0'_l);  // identity for XOR
 }
 
 TEST(TestBitArray, ReductionsReturnBit) {
     auto a = "1010"_b;
-    static_assert(std::is_same_v<decltype(and_reduce(a)), Bit>);
-    EXPECT_EQ(and_reduce(a), '0'_b);
-    EXPECT_EQ(or_reduce(a), '1'_b);
-    EXPECT_EQ(xor_reduce(a), '0'_b);
+    static_assert(std::is_same_v<decltype(a.and_reduce()), Bit>);
+    EXPECT_EQ(a.and_reduce(), '0'_b);
+    EXPECT_EQ(a.or_reduce(), '1'_b);
+    EXPECT_EQ(a.xor_reduce(), '0'_b);
 }
 
 TEST(TestLogicArray, ReductionsOnVector) {
     Vector<Logic> a({'1'_l, '0'_l, '1'_l});
-    EXPECT_EQ(and_reduce(a), '0'_l);
-    EXPECT_EQ(or_reduce(a), '1'_l);
-    EXPECT_EQ(xor_reduce(a), '0'_l);
+    EXPECT_EQ(a.and_reduce(), '0'_l);
+    EXPECT_EQ(a.or_reduce(), '1'_l);
+    EXPECT_EQ(a.xor_reduce(), '0'_l);
 }
 
 TEST(TestLogicArray, ReductionsOnSlice) {
     auto a = "1110"_l;
     auto s = a[{3, 1}];  // "111"
-    EXPECT_EQ(and_reduce(s), '1'_l);
-    EXPECT_EQ(or_reduce(s), '1'_l);
-    EXPECT_EQ(xor_reduce(s), '1'_l);
+    EXPECT_EQ(s.and_reduce(), '1'_l);
+    EXPECT_EQ(s.or_reduce(), '1'_l);
+    EXPECT_EQ(s.xor_reduce(), '1'_l);
+}
+
+TEST(TestBitArray, ReductionsOnPackedSequences) {
+    auto check = [](auto value) {
+        std::fill(value.begin(), value.end(), Bit::_1);
+        EXPECT_EQ(value.and_reduce(), Bit::_1);
+        EXPECT_EQ(value.or_reduce(), Bit::_1);
+        EXPECT_EQ(value.xor_reduce(), Bit::_1);
+        *value.begin() = Bit::_0;
+        EXPECT_EQ(value.and_reduce(), Bit::_0);
+        EXPECT_EQ(value.or_reduce(), Bit::_1);
+        EXPECT_EQ(value.xor_reduce(), Bit::_0);
+        value.inplace_not();
+        EXPECT_EQ(value.and_reduce(), Bit::_0);
+        EXPECT_EQ(value.or_reduce(), Bit::_1);
+        EXPECT_EQ(value.xor_reduce(), Bit::_1);
+    };
+    check(BitArray<129>{});
+    check(BitVector(129));
+    check(Unsigned<129>{});
+    check(Signed<129>{});
+    check(Ufixed<128, 0>{});
+    check(Sfixed<128, 0>{});
+    check(detail::DynUnsigned(0, 129));
+    check(detail::DynSigned(0, 129));
+    check(DynUfixed(Range{128, Direction::DOWNTO, 0}));
+    check(DynSfixed(Range{128, Direction::DOWNTO, 0}));
+}
+
+TEST(TestBitArray, ReductionsOnConstSlices) {
+    constexpr auto a = "01110"_b;
+    constexpr Range middle{3, Direction::DOWNTO, 1};
+    static_assert(a.slice<middle>().and_reduce() == Bit::_1);
+    static_assert(a.slice<middle>().or_reduce() == Bit::_1);
+    static_assert(a.slice<middle>().xor_reduce() == Bit::_1);
+    EXPECT_EQ(a[middle].and_reduce(), Bit::_1);
+    EXPECT_EQ(a[middle].or_reduce(), Bit::_1);
+    EXPECT_EQ(a[middle].xor_reduce(), Bit::_1);
 }
 
 // -- Compound bitwise assignment -------------------------------------------
@@ -834,38 +879,52 @@ TEST(TestLogicArray, CompoundReturnsReference) {
 
 TEST(TestLogicArray, InplaceNotDynLogic) {
     Vector<Logic> a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
-    inplace_not(a);
+    a.inplace_not();
     EXPECT_EQ(to_string(a), "10XX");  // ~Z = X
 }
 
 TEST(TestBitArray, InplaceNotDynBit) {
     Vector<Bit> a({'0'_b, '1'_b, '0'_b, '1'_b});
-    inplace_not(a);
+    a.inplace_not();
     EXPECT_EQ(to_string(a), "1010");
 }
 
 TEST(TestLogicArray, InplaceNotStaticArray) {
     LogicArray<3> a({'0'_l, '1'_l, 'X'_l});
-    inplace_not(a);
+    a.inplace_not();
     EXPECT_EQ(to_string(a), "10X");
 }
 
 TEST(TestLogicArray, InplaceNotOnSlice) {
     Vector<Logic> a({'0'_l, '0'_l, '0'_l, '0'_l});
-    inplace_not(a[{2, 1}]);
+    a[{2, 1}].inplace_not();
     EXPECT_EQ(to_string(a), "0110");
 }
 
 TEST(TestLogicArray, InplaceNotEmpty) {
     Vector<Logic> a({});
-    inplace_not(a);
+    a.inplace_not();
     EXPECT_EQ(a.range().length(), 0U);
 }
 
 TEST(TestLogicArray, InplaceNotReturnsReference) {
     Vector<Logic> a({'1'_l});
-    auto& ref = inplace_not(a);
+    auto& ref = a.inplace_not();
     EXPECT_EQ(&ref, &a);
+}
+
+TEST(TestBitArray, InplaceNotOnSliceViews) {
+    auto a = "10001"_b;
+    constexpr Range middle{3, Direction::DOWNTO, 1};
+    auto const view = a[middle];
+    EXPECT_EQ(&view.inplace_not(), &view);
+    EXPECT_EQ(to_string(a), "11111");
+    a.slice<middle>().inplace_not();
+    EXPECT_EQ(to_string(a), "10001");
+    static_assert(std::is_same_v<decltype(std::move(a).inplace_not()), decltype(a)&&>);
+    static_assert(
+        std::is_same_v<decltype(std::move(view).inplace_not()), decltype(view)&&>
+    );
 }
 
 // -- Concatenation ---------------------------------------------------------
@@ -1611,8 +1670,8 @@ TEST(TestBitArray, ZeroWidth) {
     EXPECT_EQ(lit.begin(), lit.end());
 
     // Reductions on the null vector have the VHDL identities:
-    //   and_reduce(null) = '1', or_reduce(null) = '0', xor_reduce(null) = '0'
-    EXPECT_EQ(and_reduce(a), '1'_b);
-    EXPECT_EQ(or_reduce(a), '0'_b);
-    EXPECT_EQ(xor_reduce(a), '0'_b);
+    //   null.and_reduce() = '1', null.or_reduce() = '0', null.xor_reduce() = '0'
+    EXPECT_EQ(a.and_reduce(), '1'_b);
+    EXPECT_EQ(a.or_reduce(), '0'_b);
+    EXPECT_EQ(a.xor_reduce(), '0'_b);
 }
