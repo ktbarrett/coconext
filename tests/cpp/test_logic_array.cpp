@@ -594,8 +594,8 @@ TEST(TestResolve, DynamicNumericTypesPreserveBitsAndRange) {
                  Range{-3,  Direction::TO,     end}
         })
         {
-            check(BitVector(bits, range).as<detail::DynUnsigned>(), bits);
-            check(BitVector(bits, range).as<detail::DynSigned>(), bits);
+            check(BitVector(bits, range).as<DynUnsigned>(), bits);
+            check(BitVector(bits, range).as<DynSigned>(), bits);
             check(BitVector(bits, range).as<DynUfixed>(), bits);
             check(BitVector(bits, range).as<DynSfixed>(), bits);
         }
@@ -646,8 +646,8 @@ TEST(TestBitArray, IndexOfOnPackedSequences) {
     check(Signed<129>{});
     check(Ufixed<128, 0>{});
     check(Sfixed<128, 0>{});
-    check(detail::DynUnsigned(ascending));
-    check(detail::DynSigned(ascending));
+    check(DynUnsigned(ascending));
+    check(DynSigned(ascending));
     check(DynUfixed(ascending));
     check(DynSfixed(ascending));
     EXPECT_FALSE(BitArray<0>{}.index_of(Bit::_0).has_value());
@@ -760,8 +760,8 @@ TEST(TestBitArray, ReductionsOnPackedSequences) {
     check(Signed<129>{});
     check(Ufixed<128, 0>{});
     check(Sfixed<128, 0>{});
-    check(detail::DynUnsigned(0, 129));
-    check(detail::DynSigned(0, 129));
+    check(DynUnsigned(0, 129));
+    check(DynSigned(0, 129));
     check(DynUfixed(Range{128, Direction::DOWNTO, 0}));
     check(DynSfixed(Range{128, Direction::DOWNTO, 0}));
 }

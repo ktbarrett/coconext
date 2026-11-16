@@ -309,4 +309,10 @@ class DynUnsigned {
 
 }  // namespace coconext::types::detail
 
+namespace coconext::types {
+
+using DynUnsigned = detail::DynUnsigned;
+
+}  // namespace coconext::types
+
 #endif  // COCONEXT_DYN_UNSIGNED_HPP

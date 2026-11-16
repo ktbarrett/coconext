@@ -18,11 +18,11 @@ using coconext::types::Bit;
 using coconext::types::BitArray;
 using coconext::types::BitVector;
 using coconext::types::Direction;
+using coconext::types::DynSigned;
+using coconext::types::DynUnsigned;
 using coconext::types::Range;
-using coconext::types::detail::DynSigned;
 using coconext::types::detail::DynSInt;
 using coconext::types::detail::DynUInt;
-using coconext::types::detail::DynUnsigned;
 namespace detail = coconext::types::detail;
 
 template <typename T>
