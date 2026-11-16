@@ -28,3 +28,23 @@ jobs:
     secrets: inherit
     with:
       collect_coverage: true
+
+  codecov_notify:
+    name: Send Codecov notifications
+    needs: [test_dev]
+    # Notify after coverage jobs finish, including failures, unless all were skipped.
+    if: >-
+      github.repository == 'ktbarrett/coconext' && !cancelled() &&
+          (contains(needs.*.result, 'success') || contains(needs.*.result, 'failure'))
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        # Match the upload jobs so Codecov resolves the same PR head commit.
+        fetch-depth: 2
+    - name: Send notifications
+      uses: codecov/codecov-action@v7.1.1
+      with:
+        run_command: send-notifications
+        token: ${{ secrets.CODECOV_TOKEN }}
+        fail_ci_if_error: true
