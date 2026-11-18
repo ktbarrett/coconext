@@ -37,7 +37,26 @@ add_executable(coconext_tests
     test_scheduler_run.cpp
     test_task_manager.cpp
     test_sfixed.cpp
-    test_ufixed.cpp)
+    test_ufixed.cpp
+    includes/array.cpp
+    includes/bit.cpp
+    includes/bit_array.cpp
+    includes/bit_vector.cpp
+    includes/direction.cpp
+    includes/dyn_sfixed.cpp
+    includes/dyn_signed.cpp
+    includes/dyn_ufixed.cpp
+    includes/dyn_unsigned.cpp
+    includes/logic.cpp
+    includes/logic_array.cpp
+    includes/logic_vector.cpp
+    includes/range.cpp
+    includes/resize_mode.cpp
+    includes/sfixed.cpp
+    includes/signed.cpp
+    includes/ufixed.cpp
+    includes/unsigned.cpp
+    includes/vector.cpp)
 
 target_link_libraries(coconext_tests PRIVATE coconext::coconext GTest::gtest_main)
 coconext_enable_developer_mode(coconext_tests)

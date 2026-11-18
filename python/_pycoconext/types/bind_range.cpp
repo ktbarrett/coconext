@@ -11,8 +11,8 @@
 #include <stdexcept>
 #include <string_view>
 
+#include <coconext/types/detail/hash.hpp>
 #include <coconext/types/direction.hpp>
-#include <coconext/types/hash.hpp>
 #include <coconext/types/range.hpp>
 
 namespace nb = nanobind;

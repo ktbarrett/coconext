@@ -1,5 +1,5 @@
-#ifndef COCONEXT_BIGINT_HPP
-#define COCONEXT_BIGINT_HPP
+#ifndef COCONEXT_DETAIL_BIGINT_HPP
+#define COCONEXT_DETAIL_BIGINT_HPP
 
 #include <algorithm>
 #include <array>
@@ -19,11 +19,11 @@
 #include <type_traits>
 #include <utility>
 
-#include <coconext/types/array_base.hpp>
-#include <coconext/types/bigint_common.hpp>
+#include <coconext/types/detail/array_base.hpp>
+#include <coconext/types/detail/bigint_common.hpp>
+#include <coconext/types/detail/hash.hpp>
+#include <coconext/types/detail/logic.hpp>
 #include <coconext/types/direction.hpp>
-#include <coconext/types/hash.hpp>
-#include <coconext/types/logic.hpp>
 #include <coconext/types/range.hpp>
 #include <coconext/types/resize_mode.hpp>
 
@@ -1716,4 +1716,4 @@ class [[nodiscard]] auto_resized {
 
 }  // namespace coconext::types
 
-#endif  // COCONEXT_BIGINT_HPP
+#endif  // COCONEXT_DETAIL_BIGINT_HPP

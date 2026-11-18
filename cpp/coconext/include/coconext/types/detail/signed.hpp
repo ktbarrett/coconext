@@ -1,0 +1,681 @@
+#ifndef COCONEXT_DETAIL_SIGNED_HPP
+#define COCONEXT_DETAIL_SIGNED_HPP
+
+#include <algorithm>
+#include <concepts>
+#include <cstddef>
+#include <format>
+#include <functional>
+#include <limits>
+#include <optional>
+#include <stdexcept>
+#include <type_traits>
+
+#include <coconext/types/detail/bigint.hpp>
+#include <coconext/types/detail/common_math.hpp>
+#include <coconext/types/detail/concepts.hpp>
+#include <coconext/types/detail/hash.hpp>
+#include <coconext/types/detail/logic_array_ops.hpp>
+#include <coconext/types/range.hpp>
+
+namespace coconext::types {
+
+namespace detail {
+
+// for cross type constructor
+template <Range R>
+class Unsigned;
+
+template <Range R>
+class Ufixed;
+
+template <Range R>
+class Sfixed;
+
+template <Range R>
+class Signed {
+    static_assert(R.length() >= 0, "Signed width must not be negative");
+
+    template <typename T>
+    constexpr T to_native_int() const {
+        return value_.template to_native_integer<T>();
+    }
+
+  public:
+    static constexpr Range static_range = R;
+    static constexpr Range range() noexcept { return R; }
+    static constexpr size_t size() noexcept { return R.length(); }
+
+    constexpr Signed& inplace_not() & {
+        value_ = ~value_;
+        return *this;
+    }
+
+    constexpr Signed&& inplace_not() && {
+        inplace_not();
+        return std::move(*this);
+    }
+
+    constexpr std::optional<Range::value_type> index_of(Bit const& v) const {
+        auto const it = std::ranges::find(*this, v);
+        if (it == end()) {
+            return std::nullopt;
+        }
+        return range()[static_cast<size_t>(std::ranges::distance(begin(), it))];
+    }
+
+    constexpr std::optional<Range::value_type> rindex_of(Bit const& v) const {
+        auto const it = std::find(rbegin(), rend(), v);
+        if (it == rend()) {
+            return std::nullopt;
+        }
+        return range()
+            [size() - 1 - static_cast<size_t>(std::ranges::distance(rbegin(), it))];
+    }
+
+    constexpr Bit and_reduce() const {
+        return value_.popcount() == size() ? Bit::_1 : Bit::_0;
+    }
+
+    constexpr Bit or_reduce() const { return value_.popcount() != 0 ? Bit::_1 : Bit::_0; }
+
+    constexpr Bit xor_reduce() const {
+        return value_.popcount() % 2 == 1 ? Bit::_1 : Bit::_0;
+    }
+
+    constexpr std::optional<Array<Bit, R>> resolve(
+        ResolveMethod = ResolveMethod::WEAK
+    ) const {
+        return std::optional<Array<Bit, R>>{std::in_place, value_};
+    }
+
+    template <Range R2>
+    friend class Signed;
+
+    constexpr Signed() noexcept = default;
+
+    template <bool IsSigned>
+    constexpr Signed(Int<R.length(), IsSigned> const& val) : value_(val) {}
+
+    template <NativeInteger T>
+    explicit(
+        (std::is_signed_v<T> && std::numeric_limits<T>::digits >= R.length())
+        || (std::is_unsigned_v<T> && std::numeric_limits<T>::digits >= R.length() - 1)
+    ) constexpr Signed(T v) {
+        static_assert(
+            R.length() > 0, "Signed<0> has no integer representation; use Signed<0>{}"
+        );
+        if (!native_value_fits<R.length(), true>(v)) {
+            throw std::out_of_range("value does not fit in Signed width");
+        }
+        value_ = v;
+    }
+
+    template <Range R2>
+    explicit(R.length() < R2.length()) constexpr Signed(Signed<R2> const& other) {
+        if constexpr (R.length() >= R2.length()) {
+            value_ = other.template resize<R.length()>().value_;
+        } else {
+            value_ = other.template resize<R.length()>().value_;
+            if (Signed<R>(value_).template resize<R2.length()>() != other) {
+                throw std::out_of_range(
+                    "Value does not fit in narrowing Signed conversion"
+                );
+            }
+        }
+    }
+
+    template <Range R2>
+    explicit(R.length() <= R2.length()) constexpr Signed(Unsigned<R2> const& other) {
+        auto const& src_bits = storage(other);
+        if constexpr (R.length() <= R2.length()) {
+            // The sign bit costs one bit, so the source must fit in R-1 bits:
+            // every bit at or above R-1 has to be clear.
+            for (size_t i = R.length() - 1; i < R2.length(); ++i) {
+                if (src_bits.get_bit(i)) {
+                    throw std::out_of_range(
+                        "Unsigned value does not fit in narrowing Signed conversion"
+                    );
+                }
+            }
+        }
+
+        value_ = SInt<R.length()>(UInt<R2.length()>(src_bits));
+    }
+
+    template <Range R2>
+    explicit constexpr Signed(Ufixed<R2> const& other)
+        requires(R2.direction == Direction::DOWNTO);
+
+    template <Range R2>
+    explicit constexpr Signed(Sfixed<R2> const& other)
+        requires(R2.direction == Direction::DOWNTO);
+
+    template <Range R2>
+    constexpr operator detail::Array<Bit, R2>() const noexcept {
+        static_assert(
+            R.length() == R2.length(), "BitArray reinterpret requires identical width"
+        );
+        return detail::Array<Bit, R2>(value_);
+    }
+
+    template <HasStaticStorage Target>
+    [[nodiscard]] constexpr Target as() && noexcept {
+        static_assert(
+            Target::static_range.length() == R.length(), "as() requires equal widths."
+        );
+        return Target(value_);
+    }
+
+    [[nodiscard]] constexpr auto as() && noexcept {
+        return reinterpreted<Signed>(std::move(*this));
+    }
+
+    template <auto... Args>
+        requires(sizeof...(Args) > 0)
+    [[nodiscard]] constexpr auto resize(
+        overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
+    ) const {
+        return Signed<make_int_range<Args...>()>(resize(ovf, rnd));
+    }
+
+    [[nodiscard]] constexpr auto resize(
+        overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
+    ) const& noexcept {
+        return auto_resized<Signed const&>(*this, ovf, rnd);
+    }
+
+    [[nodiscard]] constexpr auto resize(
+        overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
+    ) && noexcept {
+        return auto_resized<Signed>(std::move(*this), ovf, rnd);
+    }
+
+    [[nodiscard]] constexpr auto resize(
+        overflow_mode ovf = overflow_mode::wrap, round_mode rnd = round_mode::truncate
+    ) const&& noexcept {
+        return auto_resized<Signed>(*this, ovf, rnd);
+    }
+
+    template <typename SourceWrapper>
+        requires std::same_as<
+            std::remove_cvref_t<SourceWrapper>,
+            Signed<std::remove_cvref_t<SourceWrapper>::static_range>>
+    constexpr Signed(detail::auto_resized<SourceWrapper>&& wrapper) {
+        auto [src, ovf, rnd] = std::move(wrapper).consume();
+        using ActualSource = std::remove_cvref_t<SourceWrapper>;
+
+        constexpr size_t TargetW = R.length();
+        constexpr size_t SourceW = ActualSource::size();
+
+        if constexpr (TargetW >= SourceW) {
+            // Widening (and the null cases) never lose information.
+            value_ = SInt<TargetW>(src.value_);
+        } else if (ovf == overflow_mode::wrap) {
+            value_ = SInt<TargetW>(src.value_);
+        } else {
+            value_ = src.value_.template saturate_signed<TargetW>();
+        }
+    }
+
+    template <typename SourceWrapper>
+        requires std::same_as<
+            std::remove_cvref_t<SourceWrapper>,
+            Signed<std::remove_cvref_t<SourceWrapper>::static_range>>
+    constexpr Signed& operator=(detail::auto_resized<SourceWrapper>&& wrapper) {
+        *this = Signed(std::move(wrapper));
+        return *this;
+    }
+
+    explicit constexpr operator bool() const noexcept {
+        return this->value_ != detail::SInt<R.length()>{};
+    }
+
+    explicit constexpr operator signed char() const noexcept(
+        R.length() - 1 <= std::numeric_limits<signed char>::digits
+    ) {
+        return to_native_int<signed char>();
+    }
+    explicit constexpr operator unsigned char() const noexcept(false) {
+        return to_native_int<unsigned char>();
+    }
+    explicit constexpr operator short() const noexcept(
+        R.length() - 1 <= std::numeric_limits<short>::digits
+    ) {
+        return to_native_int<short>();
+    }
+    explicit constexpr operator unsigned short() const noexcept(false) {
+        return to_native_int<unsigned short>();
+    }
+    explicit constexpr operator int() const noexcept(
+        R.length() - 1 <= std::numeric_limits<int>::digits
+    ) {
+        return to_native_int<int>();
+    }
+    explicit constexpr operator unsigned int() const noexcept(false) {
+        return to_native_int<unsigned int>();
+    }
+    explicit constexpr operator long() const noexcept(
+        R.length() - 1 <= std::numeric_limits<long>::digits
+    ) {
+        return to_native_int<long>();
+    }
+    explicit constexpr operator unsigned long() const noexcept(false) {
+        return to_native_int<unsigned long>();
+    }
+    explicit constexpr operator long long() const noexcept(
+        R.length() - 1 <= std::numeric_limits<long long>::digits
+    ) {
+        return to_native_int<long long>();
+    }
+    explicit constexpr operator unsigned long long() const noexcept(false) {
+        return to_native_int<unsigned long long>();
+    }
+
+#if defined(__SIZEOF_INT128__)
+    explicit constexpr operator __int128_t() const noexcept(
+        R.length() - 1 <= (__SIZEOF_INT128__ * 8) - 1
+    ) {
+        return to_native_int<__int128_t>();
+    }
+    explicit constexpr operator __uint128_t() const noexcept(false) {
+        return to_native_int<__uint128_t>();
+    }
+#endif
+
+    template <NativeInteger ShiftType>
+    constexpr Signed<R> operator<<(ShiftType const& shift_amount) const {
+        size_t const safe_shift = detail::normalize_shift_amount(shift_amount, R.length());
+
+        if (safe_shift >= R.length()) {
+            return Signed<R>(0);
+        }
+
+        return Signed<R>(value_ << safe_shift);
+    }
+
+    template <NativeInteger ShiftType>
+    constexpr Signed<R> operator>>(ShiftType const& shift_amount) const {
+        size_t const safe_shift = detail::normalize_shift_amount(shift_amount, R.length());
+
+        if (safe_shift >= R.length()) {
+            return Signed<R>(value_ >> (R.length() > 0 ? R.length() - 1 : 0));
+        }
+
+        return Signed<R>(value_ >> safe_shift);
+    }
+
+    template <NativeInteger ShiftType>
+    constexpr Signed<R>& operator<<=(ShiftType const& amt) {
+        *this = *this << amt;
+        return *this;
+    }
+    template <NativeInteger ShiftType>
+    constexpr Signed<R>& operator>>=(ShiftType const& amt) {
+        *this = *this >> amt;
+        return *this;
+    }
+
+    constexpr auto operator+() const { return *this; }
+
+    constexpr auto operator-() const {
+        constexpr Range R_res = detail::int_downto_range(R.length() + 1);
+        return Signed<R_res>(-value_);
+    }
+
+    template <Range R2>
+    constexpr auto operator+(Signed<R2> const& rhs) const {
+        constexpr Range R_res =
+            detail::int_downto_range(std::max(R.length(), R2.length()) + 1);
+        return Signed<R_res>(value_ + rhs.value_);
+    }
+
+    template <Range R2>
+    constexpr auto operator-(Signed<R2> const& rhs) const {
+        constexpr Range R_res =
+            detail::int_downto_range(std::max(R.length(), R2.length()) + 1);
+        return Signed<R_res>(value_ - rhs.value_);
+    }
+
+    template <Range R2>
+    constexpr auto operator*(Signed<R2> const& rhs) const {
+        constexpr Range R_res = detail::int_downto_range(R.length() + R2.length());
+        return Signed<R_res>(value_ * rhs.value_);
+    }
+
+    template <Range R2>
+    constexpr auto operator/(Signed<R2> const& rhs) const {
+        constexpr Range R_res = detail::int_downto_range(R.length() + 1);
+        if (!static_cast<bool>(rhs)) {
+            throw std::domain_error("Division by zero");
+        }
+        return Signed<R_res>(value_ / rhs.value_);
+    }
+
+    template <Range R2>
+    constexpr auto operator%(Signed<R2> const& rhs) const {
+        if (!static_cast<bool>(rhs)) {
+            throw std::domain_error("Division by zero");
+        }
+        return Signed<R2>(value_ % rhs.value_);
+    }
+
+    template <Range R2>
+    constexpr Signed& operator+=(Signed<R2> const& rhs) {
+        *this = (*this + rhs).template resize<R.length()>();
+        return *this;
+    }
+    template <Range R2>
+    constexpr Signed& operator-=(Signed<R2> const& rhs) {
+        *this = (*this - rhs).template resize<R.length()>();
+        return *this;
+    }
+    template <Range R2>
+    constexpr Signed& operator*=(Signed<R2> const& rhs) {
+        *this = (*this * rhs).template resize<R.length()>();
+        return *this;
+    }
+    template <Range R2>
+    constexpr Signed& operator/=(Signed<R2> const& rhs) {
+        if (!static_cast<bool>(rhs)) {
+            throw std::domain_error("Division by zero");
+        }
+        *this = (*this / rhs).template resize<R.length()>();
+        return *this;
+    }
+    template <Range R2>
+    constexpr Signed& operator%=(Signed<R2> const& rhs) {
+        if (!static_cast<bool>(rhs)) {
+            throw std::domain_error("Division by zero");
+        }
+        *this = (*this % rhs).template resize<R.length()>();
+        return *this;
+    }
+
+    template <NativeInteger T>
+    constexpr Signed& operator+=(T const& rhs) {
+        if constexpr (R.length() > 0) {
+            *this = (*this + Signed<make_int_range<R.length()>()>(rhs))
+                        .template resize<R.length()>();
+        }
+        return *this;
+    }
+
+    template <NativeInteger T>
+    constexpr Signed& operator-=(T const& rhs) {
+        if constexpr (R.length() > 0) {
+            *this = (*this - Signed<make_int_range<R.length()>()>(rhs))
+                        .template resize<R.length()>();
+        }
+        return *this;
+    }
+
+    template <NativeInteger T>
+    constexpr Signed& operator*=(T const& rhs) {
+        if constexpr (R.length() > 0) {
+            *this = (*this * Signed<make_int_range<R.length()>()>(rhs))
+                        .template resize<R.length()>();
+        }
+        return *this;
+    }
+
+    template <NativeInteger T>
+    constexpr Signed& operator/=(T const& rhs) {
+        if constexpr (R.length() > 0) {
+            *this = (*this / Signed<make_int_range<R.length()>()>(rhs))
+                        .template resize<R.length()>();
+        }
+        return *this;
+    }
+
+    template <NativeInteger T>
+    constexpr Signed& operator%=(T const& rhs) {
+        if constexpr (R.length() > 0) {
+            *this = (*this % Signed<make_int_range<R.length()>()>(rhs))
+                        .template resize<R.length()>();
+        }
+        return *this;
+    }
+
+    template <Range R2>
+    constexpr Signed& operator+=(Unsigned<R2> const& rhs) {
+        auto res = (*this + (+rhs)).template resize<R.length()>(overflow_mode::wrap);
+        *this = std::move(res).template as<Signed<R>>();
+        return *this;
+    }
+
+    template <Range R2>
+    constexpr Signed& operator-=(Unsigned<R2> const& rhs) {
+        auto res = (*this - (+rhs)).template resize<R.length()>(overflow_mode::wrap);
+        *this = std::move(res).template as<Signed<R>>();
+        return *this;
+    }
+
+    template <Range R2>
+    constexpr Signed& operator*=(Unsigned<R2> const& rhs) {
+        auto res = (*this * (+rhs)).template resize<R.length()>(overflow_mode::wrap);
+        *this = std::move(res).template as<Signed<R>>();
+        return *this;
+    }
+
+    template <Range R2>
+    constexpr Signed& operator/=(Unsigned<R2> const& rhs) {
+        if (!static_cast<bool>(rhs)) {
+            throw std::domain_error("Division by zero");
+        }
+        auto res = (*this / (+rhs)).template resize<R.length()>(overflow_mode::wrap);
+        *this = std::move(res).template as<Signed<R>>();
+        return *this;
+    }
+
+    template <Range R2>
+    constexpr Signed& operator%=(Unsigned<R2> const& rhs) {
+        if (!static_cast<bool>(rhs)) {
+            throw std::domain_error("Division by zero");
+        }
+        auto res = (*this % (+rhs)).template resize<R.length()>(overflow_mode::wrap);
+        *this = std::move(res).template as<Signed<R>>();
+        return *this;
+    }
+
+    constexpr Signed& operator++() {
+        *this += 1;
+        return *this;
+    }
+
+    constexpr Signed operator++(int) {
+        Signed tmp = *this;
+        *this += 1;
+        return tmp;
+    }
+
+    constexpr Signed& operator--() {
+        *this -= 1;
+        return *this;
+    }
+
+    constexpr Signed operator--(int) {
+        Signed tmp = *this;
+        *this -= 1;
+        return tmp;
+    }
+
+    constexpr auto begin() { return value_.begin(); }
+    constexpr auto rbegin() { return value_.rbegin(); }
+    constexpr auto begin() const { return value_.begin(); }
+    constexpr auto rbegin() const { return value_.rbegin(); }
+
+    constexpr auto end() { return value_.end(); }
+    constexpr auto rend() { return value_.rend(); }
+    constexpr auto end() const { return value_.end(); }
+    constexpr auto rend() const { return value_.rend(); }
+
+    constexpr auto operator[](Range::value_type idx) {
+        auto const offset = R.offset_of(idx);
+        if (!offset.has_value()) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        size_t bit_pos = R.length() - 1 - offset.value();
+
+        return value_[bit_pos];
+    }
+
+    constexpr auto operator[](Range::value_type idx) const {
+        auto const offset = R.offset_of(idx);
+        if (!offset.has_value()) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        size_t bit_pos = R.length() - 1 - offset.value();
+
+        return value_[bit_pos];
+    }
+
+    template <size_t N>
+    constexpr auto index() const {
+        return value_[N];
+    }
+
+    template <typename T, typename CharT>
+    friend struct std::formatter;
+    template <typename T>
+    friend struct std::hash;
+
+  private:
+    friend struct storage_fn;
+
+    SInt<R.length()> value_{};
+};
+
+template <Range R>
+constexpr bool operator==(Signed<R> const& lhs, Signed<R> const& rhs) noexcept {
+    return storage(lhs) == storage(rhs);
+}
+
+template <Range R>
+constexpr auto operator<=>(Signed<R> const& lhs, Signed<R> const& rhs) noexcept {
+    return storage(lhs) <=> storage(rhs);
+}
+
+template <Range R1, Range R2>
+constexpr auto operator+(Unsigned<R1> const& lhs, Signed<R2> const& rhs) {
+    return (+lhs) + rhs;
+}
+
+template <Range R1, Range R2>
+constexpr auto operator-(Unsigned<R1> const& lhs, Signed<R2> const& rhs) {
+    return (+lhs) - rhs;
+}
+
+template <Range R1, Range R2>
+constexpr auto operator*(Unsigned<R1> const& lhs, Signed<R2> const& rhs) {
+    return (+lhs) * rhs;
+}
+
+template <Range R1, Range R2>
+constexpr auto operator/(Unsigned<R1> const& lhs, Signed<R2> const& rhs) {
+    return (+lhs) / rhs;
+}
+
+template <Range R1, Range R2>
+constexpr auto operator%(Unsigned<R1> const& lhs, Signed<R2> const& rhs) {
+    return (+lhs) % rhs;
+}
+
+template <Range R1, Range R2>
+constexpr auto operator+(Signed<R1> const& lhs, Unsigned<R2> const& rhs) {
+    return lhs + (+rhs);
+}
+
+template <Range R1, Range R2>
+constexpr auto operator-(Signed<R1> const& lhs, Unsigned<R2> const& rhs) {
+    return lhs - (+rhs);
+}
+
+template <Range R1, Range R2>
+constexpr auto operator*(Signed<R1> const& lhs, Unsigned<R2> const& rhs) {
+    return lhs * (+rhs);
+}
+
+template <Range R1, Range R2>
+constexpr auto operator/(Signed<R1> const& lhs, Unsigned<R2> const& rhs) {
+    return lhs / (+rhs);
+}
+
+template <Range R1, Range R2>
+constexpr auto operator%(Signed<R1> const& lhs, Unsigned<R2> const& rhs) {
+    return lhs % (+rhs);
+}
+
+template <Range R>
+constexpr auto abs(Signed<R> const& s) {
+    if (s < Signed<R>(0)) {
+        return -s;
+    }
+    return s.template resize<R.length() + 1>();
+}
+
+}  // namespace detail
+
+template <auto... Args>
+using Signed = detail::Signed<detail::make_int_range<Args...>()>;
+
+using detail::abs;
+
+consteval Signed<8> s8(long long v) { return Signed<8>(v); }
+consteval Signed<16> s16(long long v) { return Signed<16>(v); }
+consteval Signed<32> s32(long long v) { return Signed<32>(v); }
+consteval Signed<64> s64(long long v) { return Signed<64>(v); }
+
+}  // namespace coconext::types
+
+template <coconext::types::Range R>
+struct std::formatter<coconext::types::detail::Signed<R>> {
+    char presentation = 'd';
+
+    constexpr auto parse(std::format_parse_context& ctx) {
+        auto it = ctx.begin(), end = ctx.end();
+        if (it != end && *it != '}') {
+            presentation = *it++;
+            if (presentation != 'd' && presentation != 'b' && presentation != 'o'
+                && presentation != 'x')
+            {
+                throw std::format_error("Invalid format specifier for Signed");
+            }
+        }
+        if (it != end && *it != '}') {
+            throw std::format_error("Invalid format string");
+        }
+        return it;
+    }
+
+    auto format(
+        coconext::types::detail::Signed<R> const& v, std::format_context& ctx
+    ) const {
+        std::string str_r;
+        switch (presentation) {
+        case 'b':
+            str_r = v.value_.to_binary_string();
+            break;
+        case 'o':
+            str_r = v.value_.to_octal_string();
+            break;
+        case 'x':
+            str_r = v.value_.to_hexadecimal_string();
+            break;
+        default:
+            str_r = v.value_.to_decimal_string(true);
+        }
+        return std::format_to(ctx.out(), "Signed{}{{{}}}", R, str_r);
+    }
+};
+
+template <coconext::types::Range R>
+struct std::hash<coconext::types::detail::Signed<R>> {
+    size_t operator()(coconext::types::detail::Signed<R> const& v) const noexcept {
+        std::string_view type_name = typeid(coconext::types::detail::Signed<R>).name();
+        size_t signed_seed = std::hash<std::string_view>{}(type_name);
+        return coconext::types::detail::hash_combine(signed_seed, R, v.value_.hash_value());
+    }
+};
+
+#endif  // COCONEXT_DETAIL_SIGNED_HPP

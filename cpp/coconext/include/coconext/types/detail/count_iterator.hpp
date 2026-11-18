@@ -1,5 +1,5 @@
-#ifndef COCONEXT_COUNT_ITERATOR_HPP
-#define COCONEXT_COUNT_ITERATOR_HPP
+#ifndef COCONEXT_DETAIL_COUNT_ITERATOR_HPP
+#define COCONEXT_DETAIL_COUNT_ITERATOR_HPP
 
 #include <cassert>
 #include <concepts>
@@ -131,4 +131,4 @@ class CountIterator {
 
 }  // namespace coconext::types
 
-#endif  // COCONEXT_COUNT_ITERATOR_HPP
+#endif  // COCONEXT_DETAIL_COUNT_ITERATOR_HPP

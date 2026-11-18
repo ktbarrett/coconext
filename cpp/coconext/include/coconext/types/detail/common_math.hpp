@@ -1,11 +1,11 @@
-#ifndef COCONEXT_COMMON_MATH_HPP
-#define COCONEXT_COMMON_MATH_HPP
+#ifndef COCONEXT_DETAIL_COMMON_MATH_HPP
+#define COCONEXT_DETAIL_COMMON_MATH_HPP
 
 #include <cstddef>
 #include <limits>
 #include <stdexcept>
 
-#include <coconext/types/concepts.hpp>
+#include <coconext/types/detail/concepts.hpp>
 
 namespace coconext::types::detail {
 
@@ -32,4 +32,4 @@ constexpr size_t normalize_shift_amount(ShiftType const& shift_amount, size_t li
 
 }  // namespace coconext::types::detail
 
-#endif  // COCONEXT_COMMON_MATH_HPP
+#endif  // COCONEXT_DETAIL_COMMON_MATH_HPP

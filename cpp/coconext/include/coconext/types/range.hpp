@@ -6,13 +6,12 @@
 #include <format>
 #include <limits>
 #include <optional>
-#include <ranges>
 #include <stdexcept>
 
-#include <coconext/types/concepts.hpp>
-#include <coconext/types/count_iterator.hpp>
+#include <coconext/types/detail/concepts.hpp>
+#include <coconext/types/detail/count_iterator.hpp>
+#include <coconext/types/detail/hash.hpp>
 #include <coconext/types/direction.hpp>
-#include <coconext/types/hash.hpp>
 
 namespace coconext::types {
 

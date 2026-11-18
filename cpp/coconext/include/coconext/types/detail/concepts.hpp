@@ -1,5 +1,5 @@
-#ifndef COCONEXT_TYPES_UTIL_HPP
-#define COCONEXT_TYPES_UTIL_HPP
+#ifndef COCONEXT_DETAIL_CONCEPTS_HPP
+#define COCONEXT_DETAIL_CONCEPTS_HPP
 
 #include <concepts>
 #include <cstddef>
@@ -105,4 +105,4 @@ concept Formattable = std::semiregular<std::formatter<std::remove_cvref_t<T>, ch
 
 }  // namespace coconext::types
 
-#endif
+#endif  // COCONEXT_DETAIL_CONCEPTS_HPP

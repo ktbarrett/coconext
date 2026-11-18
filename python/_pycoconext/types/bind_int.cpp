@@ -12,7 +12,7 @@
 #include <string>
 #include <utility>
 
-#include <coconext/types/concepts.hpp>
+#include <coconext/types/detail/concepts.hpp>
 #include <coconext/types/direction.hpp>
 #include <coconext/types/dyn_signed.hpp>
 #include <coconext/types/logic.hpp>
