@@ -1,20 +1,25 @@
-#ifndef COCONEXT_ARRAY_BASE_HPP
-#define COCONEXT_ARRAY_BASE_HPP
+#ifndef COCONEXT_DETAIL_ARRAY_BASE_HPP
+#define COCONEXT_DETAIL_ARRAY_BASE_HPP
 
 #include <algorithm>
 #include <cassert>
 #include <concepts>
+#include <cstddef>
 #include <format>
 #include <initializer_list>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <ranges>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <type_traits>
+#include <typeinfo>
 
-#include <coconext/types/concepts.hpp>
-#include <coconext/types/logic.hpp>
+#include <coconext/types/detail/array_fwd.hpp>
+#include <coconext/types/detail/concepts.hpp>
+#include <coconext/types/detail/hash.hpp>
 #include <coconext/types/range.hpp>
 
 namespace coconext::types {
@@ -62,22 +67,10 @@ constexpr void subsequence_check(Range parent, Range child) {
 
 }  // namespace detail
 
-template <typename ArrayT>
-class ArraySlice;
-template <typename ArrayT, Range R>
-class StaticArraySlice;
-
-template <typename ArrayT>
-    requires LogicType<std::ranges::range_value_t<ArrayT>>
-class ArraySlice<ArrayT>;
-template <typename ArrayT, Range R>
-    requires LogicType<std::ranges::range_value_t<ArrayT>>
-class StaticArraySlice<ArrayT, R>;
-
 namespace detail {
 
 // We split out the implementations into a base class so that we can reuse then in the
-// Logic/Bit-aware specializations in logic_array.hpp. LogicArray is just an Array with
+// Logic/Bit-aware specializations. LogicArray is just an Array with
 // extra members. BitArray is too, for now...
 
 template <typename ArrayT>
@@ -400,6 +393,112 @@ class StaticArraySlice : public detail::StaticArraySliceImpl<ArrayT, R> {
     using detail::StaticArraySliceImpl<ArrayT, R>::operator=;
 };
 
+template <typename ArrayT>
+auto detail::ArraySliceImpl<ArrayT>::reverse() const {
+    Vector<std::ranges::range_value_t<ArrayT>> result(range().reverse());
+    std::ranges::reverse_copy(*this, result.begin());
+    return result;
+}
+
+template <typename ArrayT, Range R>
+constexpr auto detail::StaticArraySliceImpl<ArrayT, R>::reverse() const {
+    detail::Array<std::ranges::range_value_t<ArrayT>, R.reverse()> result;
+    std::ranges::reverse_copy(*this, result.begin());
+    return result;
+}
+
+namespace detail {
+
+// Equality and hashing apply to every Array and Vector specialization.
+template <typename T, Range R>
+    requires std::equality_comparable<T>
+constexpr bool operator==(Array<T, R> const& lhs, Array<T, R> const& rhs) noexcept {
+    return std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
+}
+
+template <auto V>
+constexpr bool fits_range_value_type =
+    static_cast<long long>(V) >= std::numeric_limits<Range::value_type>::min()
+    && static_cast<long long>(V) <= std::numeric_limits<Range::value_type>::max();
+
+template <auto... Args>
+constexpr Range make_static_range() {
+    using std::get;
+    static_assert(
+        sizeof...(Args) >= 1 && sizeof...(Args) <= 3, "Array<T, ...> takes 1-3 range args"
+    );
+    constexpr auto t = std::tuple{Args...};
+    if constexpr (sizeof...(Args) == 1) {
+        using First = std::remove_cvref_t<decltype(get<0>(t))>;
+        static_assert(
+            std::is_same_v<First, Range> || std::integral<First>,
+            "single template arg must be a Range value or an integral length"
+        );
+        if constexpr (std::is_same_v<First, Range>) {
+            return get<0>(t);
+        } else {
+            static_assert(get<0>(t) >= 0, "Array<T, N>: N (length) must be non-negative");
+            return Range(static_cast<size_t>(get<0>(t)));
+        }
+    } else if constexpr (sizeof...(Args) == 2) {
+        static_assert(
+            fits_range_value_type<get<0>(t)>,
+            "Array<T, L, H>: L does not fit in Range::value_type (int32_t)"
+        );
+        static_assert(
+            fits_range_value_type<get<1>(t)>,
+            "Array<T, L, H>: H does not fit in Range::value_type (int32_t)"
+        );
+        return Range{
+            static_cast<Range::value_type>(get<0>(t)),
+            static_cast<Range::value_type>(get<1>(t))
+        };
+    } else {  // 3
+        static_assert(
+            std::is_same_v<std::remove_cvref_t<decltype(get<1>(t))>, Direction>,
+            "three-arg form requires (left, Direction, right)"
+        );
+        static_assert(
+            fits_range_value_type<get<0>(t)>,
+            "Array<T, L, D, H>: L does not fit in Range::value_type (int32_t)"
+        );
+        static_assert(
+            fits_range_value_type<get<2>(t)>,
+            "Array<T, L, D, H>: H does not fit in Range::value_type (int32_t)"
+        );
+        return Range{
+            static_cast<Range::value_type>(get<0>(t)),
+            get<1>(t),
+            static_cast<Range::value_type>(get<2>(t))
+        };
+    }
+}
+
+}  // namespace detail
+
+// Static-bounded array. Storage is local, not on the heap, similar to std::array. Range is
+// built from the trailing NTTPs:
+//   Array<T, N>           (integral N)      -> detail::Array<T, Range(N)>
+//   Array<T, R>           (Range R)         -> detail::Array<T, R>
+//   Array<T, L, H>        (integral L, H)   -> detail::Array<T, Range{L, H}>
+//   Array<T, L, D, H>     (D = Direction)   -> detail::Array<T, Range{L, D, H}>
+template <typename T, auto... Args>
+using Array = detail::Array<T, detail::make_static_range<Args...>()>;
+
+template <typename ValueT>
+    requires std::equality_comparable<ValueT>
+constexpr bool operator==(Vector<ValueT> const& lhs, Vector<ValueT> const& rhs) noexcept {
+    if (lhs.range() != rhs.range()) {
+        return false;
+    }
+    for (auto it1 = lhs.begin(), it2 = rhs.begin(); it1 != lhs.end(); ++it1, ++it2) {
+        if (!(*it1 == *it2)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 namespace detail {
 
 template <RangedSequence ArrayT, typename OutIt>
@@ -421,6 +520,31 @@ OutIt format_array(std::string_view prefix, ArrayT const& arr, OutIt out) {
 }  // namespace detail
 
 }  // namespace coconext::types
+
+template <typename T, coconext::types::Range R>
+struct std::hash<coconext::types::detail::Array<T, R>> {
+    size_t operator()(coconext::types::detail::Array<T, R> const& arr) const noexcept {
+        size_t seed = typeid(coconext::types::detail::Array<T, R>).hash_code();
+        for (auto const& elem : arr) {
+            seed = coconext::types::detail::hash_combine(seed, elem);
+        }
+        return seed;
+    }
+};
+
+template <typename T>
+struct std::hash<coconext::types::Vector<T>> {
+    size_t operator()(coconext::types::Vector<T> const& arr) const noexcept {
+        size_t seed = typeid(coconext::types::Vector<T>).hash_code();
+        seed = coconext::types::detail::hash_mix(
+            seed, hash<coconext::types::Range>{}(arr.range())
+        );
+        for (auto const& elem : arr) {
+            seed = coconext::types::detail::hash_combine(seed, elem);
+        }
+        return seed;
+    }
+};
 
 #define COCONEXT_DEFINE_ARRAY_SLICE_FORMATTER(...)                                         \
     struct std::formatter<__VA_ARGS__> {                                                   \
@@ -446,4 +570,4 @@ COCONEXT_DEFINE_ARRAY_SLICE_FORMATTER(coconext::types::StaticArraySlice<ArrayT, 
 
 #undef COCONEXT_DEFINE_ARRAY_SLICE_FORMATTER
 
-#endif  // COCONEXT_ARRAY_BASE_HPP
+#endif  // COCONEXT_DETAIL_ARRAY_BASE_HPP

@@ -1,5 +1,5 @@
-#ifndef COCONEXT_STRING_LITERAL_HPP
-#define COCONEXT_STRING_LITERAL_HPP
+#ifndef COCONEXT_DETAIL_STRING_LITERAL_HPP
+#define COCONEXT_DETAIL_STRING_LITERAL_HPP
 
 #include <algorithm>
 #include <cstddef>
@@ -31,4 +31,4 @@ constexpr size_t count_non_underscore() {
 
 }  // namespace coconext::types
 
-#endif  // COCONEXT_STRING_LITERAL_HPP
+#endif  // COCONEXT_DETAIL_STRING_LITERAL_HPP

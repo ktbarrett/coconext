@@ -1,5 +1,5 @@
-#ifndef COCONEXT_HASH_HPP
-#define COCONEXT_HASH_HPP
+#ifndef COCONEXT_DETAIL_HASH_HPP
+#define COCONEXT_DETAIL_HASH_HPP
 
 #include <cstddef>
 #include <functional>
@@ -21,4 +21,4 @@ constexpr size_t hash_combine(Args const&... args) noexcept {
 
 }  // namespace coconext::types::detail
 
-#endif  // COCONEXT_HASH_HPP
+#endif  // COCONEXT_DETAIL_HASH_HPP

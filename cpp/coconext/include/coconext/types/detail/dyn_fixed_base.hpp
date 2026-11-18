@@ -1,5 +1,5 @@
-#ifndef COCONEXT_DYN_FIXED_BASE_HPP
-#define COCONEXT_DYN_FIXED_BASE_HPP
+#ifndef COCONEXT_DETAIL_DYN_FIXED_BASE_HPP
+#define COCONEXT_DETAIL_DYN_FIXED_BASE_HPP
 
 #include <algorithm>
 #include <cassert>
@@ -14,8 +14,8 @@
 #include <type_traits>
 #include <utility>
 
-#include <coconext/types/dyn_bigint.hpp>
-#include <coconext/types/dyn_signed.hpp>
+#include <coconext/types/detail/dyn_bigint.hpp>
+#include <coconext/types/detail/dyn_signed.hpp>
 #include <coconext/types/range.hpp>
 #include <coconext/types/resize_mode.hpp>
 
@@ -591,4 +591,4 @@ inline DynUInt reverse_bits(DynUInt const& value) {
 }  // namespace dyn_fixed_detail
 }  // namespace coconext::types::detail
 
-#endif  // COCONEXT_DYN_FIXED_BASE_HPP
+#endif  // COCONEXT_DETAIL_DYN_FIXED_BASE_HPP

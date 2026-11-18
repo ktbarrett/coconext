@@ -1,5 +1,5 @@
-#ifndef COCONEXT_DYN_BIGINT_HPP
-#define COCONEXT_DYN_BIGINT_HPP
+#ifndef COCONEXT_DETAIL_DYN_BIGINT_HPP
+#define COCONEXT_DETAIL_DYN_BIGINT_HPP
 
 #include <algorithm>
 #include <array>
@@ -18,8 +18,8 @@
 #include <type_traits>
 #include <utility>
 
-#include <coconext/types/bigint.hpp>
-#include <coconext/types/bigint_common.hpp>
+#include <coconext/types/detail/bigint.hpp>
+#include <coconext/types/detail/bigint_common.hpp>
 
 namespace coconext::types::detail {
 
@@ -1226,4 +1226,4 @@ inline DynSInt abs(DynSInt const& a) {
 
 }  // namespace coconext::types::detail
 
-#endif  // COCONEXT_DYN_BIGINT_HPP
+#endif  // COCONEXT_DETAIL_DYN_BIGINT_HPP
