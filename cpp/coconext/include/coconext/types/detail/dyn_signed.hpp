@@ -313,6 +313,48 @@ inline DynSigned operator-(DynUnsigned const& lhs, DynUnsigned const& rhs) {
     return DynSigned(storage(lhs) - storage(rhs));
 }
 
+// DynUnsigned X DynSigned binary operators
+inline DynSigned operator+(DynUnsigned const& lhs, DynSigned const& rhs) {
+    return (+lhs) + rhs;
+}
+
+inline DynSigned operator-(DynUnsigned const& lhs, DynSigned const& rhs) {
+    return (+lhs) - rhs;
+}
+
+inline DynSigned operator*(DynUnsigned const& lhs, DynSigned const& rhs) {
+    return (+lhs) * rhs;
+}
+
+inline DynSigned operator/(DynUnsigned const& lhs, DynSigned const& rhs) {
+    return (+lhs) / rhs;
+}
+
+inline DynSigned operator%(DynUnsigned const& lhs, DynSigned const& rhs) {
+    return (+lhs) % rhs;
+}
+
+// DynSigned X DynUnsigned binary operators
+inline DynSigned operator+(DynSigned const& lhs, DynUnsigned const& rhs) {
+    return lhs + (+rhs);
+}
+
+inline DynSigned operator-(DynSigned const& lhs, DynUnsigned const& rhs) {
+    return lhs - (+rhs);
+}
+
+inline DynSigned operator*(DynSigned const& lhs, DynUnsigned const& rhs) {
+    return lhs * (+rhs);
+}
+
+inline DynSigned operator/(DynSigned const& lhs, DynUnsigned const& rhs) {
+    return lhs / (+rhs);
+}
+
+inline DynSigned operator%(DynSigned const& lhs, DynUnsigned const& rhs) {
+    return lhs % (+rhs);
+}
+
 // DynUnsigned X DynSigned compound operators
 inline DynUnsigned& operator+=(DynUnsigned& lhs, DynSigned const& rhs) {
     auto result = DynSInt(storage(lhs), lhs.size()) + storage(rhs);
