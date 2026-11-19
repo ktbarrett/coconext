@@ -548,7 +548,9 @@ class Int {
         if (index >= W) {
             throw std::out_of_range("Bit index out of bounds");
         }
-        if constexpr (is_wide) {
+        if constexpr (W == 0) {
+            return false;
+        } else if constexpr (is_wide) {
             return detail::get_bit(
                 WordConstSpan{std::span<Word const>{storage_}, physical_width}, index
             );
@@ -571,7 +573,9 @@ class Int {
         if (index >= W) {
             throw std::out_of_range("Bit index out of bounds");
         }
-        if constexpr (is_wide) {
+        if constexpr (W == 0) {
+            return;
+        } else if constexpr (is_wide) {
             detail::set_bit(
                 WordSpan{std::span<Word>{storage_}, physical_width}, index, val
             );

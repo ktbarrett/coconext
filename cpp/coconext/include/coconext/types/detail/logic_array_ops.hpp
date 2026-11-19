@@ -397,9 +397,10 @@ template <RangedSequence T>
 auto operator~(T const& arr) {
     using elem_t = std::ranges::range_value_t<T>;
     if constexpr (StaticRangedSequence<T>) {
+        constexpr auto AR = std::remove_cvref_t<T>::static_range;
         Array<
             elem_t,
-            Range{std::remove_cvref_t<T>::static_range.length() - 1, Direction::DOWNTO, 0}>
+            Range{static_cast<Range::value_type>(AR.length()) - 1, Direction::DOWNTO, 0}>
             result{};
         std::transform(
             std::ranges::begin(arr),
