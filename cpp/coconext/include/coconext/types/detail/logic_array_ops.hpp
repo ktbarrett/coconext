@@ -12,8 +12,10 @@
 #include <utility>
 
 #include <coconext/types/detail/array_base.hpp>
+#include <coconext/types/detail/bigint.hpp>
 #include <coconext/types/detail/bit_array.hpp>
 #include <coconext/types/detail/bit_vector.hpp>
+#include <coconext/types/detail/concepts.hpp>
 #include <coconext/types/detail/logic.hpp>
 #include <coconext/types/detail/logic_array_base.hpp>
 #include <coconext/types/direction.hpp>
@@ -59,10 +61,19 @@ std::optional<detail::Array<Bit, R>> StaticArraySlice<ArrayT, R>::resolve(
 
 namespace detail {
 
-template <RangedSequence LHS, RangedSequence RHS, typename Op>
+[[noreturn]] inline void throw_length_mismatch(
+    char const* operation, size_t lhs, size_t rhs
+) {
+    throw std::invalid_argument(
+        std::string(operation) + " requires arrays of equal length, got "
+        + std::to_string(lhs) + " and " + std::to_string(rhs)
+    );
+}
+
+template <RangedSequence LHS, RangedSequence RHS, typename Op, typename AssignOp>
     requires LogicType<std::ranges::range_value_t<LHS>>
           && LogicType<std::ranges::range_value_t<RHS>>
-auto logic_binop(LHS const& lhs, RHS const& rhs, Op op) {
+auto logic_binop(LHS const& lhs, RHS const& rhs, Op op, AssignOp assign) {
     using result_elem = decltype(op(
         std::declval<std::ranges::range_value_t<LHS>>(),
         std::declval<std::ranges::range_value_t<RHS>>()
@@ -77,36 +88,53 @@ auto logic_binop(LHS const& lhs, RHS const& rhs, Op op) {
         static_assert(
             LR.length() == RR.length(), "Bitwise operation requires arrays of equal length"
         );
-        Array<
-            result_elem,
-            Range{static_cast<Range::value_type>(LR.length()) - 1, Direction::DOWNTO, 0}>
-            result{};
-        std::transform(
-            std::ranges::begin(lhs),
-            std::ranges::end(lhs),
-            std::ranges::begin(rhs),
-            result.begin(),
-            op
-        );
-        return result;
+        if constexpr (HasStorage<LHS> && HasStorage<RHS>) {
+            auto bits = storage(lhs);
+            assign(bits, storage(rhs));
+            return BitArray<LR.length()>(bits);
+        } else {
+            Array<
+                result_elem,
+                Range{
+                    static_cast<Range::value_type>(LR.length()) - 1, Direction::DOWNTO, 0
+                }>
+                result{};
+            std::transform(
+                std::ranges::begin(lhs),
+                std::ranges::end(lhs),
+                std::ranges::begin(rhs),
+                result.begin(),
+                op
+            );
+            return result;
+        }
     } else {
         if (lhs.range().length() != rhs.range().length()) {
-            throw std::invalid_argument(
-                "Bitwise operation requires arrays of equal length, got "
-                + std::to_string(lhs.range().length()) + " and "
-                + std::to_string(rhs.range().length())
+            throw_length_mismatch(
+                "Bitwise operation", lhs.range().length(), rhs.range().length()
             );
         }
-        auto const n = static_cast<Range::value_type>(lhs.range().length());
-        Vector<result_elem> result(Range{n - 1, Direction::DOWNTO, 0});
-        std::transform(
-            std::ranges::begin(lhs),
-            std::ranges::end(lhs),
-            std::ranges::begin(rhs),
-            result.begin(),
-            op
-        );
-        return result;
+        // The operations are symmetric, so the copy is of an operand with dynamic storage.
+        if constexpr (HasDynamicStorage<LHS> && HasStorage<RHS>) {
+            auto bits = storage(lhs);
+            assign(bits, storage(rhs));
+            return BitVector(std::move(bits));
+        } else if constexpr (HasStorage<LHS> && HasDynamicStorage<RHS>) {
+            auto bits = storage(rhs);
+            assign(bits, storage(lhs));
+            return BitVector(std::move(bits));
+        } else {
+            auto const n = static_cast<Range::value_type>(lhs.range().length());
+            Vector<result_elem> result(Range{n - 1, Direction::DOWNTO, 0});
+            std::transform(
+                std::ranges::begin(lhs),
+                std::ranges::end(lhs),
+                std::ranges::begin(rhs),
+                result.begin(),
+                op
+            );
+            return result;
+        }
     }
 }
 
@@ -150,25 +178,34 @@ auto logic_binop_scalar(Arr const& arr, Scalar const& s, Op op) {
 template <RangedSequence LHS, RangedSequence RHS>
     requires LogicArrayType<LHS> && LogicArrayType<RHS>
 auto operator&(LHS const& lhs, RHS const& rhs) {
-    return detail::logic_binop(lhs, rhs, [](auto const& a, auto const& b) {
-        return a & b;
-    });
+    return detail::logic_binop(
+        lhs,
+        rhs,
+        [](auto const& a, auto const& b) { return a & b; },
+        [](auto& a, auto const& b) { a &= b; }
+    );
 }
 
 template <RangedSequence LHS, RangedSequence RHS>
     requires LogicArrayType<LHS> && LogicArrayType<RHS>
 auto operator|(LHS const& lhs, RHS const& rhs) {
-    return detail::logic_binop(lhs, rhs, [](auto const& a, auto const& b) {
-        return a | b;
-    });
+    return detail::logic_binop(
+        lhs,
+        rhs,
+        [](auto const& a, auto const& b) { return a | b; },
+        [](auto& a, auto const& b) { a |= b; }
+    );
 }
 
 template <RangedSequence LHS, RangedSequence RHS>
     requires LogicArrayType<LHS> && LogicArrayType<RHS>
 auto operator^(LHS const& lhs, RHS const& rhs) {
-    return detail::logic_binop(lhs, rhs, [](auto const& a, auto const& b) {
-        return a ^ b;
-    });
+    return detail::logic_binop(
+        lhs,
+        rhs,
+        [](auto const& a, auto const& b) { return a ^ b; },
+        [](auto& a, auto const& b) { a ^= b; }
+    );
 }
 
 // Scalar-on-left broadcasts a single Bit/Logic across an array.
@@ -232,8 +269,8 @@ constexpr void logic_inplace_scalar(LHS& lhs, Scalar const& s, Op op) {
     }
 }
 
-template <typename LHS, typename RHS, typename Op>
-constexpr void logic_inplace_array(LHS& lhs, RHS const& rhs, Op op) {
+template <typename LHS, typename RHS, typename Op, typename AssignOp>
+constexpr void logic_inplace_array(LHS& lhs, RHS const& rhs, Op op, AssignOp assign) {
     // When both sides have compile-time-known ranges, fold the length check
     // into a static_assert -- mismatch becomes a compile error instead of a
     // runtime throw, and the runtime branch drops out of generated code.
@@ -244,15 +281,17 @@ constexpr void logic_inplace_array(LHS& lhs, RHS const& rhs, Op op) {
             "Bitwise compound assignment requires arrays of equal length"
         );
     } else if (lhs.range().length() != rhs.range().length()) {
-        throw std::invalid_argument(
-            "Bitwise compound assignment requires arrays of equal length, got "
-            + std::to_string(lhs.range().length()) + " and "
-            + std::to_string(rhs.range().length())
+        throw_length_mismatch(
+            "Bitwise compound assignment", lhs.range().length(), rhs.range().length()
         );
     }
-    auto it = std::ranges::begin(rhs);
-    for (auto&& v : lhs) {
-        v = op(v, *it++);
+    if constexpr (HasStorage<LHS> && HasStorage<RHS>) {
+        assign(storage(lhs), storage(rhs));
+    } else {
+        auto it = std::ranges::begin(rhs);
+        for (auto&& v : lhs) {
+            v = op(v, *it++);
+        }
     }
 }
 
@@ -272,9 +311,12 @@ template <typename LHS, RangedSequence RHS>
     requires LogicArrayType<std::remove_cvref_t<LHS>> && LogicArrayType<RHS>
           && std::ranges::output_range<LHS, std::ranges::range_value_t<LHS>>
 constexpr decltype(auto) operator&=(LHS&& lhs, RHS const& rhs) {
-    detail::logic_inplace_array(lhs, rhs, [](auto const& a, auto const& b) {
-        return a & b;
-    });
+    detail::logic_inplace_array(
+        lhs,
+        rhs,
+        [](auto const& a, auto const& b) { return a & b; },
+        [](auto& a, auto const& b) { a &= b; }
+    );
     return std::forward<LHS>(lhs);
 }
 
@@ -292,9 +334,12 @@ template <typename LHS, RangedSequence RHS>
     requires LogicArrayType<std::remove_cvref_t<LHS>> && LogicArrayType<RHS>
           && std::ranges::output_range<LHS, std::ranges::range_value_t<LHS>>
 constexpr decltype(auto) operator|=(LHS&& lhs, RHS const& rhs) {
-    detail::logic_inplace_array(lhs, rhs, [](auto const& a, auto const& b) {
-        return a | b;
-    });
+    detail::logic_inplace_array(
+        lhs,
+        rhs,
+        [](auto const& a, auto const& b) { return a | b; },
+        [](auto& a, auto const& b) { a |= b; }
+    );
     return std::forward<LHS>(lhs);
 }
 
@@ -312,9 +357,12 @@ template <typename LHS, RangedSequence RHS>
     requires LogicArrayType<std::remove_cvref_t<LHS>> && LogicArrayType<RHS>
           && std::ranges::output_range<LHS, std::ranges::range_value_t<LHS>>
 constexpr decltype(auto) operator^=(LHS&& lhs, RHS const& rhs) {
-    detail::logic_inplace_array(lhs, rhs, [](auto const& a, auto const& b) {
-        return a ^ b;
-    });
+    detail::logic_inplace_array(
+        lhs,
+        rhs,
+        [](auto const& a, auto const& b) { return a ^ b; },
+        [](auto& a, auto const& b) { a ^= b; }
+    );
     return std::forward<LHS>(lhs);
 }
 
@@ -402,7 +450,11 @@ template <RangedSequence T>
     requires LogicArrayType<T>
 auto operator~(T const& arr) {
     using elem_t = std::ranges::range_value_t<T>;
-    if constexpr (StaticRangedSequence<T>) {
+    if constexpr (detail::HasStaticStorage<T>) {
+        return BitArray<T::static_range.length()>(~detail::storage(arr));
+    } else if constexpr (detail::HasDynamicStorage<T>) {
+        return BitVector(~detail::storage(arr));
+    } else if constexpr (StaticRangedSequence<T>) {
         constexpr auto AR = std::remove_cvref_t<T>::static_range;
         Array<
             elem_t,

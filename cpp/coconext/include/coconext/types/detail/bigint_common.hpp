@@ -871,6 +871,28 @@ constexpr void xor_assign(WordSpan dst, WordConstSpan rhs) {
     }
 }
 
+template <char Op>
+constexpr void bitwise_assign(WordSpan dst, WordConstSpan rhs) {
+    if constexpr (Op == '&') {
+        and_assign(dst, rhs);
+    } else if constexpr (Op == '|') {
+        or_assign(dst, rhs);
+    } else {
+        xor_assign(dst, rhs);
+    }
+}
+
+template <char Op, typename T>
+constexpr T bitwise(T lhs, T rhs) {
+    if constexpr (Op == '&') {
+        return static_cast<T>(lhs & rhs);
+    } else if constexpr (Op == '|') {
+        return static_cast<T>(lhs | rhs);
+    } else {
+        return static_cast<T>(lhs ^ rhs);
+    }
+}
+
 constexpr void bitnot(WordSpan v) {
     for (auto& w : v.data()) {
         w = ~w;

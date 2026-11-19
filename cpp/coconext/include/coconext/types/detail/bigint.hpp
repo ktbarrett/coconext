@@ -318,31 +318,33 @@ class Int {
             }
             finish_output(dst_buffer);
         }
-        if constexpr (
-            W < physical_width && (W < OtherW || SignedRepresentation != OtherSigned)
-        )
-        {
-            if constexpr (!is_wide) {
-                if constexpr (SignedRepresentation) {
-                    IntType const extension = static_cast<IntType>(
-                        IntType{0} - ((storage_ >> (W - 1)) & IntType{1})
-                    );
-                    storage_ = static_cast<IntType>(
-                        (storage_ & logical_mask) | (extension & ~logical_mask)
-                    );
-                } else {
-                    storage_ = static_cast<IntType>(storage_ & logical_mask);
-                }
+        if constexpr (W < OtherW || SignedRepresentation != OtherSigned) {
+            canonicalize_padding();
+        }
+    }
+
+    constexpr void canonicalize_padding() {
+        if constexpr (W == physical_width) {
+            return;
+        } else if constexpr (!is_wide) {
+            if constexpr (SignedRepresentation) {
+                IntType const extension =
+                    static_cast<IntType>(IntType{0} - ((storage_ >> (W - 1)) & IntType{1}));
+                storage_ = static_cast<IntType>(
+                    (storage_ & logical_mask) | (extension & ~logical_mask)
+                );
             } else {
-                constexpr unsigned valid_bits = W % word_bits;
-                constexpr Word mask = (Word{1} << valid_bits) - 1;
-                Word& top = storage_.back();
-                if constexpr (SignedRepresentation) {
-                    Word const extension = Word{0} - ((top >> (valid_bits - 1)) & Word{1});
-                    top = (top & mask) | (extension & ~mask);
-                } else {
-                    top &= mask;
-                }
+                storage_ = static_cast<IntType>(storage_ & logical_mask);
+            }
+        } else {
+            constexpr unsigned valid_bits = W % word_bits;
+            constexpr Word mask = (Word{1} << valid_bits) - 1;
+            Word& top = storage_.back();
+            if constexpr (SignedRepresentation) {
+                Word const extension = Word{0} - ((top >> (valid_bits - 1)) & Word{1});
+                top = (top & mask) | (extension & ~mask);
+            } else {
+                top &= mask;
             }
         }
     }
@@ -831,53 +833,65 @@ class Int {
         return std::strong_ordering::equal;
     }
 
-    constexpr Int operator&(Int const& other) const {
+    template <char Op, bool OtherSigned>
+    constexpr void assign_bitwise(Int<W, OtherSigned> const& other) {
         if constexpr (W == 0) {
-            return Int{};
+            return;
         } else if constexpr (!is_wide) {
-            Int result;
-            result.storage_ = static_cast<IntType>(storage_ & other.storage_);
-            return result;
+            storage_ = bitwise<Op>(storage_, other.storage_);
         } else {
-            Int result(*this);
-            and_assign(
-                WordSpan{std::span<Word>{result.storage_}, physical_width},
+            bitwise_assign<Op>(
+                WordSpan{std::span<Word>{storage_}, physical_width},
                 WordConstSpan{std::span<Word const>{other.storage_}, physical_width}
             );
-            return result;
         }
+        if constexpr (OtherSigned != SignedRepresentation) {
+            canonicalize_padding();
+        }
+    }
+
+    template <char Op, bool OtherSigned>
+    void assign_bitwise(DynInt<OtherSigned> const& other);
+
+    template <typename Other>
+        requires requires(Int& self, Other const& other) {
+            self.template assign_bitwise<'&'>(other);
+        }
+    constexpr Int& operator&=(Other const& other) {
+        assign_bitwise<'&'>(other);
+        return *this;
+    }
+    template <typename Other>
+        requires requires(Int& self, Other const& other) {
+            self.template assign_bitwise<'|'>(other);
+        }
+    constexpr Int& operator|=(Other const& other) {
+        assign_bitwise<'|'>(other);
+        return *this;
+    }
+    template <typename Other>
+        requires requires(Int& self, Other const& other) {
+            self.template assign_bitwise<'^'>(other);
+        }
+    constexpr Int& operator^=(Other const& other) {
+        assign_bitwise<'^'>(other);
+        return *this;
+    }
+
+    constexpr Int operator&(Int const& other) const {
+        Int result(*this);
+        result &= other;
+        return result;
     }
     constexpr Int operator|(Int const& other) const {
-        if constexpr (W == 0) {
-            return Int{};
-        } else if constexpr (!is_wide) {
-            Int result;
-            result.storage_ = static_cast<IntType>(storage_ | other.storage_);
-            return result;
-        } else {
-            Int result(*this);
-            or_assign(
-                WordSpan{std::span<Word>{result.storage_}, physical_width},
-                WordConstSpan{std::span<Word const>{other.storage_}, physical_width}
-            );
-            return result;
-        }
+        Int result(*this);
+        result |= other;
+        return result;
     }
     constexpr Int operator^(Int const& other) const {
-        if constexpr (W == 0) {
-            return Int{};
-        } else if constexpr (!is_wide) {
-            Int result;
-            result.storage_ = static_cast<IntType>(storage_ ^ other.storage_);
-            return result;
-        } else {
-            Int result(*this);
-            xor_assign(
-                WordSpan{std::span<Word>{result.storage_}, physical_width},
-                WordConstSpan{std::span<Word const>{other.storage_}, physical_width}
-            );
-            return result;
-        }
+        Int result(*this);
+        result ^= other;
+        return result;
     }
     constexpr Int operator~() const {
         if constexpr (W == 0) {

@@ -31,6 +31,8 @@ template <bool SignedRepresentation>
 class DynInt {
     template <bool>
     friend class DynInt;
+    template <size_t, bool>
+    friend class Int;
 
   public:
     using NativeUInt = std::uint64_t;
@@ -508,34 +510,71 @@ class DynInt {
         return std::strong_ordering::equal;
     }
 
-    DynInt operator&(DynInt const& other) const {
+    template <char Op, bool OtherSigned>
+    void assign_bitwise(DynInt<OtherSigned> const& other) {
         check_same_width(other);
-        DynInt result(*this);
         if (is_native()) {
-            result.storage_.native_ &= other.storage_.native_;
+            storage_.native_ = bitwise<Op>(storage_.native_, other.storage_.native_);
         } else {
-            and_assign(result.heap_physical_mut(), other.heap_physical_cref());
+            bitwise_assign<Op>(heap_physical_mut(), other.heap_physical_cref());
         }
+        if constexpr (OtherSigned != SignedRepresentation) {
+            canonicalize_padding_bits();
+        }
+    }
+
+    template <char Op, size_t W, bool OtherSigned>
+    void assign_bitwise(Int<W, OtherSigned> const& other) {
+        if (width_ != W) {
+            throw std::invalid_argument("bit width mismatch");
+        }
+        NativeBuffer buffer{};
+        typename Int<W, OtherSigned>::NativeBuffer other_buffer{};
+        auto dst = physical_mut(buffer);
+        auto src = other.physical_wide_cref(other_buffer);
+        bitwise_assign<Op>(dst, WordConstSpan{src.data(), dst.bit_width()});
+        finish_output(buffer);
+        canonicalize_padding_bits();
+    }
+
+    template <typename Other>
+        requires requires(DynInt& self, Other const& other) {
+            self.template assign_bitwise<'&'>(other);
+        }
+    DynInt& operator&=(Other const& other) {
+        assign_bitwise<'&'>(other);
+        return *this;
+    }
+    template <typename Other>
+        requires requires(DynInt& self, Other const& other) {
+            self.template assign_bitwise<'|'>(other);
+        }
+    DynInt& operator|=(Other const& other) {
+        assign_bitwise<'|'>(other);
+        return *this;
+    }
+    template <typename Other>
+        requires requires(DynInt& self, Other const& other) {
+            self.template assign_bitwise<'^'>(other);
+        }
+    DynInt& operator^=(Other const& other) {
+        assign_bitwise<'^'>(other);
+        return *this;
+    }
+
+    DynInt operator&(DynInt const& other) const {
+        DynInt result(*this);
+        result &= other;
         return result;
     }
     DynInt operator|(DynInt const& other) const {
-        check_same_width(other);
         DynInt result(*this);
-        if (is_native()) {
-            result.storage_.native_ |= other.storage_.native_;
-        } else {
-            or_assign(result.heap_physical_mut(), other.heap_physical_cref());
-        }
+        result |= other;
         return result;
     }
     DynInt operator^(DynInt const& other) const {
-        check_same_width(other);
         DynInt result(*this);
-        if (is_native()) {
-            result.storage_.native_ ^= other.storage_.native_;
-        } else {
-            xor_assign(result.heap_physical_mut(), other.heap_physical_cref());
-        }
+        result ^= other;
         return result;
     }
     DynInt operator~() const {
@@ -1126,7 +1165,10 @@ class DynInt {
     }
 
     void canonicalize_padding_bits() {
-        assert(!is_native());
+        if (is_native()) {
+            storage_.native_ = native_from_logical_bits(storage_.native_);
+            return;
+        }
         if (width_ == physical_width()) {
             return;
         }
@@ -1172,12 +1214,31 @@ class DynInt {
         return true;
     }
 
-    void check_same_width(DynInt const& other) const {
+    template <bool OtherSigned>
+    void check_same_width(DynInt<OtherSigned> const& other) const {
         if (width_ != other.width_) {
             throw std::invalid_argument("bit width mismatch");
         }
     }
 };
+
+template <size_t W, bool SignedRepresentation>
+template <char Op, bool OtherSigned>
+void Int<W, SignedRepresentation>::assign_bitwise(DynInt<OtherSigned> const& other) {
+    if (other.width_ != W) {
+        throw std::invalid_argument("bit width mismatch");
+    }
+    NativeBuffer buffer{};
+    if constexpr (!is_wide && W > 0) {
+        buffer = native_word_array();
+    }
+    typename DynInt<OtherSigned>::NativeBuffer other_buffer{};
+    auto dst = physical_mut(buffer);
+    auto src = other.physical_cref(other_buffer);
+    bitwise_assign<Op>(dst, WordConstSpan{src.data(), dst.bit_width()});
+    finish_output(buffer);
+    canonicalize_padding();
+}
 
 using DynUInt = DynInt<false>;
 using DynSInt = DynInt<true>;
