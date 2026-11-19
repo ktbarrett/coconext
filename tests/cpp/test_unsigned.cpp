@@ -465,6 +465,13 @@ TEST(TestUnsigned, index) {
 
     EXPECT_EQ(static_cast<int>(a.index<3>()), 0);
     EXPECT_EQ(static_cast<int>(a.index<1>()), 1);
+
+    Unsigned<0, Direction::TO, 3> b(8);  // 1000
+    EXPECT_TRUE(static_cast<bool>(b.index<0>()));
+    EXPECT_FALSE(static_cast<bool>(b.index<3>()));
+
+    Unsigned<7, Direction::DOWNTO, 4> c(8);  // 1000
+    EXPECT_TRUE(static_cast<bool>(c.index<7>()));
 }
 
 TEST(TestUnsigned, Bitwise_ops) {
