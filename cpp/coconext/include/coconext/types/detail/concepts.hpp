@@ -73,13 +73,13 @@ concept Hashable = requires(T a) {
     { std::hash<T>{}(a) } -> std::convertible_to<std::size_t>;
 };
 
-// Niebloid that reads a type's packed storage. Implementers declare
+// Niebloid that accesses a type's packed storage. Implementers declare
 // `friend struct detail::storage_fn;` and keep `value_` private; ADL cannot find
 // this call because `storage` is an object, so users can only reach it via the
 // qualified `detail::storage(x)`.
 struct storage_fn {
     template <typename T>
-    constexpr auto operator()(T const& t) const noexcept -> decltype((t.value_)) {
+    constexpr auto operator()(T& t) const noexcept -> decltype((t.value_)) {
         return t.value_;
     }
 

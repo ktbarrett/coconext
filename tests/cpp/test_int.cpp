@@ -204,6 +204,42 @@ TEST(Int, packed_bit_operations) {
     );
 }
 
+template <size_t W>
+void check_inplace_bitwise_with_other_signedness() {
+    detail::UInt<W> u(2);
+    u |= detail::SInt<W>(-3);
+    EXPECT_EQ(u, ~detail::UInt<W>{});
+    u &= detail::SInt<W>(-2);
+    EXPECT_EQ(u, ~detail::UInt<W>(1));
+
+    detail::SInt<W> negative(5);
+    negative.set_bit(W - 1, true);
+    detail::SInt<W> s(5);
+    s |= detail::UInt<W>(1) << (W - 1);
+    EXPECT_EQ(s, negative);
+    s ^= detail::UInt<W>(1) << (W - 1);
+    EXPECT_EQ(s, detail::SInt<W>(5));
+}
+
+TEST(Int, inplace_bitwise_operations) {
+    detail::UInt<12> value(0x555);
+    value ^= detail::UInt<12>(0xFFF);
+    EXPECT_EQ(value, detail::UInt<12>(0xAAA));
+    value &= detail::UInt<12>(0x0F0);
+    EXPECT_EQ(value, detail::UInt<12>(0x0A0));
+    value |= detail::UInt<12>(0x00F);
+    EXPECT_EQ(value, detail::UInt<12>(0x0AF));
+
+    check_inplace_bitwise_with_other_signedness<5>();
+    check_inplace_bitwise_with_other_signedness<64>();
+    check_inplace_bitwise_with_other_signedness<100>();
+    check_inplace_bitwise_with_other_signedness<200>();
+
+    detail::UInt<0> empty{};
+    empty ^= detail::SInt<0>{};
+    EXPECT_EQ(empty, detail::UInt<0>{});
+}
+
 TEST(Int, shifts_and_comparisons_follow_the_representation) {
     detail::UInt<29> logical(0x5F3F4AE);
     EXPECT_EQ(logical >> 9, detail::UInt<29>(0x2F9FA));

@@ -728,6 +728,44 @@ TYPED_TEST(DynIntStorage, arithmetic_across_storage_tiers) {
     }
 }
 
+template <size_t W>
+void check_inplace_bitwise_across_storage_kinds() {
+    DynUInt u(2, W);
+    u |= DynSInt(-3, W);
+    EXPECT_EQ(u, ~DynUInt(W));
+    u &= detail::SInt<W>(-2);
+    EXPECT_EQ(u, ~DynUInt(1, W));
+
+    DynSInt negative(5, W);
+    negative.set_bit(W - 1, true);
+    DynSInt s(5, W);
+    s |= detail::UInt<W>(1) << (W - 1);
+    EXPECT_EQ(s, negative);
+    s ^= DynUInt(1, W) << (W - 1);
+    EXPECT_EQ(s, DynSInt(5, W));
+
+    detail::UInt<W> static_u(2);
+    static_u |= DynSInt(-3, W);
+    EXPECT_EQ(static_u, ~detail::UInt<W>{});
+    detail::SInt<W> static_s(5);
+    static_s |= DynUInt(1, W) << (W - 1);
+    EXPECT_TRUE(static_s.is_negative());
+    static_s ^= DynUInt(1, W) << (W - 1);
+    EXPECT_EQ(static_s, detail::SInt<W>(5));
+
+    EXPECT_THROW(u &= DynSInt(1, W + 1), std::invalid_argument);
+    EXPECT_THROW(u &= detail::UInt<W + 1>(1), std::invalid_argument);
+    EXPECT_THROW(static_u &= DynUInt(1, W + 1), std::invalid_argument);
+}
+
+TEST(DynInt, inplace_bitwise_operations) {
+    check_inplace_bitwise_across_storage_kinds<5>();
+    check_inplace_bitwise_across_storage_kinds<64>();
+    check_inplace_bitwise_across_storage_kinds<65>();
+    check_inplace_bitwise_across_storage_kinds<128>();
+    check_inplace_bitwise_across_storage_kinds<200>();
+}
+
 TYPED_TEST(DynIntStorage, bitwise_shifts_and_formatting_across_storage_tiers) {
     for (size_t width : {8u, 64u, 65u, 128u, 129u}) {
         SCOPED_TRACE(width);

@@ -81,6 +81,75 @@ TEST(TestLogicArray, NotBit) {
     EXPECT_EQ(c[0], '0'_b);
 }
 
+TEST(TestBitArray, NotPacked) {
+    auto a = ~BitArray<100>{};
+    static_assert(std::is_same_v<decltype(a), BitArray<100>>);
+    EXPECT_EQ(to_string(a), std::string(100, '1'));
+    EXPECT_EQ(to_string(~a), std::string(100, '0'));
+
+    auto s = ~Signed<4>(-3);
+    static_assert(std::is_same_v<decltype(s), BitArray<4>>);
+    EXPECT_EQ(to_string(s), "0010");
+
+    auto v = ~BitVector("0101", Range(0, Direction::TO, 3));
+    static_assert(std::is_same_v<decltype(v), BitVector>);
+    EXPECT_EQ(v.range(), Range(3, Direction::DOWNTO, 0));
+    EXPECT_EQ(to_string(v), "1010");
+    EXPECT_EQ(to_string(~BitVector(100)), std::string(100, '1'));
+}
+
+TEST(TestBitArray, BitwisePacked) {
+    auto const ones = ~BitArray<100>{};
+    auto a = ones & BitArray<100>{};
+    static_assert(std::is_same_v<decltype(a), BitArray<100>>);
+    EXPECT_EQ(to_string(a), std::string(100, '0'));
+    EXPECT_EQ(to_string(ones | a), std::string(100, '1'));
+    EXPECT_EQ(to_string(ones ^ ones), std::string(100, '0'));
+
+    auto m = Unsigned<4>(12) ^ Signed<4>(-3);
+    static_assert(std::is_same_v<decltype(m), BitArray<4>>);
+    EXPECT_EQ(to_string(m), "0001");
+
+    BitVector v("0011");
+    auto d = "0101"_b & v;
+    static_assert(std::is_same_v<decltype(d), BitVector>);
+    EXPECT_EQ(d.range(), Range(3, Direction::DOWNTO, 0));
+    EXPECT_EQ(to_string(d), "0001");
+    EXPECT_EQ(to_string(v | DynSigned(-3, 4)), "1111");
+    EXPECT_THROW((void)(v & BitVector("011")), std::invalid_argument);
+
+    static_assert(std::is_same_v<decltype(BitArray<0>{} & Signed<0>{}), BitArray<0>>);
+}
+
+TEST(TestBitArray, CompoundPacked) {
+    auto a = ~BitArray<100>{};
+    a &= BitArray<100>{};
+    EXPECT_EQ(to_string(a), std::string(100, '0'));
+    a |= ~BitArray<100>{};
+    EXPECT_EQ(to_string(a), std::string(100, '1'));
+    a ^= a;
+    EXPECT_EQ(to_string(a), std::string(100, '0'));
+
+    Signed<4> s(-3);
+    s ^= Unsigned<4>(12);
+    EXPECT_EQ(s, Signed<4>(1));
+    s |= "1000"_b;
+    EXPECT_EQ(s, Signed<4>(-7));
+
+    BitVector v("0011", Range(0, Direction::TO, 3));
+    v &= "0101"_b;
+    EXPECT_EQ(v.range(), Range(0, Direction::TO, 3));
+    EXPECT_EQ(to_string(v), "0001");
+    DynSigned ds(-3, 4);
+    ds &= v;
+    EXPECT_EQ(ds, DynSigned(1, 4));
+    EXPECT_THROW(v &= BitVector("011"), std::invalid_argument);
+
+    auto b = "0100"_b;
+    b |= v;
+    EXPECT_EQ(to_string(b), "0101");
+}
+
 TEST(TestLogicArray, NotEmpty) {
     auto sl = ~LogicArray<0>{};
     static_assert(std::is_same_v<decltype(sl), LogicArray<0>>);
@@ -1085,7 +1154,7 @@ TEST(TestBitArray, VectorLengthCtorDefaultsToDowntoBit) {
 
 TEST(TestBitArray, BitVectorUsesPackedDynUIntStorage) {
     BitVector a("10100101");
-    static_assert(std::same_as<decltype(detail::storage(a)), detail::DynUInt const&>);
+    static_assert(std::same_as<decltype(detail::storage(a)), detail::DynUInt&>);
     EXPECT_EQ(detail::storage(a).size(), a.size());
     EXPECT_EQ(detail::storage(a).to_binary_string(), "10100101");
 }
