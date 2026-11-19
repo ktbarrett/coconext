@@ -284,7 +284,7 @@ TEST(TestUfixed, shape_and_typelevel) {
     static_assert(a.frac_bits() == 2);
     static_assert(b.frac_bits() == 2);
 
-    static_assert(static_cast<BitArray<9>>(Ufixed<6, -2>(37)) == BitArray<9>(37 << 2));
+    static_assert(static_cast<BitArray<9>>(Ufixed<6, -2>(37)) == BitArray<9>("010010100"));
 
     static_assert(is_fixed<decltype(a)>);
 

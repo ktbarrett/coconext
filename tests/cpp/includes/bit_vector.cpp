@@ -10,7 +10,7 @@
 using namespace coconext::types;
 
 TEST(Includes, BitVector) {
-    BitArray<8> a{0xA5};
+    BitArray<8> a("10100101");
     BitVector v(8);
     v[0] = Bit{'1'};
     EXPECT_EQ(a, a);
