@@ -127,14 +127,16 @@ class Array<Bit, R> {
         return ArraySlice<Array<Bit, R> const>(this, r);
     }
 
-    template <size_t N>
+    template <Range::value_type I>
     constexpr auto index() {
-        return value_[N];
+        static_assert(R.contains(I), "index is out of range");
+        return (*this)[I];
     }
 
-    template <size_t N>
+    template <Range::value_type I>
     constexpr auto index() const {
-        return value_.get_bit(N) ? Bit::_1 : Bit::_0;
+        static_assert(R.contains(I), "index is out of range");
+        return (*this)[I];
     }
 
     template <Range R2>

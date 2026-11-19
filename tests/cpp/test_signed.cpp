@@ -425,6 +425,13 @@ TEST(TestSigned, index) {
 
     EXPECT_EQ(static_cast<int>(a.index<3>()), 1);
     EXPECT_EQ(static_cast<int>(a.index<0>()), 0);
+
+    Signed<0, Direction::TO, 3> b(-8);  // 1000
+    EXPECT_TRUE(static_cast<bool>(b.index<0>()));
+    EXPECT_FALSE(static_cast<bool>(b.index<3>()));
+
+    Signed<7, Direction::DOWNTO, 4> c(-8);  // 1000
+    EXPECT_TRUE(static_cast<bool>(c.index<7>()));
 }
 
 TEST(TestSigned, Bitwise_ops) {

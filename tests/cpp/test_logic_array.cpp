@@ -1661,6 +1661,16 @@ TEST(TestLogicArray, IndexOfBitArray) {
     auto a = "0110"_b;
     EXPECT_EQ(a.index<3>(), '0'_b);
     EXPECT_EQ(a.index<2>(), '1'_b);
+    static_assert(std::is_same_v<decltype(std::as_const(a).index<3>()), Bit>);
+
+    BitArray<0, Direction::TO, 3> b("1000");
+    EXPECT_EQ(b.index<0>(), '1'_b);
+    EXPECT_EQ(std::as_const(b).index<0>(), '1'_b);
+    b.index<3>() = '1'_b;
+    EXPECT_EQ(b[3], '1'_b);
+
+    BitArray<7, Direction::DOWNTO, 4> const c("1000");
+    EXPECT_EQ(c.index<7>(), '1'_b);
 }
 
 TEST(TestLogicArray, IndexOfLogicVector) {
