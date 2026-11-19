@@ -13,6 +13,8 @@
 #include <gtest/gtest.h>
 
 #include <coconext/types/dyn_signed.hpp>
+#include <coconext/types/signed.hpp>
+#include <coconext/types/unsigned.hpp>
 
 using coconext::types::Bit;
 using coconext::types::BitArray;
@@ -21,6 +23,8 @@ using coconext::types::Direction;
 using coconext::types::DynSigned;
 using coconext::types::DynUnsigned;
 using coconext::types::Range;
+using coconext::types::Signed;
+using coconext::types::Unsigned;
 using coconext::types::detail::DynSInt;
 using coconext::types::detail::DynUInt;
 namespace detail = coconext::types::detail;
@@ -944,6 +948,57 @@ TEST(DynInt, width_above_range_limit_throws) {
     EXPECT_THROW(DynUnsigned(0U, limit + 1), std::length_error);
     EXPECT_THROW(DynSigned(0, limit + 1), std::length_error);
     EXPECT_THROW(DynUnsigned("", limit + 1), std::length_error);
+}
+
+template <size_t UW, size_t SW>
+void check_mixed_signedness_matches_static(unsigned long long u_value, long long s_value) {
+    Unsigned<UW> const su(u_value);
+    Signed<SW> const ss(s_value);
+    DynUnsigned const du(u_value, UW);
+    DynSigned const ds(s_value, SW);
+
+    auto const check = [](DynSigned const& dynamic, auto const& fixed) {
+        EXPECT_EQ(dynamic.range(), fixed.range());
+        EXPECT_EQ(detail::storage(dynamic), DynSInt(detail::storage(fixed)));
+    };
+    check(du + ds, su + ss);
+    check(du - ds, su - ss);
+    check(du * ds, su * ss);
+    check(ds + du, ss + su);
+    check(ds - du, ss - su);
+    check(ds * du, ss * su);
+    if (s_value != 0) {
+        check(du / ds, su / ss);
+        check(du % ds, su % ss);
+    } else {
+        EXPECT_THROW(du / ds, std::domain_error);
+        EXPECT_THROW(du % ds, std::domain_error);
+    }
+    if (u_value != 0) {
+        check(ds / du, ss / su);
+        check(ds % du, ss % su);
+    } else {
+        EXPECT_THROW(ds / du, std::domain_error);
+        EXPECT_THROW(ds % du, std::domain_error);
+    }
+}
+
+TEST(DynInt, mixed_signedness_binary_operators) {
+    for (unsigned long long u = 0; u < 16; ++u) {
+        for (long long s = -8; s < 8; ++s) {
+            check_mixed_signedness_matches_static<4, 4>(u, s);
+        }
+    }
+    check_mixed_signedness_matches_static<8, 5>(10, -5);
+    check_mixed_signedness_matches_static<3, 7>(7, -64);
+    // The unsigned operand gets one more bit, so 64 bits go above the native storage.
+    check_mixed_signedness_matches_static<64, 8>(
+        std::numeric_limits<uint64_t>::max(), -128
+    );
+    check_mixed_signedness_matches_static<8, 64>(255, std::numeric_limits<int64_t>::min());
+    check_mixed_signedness_matches_static<70, 70>(
+        std::numeric_limits<uint64_t>::max(), std::numeric_limits<int64_t>::min()
+    );
 }
 
 // LCOV_EXCL_BR_STOP
