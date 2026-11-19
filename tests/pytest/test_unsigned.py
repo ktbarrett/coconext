@@ -4,7 +4,7 @@ import operator
 
 import pytest
 
-from coconext.types import Signed, Unsigned
+from coconext.types import BitArray, Signed, Unsigned
 
 
 def test_constructors():
@@ -692,11 +692,11 @@ def test_bitwise_operators():
     a = Unsigned(12, 8)  # 00001100
     b = Unsigned(10, 8)  # 00001010
 
-    assert int(a & b) == 8
-    assert int(a | b) == 14
-    assert int(a ^ b) == 6
+    assert (a & b) == BitArray("00001000")
+    assert (a | b) == BitArray("00001110")
+    assert (a ^ b) == BitArray("00000110")
 
-    assert int(~a) == 243
+    assert ~a == BitArray("11110011")
 
 
 def test_bitwise_operators_big():
@@ -706,10 +706,9 @@ def test_bitwise_operators_big():
     a = Unsigned(val_a, 150)
     b = Unsigned(val_b, 150)
 
-    assert int(a & b) == 0
-    assert int(a | b) == val_a | val_b
-    assert int(a ^ b) == val_a ^ val_b
+    assert (a & b) == BitArray(f"{0:0150b}")
+    assert (a | b) == BitArray(f"{val_a | val_b:0150b}")
+    assert (a ^ b) == BitArray(f"{val_a ^ val_b:0150b}")
 
-    # For Unsigned, bitwise NOT must wrap around the 150-bit boundary
     mask = (1 << 150) - 1
-    assert int(~a) == (~val_a) & mask
+    assert ~a == BitArray(f"{~val_a & mask:0150b}")

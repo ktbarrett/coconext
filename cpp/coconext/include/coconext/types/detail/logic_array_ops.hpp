@@ -441,6 +441,19 @@ std::string to_string(T const& arr) {
     return result;
 }
 
+namespace detail {
+
+// ADL does not search the enclosing namespace for the types in detail.
+using types::operator&;
+using types::operator|;
+using types::operator^;
+using types::operator~;
+using types::operator&=;
+using types::operator|=;
+using types::operator^=;
+
+}  // namespace detail
+
 }  // namespace coconext::types
 
 #endif  // COCONEXT_DETAIL_LOGIC_ARRAY_OPS_HPP

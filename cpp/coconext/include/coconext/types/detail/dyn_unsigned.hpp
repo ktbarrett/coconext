@@ -122,20 +122,6 @@ class DynUnsigned {
         return DynUnsigned(value_ >> safe_shift, range_);
     }
 
-    auto operator|(DynUnsigned const& other) const {
-        return DynUnsigned(value_ | storage(other), range_);
-    }
-
-    auto operator&(DynUnsigned const& other) const {
-        return DynUnsigned(value_ & storage(other), range_);
-    }
-
-    auto operator^(DynUnsigned const& other) const {
-        return DynUnsigned(value_ ^ storage(other), range_);
-    }
-
-    auto operator~() const { return DynUnsigned(~value_, range_); }
-
     template <NativeInteger ShiftType>
     constexpr DynUnsigned& operator<<=(ShiftType const& shift_amount) {
         *this = *this << shift_amount;

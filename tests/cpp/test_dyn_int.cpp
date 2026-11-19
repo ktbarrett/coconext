@@ -138,10 +138,6 @@ TYPED_TEST(DynIntegerIteration, operations_preserve_operand_ranges) {
     EXPECT_EQ((value >> 1).range(), range);
     EXPECT_EQ((value << 10).range(), range);
     EXPECT_EQ((value >> 10).range(), range);
-    EXPECT_EQ((value | rhs).range(), range);
-    EXPECT_EQ((value & rhs).range(), range);
-    EXPECT_EQ((value ^ rhs).range(), range);
-    EXPECT_EQ((~value).range(), range);
     EXPECT_EQ((value % rhs).range(), rhs.range());
     EXPECT_EQ((value + rhs).range(), (Range{8, Direction::DOWNTO, 0}));
     EXPECT_EQ((value * rhs).range(), (Range{15, Direction::DOWNTO, 0}));
@@ -154,6 +150,19 @@ TYPED_TEST(DynIntegerIteration, operations_preserve_operand_ranges) {
     value >>= 1;
     EXPECT_EQ(value.range(), range);
     EXPECT_EQ(static_cast<long long>(value), 1);
+}
+
+TYPED_TEST(DynIntegerIteration, bitwise_operations_return_bit_vector) {
+    TypeParam value(10, Range{-4, Direction::TO, 3});
+    TypeParam rhs(3, Range{12, Direction::DOWNTO, 5});
+    static_assert(std::same_as<decltype(value | rhs), BitVector>);
+    static_assert(std::same_as<decltype(value & rhs), BitVector>);
+    static_assert(std::same_as<decltype(value ^ rhs), BitVector>);
+    static_assert(std::same_as<decltype(~value), BitVector>);
+    EXPECT_EQ(value | rhs, BitVector("00001011"));
+    EXPECT_EQ(value & rhs, BitVector("00000010"));
+    EXPECT_EQ(value ^ rhs, BitVector("00001001"));
+    EXPECT_EQ(~value, BitVector("11110101"));
 }
 
 TEST(DynInt, wide_integer_reinterpretation_preserves_range) {
