@@ -1589,6 +1589,9 @@ constexpr SInt<W + 1> abs(SInt<W> const& a) {
 // types. Used by Unsigned/Signed/DynUnsigned/DynSigned constructors that take
 // just a width.
 constexpr Range int_downto_range(size_t n) {
+    if (n > static_cast<size_t>(std::numeric_limits<Range::value_type>::max())) {
+        throw std::length_error("integer width overflows Range::value_type");
+    }
     return Range{static_cast<Range::value_type>(n) - 1, Direction::DOWNTO, 0};
 }
 
@@ -1614,13 +1617,24 @@ constexpr Range make_int_range() {
             return std::get<0>(t);
         } else {
             static_assert(
-                std::integral<First>,
-                "single template arg must be a Range value or an integral length"
+                fits_range_value_type<std::get<0>(t)>,
+                "single template arg must be a Range value or an integer length that fits "
+                "in Range::value_type (int64_t)"
             );
             static_assert(std::get<0>(t) >= 0, "length must be non-negative");
             return int_downto_range(static_cast<size_t>(std::get<0>(t)));
         }
     } else if constexpr (sizeof...(Args) == 2) {
+        static_assert(
+            fits_range_value_type<std::get<0>(t)>,
+            "Unsigned/Signed<L, R>: L must be an integer that fits in Range::value_type "
+            "(int64_t)"
+        );
+        static_assert(
+            fits_range_value_type<std::get<1>(t)>,
+            "Unsigned/Signed<L, R>: R must be an integer that fits in Range::value_type "
+            "(int64_t)"
+        );
         constexpr Range r{
             static_cast<Range::value_type>(std::get<0>(t)),
             static_cast<Range::value_type>(std::get<1>(t))
@@ -1634,6 +1648,16 @@ constexpr Range make_int_range() {
         static_assert(
             std::is_same_v<std::remove_cvref_t<decltype(std::get<1>(t))>, Direction>,
             "three-arg form requires (left, Direction, right)"
+        );
+        static_assert(
+            fits_range_value_type<std::get<0>(t)>,
+            "Unsigned/Signed<L, D, R>: L must be an integer that fits in Range::value_type "
+            "(int64_t)"
+        );
+        static_assert(
+            fits_range_value_type<std::get<2>(t)>,
+            "Unsigned/Signed<L, D, R>: R must be an integer that fits in Range::value_type "
+            "(int64_t)"
         );
         return Range{
             static_cast<Range::value_type>(std::get<0>(t)),
@@ -1657,6 +1681,16 @@ constexpr Range make_fixed_range() {
         );
         return std::get<0>(t);
     } else if constexpr (sizeof...(Args) == 2) {
+        static_assert(
+            fits_range_value_type<std::get<0>(t)>,
+            "Ufixed/Sfixed<L, R>: L must be an integer that fits in Range::value_type "
+            "(int64_t)"
+        );
+        static_assert(
+            fits_range_value_type<std::get<1>(t)>,
+            "Ufixed/Sfixed<L, R>: R must be an integer that fits in Range::value_type "
+            "(int64_t)"
+        );
         constexpr Range r{
             static_cast<Range::value_type>(std::get<0>(t)),
             static_cast<Range::value_type>(std::get<1>(t))
@@ -1676,6 +1710,16 @@ constexpr Range make_fixed_range() {
         static_assert(
             std::is_same_v<std::remove_cvref_t<decltype(std::get<1>(t))>, Direction>,
             "three-arg form requires (left, Direction, right)"
+        );
+        static_assert(
+            fits_range_value_type<std::get<0>(t)>,
+            "Ufixed/Sfixed<L, D, R>: L must be an integer that fits in Range::value_type "
+            "(int64_t)"
+        );
+        static_assert(
+            fits_range_value_type<std::get<2>(t)>,
+            "Ufixed/Sfixed<L, D, R>: R must be an integer that fits in Range::value_type "
+            "(int64_t)"
         );
         return Range{
             static_cast<Range::value_type>(std::get<0>(t)),

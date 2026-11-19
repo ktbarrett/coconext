@@ -50,13 +50,12 @@ constexpr Range make_logic_static_range() {
     if constexpr (sizeof...(Args) == 1) {
         constexpr auto first = std::get<0>(std::tuple{Args...});
         using First = std::remove_cvref_t<decltype(first)>;
-        if constexpr (std::integral<First>) {
+        if constexpr (NativeInteger<First>) {
             static_assert(
                 first >= 0, "LogicArray<N>/BitArray<N>: N (length) must be non-negative"
             );
             static_assert(
-                static_cast<long long>(first)
-                    <= std::numeric_limits<Range::value_type>::max(),
+                fits_range_value_type<first>,
                 "LogicArray<N>/BitArray<N>: N overflows Range::value_type"
             );
             return Range{static_cast<Range::value_type>(first) - 1, Direction::DOWNTO, 0};
