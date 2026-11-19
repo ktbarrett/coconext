@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from coconext.types import Signed, Unsigned
+from coconext.types import BitArray, Signed, Unsigned
 
 
 def test_constructors():
@@ -783,18 +783,18 @@ def test_bitwise_operators():
     a = Signed(12, 8)  # 00001100
     b = Signed(10, 8)  # 00001010
 
-    assert int(a & b) == 8
-    assert int(a | b) == 14
-    assert int(a ^ b) == 6
-    assert int(~a) == -13  # Python's ~12 is -13
+    assert (a & b) == BitArray("00001000")
+    assert (a | b) == BitArray("00001110")
+    assert (a ^ b) == BitArray("00000110")
+    assert ~a == BitArray("11110011")
 
-    assert int(a & Signed(10, 8)) == 8
-    assert int(a | Signed(2, 8)) == 14
-    assert int(a ^ Signed(6, 8)) == 10
+    assert (a & Signed(10, 8)) == BitArray("00001000")
+    assert (a | Signed(2, 8)) == BitArray("00001110")
+    assert (a ^ Signed(6, 8)) == BitArray("00001010")
 
-    assert int(a & Signed(-1, 8)) == 12
-    assert int(a | Signed(-1, 8)) == -1
-    assert int(a ^ Signed(-1, 8)) == -13
+    assert (a & Signed(-1, 8)) == BitArray("00001100")
+    assert (a | Signed(-1, 8)) == BitArray("11111111")
+    assert (a ^ Signed(-1, 8)) == BitArray("11110011")
 
 
 def test_bitwise_operators_big():
@@ -804,7 +804,8 @@ def test_bitwise_operators_big():
     a = Signed(val_a, 150)
     b = Signed(val_b, 150)
 
-    assert int(a & b) == val_a & val_b
-    assert int(a | b) == val_a | val_b
-    assert int(a ^ b) == val_a ^ val_b
-    assert int(~a) == ~val_a
+    mask = (1 << 150) - 1
+    assert (a & b) == BitArray(f"{val_a & val_b:0150b}")
+    assert (a | b) == BitArray(f"{val_a | val_b:0150b}")
+    assert (a ^ b) == BitArray(f"{val_a ^ val_b:0150b}")
+    assert ~a == BitArray(f"{~val_a & mask:0150b}")

@@ -130,20 +130,6 @@ class DynSigned {
         return *this;
     }
 
-    auto operator|(DynSigned const& other) const {
-        return DynSigned(value_ | storage(other), range_);
-    }
-
-    auto operator&(DynSigned const& other) const {
-        return DynSigned(value_ & storage(other), range_);
-    }
-
-    auto operator^(DynSigned const& other) const {
-        return DynSigned(value_ ^ storage(other), range_);
-    }
-
-    auto operator~() const { return DynSigned(~value_, range_); }
-
     auto operator+() const { return *this; }
 
     auto operator-() const { return DynSigned(-value_); }

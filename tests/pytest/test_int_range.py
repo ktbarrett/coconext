@@ -4,7 +4,7 @@ import operator
 
 import pytest
 
-from coconext.types import Range, Signed, Unsigned
+from coconext.types import BitArray, Range, Signed, Unsigned
 
 
 @pytest.mark.parametrize("integer_type", [Unsigned, Signed])
@@ -66,10 +66,6 @@ def test_operations_keep_ranges(integer_type):
         number >> 1,
         number << 100,
         number >> 100,
-        number | rhs,
-        number & rhs,
-        number ^ rhs,
-        ~number,
     ):
         assert result.range == bounds
     assert (number + rhs).range == Range(8, "downto", 0)
@@ -87,6 +83,21 @@ def test_operations_keep_ranges(integer_type):
     for operation in (operator.ilshift, operator.irshift):
         assert operation(integer_type(10, bounds), 1).range == bounds
     assert number == 10
+
+
+@pytest.mark.parametrize("integer_type", [Unsigned, Signed])
+def test_bitwise_operations_return_bit_array(integer_type):
+    number = integer_type(10, Range(-4, "to", 3))
+    rhs = integer_type(3, Range(12, "downto", 5))
+    for result, expected in (
+        (number | rhs, "00001011"),
+        (number & rhs, "00000010"),
+        (number ^ rhs, "00001001"),
+        (~number, "11110101"),
+    ):
+        assert type(result) is BitArray
+        assert result.range == Range(7, "downto", 0)
+        assert result == BitArray(expected)
 
 
 def test_signed_modulo_keeps_divisor_range_and_inplace_keeps_dividend_range():
