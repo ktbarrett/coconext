@@ -38,6 +38,16 @@ static_assert(std::ranges::sized_range<StaticArraySlice<
                   Array<int, Range{0, Direction::TO, 7}>,
                   Range{1, Direction::TO, 3}>>);
 
+// A bound of Array<T, L, H> must be an integer that fits in Range::value_type.
+static_assert(detail::fits_range_value_type<5>);
+static_assert(detail::fits_range_value_type<-5>);
+static_assert(detail::fits_range_value_type<static_cast<signed char>(5)>);
+static_assert(detail::fits_range_value_type<9223372036854775807ULL>);
+static_assert(!detail::fits_range_value_type<9223372036854775808ULL>);
+static_assert(!detail::fits_range_value_type<'a'>);
+static_assert(!detail::fits_range_value_type<true>);
+static_assert(!detail::fits_range_value_type<Direction::TO>);
+
 // -- Construction -----------------------------------------------------------
 
 TEST(TestStaticArray, DefaultConstructZeroInit) {

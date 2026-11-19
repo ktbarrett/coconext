@@ -8,7 +8,6 @@
 #include <format>
 #include <initializer_list>
 #include <iterator>
-#include <limits>
 #include <optional>
 #include <ranges>
 #include <stdexcept>
@@ -16,6 +15,7 @@
 #include <tuple>
 #include <type_traits>
 #include <typeinfo>
+#include <utility>
 
 #include <coconext/types/detail/array_fwd.hpp>
 #include <coconext/types/detail/concepts.hpp>
@@ -417,9 +417,13 @@ constexpr bool operator==(Array<T, R> const& lhs, Array<T, R> const& rhs) noexce
 }
 
 template <auto V>
-constexpr bool fits_range_value_type =
-    static_cast<long long>(V) >= std::numeric_limits<Range::value_type>::min()
-    && static_cast<long long>(V) <= std::numeric_limits<Range::value_type>::max();
+constexpr bool fits_range_value_type = [] {
+    if constexpr (NativeInteger<decltype(V)>) {
+        return std::in_range<Range::value_type>(V);
+    } else {
+        return false;
+    }
+}();
 
 template <auto... Args>
 constexpr Range make_static_range() {
@@ -431,8 +435,9 @@ constexpr Range make_static_range() {
     if constexpr (sizeof...(Args) == 1) {
         using First = std::remove_cvref_t<decltype(get<0>(t))>;
         static_assert(
-            std::is_same_v<First, Range> || std::integral<First>,
-            "single template arg must be a Range value or an integral length"
+            std::is_same_v<First, Range> || fits_range_value_type<get<0>(t)>,
+            "single template arg must be a Range value or an integer length that fits in "
+            "Range::value_type (int64_t)"
         );
         if constexpr (std::is_same_v<First, Range>) {
             return get<0>(t);
@@ -443,11 +448,11 @@ constexpr Range make_static_range() {
     } else if constexpr (sizeof...(Args) == 2) {
         static_assert(
             fits_range_value_type<get<0>(t)>,
-            "Array<T, L, H>: L does not fit in Range::value_type (int32_t)"
+            "Array<T, L, H>: L must be an integer that fits in Range::value_type (int64_t)"
         );
         static_assert(
             fits_range_value_type<get<1>(t)>,
-            "Array<T, L, H>: H does not fit in Range::value_type (int32_t)"
+            "Array<T, L, H>: H must be an integer that fits in Range::value_type (int64_t)"
         );
         return Range{
             static_cast<Range::value_type>(get<0>(t)),
@@ -460,11 +465,13 @@ constexpr Range make_static_range() {
         );
         static_assert(
             fits_range_value_type<get<0>(t)>,
-            "Array<T, L, D, H>: L does not fit in Range::value_type (int32_t)"
+            "Array<T, L, D, H>: L must be an integer that fits in Range::value_type "
+            "(int64_t)"
         );
         static_assert(
             fits_range_value_type<get<2>(t)>,
-            "Array<T, L, D, H>: H does not fit in Range::value_type (int32_t)"
+            "Array<T, L, D, H>: H must be an integer that fits in Range::value_type "
+            "(int64_t)"
         );
         return Range{
             static_cast<Range::value_type>(get<0>(t)),

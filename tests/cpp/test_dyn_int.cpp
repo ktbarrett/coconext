@@ -936,4 +936,14 @@ TEST(DynInt, wrapper_construction_and_shift_errors) {
     EXPECT_THROW(negative /= DynSigned(0, 8), std::domain_error);
 }
 
+TEST(DynInt, width_above_range_limit_throws) {
+    constexpr size_t limit =
+        static_cast<size_t>(std::numeric_limits<Range::value_type>::max());
+    EXPECT_EQ(detail::int_downto_range(limit).length(), limit);
+    EXPECT_THROW((void)detail::int_downto_range(limit + 1), std::length_error);
+    EXPECT_THROW(DynUnsigned(0U, limit + 1), std::length_error);
+    EXPECT_THROW(DynSigned(0, limit + 1), std::length_error);
+    EXPECT_THROW(DynUnsigned("", limit + 1), std::length_error);
+}
+
 // LCOV_EXCL_BR_STOP
