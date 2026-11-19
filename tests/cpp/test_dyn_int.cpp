@@ -1001,4 +1001,37 @@ TEST(DynInt, mixed_signedness_binary_operators) {
     );
 }
 
+template <typename T>
+void check_implicit_bit_vector_upcast(BitVector const& bits) {
+    static_assert(std::is_convertible_v<T const&, BitVector>);
+    static_assert(std::is_convertible_v<T&&, BitVector>);
+    T const original = BitVector(bits).as<T>();
+
+    T source = original;
+    BitVector const copied = source;
+    EXPECT_EQ(copied.range(), bits.range());
+    EXPECT_EQ(copied, bits);
+    EXPECT_EQ(source, original);
+
+    BitVector const moved = std::move(source);
+    EXPECT_EQ(moved.range(), bits.range());
+    EXPECT_EQ(moved, bits);
+}
+
+TEST(DynInt, implicit_bit_vector_upcast) {
+    std::string wide_bits(70, '0');
+    wide_bits[0] = '1';
+    wide_bits[3] = '1';
+    wide_bits[69] = '1';
+    BitVector const wide(wide_bits, Range{9, Direction::DOWNTO, -60});
+    check_implicit_bit_vector_upcast<DynUnsigned>(
+        BitVector("00000101", Range{3, Direction::DOWNTO, -4})
+    );
+    check_implicit_bit_vector_upcast<DynUnsigned>(wide);
+    check_implicit_bit_vector_upcast<DynSigned>(
+        BitVector("00000101", Range{3, Direction::DOWNTO, -4})
+    );
+    check_implicit_bit_vector_upcast<DynSigned>(wide);
+}
+
 // LCOV_EXCL_BR_STOP
