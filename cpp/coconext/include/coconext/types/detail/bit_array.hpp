@@ -77,7 +77,7 @@ class Array<Bit, R> {
         return value_.popcount() == R.length() ? Bit::_1 : Bit::_0;
     }
 
-    constexpr auto or_reduce() const { return value_.popcount() != 0 ? Bit::_1 : Bit::_0; }
+    constexpr Bit or_reduce() const { return value_.popcount() != 0 ? Bit::_1 : Bit::_0; }
 
     constexpr Bit xor_reduce() const {
         return value_.popcount() % 2 == 1 ? Bit::_1 : Bit::_0;

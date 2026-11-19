@@ -804,6 +804,8 @@ TEST(TestLogicArray, XorReduceEmpty) {
 TEST(TestBitArray, ReductionsReturnBit) {
     auto a = "1010"_b;
     static_assert(std::is_same_v<decltype(a.and_reduce()), Bit>);
+    static_assert(std::is_same_v<decltype(a.or_reduce()), Bit>);
+    static_assert(std::is_same_v<decltype(a.xor_reduce()), Bit>);
     EXPECT_EQ(a.and_reduce(), '0'_b);
     EXPECT_EQ(a.or_reduce(), '1'_b);
     EXPECT_EQ(a.xor_reduce(), '0'_b);
