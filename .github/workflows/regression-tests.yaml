@@ -100,7 +100,7 @@ jobs:
           version: ${{ matrix.simulator-version }}
 
       - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2.24
+        uses: hendrikmuhs/ccache-action@v1.2.25
         with:
           key: ${{ matrix.name }}
           save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
