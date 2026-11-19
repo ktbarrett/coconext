@@ -76,6 +76,11 @@ class DynSigned {
         return reinterpreted<DynSigned>(std::move(*this));
     }
 
+    // Implicit conversion to supertype BitVector
+    operator Vector<Bit>() const& { return Vector<Bit>(DynUInt(value_), range_); }
+
+    operator Vector<Bit>() && { return Vector<Bit>(std::move(value_), range_); }
+
     bool operator==(DynSigned const& rhs) const noexcept {
         return value_ == rhs.value_ && size() == rhs.size();
     }

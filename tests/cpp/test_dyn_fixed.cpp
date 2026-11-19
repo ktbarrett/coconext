@@ -67,10 +67,6 @@ concept ExplicitAsAvailable =
     requires(Source&& source) { std::forward<Source>(source).template as<Target>(); };
 
 template <typename Source>
-concept HasBitVectorConversionOperator =
-    requires(Source const& source) { source.operator BitVector(); };
-
-template <typename Source>
 concept HasDynamicIntegerConversions = requires(Source const& source) {
     source.to_signed(8);
     source.to_unsigned(8);
@@ -87,12 +83,8 @@ TEST(DynFixed, PublicTypesAndCrossKindConstruction) {
     static_assert(!std::constructible_from<DynSfixed, Sfixed<3, 0> const&>);
     static_assert(!std::constructible_from<DynUfixed, DynSfixed&&>);
     static_assert(!std::constructible_from<DynSfixed, DynUfixed&&>);
-    static_assert(!HasBitVectorConversionOperator<DynUfixed>);
-    static_assert(!HasBitVectorConversionOperator<DynSfixed>);
     static_assert(!HasDynamicIntegerConversions<DynUfixed>);
     static_assert(!HasDynamicIntegerConversions<DynSfixed>);
-    static_assert(!std::constructible_from<BitVector, DynUfixed const&>);
-    static_assert(!std::constructible_from<BitVector, DynSfixed const&>);
 
     Range const range{3, Direction::DOWNTO, 0};
     DynUfixed unsigned_value(5, range);
@@ -707,4 +699,37 @@ TEST(DynFixed, NullAndToRangesRetainBitContainerBehavior) {
 
     EXPECT_THROW(static_cast<void>(null_u << 1), std::domain_error);
     EXPECT_THROW(static_cast<void>(null_s >> 1), std::domain_error);
+}
+
+template <typename T>
+void check_implicit_bit_vector_upcast(BitVector const& bits) {
+    static_assert(std::is_convertible_v<T const&, BitVector>);
+    static_assert(std::is_convertible_v<T&&, BitVector>);
+    T const original = BitVector(bits).as<T>();
+
+    T source = original;
+    BitVector const copied = source;
+    EXPECT_EQ(copied.range(), bits.range());
+    EXPECT_EQ(copied, bits);
+    EXPECT_EQ(source, original);
+
+    BitVector const moved = std::move(source);
+    EXPECT_EQ(moved.range(), bits.range());
+    EXPECT_EQ(moved, bits);
+}
+
+TEST(DynFixed, implicit_bit_vector_upcast) {
+    std::string wide_bits(70, '0');
+    wide_bits[0] = '1';
+    wide_bits[3] = '1';
+    wide_bits[69] = '1';
+    BitVector const wide(wide_bits, Range{9, Direction::DOWNTO, -60});
+    check_implicit_bit_vector_upcast<DynUfixed>(
+        BitVector("00000101", Range{3, Direction::DOWNTO, -4})
+    );
+    check_implicit_bit_vector_upcast<DynUfixed>(wide);
+    check_implicit_bit_vector_upcast<DynSfixed>(
+        BitVector("00000101", Range{3, Direction::DOWNTO, -4})
+    );
+    check_implicit_bit_vector_upcast<DynSfixed>(wide);
 }

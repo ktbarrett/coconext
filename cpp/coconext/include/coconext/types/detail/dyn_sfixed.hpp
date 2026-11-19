@@ -266,6 +266,11 @@ class DynSfixed {
         return reinterpreted<DynSfixed>(std::move(*this));
     }
 
+    // Implicit conversion to supertype BitVector
+    operator Vector<Bit>() const& { return Vector<Bit>(DynUInt(value_), range_); }
+
+    operator Vector<Bit>() && { return Vector<Bit>(std::move(value_), range_); }
+
     [[nodiscard]] DynSfixed resize(
         Range target,
         overflow_mode overflow = overflow_mode::saturate,
