@@ -152,9 +152,6 @@ class Array<Bit, R> {
     template <bool IsSigned>
     constexpr Array(Int<R.length(), IsSigned> const& packed_val) : value_(packed_val) {}
 
-    template <NativeInteger T>
-    constexpr Array(T packed_val) : value_(packed_val) {}
-
     template <HasStaticStorage Target>
     [[nodiscard]] constexpr Target as() && noexcept {
         static_assert(
