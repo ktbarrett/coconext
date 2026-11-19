@@ -260,6 +260,7 @@ constexpr void logic_inplace_array(LHS& lhs, RHS const& rhs, Op op) {
 
 template <typename LHS, LogicType Scalar>
     requires LogicArrayType<std::remove_cvref_t<LHS>>
+          && std::ranges::output_range<LHS, std::ranges::range_value_t<LHS>>
 constexpr decltype(auto) operator&=(LHS&& lhs, Scalar const& rhs) {
     detail::logic_inplace_scalar(lhs, rhs, [](auto const& a, auto const& b) {
         return a & b;
@@ -269,6 +270,7 @@ constexpr decltype(auto) operator&=(LHS&& lhs, Scalar const& rhs) {
 
 template <typename LHS, RangedSequence RHS>
     requires LogicArrayType<std::remove_cvref_t<LHS>> && LogicArrayType<RHS>
+          && std::ranges::output_range<LHS, std::ranges::range_value_t<LHS>>
 constexpr decltype(auto) operator&=(LHS&& lhs, RHS const& rhs) {
     detail::logic_inplace_array(lhs, rhs, [](auto const& a, auto const& b) {
         return a & b;
@@ -278,6 +280,7 @@ constexpr decltype(auto) operator&=(LHS&& lhs, RHS const& rhs) {
 
 template <typename LHS, LogicType Scalar>
     requires LogicArrayType<std::remove_cvref_t<LHS>>
+          && std::ranges::output_range<LHS, std::ranges::range_value_t<LHS>>
 constexpr decltype(auto) operator|=(LHS&& lhs, Scalar const& rhs) {
     detail::logic_inplace_scalar(lhs, rhs, [](auto const& a, auto const& b) {
         return a | b;
@@ -287,6 +290,7 @@ constexpr decltype(auto) operator|=(LHS&& lhs, Scalar const& rhs) {
 
 template <typename LHS, RangedSequence RHS>
     requires LogicArrayType<std::remove_cvref_t<LHS>> && LogicArrayType<RHS>
+          && std::ranges::output_range<LHS, std::ranges::range_value_t<LHS>>
 constexpr decltype(auto) operator|=(LHS&& lhs, RHS const& rhs) {
     detail::logic_inplace_array(lhs, rhs, [](auto const& a, auto const& b) {
         return a | b;
@@ -296,6 +300,7 @@ constexpr decltype(auto) operator|=(LHS&& lhs, RHS const& rhs) {
 
 template <typename LHS, LogicType Scalar>
     requires LogicArrayType<std::remove_cvref_t<LHS>>
+          && std::ranges::output_range<LHS, std::ranges::range_value_t<LHS>>
 constexpr decltype(auto) operator^=(LHS&& lhs, Scalar const& rhs) {
     detail::logic_inplace_scalar(lhs, rhs, [](auto const& a, auto const& b) {
         return a ^ b;
@@ -305,6 +310,7 @@ constexpr decltype(auto) operator^=(LHS&& lhs, Scalar const& rhs) {
 
 template <typename LHS, RangedSequence RHS>
     requires LogicArrayType<std::remove_cvref_t<LHS>> && LogicArrayType<RHS>
+          && std::ranges::output_range<LHS, std::ranges::range_value_t<LHS>>
 constexpr decltype(auto) operator^=(LHS&& lhs, RHS const& rhs) {
     detail::logic_inplace_array(lhs, rhs, [](auto const& a, auto const& b) {
         return a ^ b;

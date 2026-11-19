@@ -893,6 +893,30 @@ TEST(TestLogicArray, CompoundReturnsReference) {
     EXPECT_EQ(to_string(a), "00");
 }
 
+template <typename LHS, typename RHS>
+concept CompoundAssignable = requires(LHS lhs, RHS rhs) {
+    lhs &= rhs;
+    lhs |= rhs;
+    lhs ^= rhs;
+};
+
+template <typename LHS, typename RHS>
+concept NotCompoundAssignable = !requires(LHS lhs, RHS rhs) { lhs &= rhs; }
+                             && !requires(LHS lhs, RHS rhs) { lhs |= rhs; }
+                             && !requires(LHS lhs, RHS rhs) { lhs ^= rhs; };
+
+static_assert(CompoundAssignable<BitArray<4>&, BitArray<4>>);
+static_assert(CompoundAssignable<BitArray<4>&, Bit>);
+static_assert(CompoundAssignable<ArraySlice<BitArray<4>> const&, BitArray<4>>);
+static_assert(CompoundAssignable<LogicArray<4>&, LogicArray<4>>);
+static_assert(NotCompoundAssignable<BitArray<4> const&, BitArray<4>>);
+static_assert(NotCompoundAssignable<BitArray<4> const&, Bit>);
+static_assert(NotCompoundAssignable<BitVector const&, BitVector>);
+static_assert(NotCompoundAssignable<Unsigned<4> const&, Unsigned<4>>);
+static_assert(NotCompoundAssignable<DynSigned const&, DynSigned>);
+static_assert(NotCompoundAssignable<ArraySlice<BitArray<4> const>, BitArray<4>>);
+static_assert(NotCompoundAssignable<LogicArray<4> const&, LogicArray<4>>);
+
 TEST(TestLogicArray, InplaceNotDynLogic) {
     Vector<Logic> a({'0'_l, '1'_l, 'X'_l, 'Z'_l});
     a.inplace_not();
