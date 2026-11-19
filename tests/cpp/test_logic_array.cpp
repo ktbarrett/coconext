@@ -81,6 +81,22 @@ TEST(TestLogicArray, NotBit) {
     EXPECT_EQ(c[0], '0'_b);
 }
 
+TEST(TestLogicArray, NotEmpty) {
+    auto sl = ~LogicArray<0>{};
+    static_assert(std::is_same_v<decltype(sl), LogicArray<0>>);
+    EXPECT_EQ(sl.range().length(), 0U);
+
+    auto sb = ~BitArray<0>{};
+    static_assert(std::is_same_v<decltype(sb), BitArray<0>>);
+    EXPECT_EQ(sb.range().length(), 0U);
+
+    auto dl = ~Vector<Logic>({});
+    EXPECT_EQ(dl.range().length(), 0U);
+
+    auto db = ~Vector<Bit>({});
+    EXPECT_EQ(db.range().length(), 0U);
+}
+
 // -- Bitwise operations: edge cases -----------------------------------------
 
 TEST(TestLogicArray, BitwiseLengthMismatch) {
@@ -1674,4 +1690,10 @@ TEST(TestBitArray, ZeroWidth) {
     EXPECT_EQ(a.and_reduce(), '1'_b);
     EXPECT_EQ(a.or_reduce(), '0'_b);
     EXPECT_EQ(a.xor_reduce(), '0'_b);
+
+    EXPECT_TRUE(a == a);
+    EXPECT_EQ(to_string(a), "");
+    EXPECT_EQ(std::format("{}", a), "BitArray[-1 downto 0]{\"\"}");
+    static_assert(std::is_same_v<decltype(concat(a, a)), BitArray<0>>);
+    EXPECT_THROW((void)a[0], std::out_of_range);
 }
