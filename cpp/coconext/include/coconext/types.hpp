@@ -18,6 +18,7 @@
 #include <coconext/types/resize_mode.hpp>
 #include <coconext/types/sfixed.hpp>
 #include <coconext/types/signed.hpp>
+#include <coconext/types/sim_time.hpp>
 #include <coconext/types/ufixed.hpp>
 #include <coconext/types/unsigned.hpp>
 #include <coconext/types/vector.hpp>
