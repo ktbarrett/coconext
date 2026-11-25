@@ -10,7 +10,7 @@
 #include "force_runtime.hpp"
 
 using namespace coconext::types;
-using namespace coconext::literals;
+using namespace coconext::types::literals;
 using coconext::test::force_runtime;
 
 // ---------------------------------------------------------------------------

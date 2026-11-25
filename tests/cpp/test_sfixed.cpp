@@ -8,7 +8,7 @@
 #include <coconext/types.hpp>
 
 using namespace coconext::types;
-using namespace coconext::literals;
+using namespace coconext::types::literals;
 
 template <typename T>
 concept HasSignedFixedOrdering = requires(T a, T b) { a <=> b; };
