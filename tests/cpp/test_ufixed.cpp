@@ -11,7 +11,7 @@
 #include "force_runtime.hpp"
 
 using namespace coconext::types;
-using namespace coconext::literals;
+using namespace coconext::types::literals;
 
 template <typename T>
 concept HasFixedOrdering = requires(T a, T b) { a <=> b; };

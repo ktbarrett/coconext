@@ -15,7 +15,7 @@
 
 using coconext::test::force_runtime;
 using namespace coconext::types;
-using namespace coconext::literals;
+using namespace coconext::types::literals;
 
 template <typename L, typename R>
 concept HasEqualityExpression = requires(L const& lhs, R const& rhs) {

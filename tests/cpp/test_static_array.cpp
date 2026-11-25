@@ -12,7 +12,7 @@
 #include <coconext/types.hpp>
 
 using namespace coconext::types;
-using namespace coconext::literals;
+using namespace coconext::types::literals;
 
 static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}>>);
 static_assert(RangedSequence<Array<int, Range{0, Direction::TO, 7}> const>);

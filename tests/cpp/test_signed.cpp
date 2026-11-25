@@ -15,7 +15,7 @@
 
 using coconext::test::force_runtime;
 using namespace coconext::types;
-using namespace coconext::literals;
+using namespace coconext::types::literals;
 
 TEST(TestSigned, Constructors) {
     static_assert(!std::is_convertible_v<int, Signed<6>>);

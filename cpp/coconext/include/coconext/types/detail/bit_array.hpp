@@ -177,7 +177,7 @@ using BitArray = detail::Array<Bit, detail::make_logic_static_range<Args...>()>;
 
 }  // namespace coconext::types
 
-namespace coconext::literals {
+namespace coconext::types::literals {
 
 template <coconext::types::StringLiteral S>
 constexpr auto operator""_b() {
@@ -211,7 +211,7 @@ constexpr auto operator""_b() {
     return ::coconext::types::detail::Array<::coconext::types::Bit, R>(packed_val);
 }
 
-}  // namespace coconext::literals
+}  // namespace coconext::types::literals
 
 template <coconext::types::Range R>
 struct std::formatter<coconext::types::detail::Array<coconext::types::Bit, R>>

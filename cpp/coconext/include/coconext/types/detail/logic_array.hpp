@@ -102,7 +102,7 @@ using LogicArray = detail::Array<Logic, detail::make_logic_static_range<Args...>
 
 }  // namespace coconext::types
 
-namespace coconext::literals {
+namespace coconext::types::literals {
 
 template <coconext::types::StringLiteral S>
 consteval auto operator""_l() {
@@ -128,7 +128,7 @@ consteval auto operator""_l() {
     return result;
 }
 
-}  // namespace coconext::literals
+}  // namespace coconext::types::literals
 
 template <coconext::types::Range R>
 struct std::formatter<coconext::types::detail::Array<coconext::types::Logic, R>>

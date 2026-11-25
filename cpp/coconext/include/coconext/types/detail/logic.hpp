@@ -415,10 +415,10 @@ class Vector<T> {
 
 }  // namespace coconext::types
 
-namespace coconext::literals {
+namespace coconext::types::literals {
 consteval coconext::types::Logic operator""_l(char c) { return coconext::types::Logic(c); }
 consteval coconext::types::Bit operator""_b(char c) { return coconext::types::Bit(c); }
-}  // namespace coconext::literals
+}  // namespace coconext::types::literals
 
 template <>
 struct std::hash<coconext::types::Logic> {

@@ -9,7 +9,7 @@
 #include <coconext/types.hpp>
 
 using namespace coconext::types;
-using namespace coconext::literals;
+using namespace coconext::types::literals;
 
 static_assert(LogicType<Logic>);
 static_assert(LogicType<Bit>);
