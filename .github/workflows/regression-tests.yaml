@@ -117,7 +117,7 @@ jobs:
           brew install nvc
 
       - name: Set up Python and uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           python-version: ${{ matrix.python-version }}
           activate-environment: "true"
