@@ -37,6 +37,7 @@ add_executable(coconext_tests
     test_scheduler_run.cpp
     test_task_manager.cpp
     test_sfixed.cpp
+    test_sim_time.cpp
     test_ufixed.cpp
     includes/array.cpp
     includes/bit.cpp
@@ -54,6 +55,7 @@ add_executable(coconext_tests
     includes/resize_mode.cpp
     includes/sfixed.cpp
     includes/signed.cpp
+    includes/sim_time.cpp
     includes/ufixed.cpp
     includes/unsigned.cpp
     includes/vector.cpp)
