@@ -5,10 +5,10 @@
 #include <coconext/types/sim_time.hpp>
 
 using namespace coconext::types;
-using namespace coconext::literals;
+using namespace coconext::types::literals;
 
 TEST(Includes, SimTime) {
-    SimTime st{5_ps};
-    EXPECT_EQ(st, 5_ps);
+    femtoseconds fs{5_ps};
+    EXPECT_EQ(fs, 5_ps);
     EXPECT_EQ(1_ps, 1000_fs);
 }
